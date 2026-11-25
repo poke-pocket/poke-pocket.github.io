@@ -444,11 +444,11 @@ export interface WorldTownAnchor3D {
  * so ZERO buildings ever spawn in water or float off sloped terrain!
  */
 export const WORLD_TOWNS_3D: WorldTownAnchor3D[] = [
-  { id: 'town_pallet', name: '真新小镇', x: 0, z: -34, seed: 101, plazaRadius: 24, plateauY: 1.85 },
-  { id: 'town_viridian', name: '常磐市集', x: 92, z: 24, seed: 202, plazaRadius: 21, plateauY: 2.35 },
-  { id: 'town_cerulean', name: '华蓝水岸', x: -88, z: -26, seed: 303, plazaRadius: 23, plateauY: 1.95 },
-  { id: 'town_celadon', name: '玉虹花都', x: 26, z: 96, seed: 404, plazaRadius: 23, plateauY: 2.65 },
-  { id: 'town_vermilion', name: '枯叶港镇', x: -82, z: 90, seed: 505, plazaRadius: 21, plateauY: 2.05 },
+  { id: 'town_pallet', name: '真新小镇', x: 0, z: -50, seed: 101, plazaRadius: 38, plateauY: 1.85 },
+  { id: 'town_viridian', name: '常磐市集', x: 112, z: 28, seed: 202, plazaRadius: 34, plateauY: 2.35 },
+  { id: 'town_cerulean', name: '华蓝水岸', x: -108, z: -32, seed: 303, plazaRadius: 36, plateauY: 1.95 },
+  { id: 'town_celadon', name: '玉虹花都', x: 32, z: 116, seed: 404, plazaRadius: 36, plateauY: 2.65 },
+  { id: 'town_vermilion', name: '枯叶港镇', x: -102, z: 108, seed: 505, plazaRadius: 34, plateauY: 2.05 },
 ];
 
 export function getTerrainHeight3D(wx: number, wz: number): number {

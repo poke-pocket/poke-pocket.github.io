@@ -307,7 +307,7 @@ function createPokeballBeacon(radius = 1.15): THREE.Group {
   return g;
 }
 
-/** Octagonal stone fountain centerpiece for town plazas */
+/** Octagonal stone fountain centerpiece for town plazas (life-sized for trainer & squad!) */
 function createPlazaFountain(fountains: THREE.Object3D[]): THREE.Group {
   const g = new THREE.Group();
   const stoneMat = new THREE.MeshLambertMaterial({ color: 0xd9d2c5 });
@@ -317,17 +317,17 @@ function createPlazaFountain(fountains: THREE.Object3D[]): THREE.Group {
     transparent: true,
     opacity: 0.88,
   });
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.9, 0.6, 10), stoneMat);
-  base.position.y = 0.3;
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(3.8, 4.3, 0.9, 10), stoneMat);
+  base.position.y = 0.45;
   base.receiveShadow = true;
-  const water = new THREE.Mesh(new THREE.CylinderGeometry(2.25, 2.25, 0.12, 10), waterMat);
-  water.position.y = 0.58;
-  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.72, 1.8, 8), stoneMat);
-  spire.position.y = 1.25;
-  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 0.42, 0.42, 10), stoneMat);
-  bowl.position.y = 2.15;
-  const plume = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.35, 8), waterMat);
-  plume.position.y = 2.95;
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(3.35, 3.35, 0.16, 10), waterMat);
+  water.position.y = 0.86;
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 1.05, 2.7, 8), stoneMat);
+  spire.position.y = 1.85;
+  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.75, 0.65, 0.65, 10), stoneMat);
+  bowl.position.y = 3.2;
+  const plume = new THREE.Mesh(new THREE.ConeGeometry(1.15, 2.1, 8), waterMat);
+  plume.position.y = 4.4;
   g.add(base, water, spire, bowl, plume);
   fountains.push(plume);
   return g;
@@ -377,9 +377,9 @@ export function buildProceduralTown3D(
   const spinners: THREE.Object3D[] = [];
   const fountains: THREE.Object3D[] = [];
 
-  // 1. Softly tapered cobblestone town square + boulevard street (matches terraced plateau perfectly!)
+  // 1. Wide life-sized cobblestone town plaza + generous 2-lane boulevard avenue!
   const plazaMesh = new THREE.Mesh(
-    new THREE.CircleGeometry(plazaRadius, 20),
+    new THREE.CircleGeometry(plazaRadius, 24),
     new THREE.MeshLambertMaterial({ map: tex.cobblePlaza }),
   );
   plazaMesh.rotation.x = -Math.PI / 2;
@@ -388,33 +388,33 @@ export function buildProceduralTown3D(
   group.add(plazaMesh);
 
   const roadH = new THREE.Mesh(
-    new THREE.PlaneGeometry(plazaRadius * 2.05, 5.2),
+    new THREE.PlaneGeometry(plazaRadius * 2.05, 9.2),
     new THREE.MeshLambertMaterial({ map: tex.roadTile }),
   );
   roadH.rotation.x = -Math.PI / 2;
-  roadH.position.set(0, 0.07, 3.2);
+  roadH.position.set(0, 0.07, 5.2);
   roadH.receiveShadow = true;
   group.add(roadH);
 
   const cw = new THREE.Mesh(
-    new THREE.PlaneGeometry(4.6, 4.8),
+    new THREE.PlaneGeometry(7.2, 8.6),
     new THREE.MeshLambertMaterial({ map: tex.crosswalk }),
   );
   cw.rotation.x = -Math.PI / 2;
-  cw.position.set(0, 0.08, 3.2);
+  cw.position.set(0, 0.08, 5.2);
   group.add(cw);
 
   // Central Town Fountain Plaza
   const fountain = createPlazaFountain(fountains);
-  fountain.position.set(0, 0, -2.0);
+  fountain.position.set(0, 0, -3.5);
   group.add(fountain);
 
   const localGroundY = (lx: number, lz: number) => getGroundHeight(centerX + lx, centerZ + lz) - baseY;
 
-  // 2. GRAND POKÉMON CENTER (Real CC0 multi-story commercial architecture + coral roof accent + rotating 3D Pokéball beacon!)
-  const pcX = -9.6 * mirrorX;
-  const pcZ = -7.6;
-  const pcWidth = isMajorCity ? 10.6 : 8.6;
+  // 2. GRAND POKÉMON CENTER (Life-sized towering landmark hall + giant rotating 3D Pokéball beacon!)
+  const pcX = -15.5 * mirrorX;
+  const pcZ = -12.2;
+  const pcWidth = isMajorCity ? 18.0 : 14.8;
   const pcModelUrl = isMajorCity
     ? '/models/town/commercial/shop-k.glb'
     : '/models/town/commercial/center-grand.glb';
@@ -422,91 +422,92 @@ export function buildProceduralTown3D(
     x: pcX,
     y: localGroundY(pcX, pcZ),
     z: pcZ,
-    rotY: mirrorX * 0.16,
+    rotY: mirrorX * 0.14,
     targetWidth: pcWidth,
     addInkEdges: true,
     tintHex: 0xffd6d6,
     onMounted: (wrapper, h) => {
-      const beacon = createPokeballBeacon(isMajorCity ? 1.25 : 1.0);
-      beacon.position.set(0, h + 1.15, 0);
+      const beacon = createPokeballBeacon(isMajorCity ? 1.85 : 1.55);
+      beacon.position.set(0, h + 1.65, 0);
       wrapper.add(beacon);
       spinners.push(beacon);
     },
   });
   const pcMat = new THREE.Mesh(
-    new THREE.CircleGeometry(2.1, 14),
+    new THREE.CircleGeometry(3.2, 16),
     new THREE.MeshBasicMaterial({ color: 0xfa5252 }),
   );
   pcMat.rotation.x = -Math.PI / 2;
-  pcMat.position.set(pcX, 0.09, pcZ + 5.6);
+  pcMat.position.set(pcX, 0.09, pcZ + 9.4);
   group.add(pcMat);
 
-  // 3. BOUTIQUE POKÉ MART (Real CC0 commercial storefront + rooftop MART sign + outdoor café parasol!)
-  const martX = 9.8 * mirrorX;
-  const martZ = -7.2;
+  // 3. BOUTIQUE POKÉ MART (Full-scale commercial storefront + rooftop MART sign + outdoor café parasol!)
+  const martX = 16.0 * mirrorX;
+  const martZ = -11.6;
   const martUrl = SHOP_POOL[styleIdx % SHOP_POOL.length];
+  const martWidth = isMajorCity ? 15.2 : 13.4;
   void mountGlbModel(group, martUrl, {
     x: martX,
     y: localGroundY(martX, martZ),
     z: martZ,
-    rotY: -mirrorX * 0.18,
-    targetWidth: isMajorCity ? 9.0 : 7.8,
+    rotY: -mirrorX * 0.16,
+    targetWidth: martWidth,
     addInkEdges: true,
     onMounted: (wrapper, h) => {
       const signMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(3.2, 1.25, 0.3),
+        new THREE.BoxGeometry(5.0, 1.9, 0.45),
         new THREE.MeshBasicMaterial({ map: tex.martSign }),
       );
-      signMesh.position.set(0, h + 0.72, 2.2);
+      signMesh.position.set(0, h + 1.1, 3.4);
       wrapper.add(signMesh);
     },
   });
   const martCarpet = new THREE.Mesh(
-    new THREE.CircleGeometry(1.9, 14),
+    new THREE.CircleGeometry(3.0, 16),
     new THREE.MeshBasicMaterial({ color: 0x228be6 }),
   );
   martCarpet.rotation.x = -Math.PI / 2;
-  martCarpet.position.set(martX, 0.09, martZ + 5.1);
+  martCarpet.position.set(martX, 0.09, martZ + 8.4);
   group.add(martCarpet);
 
   // Outdoor Café Parasol beside the Mart
   void mountGlbModel(group, '/models/town/commercial/parasol-a.glb', {
-    x: martX + 4.4 * mirrorX,
-    y: localGroundY(martX + 4.4 * mirrorX, martZ + 3.8),
-    z: martZ + 3.8,
-    targetWidth: 2.2,
+    x: martX + 7.2 * mirrorX,
+    y: localGroundY(martX + 7.2 * mirrorX, martZ + 6.4),
+    z: martZ + 6.4,
+    targetWidth: 3.8,
     addInkEdges: true,
   });
 
-  // 4. THREE COMPLETELY DISTINCT HANDCRAFTED SUBURBAN HOUSES & SHOPS ALONG SOUTH AVENUE (Zero copy-paste!)
+  // 4. THREE FULL-SCALE DISTINCT HANDCRAFTED SUBURBAN HOUSES ALONG SOUTH AVENUE (Human-scale doorways!)
   const houseSlots: { x: number; z: number; rotY: number; url: string; width: number }[] = [
     {
-      x: -11.4,
-      z: 10.6,
-      rotY: Math.PI - 0.16,
+      x: -18.5,
+      z: 18.2,
+      rotY: Math.PI - 0.14,
       url: HOUSE_POOL[styleIdx % HOUSE_POOL.length],
-      width: 6.8,
+      width: 12.2,
     },
     {
-      x: 0.2,
-      z: 11.4,
+      x: 0.4,
+      z: 19.6,
       rotY: Math.PI,
       url: HOUSE_POOL[(styleIdx + 2) % HOUSE_POOL.length],
-      width: 7.4,
+      width: 13.2,
     },
     {
-      x: 11.6,
-      z: 10.4,
-      rotY: Math.PI + 0.16,
+      x: 18.8,
+      z: 18.0,
+      rotY: Math.PI + 0.14,
       url: HOUSE_POOL[(styleIdx + 4) % HOUSE_POOL.length],
-      width: 6.6,
+      width: 11.8,
     },
   ];
 
   const colliders: TownCollider[] = [
-    { minX: centerX - 2.7, maxX: centerX + 2.7, minZ: centerZ - 4.7, maxZ: centerZ + 0.7 },
-    { minX: centerX + pcX - 5.1, maxX: centerX + pcX + 5.1, minZ: centerZ + pcZ - 4.6, maxZ: centerZ + pcZ + 4.6 },
-    { minX: centerX + martX - 4.5, maxX: centerX + martX + 4.5, minZ: centerZ + martZ - 4.2, maxZ: centerZ + martZ + 4.2 },
+    { minX: centerX - 4.0, maxX: centerX + 4.0, minZ: centerZ - 7.5, maxZ: centerZ + 0.5 },
+    { minX: centerX + pcX - pcWidth * 0.46, maxX: centerX + pcX + pcWidth * 0.46, minZ: centerZ + pcZ - pcWidth * 0.42, maxZ: centerZ + pcZ + pcWidth * 0.42 },
+    { minX: centerX + martX - martWidth * 0.46, maxX: centerX + martX + martWidth * 0.46, minZ: centerZ + martZ - martWidth * 0.42, maxZ: centerZ + martZ + martWidth * 0.42 },
   ];
 
   for (const hs of houseSlots) {
@@ -519,92 +520,92 @@ export function buildProceduralTown3D(
       addInkEdges: true,
     });
     colliders.push({
-      minX: centerX + hs.x - hs.width * 0.45,
-      maxX: centerX + hs.x + hs.width * 0.45,
-      minZ: centerZ + hs.z - hs.width * 0.42,
-      maxZ: centerZ + hs.z + hs.width * 0.42,
+      minX: centerX + hs.x - hs.width * 0.44,
+      maxX: centerX + hs.x + hs.width * 0.44,
+      minZ: centerZ + hs.z - hs.width * 0.40,
+      maxZ: centerZ + hs.z + hs.width * 0.40,
     });
   }
 
-  // 5. REAL CC0 MODERN TRAM / BUS STOP & TAXI ALONG MAIN AVENUE!
-  const busX = -15.6 * mirrorX;
-  const busZ = 0.2;
+  // 5. FULL-SCALE MODERN TRAM / BUS STOP & TAXI ALONG WIDE AVENUE!
+  const busX = -25.5 * mirrorX;
+  const busZ = 1.6;
   void mountGlbModel(group, '/models/town/train/tram-modern.glb', {
     x: busX,
     y: localGroundY(busX, busZ),
     z: busZ,
     rotY: Math.PI / 2,
-    targetWidth: 5.6,
+    targetWidth: 9.6,
     addInkEdges: true,
   });
   const busPole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.1, 0.12, 2.5, 6),
+    new THREE.CylinderGeometry(0.16, 0.18, 3.8, 6),
     new THREE.MeshLambertMaterial({ color: 0x3b4252 }),
   );
-  busPole.position.set(busX + 3.2 * mirrorX, 1.25, busZ + 1.4);
+  busPole.position.set(busX + 5.2 * mirrorX, 1.9, busZ + 2.4);
   const busBadge = new THREE.Mesh(
-    new THREE.BoxGeometry(0.9, 0.9, 0.18),
+    new THREE.BoxGeometry(1.35, 1.35, 0.24),
     new THREE.MeshBasicMaterial({ map: tex.busSign }),
   );
-  busBadge.position.set(busX + 3.2 * mirrorX, 2.65, busZ + 1.4);
+  busBadge.position.set(busX + 5.2 * mirrorX, 4.0, busZ + 2.4);
   group.add(busPole, busBadge);
 
-  // Cute CC0 city taxi parked on the opposite avenue curb!
+  // Life-sized city taxi parked along the opposite curb!
   void mountGlbModel(group, '/models/town/car/taxi.glb', {
-    x: 15.2 * mirrorX,
-    y: localGroundY(15.2 * mirrorX, 1.1),
-    z: 1.1,
+    x: 24.5 * mirrorX,
+    y: localGroundY(24.5 * mirrorX, 2.2),
+    z: 2.2,
     rotY: -Math.PI / 2,
-    targetWidth: 3.0,
+    targetWidth: 5.2,
     addInkEdges: true,
   });
 
-  // 6. REAL CC0 RAILWAY TRACKS + BULLET EXPRESS TRAIN ALONG NORTH EDGE!
-  const railZ = -16.8;
-  for (let rx = -18; rx <= 18; rx += 4) {
+  // 6. FULL-SCALE RAILWAY TRACKS + BULLET EXPRESS TRAIN ALONG NORTH EDGE!
+  const railZ = -27.5;
+  for (let rx = -30; rx <= 30; rx += 6) {
     void mountGlbModel(group, '/models/town/train/rail-straight.glb', {
       x: rx,
       y: localGroundY(rx, railZ) + 0.02,
       z: railZ,
       rotY: Math.PI / 2,
-      targetWidth: 4.1,
+      targetWidth: 6.2,
     });
   }
   const trainGroup = new THREE.Group();
-  trainGroup.position.set(-2, localGroundY(0, railZ) + 0.12, railZ);
+  trainGroup.position.set(-2, localGroundY(0, railZ) + 0.16, railZ);
   void mountGlbModel(trainGroup, '/models/town/train/train-bullet-a.glb', {
-    x: 3.4,
+    x: 5.8,
     y: 0,
     z: 0,
     rotY: Math.PI / 2,
-    targetWidth: 6.4,
+    targetWidth: 11.2,
     addInkEdges: true,
   });
   void mountGlbModel(trainGroup, '/models/town/train/train-bullet-b.glb', {
-    x: -3.2,
+    x: -5.6,
     y: 0,
     z: 0,
     rotY: Math.PI / 2,
-    targetWidth: 6.4,
+    targetWidth: 11.2,
     addInkEdges: true,
   });
   group.add(trainGroup);
 
-  // 7. REAL CC0 CURVED STREETLAMPS LINING THE BOULEVARD
+  // 7. FULL-SCALE CURVED STREETLAMPS LINING THE BOULEVARD
   for (const [lx, lz, rot] of [
-    [-12.5, 0.4, 0],
-    [-4.6, 0.4, 0],
-    [4.6, 0.4, 0],
-    [12.5, 0.4, 0],
-    [-6.2, 6.2, Math.PI],
-    [6.2, 6.2, Math.PI],
+    [-20.5, 0.2, 0],
+    [-7.5, 0.2, 0],
+    [7.5, 0.2, 0],
+    [20.5, 0.2, 0],
+    [-10.5, 10.2, Math.PI],
+    [10.5, 10.2, Math.PI],
   ] as const) {
     void mountGlbModel(group, '/models/town/roads/lamp-curved.glb', {
       x: lx,
       y: localGroundY(lx, lz),
       z: lz,
       rotY: rot,
-      targetWidth: 1.4,
+      targetWidth: 2.6,
       addInkEdges: true,
     });
   }
@@ -617,8 +618,8 @@ export function buildProceduralTown3D(
       label: `🏥 ${townName}·宝可梦中心`,
       hint: '全队免费治疗并补满伤药',
       x: centerX + pcX,
-      z: centerZ + pcZ + 5.6,
-      radius: 4.2,
+      z: centerZ + pcZ + 9.4,
+      radius: 5.2,
     },
     {
       id: `${id}_mart`,
@@ -627,8 +628,8 @@ export function buildProceduralTown3D(
       label: `🏪 ${townName}·友好商店`,
       hint: '进入精品商店采购外观与补给',
       x: centerX + martX,
-      z: centerZ + martZ + 5.2,
-      radius: 4.0,
+      z: centerZ + martZ + 8.4,
+      radius: 5.0,
     },
     {
       id: `${id}_station`,
@@ -637,8 +638,8 @@ export function buildProceduralTown3D(
       label: `🚉 ${townName}·高速列车站`,
       hint: '乘坐列车前往世界巡礼与各城道馆',
       x: centerX,
-      z: centerZ + railZ + 2.8,
-      radius: 4.8,
+      z: centerZ + railZ + 4.4,
+      radius: 6.2,
     },
     {
       id: `${id}_bus`,
@@ -647,8 +648,8 @@ export function buildProceduralTown3D(
       label: `🚌 ${townName}·城镇巴士站`,
       hint: '乘车前往其他城镇或世界巡礼',
       x: centerX + busX,
-      z: centerZ + busZ + 2.2,
-      radius: 3.6,
+      z: centerZ + busZ + 3.4,
+      radius: 4.8,
     },
   ];
 
