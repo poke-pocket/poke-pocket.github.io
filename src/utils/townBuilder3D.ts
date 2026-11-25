@@ -1899,9 +1899,9 @@ export function buildProceduralTown3D(
     }
   }
 
-  // Grand Spacious Civic Square / Central Plaza (r = 32.5m, strictly ABOVE boulevard ribbons at +0.13 with polygonOffset -8 -> ZERO overlap!)
+    // Grand Spacious Civic Square / Central Plaza (r = 38.5m matching the 68m-wide 8-lane grand boulevards!)
   const hubPlaza = new THREE.Mesh(
-    new THREE.CircleGeometry(32.5, 36),
+    new THREE.CircleGeometry(38.5, 40),
     new THREE.MeshLambertMaterial({
       map: tex.cobblePlaza,
       polygonOffset: true,
@@ -1915,7 +1915,7 @@ export function buildProceduralTown3D(
   group.add(hubPlaza);
 
   const plazaRim = new THREE.Mesh(
-    new THREE.RingGeometry(31.2, 32.8, 36),
+    new THREE.RingGeometry(37.0, 38.8, 40),
     new THREE.MeshLambertMaterial({
       color: 0xe6dfd1,
       side: THREE.DoubleSide,

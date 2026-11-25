@@ -133,71 +133,70 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     junctions.push({ x: jx, z: jz, width: size, depth: size, rotY, kind });
   };
 
-  // Primary 8-Lane Urban Axes (asymmetric arm lengths! Not a rigid equal-armed "+" stamp!)
-  // South Grand Avenue (leading from South entrance -> Grand Plaza)
-  addSeg(cx, cz + 27, cx, cz + 60, 44, 44, 'arterial');
-  addJunction(cx, cz + 82, 44.2, 0, 'cross');
-  addSeg(cx, cz + 104, cx, cz + 132, 44, 24, 'street'); // smooth tapered exit ramp!
+  // Primary 8-Lane Urban Axes — TRUE 3x-CHARACTER-WIDTH LANES (~6.0m per lane -> 68m wide 8-lane boulevard, 36m wide 4-lane avenue!)
+  // Grand Central Plaza r = 38m, Main Boulevards = 68m wide (half = 34m), Cross-Avenues = 36m wide (half = 18m)!
+  // South Grand Avenue (Plaza r=33 -> South Junction r=104 -> Tapered Exit Ramp r=138..172)
+  addSeg(cx, cz + 33, cx, cz + 70, 68, 68, 'arterial');
+  addJunction(cx, cz + 104, 68.4, 0, 'cross');
+  addSeg(cx, cz + 138, cx, cz + 174, 68, 36, 'street'); // smooth tapered 8->4 lane exit!
 
-  // North Grand Avenue (shorter downtown commercial leg -> railway station district)
-  addSeg(cx, cz - 27, cx, cz - 58, 44, 44, 'arterial');
-  addJunction(cx, cz - 78, 44.2, 0, 'cross');
-  addSeg(cx, cz - 100, cx, cz - 126, 44, 24, 'street');
+  // North Grand Avenue (Plaza r=-33 -> North Junction r=-100 -> Tapered Exit Ramp)
+  addSeg(cx, cz - 33, cx, cz - 66, 68, 68, 'arterial');
+  addJunction(cx, cz - 100, 68.4, 0, 'cross');
+  addSeg(cx, cz - 134, cx, cz - 168, 68, 36, 'street');
 
   // East Boulevard (Century Ave / Pudong financial axis — extended east!)
-  addSeg(cx + 27, cz, cx + 64, cz, 44, 44, 'arterial');
-  addJunction(cx + 86, cz, 44.2, 0, 'cross');
-  addSeg(cx + 108, cz, cx + 140, cz, 44, 24, 'street');
+  addSeg(cx + 33, cz, cx + 74, cz, 68, 68, 'arterial');
+  addJunction(cx + 108, cz, 68.4, 0, 'cross');
+  addSeg(cx + 142, cz, cx + 180, cz, 68, 36, 'street');
 
   // West Boulevard (Nanjing West Rd commercial corridor)
-  addSeg(cx - 27, cz, cx - 54, cz, 44, 44, 'arterial');
-  addJunction(cx - 76, cz, 44.2, 0, 'cross');
-  addSeg(cx - 98, cz, cx - 128, cz, 44, 24, 'street');
+  addSeg(cx - 33, cz, cx - 66, cz, 68, 68, 'arterial');
+  addJunction(cx - 100, cz, 68.4, 0, 'cross');
+  addSeg(cx - 134, cz, cx - 170, cz, 68, 36, 'street');
 
-  // 2. Asymmetric Urban City Blocks, Parallel Commercial Streets & Real Diagonal Waterfront Avenue!
-  // (No circular spoke wheel! Real rectangular/trapezoidal city blocks like real Shanghai / Tokyo / Beijing!)
-  // South Commercial Cross-Avenue (Huaihai Rd style: spans asymmetrically West -118m -> East +112m at z = cz + 82!)
-  addSeg(cx - 118, cz + 82, cx - 22, cz + 82, 24, 24, 'street');
-  addSeg(cx + 22, cz + 82, cx + 114, cz + 82, 24, 24, 'street');
+  // 2. Asymmetric Urban City Blocks, Parallel 4-Lane Collector Avenues (36m wide!) & Cozy Back-Alleys (18m wide)!
+  // South Commercial Cross-Avenue at z = cz + 104
+  addSeg(cx - 148, cz + 104, cx - 34, cz + 104, 36, 36, 'street');
+  addSeg(cx + 34, cz + 104, cx + 150, cz + 104, 36, 36, 'street');
 
-  // North Station Cross-Avenue (Suzhou Creek Rd style: spans West -108m -> East +120m at z = cz - 78!)
-  addSeg(cx - 108, cz - 78, cx - 22, cz - 78, 24, 24, 'street');
-  addSeg(cx + 22, cz - 78, cx + 120, cz - 78, 24, 24, 'street');
+  // North Station Cross-Avenue at z = cz - 100
+  addSeg(cx - 142, cz - 100, cx - 34, cz - 100, 36, 36, 'street');
+  addSeg(cx + 34, cz - 100, cx + 156, cz - 100, 36, 36, 'street');
 
-  // West Parallel North-South Avenue (at x = cx - 76, connects North -78 -> South +82 -> extends to +118!)
-  addSeg(cx - 76, cz - 78, cx - 76, cz - 22, 24, 24, 'street');
-  addSeg(cx - 76, cz + 22, cx - 76, cz + 82, 24, 24, 'street');
-  addSeg(cx - 76, cz + 82, cx - 76, cz + 118, 24, 15, 'street');
-  addJunction(cx - 76, cz + 82, 24.5, 0, 'cross');
-  addJunction(cx - 76, cz - 78, 24.5, 0, 'cross');
+  // West Parallel North-South Avenue at x = cx - 100
+  addSeg(cx - 100, cz - 100, cx - 100, cz - 34, 36, 36, 'street');
+  addSeg(cx - 100, cz + 34, cx - 100, cz + 104, 36, 36, 'street');
+  addSeg(cx - 100, cz + 104, cx - 100, cz + 154, 36, 22, 'street');
+  addJunction(cx - 100, cz + 104, 36.6, 0, 'cross');
+  addJunction(cx - 100, cz - 100, 36.6, 0, 'cross');
 
-  // East Waterfront Parallel Avenue (at x = cx + 86, gently angled southeastward like The Bund / Huangpu bend!)
-  addSeg(cx + 86, cz - 78, cx + 86, cz - 22, 24, 24, 'street');
-  addSeg(cx + 86, cz + 22, cx + 86, cz + 82, 24, 24, 'street');
-  addJunction(cx + 86, cz + 82, 24.5, 0, 'cross');
-  addJunction(cx + 86, cz - 78, 24.5, 0, 'cross');
+  // East Waterfront Parallel Avenue at x = cx + 108
+  addSeg(cx + 108, cz - 100, cx + 108, cz - 34, 36, 36, 'street');
+  addSeg(cx + 108, cz + 34, cx + 108, cz + 104, 36, 36, 'street');
+  addJunction(cx + 108, cz + 104, 36.6, 0, 'cross');
+  addJunction(cx + 108, cz - 100, 36.6, 0, 'cross');
 
-  // Organic Diagonal Branching Avenue (southwest -> northwest urban bypass) & Cozy Old-Town Alleys (弄堂/胡同)!
-  addSeg(cx + 86, cz + 82, cx + 122, cz + 114, 22, 14, 'street');
-  addSeg(cx - 76, cz - 78, cx - 110, cz - 104, 20, 14, 'street');
-  // Intimate neighborhood cobblestone alleys inside asymmetric blocks
-  addSeg(cx - 38, cz + 82, cx - 38, cz + 116, 13, 11, 'alley');
-  addSeg(cx + 46, cz - 78, cx + 46, cz - 110, 13, 11, 'alley');
-  addSeg(cx - 76, cz + 46, cx - 112, cz + 46, 13, 11, 'alley');
-  addSeg(cx + 86, cz - 42, cx + 124, cz - 42, 13, 11, 'alley');
+  // Organic Diagonal Branching Avenues & Neighborhood Cobblestone Alleys (18m wide!)
+  addSeg(cx + 108, cz + 104, cx + 156, cz + 146, 32, 20, 'street');
+  addSeg(cx - 100, cz - 100, cx - 144, cz - 136, 30, 20, 'street');
+  addSeg(cx - 52, cz + 104, cx - 52, cz + 150, 18, 16, 'alley');
+  addSeg(cx + 60, cz - 100, cx + 60, cz - 144, 18, 16, 'alley');
+  addSeg(cx - 100, cz + 58, cx - 148, cz + 58, 18, 16, 'alley');
+  addSeg(cx + 108, cz - 56, cx + 156, cz - 56, 18, 16, 'alley');
 
   // 3. Gently Curved High-Speed Railway / Metro Corridor skirting the northern edge of the urban district!
-  const railCenterZ = cz - 106;
-  let rx = cx - 114;
+  const railCenterZ = cz - 142;
+  let rx = cx - 144;
   let rz = railCenterZ;
-  let ra = -0.022;
+  let ra = -0.02;
   for (let i = 0; i < 6; i++) {
-    const nrx = rx + Math.cos(ra) * 38;
-    const nrz = rz + Math.sin(ra) * 38;
-    rail.push({ x1: rx, z1: rz, x2: nrx, z2: nrz, width: 7.2, kind: 'rail' });
+    const nrx = rx + Math.cos(ra) * 48;
+    const nrz = rz + Math.sin(ra) * 48;
+    rail.push({ x1: rx, z1: rz, x2: nrx, z2: nrz, width: 8.4, kind: 'rail' });
     rx = nrx;
     rz = nrz;
-    ra += 0.009;
+    ra += 0.008;
   }
 
   // Station sits neatly beside the middle of the rail line
@@ -207,8 +206,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const stationRotY = -Math.atan2(midRail.z2 - midRail.z1, midRail.x2 - midRail.x1);
 
   // Bus/Tram stop along the West boulevard wide sidewalk!
-  const busX = cx - 50;
-  const busZ = cz + 24.0;
+  const busX = cx - 52;
+  const busZ = cz + 35.5;
   const busRotY = 0;
   // Consume rng slightly for deterministic architectural variety
   void rng();
@@ -229,8 +228,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     for (const rl of rail) {
       if (distToSeg(lx, lz, rl.x1, rl.z1, rl.x2, rl.z2) < 6.5 + radius * 0.5) return true;
     }
-    // Reject if overlapping the Grand Central Civic Plaza (r = 33m)
-    if (Math.hypot(lx - cx, lz - cz) < 34.5 + radius * 0.5) return true;
+    // Reject if overlapping the Grand Central Civic Plaza (r = 39m)
+    if (Math.hypot(lx - cx, lz - cz) < 40.5 + radius * 0.5) return true;
     // Reject if overlapping any already placed building lot
     for (const ex of lots) {
       const exR = Math.hypot(ex.width * 0.5, ex.depth * 0.5) * 0.88;

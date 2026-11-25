@@ -222,7 +222,6 @@ function paintRealWorldMapTiles(
           if (oldest) REAL_MAP_TILE_CACHE.delete(oldest);
         }
         REAL_MAP_TILE_CACHE.set(key, 'loading');
-        const sub = ['a', 'b', 'c'][(tx + ty) % 3];
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => {
@@ -232,7 +231,8 @@ function paintRealWorldMapTiles(
         img.onerror = () => {
           REAL_MAP_TILE_CACHE.set(key, 'err');
         };
-        img.src = `https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${tx}/${ty}.png`;
+        // Esri ArcGIS World Street Map (free public CORS-enabled real world street/highway/river map with Chinese/English labels, z/y/x order!)
+        img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${z}/${ty}/${tx}`;
       }
     }
   }

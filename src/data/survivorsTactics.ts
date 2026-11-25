@@ -622,7 +622,7 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number): number {
     }
   } else {
     // Active Real-Earth city centered at (0, 0) has paved plazas & avenues at +0.05..+0.13 above ground
-    if (Math.hypot(wx, wz) < 160) {
+    if (Math.hypot(wx, wz) < 210) {
       return ground + 0.14;
     }
   }

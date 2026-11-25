@@ -258,22 +258,22 @@ export function sampleGeoTerrainHeight3D(
   }
 
   // Deterministic Urban Core Elevation (identical at t=0ms AND after NASA DEM loads -> ZERO road/character height desync!):
-  // - Central Civic Plaza (r <= 38m): exact flat 1.65m (zero road/plaza Z-fighting!)
-  // - Downtown Street Grid (38m < r <= 132m): smooth gentle hillside around 1.65m
-  // - Outer Suburb Blend (132m < r < 168m): smoothly blends into real NASA/SRTM coastlines, bays & hills!
+  // - Central Civic Plaza (r <= 44m): exact flat 1.65m (zero road/plaza Z-fighting!)
+  // - Downtown Street Grid (44m < r <= 184m): smooth gentle hillside around 1.65m
+  // - Outer Suburb Blend (184m < r < 224m): smoothly blends into real NASA/SRTM coastlines, bays & hills!
   if (!preferMacro) {
     const cityDist = Math.hypot(wx, wz);
-    if (cityDist <= 38) {
+    if (cityDist <= 44) {
       return 1.65;
     }
-    if (cityDist < 168) {
-      const gentleCityY = 1.65 + Math.sin(wx * 0.008) * 0.36 + Math.cos(wz * 0.008) * 0.36;
-      const plazaBlend = Math.max(0, 1 - (cityDist - 38) / 18);
+    if (cityDist < 224) {
+      const gentleCityY = 1.65 + Math.sin(wx * 0.007) * 0.36 + Math.cos(wz * 0.007) * 0.36;
+      const plazaBlend = Math.max(0, 1 - (cityDist - 44) / 20);
       const cityTargetY = gentleCityY * (1 - plazaBlend) + 1.65 * plazaBlend;
-      if (cityDist <= 132) {
+      if (cityDist <= 184) {
         return cityTargetY;
       }
-      const outerT = (cityDist - 132) / 36;
+      const outerT = (cityDist - 184) / 40;
       const smoothOuter = outerT * outerT * (3 - 2 * outerT);
       elev = cityTargetY * (1 - smoothOuter) + elev * smoothOuter;
     }
