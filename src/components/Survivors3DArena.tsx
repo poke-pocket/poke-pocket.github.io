@@ -22,6 +22,7 @@ import {
   TERRACE_CELL,
   WATER_LEVEL_3D,
   WORLD_SECTOR_SIZE,
+  WORLD_TOWNS_3D,
   getDefaultSkillsForElement,
   getTerrainHeight3D,
   getUnlockedSkillSlotCount,
@@ -2200,17 +2201,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const floraGroup = new THREE.Group();
     scene.add(floraGroup);
 
-    // 2B. Procedurally Assembled Cel-Outlined Pixel-Textured 3D Towns (Pokémon Center, Poké Mart, Houses, Bus Stop & Rail Train!)
+    // 2B. Terrain-Matched Procedural 3D Towns (Real CC0 GLB Architecture on Flattened Dry Plateaus!)
     const townsGroup = new THREE.Group();
     scene.add(townsGroup);
-    const townSpecs: { id: string; x: number; z: number; seed: number; name: string }[] = [
-      { id: 'town_pallet', x: 0, z: -30, seed: 101, name: '真新小镇' },
-      { id: 'town_viridian', x: 86, z: 18, seed: 202, name: '常磐镇' },
-      { id: 'town_cerulean', x: -84, z: -22, seed: 303, name: '华蓝水岸' },
-      { id: 'town_celadon', x: 22, z: 92, seed: 404, name: '玉虹花都' },
-      { id: 'town_vermilion', x: -78, z: 86, seed: 505, name: '枯叶港镇' },
-    ];
-    const proceduralTowns: ProceduralTownInstance[] = townSpecs.map((spec) => {
+    const proceduralTowns: ProceduralTownInstance[] = WORLD_TOWNS_3D.map((spec) => {
       const t = buildProceduralTown3D(
         spec.id,
         spec.x,
@@ -2218,6 +2212,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         spec.seed,
         (x, z) => getTerrainHeight3D(x, z),
         spec.name,
+        spec.plazaRadius,
       );
       townsGroup.add(t.group);
       return t;
@@ -4867,6 +4862,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           for (const town of proceduralTowns) {
             if (town.trainGroup && town.trainBaseX !== undefined) {
               town.trainGroup.position.x = town.trainBaseX + Math.sin(windClock * 0.28) * 6.5;
+            }
+            if (town.animatedParts) {
+              for (const sp of town.animatedParts.spinners) {
+                sp.rotation.y = windClock * 1.1;
+              }
+              for (const ft of town.animatedParts.fountains) {
+                ft.scale.y = 0.85 + Math.sin(windClock * 5.2) * 0.22;
+              }
             }
             if (Math.hypot(sim.px - town.centerX, sim.pz - town.centerZ) < town.safeRadius + 6) {
               // Gentle AABB collision against town buildings

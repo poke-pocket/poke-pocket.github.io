@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 export type TownInteractKind = 'pokemon_center' | 'poke_mart' | 'transit_station';
 
@@ -31,12 +32,135 @@ export interface ProceduralTownInstance {
   colliders: TownCollider[];
   trainGroup?: THREE.Group;
   trainBaseX?: number;
+  animatedParts?: {
+    spinners: THREE.Object3D[];
+    fountains: THREE.Object3D[];
+  };
 }
 
-const OUTLINE_MAT = new THREE.MeshBasicMaterial({
-  color: 0x161922,
-  side: THREE.BackSide,
+const GLTF_LOADER = new GLTFLoader();
+const MODEL_PROMISE_CACHE = new Map<string, Promise<THREE.Group | null>>();
+const INK_LINE_MAT = new THREE.LineBasicMaterial({
+  color: 0x1a1e29,
+  transparent: true,
+  opacity: 0.48,
 });
+
+function loadRawGlb(url: string): Promise<THREE.Group | null> {
+  const cached = MODEL_PROMISE_CACHE.get(url);
+  if (cached) return cached;
+  const p = new Promise<THREE.Group | null>((resolve) => {
+    GLTF_LOADER.load(
+      url,
+      (gltf) => {
+        const root = gltf.scene;
+        root.traverse((obj) => {
+          if ((obj as THREE.Mesh).isMesh) {
+            const m = obj as THREE.Mesh;
+            m.castShadow = true;
+            m.receiveShadow = true;
+            const mats = Array.isArray(m.material) ? m.material : [m.material];
+            for (const mat of mats) {
+              const std = mat as THREE.MeshStandardMaterial;
+              if (std.map) {
+                std.map.magFilter = THREE.NearestFilter;
+                std.map.minFilter = THREE.NearestFilter;
+                std.map.needsUpdate = true;
+              }
+              if (typeof std.roughness === 'number') {
+                std.roughness = Math.max(0.75, std.roughness);
+              }
+              if (typeof std.metalness === 'number') {
+                std.metalness = Math.min(0.15, std.metalness);
+              }
+            }
+          }
+        });
+        resolve(root);
+      },
+      undefined,
+      () => resolve(null),
+    );
+  });
+  MODEL_PROMISE_CACHE.set(url, p);
+  return p;
+}
+
+/**
+ * Clones a cached CC0 GLB model, scales it proportionally to `targetFootprint`,
+ * snaps its exact bottom (`box.min.y === 0`) cleanly to ground level,
+ * and adds crisp architectural ink crease lines (PokéBonk cel-art feel!).
+ */
+async function mountGlbModel(
+  parent: THREE.Object3D,
+  url: string,
+  opts: {
+    x: number;
+    y: number;
+    z: number;
+    rotY?: number;
+    targetWidth: number;
+    addInkEdges?: boolean;
+    tintHex?: number;
+    onMounted?: (wrapper: THREE.Group, height: number) => void;
+  },
+): Promise<void> {
+  const raw = await loadRawGlb(url);
+  if (!raw) return;
+
+  const clone = raw.clone(true);
+  clone.updateMatrixWorld(true);
+  const rawBox = new THREE.Box3().setFromObject(clone);
+  const rawSize = new THREE.Vector3();
+  const rawCenter = new THREE.Vector3();
+  rawBox.getSize(rawSize);
+  rawBox.getCenter(rawCenter);
+
+  const horizSpan = Math.max(0.01, Math.max(rawSize.x, rawSize.z));
+  const scale = opts.targetWidth / horizSpan;
+
+  const wrapper = new THREE.Group();
+  wrapper.position.set(opts.x, opts.y, opts.z);
+  wrapper.rotation.y = opts.rotY ?? 0;
+
+  clone.scale.setScalar(scale);
+  clone.position.set(
+    -rawCenter.x * scale,
+    -rawBox.min.y * scale - 0.04, // snug into terrain with zero gap!
+    -rawCenter.z * scale,
+  );
+
+  if (opts.tintHex !== undefined || opts.addInkEdges) {
+    clone.traverse((child) => {
+      if (!(child as THREE.Mesh).isMesh) return;
+      const mesh = child as THREE.Mesh;
+      if (opts.tintHex !== undefined) {
+        const tintColor = new THREE.Color(opts.tintHex);
+        if (Array.isArray(mesh.material)) {
+          mesh.material = mesh.material.map((mm) => {
+            const c = mm.clone() as THREE.MeshStandardMaterial;
+            if (c.color) c.color.lerp(tintColor, 0.22);
+            return c;
+          });
+        } else if (mesh.material) {
+          const c = mesh.material.clone() as THREE.MeshStandardMaterial;
+          if (c.color) c.color.lerp(tintColor, 0.22);
+          mesh.material = c;
+        }
+      }
+      if (opts.addInkEdges && mesh.geometry) {
+        const edges = new THREE.EdgesGeometry(mesh.geometry, 36);
+        const line = new THREE.LineSegments(edges, INK_LINE_MAT);
+        mesh.add(line);
+      }
+    });
+  }
+
+  wrapper.add(clone);
+  parent.add(wrapper);
+  const finalH = rawSize.y * scale;
+  opts.onMounted?.(wrapper, finalH);
+}
 
 function makePixelTex(
   w: number,
@@ -62,379 +186,81 @@ function makePixelTex(
   return tex;
 }
 
-/** Adds a mesh with PokéBonk-style crisp black ink cel-outline shell (inverted hull) */
-function addOutlinedMesh(
-  parent: THREE.Object3D,
-  geo: THREE.BufferGeometry,
-  mat: THREE.Material,
-  x: number,
-  y: number,
-  z: number,
-  outlineScale = 0.055,
-  rotY = 0,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(x, y, z);
-  mesh.rotation.y = rotY;
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  parent.add(mesh);
-
-  if (outlineScale > 0) {
-    const out = new THREE.Mesh(geo, OUTLINE_MAT);
-    out.scale.set(1 + outlineScale, 1 + outlineScale * 0.9, 1 + outlineScale);
-    mesh.add(out);
-  }
-  return mesh;
-}
-
-interface TownTexPalette {
-  road: THREE.CanvasTexture;
+interface TownGroundTex {
+  cobblePlaza: THREE.CanvasTexture;
+  roadTile: THREE.CanvasTexture;
   crosswalk: THREE.CanvasTexture;
-  plaza: THREE.CanvasTexture;
-  centerWall: THREE.CanvasTexture;
-  centerRoof: THREE.CanvasTexture;
-  martWall: THREE.CanvasTexture;
-  martRoof: THREE.CanvasTexture;
-  houseWalls: THREE.CanvasTexture[];
-  houseRoofs: THREE.CanvasTexture[];
-  stationRoof: THREE.CanvasTexture;
-  trainSide: THREE.CanvasTexture;
-  railTrack: THREE.CanvasTexture;
-  pokeballSign: THREE.CanvasTexture;
   martSign: THREE.CanvasTexture;
   busSign: THREE.CanvasTexture;
 }
 
-let CACHED_PALETTE: TownTexPalette | null = null;
+let CACHED_GROUND_TEX: TownGroundTex | null = null;
 
-function getTownTextures(): TownTexPalette {
-  if (CACHED_PALETTE) return CACHED_PALETTE;
+function getGroundTex(): TownGroundTex {
+  if (CACHED_GROUND_TEX) return CACHED_GROUND_TEX;
 
-  // Cobblestone & pixel asphalt street texture
-  const road = makePixelTex(
+  const cobblePlaza = makePixelTex(
     32,
     32,
     (ctx) => {
-      ctx.fillStyle = '#5c6473';
+      ctx.fillStyle = '#ddd3be';
       ctx.fillRect(0, 0, 32, 32);
-      // Side curb trims
-      ctx.fillStyle = '#c8c4b8';
-      ctx.fillRect(0, 0, 32, 3);
-      ctx.fillRect(0, 29, 32, 3);
-      ctx.fillStyle = '#8b93a1';
-      ctx.fillRect(0, 3, 32, 1);
-      ctx.fillRect(0, 28, 32, 1);
-      // Dashed lane center line
-      ctx.fillStyle = '#f2e8cf';
-      ctx.fillRect(4, 15, 10, 2);
-      ctx.fillRect(20, 15, 8, 2);
-      // Subtle pixel stone speckles
-      ctx.fillStyle = '#4e5563';
-      for (let i = 0; i < 22; i++) {
-        ctx.fillRect((i * 7 + 3) % 30, 5 + ((i * 11) % 21), 2, 1);
-      }
-    },
-    1,
-    1,
-  );
-
-  const crosswalk = makePixelTex(32, 32, (ctx) => {
-    ctx.fillStyle = '#5c6473';
-    ctx.fillRect(0, 0, 32, 32);
-    ctx.fillStyle = '#f5f1e6';
-    for (let y = 4; y < 28; y += 6) {
-      ctx.fillRect(4, y, 24, 3);
-    }
-  });
-
-  const plaza = makePixelTex(
-    32,
-    32,
-    (ctx) => {
-      ctx.fillStyle = '#ded4bc';
-      ctx.fillRect(0, 0, 32, 32);
-      ctx.fillStyle = '#cbbda0';
+      ctx.fillStyle = '#c4b89c';
       for (let y = 0; y < 32; y += 8) {
         ctx.fillRect(0, y, 32, 1);
         for (let x = (y % 16 === 0 ? 0 : 4); x < 32; x += 8) {
           ctx.fillRect(x, y, 1, 8);
         }
       }
-      ctx.fillStyle = '#ede5d2';
+      ctx.fillStyle = '#ece3d0';
       ctx.fillRect(2, 2, 5, 5);
       ctx.fillRect(18, 10, 5, 5);
       ctx.fillRect(10, 26, 5, 5);
     },
-    4,
-    4,
+    7,
+    7,
   );
 
-  // Pokémon Center warm ivory wall with glowing cyan clinic windows & sliding doors
-  const centerWall = makePixelTex(64, 32, (ctx) => {
-    ctx.fillStyle = '#f7f3e8';
-    ctx.fillRect(0, 0, 64, 32);
-    // Stone plinth
-    ctx.fillStyle = '#b9b4a8';
-    ctx.fillRect(0, 26, 64, 6);
-    ctx.fillStyle = '#e04f47';
-    ctx.fillRect(0, 0, 64, 4);
-    // Windows left & right
-    const drawWin = (wx: number) => {
-      ctx.fillStyle = '#252a38';
-      ctx.fillRect(wx, 9, 14, 12);
-      ctx.fillStyle = '#74c0fc';
-      ctx.fillRect(wx + 2, 11, 10, 8);
-      ctx.fillStyle = '#d0ebff';
-      ctx.fillRect(wx + 3, 12, 3, 3);
-    };
-    drawWin(5);
-    drawWin(45);
-    // Center glass sliding doors
-    ctx.fillStyle = '#252a38';
-    ctx.fillRect(24, 10, 16, 22);
-    ctx.fillStyle = '#63e6be';
-    ctx.fillRect(26, 12, 5, 19);
-    ctx.fillRect(33, 12, 5, 19);
-    ctx.fillStyle = '#e6fcf5';
-    ctx.fillRect(27, 14, 2, 6);
-    ctx.fillRect(34, 14, 2, 6);
-  });
-
-  // Coral-red curved tile roof for Pokémon Center
-  const centerRoof = makePixelTex(
+  const roadTile = makePixelTex(
     32,
     32,
     (ctx) => {
-      ctx.fillStyle = '#d9383a';
+      ctx.fillStyle = '#5c6472';
       ctx.fillRect(0, 0, 32, 32);
-      ctx.fillStyle = '#b62427';
-      for (let y = 0; y < 32; y += 6) {
-        ctx.fillRect(0, y, 32, 2);
-      }
-      ctx.fillStyle = '#f0655b';
-      for (let y = 2; y < 32; y += 6) {
-        for (let x = (y % 12 === 2 ? 0 : 4); x < 32; x += 8) {
-          ctx.fillRect(x, y, 6, 2);
-        }
-      }
+      ctx.fillStyle = '#d7d0be';
+      ctx.fillRect(0, 0, 32, 3);
+      ctx.fillRect(0, 29, 32, 3);
+      ctx.fillStyle = '#8b93a1';
+      ctx.fillRect(0, 3, 32, 1);
+      ctx.fillRect(0, 28, 32, 1);
+      ctx.fillStyle = '#f5ecd4';
+      ctx.fillRect(3, 15, 10, 2);
+      ctx.fillRect(19, 15, 10, 2);
     },
-    2,
-    2,
-  );
-
-  // Poké Mart wall with striped blue awning & lit merchandise window
-  const martWall = makePixelTex(64, 32, (ctx) => {
-    ctx.fillStyle = '#f4f6fa';
-    ctx.fillRect(0, 0, 64, 32);
-    ctx.fillStyle = '#9aa5b5';
-    ctx.fillRect(0, 27, 64, 5);
-    // Blue-white striped shop awning
-    for (let x = 0; x < 64; x += 8) {
-      ctx.fillStyle = (x / 8) % 2 === 0 ? '#1c7ed6' : '#ffffff';
-      ctx.fillRect(x, 4, 8, 6);
-    }
-    // Display window
-    ctx.fillStyle = '#1e2536';
-    ctx.fillRect(6, 12, 22, 13);
-    ctx.fillStyle = '#ffd43b';
-    ctx.fillRect(8, 14, 18, 9);
-    ctx.fillStyle = '#ff6b6b';
-    ctx.fillRect(10, 17, 4, 4);
-    ctx.fillStyle = '#51cf66';
-    ctx.fillRect(16, 17, 4, 4);
-    ctx.fillStyle = '#339af0';
-    ctx.fillRect(21, 16, 3, 5);
-    // Door
-    ctx.fillStyle = '#1e2536';
-    ctx.fillRect(38, 12, 16, 20);
-    ctx.fillStyle = '#74c0fc';
-    ctx.fillRect(40, 14, 12, 16);
-    ctx.fillStyle = '#d0ebff';
-    ctx.fillRect(42, 16, 3, 8);
-  });
-
-  const martRoof = makePixelTex(
-    32,
-    32,
-    (ctx) => {
-      ctx.fillStyle = '#1971c2';
-      ctx.fillRect(0, 0, 32, 32);
-      ctx.fillStyle = '#145594';
-      for (let y = 0; y < 32; y += 6) ctx.fillRect(0, y, 32, 2);
-      ctx.fillStyle = '#4dabf7';
-      for (let y = 2; y < 32; y += 6) {
-        for (let x = (y % 12 === 2 ? 0 : 4); x < 32; x += 8) {
-          ctx.fillRect(x, y, 6, 2);
-        }
-      }
-    },
-    2,
-    2,
-  );
-
-  // 3 distinct cozy residential town house walls (timber cream, warm terracotta brick, sage cottage)
-  const makeHouseWall = (base: string, trim: string, door: string) =>
-    makePixelTex(48, 32, (ctx) => {
-      ctx.fillStyle = base;
-      ctx.fillRect(0, 0, 48, 32);
-      // Timber beams / brick lines
-      ctx.fillStyle = trim;
-      ctx.fillRect(0, 0, 48, 3);
-      ctx.fillRect(0, 27, 48, 5);
-      ctx.fillRect(0, 0, 3, 32);
-      ctx.fillRect(45, 0, 3, 32);
-      // Warm glowing pixel windows
-      const drawW = (x: number) => {
-        ctx.fillStyle = '#2b241d';
-        ctx.fillRect(x, 8, 10, 10);
-        ctx.fillStyle = '#ffe066';
-        ctx.fillRect(x + 2, 10, 6, 6);
-        ctx.fillStyle = '#2b241d';
-        ctx.fillRect(x + 4, 10, 2, 6);
-        ctx.fillRect(x + 2, 12, 6, 2);
-        // Flower box
-        ctx.fillStyle = '#2f9e44';
-        ctx.fillRect(x, 18, 10, 2);
-        ctx.fillStyle = '#ff6b6b';
-        ctx.fillRect(x + 2, 17, 2, 2);
-        ctx.fillRect(x + 6, 17, 2, 2);
-      };
-      drawW(6);
-      drawW(32);
-      // Wooden door
-      ctx.fillStyle = '#2b241d';
-      ctx.fillRect(19, 13, 10, 19);
-      ctx.fillStyle = door;
-      ctx.fillRect(21, 15, 6, 17);
-      ctx.fillStyle = '#ffd43b';
-      ctx.fillRect(25, 23, 2, 2);
-    });
-
-  const makeShingleRoof = (main: string, dark: string, hi: string) =>
-    makePixelTex(
-      32,
-      32,
-      (ctx) => {
-        ctx.fillStyle = main;
-        ctx.fillRect(0, 0, 32, 32);
-        ctx.fillStyle = dark;
-        for (let y = 0; y < 32; y += 6) ctx.fillRect(0, y, 32, 2);
-        ctx.fillStyle = hi;
-        for (let y = 2; y < 32; y += 6) {
-          for (let x = (y % 12 === 2 ? 1 : 5); x < 32; x += 8) {
-            ctx.fillRect(x, y, 5, 2);
-          }
-        }
-      },
-      2,
-      2,
-    );
-
-  const houseWalls = [
-    makeHouseWall('#f4ead5', '#8d6e4e', '#a35d32'),
-    makeHouseWall('#ebd6c3', '#9c523b', '#6b4226'),
-    makeHouseWall('#dfebd8', '#52734d', '#7c5534'),
-  ];
-  const houseRoofs = [
-    makeShingleRoof('#b85d3b', '#873d23', '#d97a54'),
-    makeShingleRoof('#4f6d52', '#344c37', '#6f9473'),
-    makeShingleRoof('#5c5470', '#3d374d', '#7d7396'),
-  ];
-
-  const stationRoof = makeShingleRoof('#38598b', '#223a5e', '#587eb5');
-
-  // Cute pixel-art Pokémon Express Train side texture
-  const trainSide = makePixelTex(64, 32, (ctx) => {
-    ctx.fillStyle = '#f8f9fa';
-    ctx.fillRect(0, 0, 64, 32);
-    ctx.fillStyle = '#e03131';
-    ctx.fillRect(0, 0, 64, 6);
-    ctx.fillRect(0, 20, 64, 6);
-    ctx.fillStyle = '#ffd43b';
-    ctx.fillRect(0, 18, 64, 2);
-    ctx.fillStyle = '#343a40';
-    ctx.fillRect(0, 26, 64, 6);
-    // Train windows
-    for (let x = 6; x < 56; x += 14) {
-      ctx.fillStyle = '#1d2433';
-      ctx.fillRect(x, 8, 10, 9);
-      ctx.fillStyle = '#a5d8ff';
-      ctx.fillRect(x + 2, 10, 6, 5);
-    }
-  });
-
-  // Railway tracks with wooden sleepers & steel rails
-  const railTrack = makePixelTex(
-    32,
-    32,
-    (ctx) => {
-      ctx.fillStyle = '#8b8378';
-      ctx.fillRect(0, 0, 32, 32);
-      // Gravel speckles
-      ctx.fillStyle = '#736b61';
-      for (let i = 0; i < 18; i++) {
-        ctx.fillRect((i * 9) % 30, (i * 7) % 30, 2, 2);
-      }
-      // Wooden sleepers
-      ctx.fillStyle = '#5c4028';
-      for (let x = 2; x < 32; x += 8) {
-        ctx.fillRect(x, 4, 4, 24);
-      }
-      // Steel rails
-      ctx.fillStyle = '#ced4da';
-      ctx.fillRect(0, 7, 32, 3);
-      ctx.fillRect(0, 22, 32, 3);
-      ctx.fillStyle = '#495057';
-      ctx.fillRect(0, 10, 32, 1);
-      ctx.fillRect(0, 25, 32, 1);
-    },
-    10,
+    7,
     1,
   );
 
-  // Pokéball Rooftop Sign
-  const pokeballSign = makePixelTex(32, 32, (ctx) => {
-    ctx.fillStyle = '#fff9db';
+  const crosswalk = makePixelTex(32, 32, (ctx) => {
+    ctx.fillStyle = '#5c6472';
     ctx.fillRect(0, 0, 32, 32);
-    ctx.strokeStyle = '#1b1f2a';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(1.5, 1.5, 29, 29);
-    // Pokéball icon
-    ctx.fillStyle = '#e03131';
-    ctx.beginPath();
-    ctx.arc(16, 16, 10, Math.PI, 0);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(16, 16, 10, 0, Math.PI);
-    ctx.fill();
-    ctx.fillStyle = '#1b1f2a';
-    ctx.fillRect(6, 14, 20, 4);
-    ctx.beginPath();
-    ctx.arc(16, 16, 4.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(16, 16, 2.2, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = '#faf6eb';
+    for (let y = 4; y < 28; y += 6) ctx.fillRect(4, y, 24, 3);
   });
 
-  // MART Rooftop Sign
-  const martSign = makePixelTex(48, 24, (ctx) => {
-    ctx.fillStyle = '#1c7ed6';
-    ctx.fillRect(0, 0, 48, 24);
+  const martSign = makePixelTex(64, 24, (ctx) => {
+    ctx.fillStyle = '#1971c2';
+    ctx.fillRect(0, 0, 64, 24);
     ctx.strokeStyle = '#141926';
     ctx.lineWidth = 3;
-    ctx.strokeRect(1.5, 1.5, 45, 21);
+    ctx.strokeRect(1.5, 1.5, 61, 21);
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 13px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('MART', 24, 13);
+    ctx.fillText('MART', 32, 13);
   });
 
-  // Bus Stop Sign
   const busSign = makePixelTex(32, 32, (ctx) => {
     ctx.fillStyle = '#ffd43b';
     ctx.fillRect(0, 0, 32, 32);
@@ -448,236 +274,82 @@ function getTownTextures(): TownTexPalette {
     ctx.fillText('BUS', 16, 16);
   });
 
-  CACHED_PALETTE = {
-    road,
-    crosswalk,
-    plaza,
-    centerWall,
-    centerRoof,
-    martWall,
-    martRoof,
-    houseWalls,
-    houseRoofs,
-    stationRoof,
-    trainSide,
-    railTrack,
-    pokeballSign,
-    martSign,
-    busSign,
-  };
-  return CACHED_PALETTE;
+  CACHED_GROUND_TEX = { cobblePlaza, roadTile, crosswalk, martSign, busSign };
+  return CACHED_GROUND_TEX;
 }
 
-function buildPokemonCenterMesh(tex: TownTexPalette): THREE.Group {
+/** Iconic rotating 3D Pokéball Rooftop Beacon mounted atop real Pokémon Center GLB halls */
+function createPokeballBeacon(radius = 1.15): THREE.Group {
   const g = new THREE.Group();
-  const wallMat = new THREE.MeshLambertMaterial({ map: tex.centerWall });
-  const sideWallMat = new THREE.MeshLambertMaterial({ color: 0xf4efe2 });
-  const roofMat = new THREE.MeshLambertMaterial({ map: tex.centerRoof });
-  const trimMat = new THREE.MeshLambertMaterial({ color: 0x3b4252 });
-  const signMat = new THREE.MeshBasicMaterial({ map: tex.pokeballSign });
-
-  // Foundation plinth
-  addOutlinedMesh(g, new THREE.BoxGeometry(8.8, 0.5, 6.4), trimMat, 0, 0.25, 0, 0.025);
-  // Main building body (textured front on +Z)
-  const bodyMats = [sideWallMat, sideWallMat, sideWallMat, sideWallMat, wallMat, sideWallMat];
-  const body = new THREE.Mesh(new THREE.BoxGeometry(8.2, 3.6, 5.6), bodyMats);
-  body.position.set(0, 2.3, 0);
-  body.castShadow = true;
-  body.receiveShadow = true;
-  g.add(body);
-  const bodyOut = new THREE.Mesh(new THREE.BoxGeometry(8.2, 3.6, 5.6), OUTLINE_MAT);
-  bodyOut.scale.set(1.03, 1.03, 1.03);
-  body.add(bodyOut);
-
-  // Iconic stepped coral-red curved Pokémon Center roof
-  addOutlinedMesh(g, new THREE.BoxGeometry(9.0, 1.05, 6.3), roofMat, 0, 4.6, 0, 0.032);
-  addOutlinedMesh(g, new THREE.BoxGeometry(7.2, 0.9, 4.7), roofMat, 0, 5.5, 0, 0.038);
-  // Rooftop Pokéball Emblem Sign
-  addOutlinedMesh(g, new THREE.BoxGeometry(2.0, 2.0, 0.45), signMat, 0, 6.75, 1.75, 0.06);
-  // Entrance canopy awning
-  addOutlinedMesh(g, new THREE.BoxGeometry(3.2, 0.32, 1.5), roofMat, 0, 3.1, 3.3, 0.05);
-  // Warm welcome mat
-  const matMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.6, 1.4),
-    new THREE.MeshBasicMaterial({ color: 0xfa5252 }),
+  const top = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
+    new THREE.MeshLambertMaterial({ color: 0xfa5252 }),
   );
-  matMesh.rotation.x = -Math.PI / 2;
-  matMesh.position.set(0, 0.06, 3.7);
-  g.add(matMesh);
-
-  return g;
-}
-
-function buildPokeMartMesh(tex: TownTexPalette): THREE.Group {
-  const g = new THREE.Group();
-  const wallMat = new THREE.MeshLambertMaterial({ map: tex.martWall });
-  const sideWallMat = new THREE.MeshLambertMaterial({ color: 0xedf2f7 });
-  const roofMat = new THREE.MeshLambertMaterial({ map: tex.martRoof });
-  const plinthMat = new THREE.MeshLambertMaterial({ color: 0x495057 });
-  const signMat = new THREE.MeshBasicMaterial({ map: tex.martSign });
-
-  addOutlinedMesh(g, new THREE.BoxGeometry(7.4, 0.45, 5.8), plinthMat, 0, 0.22, 0, 0.025);
-  const bodyMats = [sideWallMat, sideWallMat, sideWallMat, sideWallMat, wallMat, sideWallMat];
-  const body = new THREE.Mesh(new THREE.BoxGeometry(6.8, 3.4, 5.2), bodyMats);
-  body.position.set(0, 2.15, 0);
-  body.castShadow = true;
-  body.receiveShadow = true;
-  g.add(body);
-  const bodyOut = new THREE.Mesh(new THREE.BoxGeometry(6.8, 3.4, 5.2), OUTLINE_MAT);
-  bodyOut.scale.set(1.032, 1.032, 1.032);
-  body.add(bodyOut);
-
-  // Blue tiled sloped roof
-  addOutlinedMesh(g, new THREE.BoxGeometry(7.6, 0.95, 5.9), roofMat, 0, 4.3, 0, 0.032);
-  addOutlinedMesh(g, new THREE.BoxGeometry(5.6, 0.7, 4.2), roofMat, 0, 5.05, 0, 0.04);
-  // MART sign board
-  addOutlinedMesh(g, new THREE.BoxGeometry(2.8, 1.35, 0.36), signMat, 0, 5.95, 2.15, 0.06);
-  // Entrance mat
-  const matMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.4, 1.3),
-    new THREE.MeshBasicMaterial({ color: 0x228be6 }),
+  const bot = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 14, 8, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.5),
+    new THREE.MeshLambertMaterial({ color: 0xffffff }),
   );
-  matMesh.rotation.x = -Math.PI / 2;
-  matMesh.position.set(0, 0.06, 3.4);
-  g.add(matMesh);
-
-  return g;
-}
-
-function buildTownHouseMesh(tex: TownTexPalette, variantIdx: number): THREE.Group {
-  const g = new THREE.Group();
-  const wTex = tex.houseWalls[variantIdx % tex.houseWalls.length];
-  const rTex = tex.houseRoofs[variantIdx % tex.houseRoofs.length];
-  const wallMat = new THREE.MeshLambertMaterial({ map: wTex });
-  const sideMat = new THREE.MeshLambertMaterial({ color: variantIdx % 2 === 0 ? 0xefe3cb : 0xdbe7d4 });
-  const roofMat = new THREE.MeshLambertMaterial({ map: rTex });
-  const chimMat = new THREE.MeshLambertMaterial({ color: 0x8d5b4c });
-
-  const bodyMats = [sideMat, sideMat, sideMat, sideMat, wallMat, sideMat];
-  const body = new THREE.Mesh(new THREE.BoxGeometry(5.4, 3.1, 4.6), bodyMats);
-  body.position.set(0, 1.55, 0);
-  body.castShadow = true;
-  body.receiveShadow = true;
-  g.add(body);
-  const bodyOut = new THREE.Mesh(new THREE.BoxGeometry(5.4, 3.1, 4.6), OUTLINE_MAT);
-  bodyOut.scale.set(1.038, 1.038, 1.038);
-  body.add(bodyOut);
-
-  // Pitched prism roof (4-sided pyramid/gable)
-  const roofGeo = new THREE.ConeGeometry(4.35, 2.25, 4);
-  roofGeo.rotateY(Math.PI / 4);
-  addOutlinedMesh(g, roofGeo, roofMat, 0, 4.18, 0, 0.045);
-
-  // Pixel brick chimney
-  addOutlinedMesh(g, new THREE.BoxGeometry(0.85, 1.6, 0.85), chimMat, 1.4, 4.5, -0.9, 0.07);
-
-  return g;
-}
-
-function buildBusStopMesh(tex: TownTexPalette): THREE.Group {
-  const g = new THREE.Group();
-  const metalMat = new THREE.MeshLambertMaterial({ color: 0x495057 });
-  const roofMat = new THREE.MeshLambertMaterial({ map: tex.stationRoof });
-  const benchMat = new THREE.MeshLambertMaterial({ color: 0xb07d4f });
-  const signMat = new THREE.MeshBasicMaterial({ map: tex.busSign });
-
-  // Shelter pillars
-  addOutlinedMesh(g, new THREE.BoxGeometry(0.24, 2.4, 0.24), metalMat, -1.7, 1.2, -0.7, 0.14);
-  addOutlinedMesh(g, new THREE.BoxGeometry(0.24, 2.4, 0.24), metalMat, 1.7, 1.2, -0.7, 0.14);
-  // Shelter canopy
-  addOutlinedMesh(g, new THREE.BoxGeometry(4.2, 0.3, 2.0), roofMat, 0, 2.5, 0, 0.05);
-  // Wooden waiting bench
-  addOutlinedMesh(g, new THREE.BoxGeometry(2.6, 0.24, 0.72), benchMat, 0, 0.65, -0.25, 0.06);
-  // Standing BUS sign pole
-  addOutlinedMesh(g, new THREE.BoxGeometry(0.18, 2.5, 0.18), metalMat, 2.6, 1.25, 0.5, 0.15);
-  addOutlinedMesh(g, new THREE.BoxGeometry(0.95, 0.95, 0.18), signMat, 2.6, 2.6, 0.5, 0.08);
-  return g;
-}
-
-function buildTrainStationAndExpress(tex: TownTexPalette): { group: THREE.Group; train: THREE.Group } {
-  const g = new THREE.Group();
-  const platformMat = new THREE.MeshLambertMaterial({ color: 0xc8c3b8 });
-  const yellowTrimMat = new THREE.MeshBasicMaterial({ color: 0xfcc419 });
-  const roofMat = new THREE.MeshLambertMaterial({ map: tex.stationRoof });
-  const pillarMat = new THREE.MeshLambertMaterial({ color: 0x3b4252 });
-  const trainMat = new THREE.MeshLambertMaterial({ map: tex.trainSide });
-  const trainFrontMat = new THREE.MeshLambertMaterial({ color: 0xe03131 });
-  const wheelMat = new THREE.MeshLambertMaterial({ color: 0x212529 });
-
-  // Rail track bed spanning 36 units along X
-  const track = new THREE.Mesh(
-    new THREE.PlaneGeometry(36, 3.2),
-    new THREE.MeshLambertMaterial({ map: tex.railTrack }),
+  const belt = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 1.03, radius * 1.03, radius * 0.18, 14),
+    new THREE.MeshBasicMaterial({ color: 0x181a24 }),
   );
-  track.rotation.x = -Math.PI / 2;
-  track.position.set(0, 0.05, -2.5);
-  g.add(track);
-
-  // Raised station platform
-  addOutlinedMesh(g, new THREE.BoxGeometry(14, 0.55, 3.4), platformMat, 0, 0.28, 1.1, 0.02);
-  // Safety yellow platform line
-  const line = new THREE.Mesh(new THREE.PlaneGeometry(13.6, 0.26), yellowTrimMat);
-  line.rotation.x = -Math.PI / 2;
-  line.position.set(0, 0.58, -0.35);
-  g.add(line);
-
-  // Station awning pillars & canopy
-  for (const px of [-5.2, 0, 5.2]) {
-    addOutlinedMesh(g, new THREE.BoxGeometry(0.32, 3.1, 0.32), pillarMat, px, 2.0, 1.5, 0.12);
-  }
-  addOutlinedMesh(g, new THREE.BoxGeometry(13.4, 0.45, 3.6), roofMat, 0, 3.65, 1.1, 0.025);
-
-  // Cute 2-car Pixel Express Train on the rails!
-  const train = new THREE.Group();
-  train.position.set(-2, 0.2, -2.5);
-  for (const carX of [-4.4, 4.4]) {
-    const carMats = [trainFrontMat, trainFrontMat, trainFrontMat, wheelMat, trainMat, trainMat];
-    const car = new THREE.Mesh(new THREE.BoxGeometry(7.8, 2.4, 2.4), carMats);
-    car.position.set(carX, 1.55, 0);
-    car.castShadow = true;
-    train.add(car);
-    const carOut = new THREE.Mesh(new THREE.BoxGeometry(7.8, 2.4, 2.4), OUTLINE_MAT);
-    carOut.scale.set(1.03, 1.04, 1.05);
-    car.add(carOut);
-    // Wheels
-    for (const wx of [-2.4, 2.4]) {
-      addOutlinedMesh(train, new THREE.BoxGeometry(0.9, 0.6, 2.55), wheelMat, carX + wx, 0.45, 0, 0.08);
-    }
-  }
-  // Coupler between cars
-  addOutlinedMesh(train, new THREE.BoxGeometry(1.4, 0.6, 1.1), wheelMat, 0, 1.1, 0, 0.08);
-  g.add(train);
-
-  return { group: g, train };
-}
-
-function buildStreetLamp(): THREE.Group {
-  const g = new THREE.Group();
-  const poleMat = new THREE.MeshLambertMaterial({ color: 0x2b303a });
-  const bulbMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
-  addOutlinedMesh(g, new THREE.BoxGeometry(0.22, 3.2, 0.22), poleMat, 0, 1.6, 0, 0.14);
-  addOutlinedMesh(g, new THREE.BoxGeometry(0.75, 0.55, 0.75), bulbMat, 0, 3.35, 0, 0.09);
+  const btn = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius * 0.32, radius * 0.32, radius * 0.24, 12),
+    new THREE.MeshBasicMaterial({ color: 0xfff9db }),
+  );
+  btn.rotation.x = Math.PI / 2;
+  btn.position.z = radius * 0.92;
+  g.add(top, bot, belt, btn);
   return g;
 }
 
-const TOWN_NAMES = [
-  '真新小镇',
-  '常磐镇',
-  '尼比市集',
-  '华蓝水岸',
-  '枯叶港镇',
-  '玉虹花都',
-  '浅红林镇',
-  '双叶风谷',
+/** Octagonal stone fountain centerpiece for town plazas */
+function createPlazaFountain(fountains: THREE.Object3D[]): THREE.Group {
+  const g = new THREE.Group();
+  const stoneMat = new THREE.MeshLambertMaterial({ color: 0xd9d2c5 });
+  const waterMat = new THREE.MeshLambertMaterial({
+    color: 0x4dabf7,
+    emissive: 0x1971c2,
+    transparent: true,
+    opacity: 0.88,
+  });
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.9, 0.6, 10), stoneMat);
+  base.position.y = 0.3;
+  base.receiveShadow = true;
+  const water = new THREE.Mesh(new THREE.CylinderGeometry(2.25, 2.25, 0.12, 10), waterMat);
+  water.position.y = 0.58;
+  const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.72, 1.8, 8), stoneMat);
+  spire.position.y = 1.25;
+  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 0.42, 0.42, 10), stoneMat);
+  bowl.position.y = 2.15;
+  const plume = new THREE.Mesh(new THREE.ConeGeometry(0.75, 1.35, 8), waterMat);
+  plume.position.y = 2.95;
+  g.add(base, water, spire, bowl, plume);
+  fountains.push(plume);
+  return g;
+}
+
+const HOUSE_POOL = [
+  '/models/town/house-a.glb',
+  '/models/town/house-c.glb',
+  '/models/town/house-f.glb',
+  '/models/town/house-i.glb',
+  '/models/town/house-l.glb',
+  '/models/town/house-o.glb',
+];
+
+const SHOP_POOL = [
+  '/models/town/mart-boutique.glb',
+  '/models/town/shop-a.glb',
+  '/models/town/shop-d.glb',
+  '/models/town/shop-g.glb',
 ];
 
 /**
- * Procedurally assembles a complete Pokémon Town at (centerX, centerZ) with:
- * - Cobblestone plaza + crossroad streets + crosswalks + streetlamps
- * - Pokémon Center (interactive healing)
- * - Poké Mart (interactive boutique shop)
- * - 3 randomized town houses
- * - Bus Stop Shelter + Rail Station with Pixel Express Train (interactive fast travel / world tour)
+ * Procedurally assembles a UNIQUE, terrain-matched Pokémon Town using real handcrafted CC0 3D GLB models!
+ * - Sits on a smooth dry plateau guaranteed above WATER_LEVEL_3D (zero water overlap!)
+ * - Every building snaps flush to local terrain height with crisp cel-ink edges
+ * - Mixes distinct houses, commercial storefronts, grand Pokémon Center, bullet train & streetcar per town!
  */
 export function buildProceduralTown3D(
   id: string,
@@ -686,104 +358,250 @@ export function buildProceduralTown3D(
   seed: number,
   getGroundHeight: (x: number, z: number) => number,
   customName?: string,
+  plazaRadius = 22,
 ): ProceduralTownInstance {
-  const tex = getTownTextures();
+  const tex = getGroundTex();
   const group = new THREE.Group();
   const baseY = getGroundHeight(centerX, centerZ);
   group.position.set(centerX, baseY, centerZ);
 
-  const townName = customName ?? TOWN_NAMES[Math.abs(seed) % TOWN_NAMES.length];
-  const mirrorX = seed % 2 === 0 ? 1 : -1;
+  const townName = customName ?? '真新小镇';
+  const styleIdx = Math.abs(seed) % 4;
+  const isMajorCity = styleIdx === 0 || styleIdx === 2;
+  const mirrorX = styleIdx % 2 === 0 ? 1 : -1;
 
-  // 1. Paved Town Plaza & Main Street Grid
+  const spinners: THREE.Object3D[] = [];
+  const fountains: THREE.Object3D[] = [];
+
+  // 1. Softly tapered cobblestone town square + boulevard street (matches terraced plateau perfectly!)
   const plazaMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(34, 28),
-    new THREE.MeshLambertMaterial({ map: tex.plaza }),
+    new THREE.CircleGeometry(plazaRadius, 20),
+    new THREE.MeshLambertMaterial({ map: tex.cobblePlaza }),
   );
   plazaMesh.rotation.x = -Math.PI / 2;
-  plazaMesh.position.set(0, 0.04, 0);
+  plazaMesh.position.set(0, 0.05, 0);
   plazaMesh.receiveShadow = true;
   group.add(plazaMesh);
 
-  // Horizontal Main Avenue
-  const roadMat = new THREE.MeshLambertMaterial({ map: tex.road });
-  const roadH = new THREE.Mesh(new THREE.PlaneGeometry(38, 5.2), roadMat);
+  const roadH = new THREE.Mesh(
+    new THREE.PlaneGeometry(plazaRadius * 2.05, 5.2),
+    new THREE.MeshLambertMaterial({ map: tex.roadTile }),
+  );
   roadH.rotation.x = -Math.PI / 2;
-  roadH.position.set(0, 0.06, 2.2);
+  roadH.position.set(0, 0.07, 3.2);
   roadH.receiveShadow = true;
   group.add(roadH);
 
-  // Crosswalk stripes at intersection
   const cw = new THREE.Mesh(
     new THREE.PlaneGeometry(4.6, 4.8),
     new THREE.MeshLambertMaterial({ map: tex.crosswalk }),
   );
   cw.rotation.x = -Math.PI / 2;
-  cw.position.set(0, 0.07, 2.2);
+  cw.position.set(0, 0.08, 3.2);
   group.add(cw);
 
-  // 2. Pokémon Center (North-West or North-East by seed)
-  const pcX = -6.8 * mirrorX;
-  const pcZ = -5.8;
-  const pcMesh = buildPokemonCenterMesh(tex);
-  pcMesh.position.set(pcX, 0, pcZ);
-  group.add(pcMesh);
+  // Central Town Fountain Plaza
+  const fountain = createPlazaFountain(fountains);
+  fountain.position.set(0, 0, -2.0);
+  group.add(fountain);
 
-  // 3. Poké Mart (opposite side of main avenue)
-  const martX = 6.8 * mirrorX;
-  const martZ = -5.6;
-  const martMesh = buildPokeMartMesh(tex);
-  martMesh.position.set(martX, 0, martZ);
-  group.add(martMesh);
+  const localGroundY = (lx: number, lz: number) => getGroundHeight(centerX + lx, centerZ + lz) - baseY;
 
-  // 4. Three cozy randomized Town Houses along the South block
-  const houseSlots: [number, number, number][] = [
-    [-10.2, 8.8, Math.PI],
-    [0.0, 9.2, Math.PI],
-    [10.2, 8.8, Math.PI],
-  ];
-  const colliders: TownCollider[] = [
-    { minX: centerX + pcX - 4.4, maxX: centerX + pcX + 4.4, minZ: centerZ + pcZ - 3.1, maxZ: centerZ + pcZ + 3.1 },
-    { minX: centerX + martX - 3.7, maxX: centerX + martX + 3.7, minZ: centerZ + martZ - 2.9, maxZ: centerZ + martZ + 2.9 },
-  ];
+  // 2. GRAND POKÉMON CENTER (Real CC0 multi-story commercial architecture + coral roof accent + rotating 3D Pokéball beacon!)
+  const pcX = -9.6 * mirrorX;
+  const pcZ = -7.6;
+  const pcWidth = isMajorCity ? 10.6 : 8.6;
+  const pcModelUrl = isMajorCity ? '/models/town/shop-k.glb' : '/models/town/center-grand.glb';
+  void mountGlbModel(group, pcModelUrl, {
+    x: pcX,
+    y: localGroundY(pcX, pcZ),
+    z: pcZ,
+    rotY: mirrorX * 0.16,
+    targetWidth: pcWidth,
+    addInkEdges: true,
+    tintHex: 0xffc9c9,
+    onMounted: (wrapper, h) => {
+      const beacon = createPokeballBeacon(isMajorCity ? 1.25 : 1.0);
+      beacon.position.set(0, h + 1.15, 0);
+      wrapper.add(beacon);
+      spinners.push(beacon);
+    },
+  });
+  const pcMat = new THREE.Mesh(
+    new THREE.CircleGeometry(2.1, 14),
+    new THREE.MeshBasicMaterial({ color: 0xfa5252 }),
+  );
+  pcMat.rotation.x = -Math.PI / 2;
+  pcMat.position.set(pcX, 0.09, pcZ + 5.6);
+  group.add(pcMat);
 
-  houseSlots.forEach(([hx, hz, rotY], idx) => {
-    const hMesh = buildTownHouseMesh(tex, Math.abs(seed) + idx);
-    hMesh.position.set(hx, 0, hz);
-    hMesh.rotation.y = rotY;
-    group.add(hMesh);
-    colliders.push({
-      minX: centerX + hx - 2.8,
-      maxX: centerX + hx + 2.8,
-      minZ: centerZ + hz - 2.4,
-      maxZ: centerZ + hz + 2.4,
-    });
+  // 3. BOUTIQUE POKÉ MART (Real CC0 commercial storefront + rooftop MART sign + outdoor café parasol!)
+  const martX = 9.8 * mirrorX;
+  const martZ = -7.2;
+  const martUrl = SHOP_POOL[styleIdx % SHOP_POOL.length];
+  void mountGlbModel(group, martUrl, {
+    x: martX,
+    y: localGroundY(martX, martZ),
+    z: martZ,
+    rotY: -mirrorX * 0.18,
+    targetWidth: isMajorCity ? 9.0 : 7.8,
+    addInkEdges: true,
+    tintHex: 0xd0ebff,
+    onMounted: (wrapper, h) => {
+      const signMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(3.2, 1.25, 0.3),
+        new THREE.MeshBasicMaterial({ map: tex.martSign }),
+      );
+      signMesh.position.set(0, h + 0.72, 2.2);
+      wrapper.add(signMesh);
+    },
+  });
+  const martCarpet = new THREE.Mesh(
+    new THREE.CircleGeometry(1.9, 14),
+    new THREE.MeshBasicMaterial({ color: 0x228be6 }),
+  );
+  martCarpet.rotation.x = -Math.PI / 2;
+  martCarpet.position.set(martX, 0.09, martZ + 5.1);
+  group.add(martCarpet);
+
+  // Outdoor Café Parasol beside the Mart
+  void mountGlbModel(group, '/models/town/parasol-a.glb', {
+    x: martX + 4.4 * mirrorX,
+    y: localGroundY(martX + 4.4 * mirrorX, martZ + 3.8),
+    z: martZ + 3.8,
+    targetWidth: 2.2,
+    addInkEdges: true,
   });
 
-  // 5. Bus Stop Shelter along the curb
-  const busX = -14.0 * mirrorX;
-  const busZ = -1.2;
-  const busMesh = buildBusStopMesh(tex);
-  busMesh.position.set(busX, 0, busZ);
-  group.add(busMesh);
+  // 4. THREE COMPLETELY DISTINCT HANDCRAFTED SUBURBAN HOUSES & SHOPS ALONG SOUTH AVENUE (Zero copy-paste!)
+  const houseSlots: { x: number; z: number; rotY: number; url: string; width: number }[] = [
+    {
+      x: -11.4,
+      z: 10.6,
+      rotY: Math.PI - 0.16,
+      url: HOUSE_POOL[styleIdx % HOUSE_POOL.length],
+      width: 6.8,
+    },
+    {
+      x: 0.2,
+      z: 11.4,
+      rotY: Math.PI,
+      url: HOUSE_POOL[(styleIdx + 2) % HOUSE_POOL.length],
+      width: 7.4,
+    },
+    {
+      x: 11.6,
+      z: 10.4,
+      rotY: Math.PI + 0.16,
+      url: HOUSE_POOL[(styleIdx + 4) % HOUSE_POOL.length],
+      width: 6.6,
+    },
+  ];
 
-  // 6. Railway Station & Pixel Express Train along North edge
-  const stationZ = -13.6;
-  const { group: stationGroup, train } = buildTrainStationAndExpress(tex);
-  stationGroup.position.set(0, 0, stationZ);
-  group.add(stationGroup);
+  const colliders: TownCollider[] = [
+    { minX: centerX - 2.7, maxX: centerX + 2.7, minZ: centerZ - 4.7, maxZ: centerZ + 0.7 },
+    { minX: centerX + pcX - 5.1, maxX: centerX + pcX + 5.1, minZ: centerZ + pcZ - 4.6, maxZ: centerZ + pcZ + 4.6 },
+    { minX: centerX + martX - 4.5, maxX: centerX + martX + 4.5, minZ: centerZ + martZ - 4.2, maxZ: centerZ + martZ + 4.2 },
+  ];
 
-  // 7. Cozy Streetlamps lining the main avenue
-  for (const [lx, lz] of [
-    [-11.5, -0.8],
-    [0, -0.8],
-    [11.5, -0.8],
-    [-6.5, 5.2],
-    [6.5, 5.2],
-  ]) {
-    const lamp = buildStreetLamp();
-    lamp.position.set(lx, 0, lz);
-    group.add(lamp);
+  for (const hs of houseSlots) {
+    void mountGlbModel(group, hs.url, {
+      x: hs.x,
+      y: localGroundY(hs.x, hs.z),
+      z: hs.z,
+      rotY: hs.rotY,
+      targetWidth: hs.width,
+      addInkEdges: true,
+    });
+    colliders.push({
+      minX: centerX + hs.x - hs.width * 0.45,
+      maxX: centerX + hs.x + hs.width * 0.45,
+      minZ: centerZ + hs.z - hs.width * 0.42,
+      maxZ: centerZ + hs.z + hs.width * 0.42,
+    });
+  }
+
+  // 5. REAL CC0 MODERN TRAM / BUS STOP & TAXI ALONG MAIN AVENUE!
+  const busX = -15.6 * mirrorX;
+  const busZ = 0.2;
+  void mountGlbModel(group, '/models/town/tram-modern.glb', {
+    x: busX,
+    y: localGroundY(busX, busZ),
+    z: busZ,
+    rotY: Math.PI / 2,
+    targetWidth: 5.6,
+    addInkEdges: true,
+  });
+  const busPole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.1, 0.12, 2.5, 6),
+    new THREE.MeshLambertMaterial({ color: 0x3b4252 }),
+  );
+  busPole.position.set(busX + 3.2 * mirrorX, 1.25, busZ + 1.4);
+  const busBadge = new THREE.Mesh(
+    new THREE.BoxGeometry(0.9, 0.9, 0.18),
+    new THREE.MeshBasicMaterial({ map: tex.busSign }),
+  );
+  busBadge.position.set(busX + 3.2 * mirrorX, 2.65, busZ + 1.4);
+  group.add(busPole, busBadge);
+
+  // Cute CC0 city taxi parked on the opposite avenue curb!
+  void mountGlbModel(group, '/models/town/taxi.glb', {
+    x: 15.2 * mirrorX,
+    y: localGroundY(15.2 * mirrorX, 1.1),
+    z: 1.1,
+    rotY: -Math.PI / 2,
+    targetWidth: 3.0,
+    addInkEdges: true,
+  });
+
+  // 6. REAL CC0 RAILWAY TRACKS + BULLET EXPRESS TRAIN ALONG NORTH EDGE!
+  const railZ = -16.8;
+  for (let rx = -18; rx <= 18; rx += 4) {
+    void mountGlbModel(group, '/models/town/rail-straight.glb', {
+      x: rx,
+      y: localGroundY(rx, railZ) + 0.02,
+      z: railZ,
+      rotY: Math.PI / 2,
+      targetWidth: 4.1,
+    });
+  }
+  const trainGroup = new THREE.Group();
+  trainGroup.position.set(-2, localGroundY(0, railZ) + 0.12, railZ);
+  void mountGlbModel(trainGroup, '/models/town/train-bullet-a.glb', {
+    x: 3.4,
+    y: 0,
+    z: 0,
+    rotY: Math.PI / 2,
+    targetWidth: 6.4,
+    addInkEdges: true,
+  });
+  void mountGlbModel(trainGroup, '/models/town/train-bullet-b.glb', {
+    x: -3.2,
+    y: 0,
+    z: 0,
+    rotY: Math.PI / 2,
+    targetWidth: 6.4,
+    addInkEdges: true,
+  });
+  group.add(trainGroup);
+
+  // 7. REAL CC0 CURVED STREETLAMPS LINING THE BOULEVARD
+  for (const [lx, lz, rot] of [
+    [-12.5, 0.4, 0],
+    [-4.6, 0.4, 0],
+    [4.6, 0.4, 0],
+    [12.5, 0.4, 0],
+    [-6.2, 6.2, Math.PI],
+    [6.2, 6.2, Math.PI],
+  ] as const) {
+    void mountGlbModel(group, '/models/town/lamp-curved.glb', {
+      x: lx,
+      y: localGroundY(lx, lz),
+      z: lz,
+      rotY: rot,
+      targetWidth: 1.4,
+      addInkEdges: true,
+    });
   }
 
   const interactPoints: TownInteractPoint[] = [
@@ -791,41 +609,41 @@ export function buildProceduralTown3D(
       id: `${id}_pc`,
       townName,
       kind: 'pokemon_center',
-      label: '🏥 宝可梦中心',
-      hint: '全队免费治疗并恢复满血',
+      label: `🏥 ${townName}·宝可梦中心`,
+      hint: '全队免费治疗并补满伤药',
       x: centerX + pcX,
-      z: centerZ + pcZ + 4.0,
-      radius: 3.4,
+      z: centerZ + pcZ + 5.6,
+      radius: 4.2,
     },
     {
       id: `${id}_mart`,
       townName,
       kind: 'poke_mart',
-      label: '🏪 友好商店',
-      hint: '打开精品外观与补给商店',
+      label: `🏪 ${townName}·友好商店`,
+      hint: '进入精品商店采购外观与补给',
       x: centerX + martX,
-      z: centerZ + martZ + 3.8,
-      radius: 3.4,
+      z: centerZ + martZ + 5.2,
+      radius: 4.0,
     },
     {
       id: `${id}_station`,
       townName,
       kind: 'transit_station',
-      label: '🚉 城镇车站',
-      hint: '乘坐列车 / 公交前往世界巡礼',
+      label: `🚉 ${townName}·高速列车站`,
+      hint: '乘坐列车前往世界巡礼与各城道馆',
       x: centerX,
-      z: centerZ + stationZ + 2.6,
-      radius: 4.2,
+      z: centerZ + railZ + 2.8,
+      radius: 4.8,
     },
     {
       id: `${id}_bus`,
       townName,
       kind: 'transit_station',
-      label: '🚌 公交车站',
+      label: `🚌 ${townName}·城镇巴士站`,
       hint: '乘车前往其他城镇或世界巡礼',
       x: centerX + busX,
-      z: centerZ + busZ + 2.0,
-      radius: 3.2,
+      z: centerZ + busZ + 2.2,
+      radius: 3.6,
     },
   ];
 
@@ -834,11 +652,15 @@ export function buildProceduralTown3D(
     name: townName,
     centerX,
     centerZ,
-    safeRadius: 21,
+    safeRadius: plazaRadius + 2,
     group,
     interactPoints,
     colliders,
-    trainGroup: train,
-    trainBaseX: train.position.x,
+    trainGroup,
+    trainBaseX: trainGroup.position.x,
+    animatedParts: {
+      spinners,
+      fountains,
+    },
   };
 }

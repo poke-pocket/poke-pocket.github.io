@@ -428,6 +428,29 @@ function ridgedFbm2D(x: number, z: number, octaves: number): number {
   return sum / norm; // [0, 1]
 }
 
+export interface WorldTownAnchor3D {
+  id: string;
+  name: string;
+  x: number;
+  z: number;
+  seed: number;
+  plazaRadius: number;
+  plateauY: number;
+}
+
+/**
+ * Natural dry-land towns anchored across the infinite seamless 3D world.
+ * getTerrainHeight3D smoothly levels a terraced dry highland plateau around each town
+ * so ZERO buildings ever spawn in water or float off sloped terrain!
+ */
+export const WORLD_TOWNS_3D: WorldTownAnchor3D[] = [
+  { id: 'town_pallet', name: '真新小镇', x: 0, z: -34, seed: 101, plazaRadius: 24, plateauY: 1.85 },
+  { id: 'town_viridian', name: '常磐市集', x: 92, z: 24, seed: 202, plazaRadius: 21, plateauY: 2.35 },
+  { id: 'town_cerulean', name: '华蓝水岸', x: -88, z: -26, seed: 303, plazaRadius: 23, plateauY: 1.95 },
+  { id: 'town_celadon', name: '玉虹花都', x: 26, z: 96, seed: 404, plazaRadius: 23, plateauY: 2.65 },
+  { id: 'town_vermilion', name: '枯叶港镇', x: -82, z: 90, seed: 505, plazaRadius: 21, plateauY: 2.05 },
+];
+
 export function getTerrainHeight3D(wx: number, wz: number): number {
   // Real-Earth DEM heightfield when exploring in World Tour mode!
   const geoElev = sampleGeoTerrainHeight3D(wx, wz);
@@ -474,6 +497,17 @@ export function getTerrainHeight3D(wx: number, wz: number): number {
   if (spawnDry > 0) {
     const gentleMeadow = 1.15 + hills * 0.42;
     elev = elev * (1.0 - spawnDry) + Math.max(elev, gentleMeadow) * spawnDry;
+  }
+
+  // Smoothly terrace dry, level plateau pads under every World Town (guaranteed above water, smooth hill blend!)
+  for (let i = 0; i < WORLD_TOWNS_3D.length; i++) {
+    const t = WORLD_TOWNS_3D[i];
+    const d = Math.hypot(wx - t.x, wz - t.z);
+    const outerR = t.plazaRadius + 14;
+    if (d < outerR) {
+      const blend = 1.0 - smoothstep(t.plazaRadius - 1, outerR, d);
+      elev = elev * (1.0 - blend) + t.plateauY * blend;
+    }
   }
 
   return elev;
