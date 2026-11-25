@@ -267,7 +267,19 @@ export interface PetIVs {
 
 export type IvRank = 'B' | 'A' | 'S' | 'SS';
 
-export type PetSkinId = 'classic' | 'shiny' | 'magma' | 'blue_flame' | 'sakura' | 'solar_pharaoh';
+export type PetSkinId =
+  | 'classic'
+  | 'shiny'
+  | 'magma'
+  | 'blue_flame'
+  | 'sakura'
+  | 'solar_pharaoh'
+  | 'porcelain'
+  | 'vermilion_palace'
+  | 'jade_emerald'
+  | 'ink_wash'
+  | 'dunhuang_gold'
+  | 'ice_glaze';
 
 export interface PetRecord {
   id: string;

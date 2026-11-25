@@ -70,6 +70,7 @@ import {
   type GameSave,
   type LcdMode,
   type PetRecord,
+  type PetSkinId,
   type SpeciesId,
   type TrainerProfile,
 } from '../types/pet';
@@ -84,6 +85,7 @@ import {
   getElementalSynergyBonus,
   getHeroDef,
   getLabUpgradeCost,
+  getSkinDef,
   rerollBountySlot,
   type GymBadgeId,
   type HeroId,
@@ -92,7 +94,7 @@ import {
   type TrainerTagId,
 } from '../data/metaProgression';
 import { LANG_LABELS, tr, type AppLang } from '../data/i18n';
-import { BountiesOverlay, HubInfoModal, LabOverlay } from './MetaOverlays';
+import { BountiesOverlay, DEFAULT_ANNOUNCEMENTS, HubInfoModal, LabOverlay } from './MetaOverlays';
 import { WorldMapHud, type LiveMapSnapshot, type WorldMapData } from './WorldMapHud';
 import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { sound } from '../utils/sound';
@@ -150,7 +152,7 @@ interface Survivors3DArenaProps {
   onFinish: (petId: string, payload: SurvivorsResultPayload, returnToRoom?: boolean) => void;
   onHealParty: () => void;
   onSpendCoinsInRun: (cost: number) => boolean;
-  onCaptureBoss?: (species: SpeciesId, level: number) => void;
+  onCaptureBoss?: (species: SpeciesId, level: number, skin?: PetSkinId) => void;
   onShowCaptureInHandheld?: (
     info: import('../types/pet').CaptureRevealPayload,
     onClosed?: () => void,
@@ -161,6 +163,8 @@ interface Survivors3DArenaProps {
   onUpdateProfile?: (patch: Partial<TrainerProfile>) => void;
   onUpdatePrefs?: (patch: Partial<GamePrefs>) => void;
   onUpdateMeta?: (updater: (prev: MetaProgressState) => MetaProgressState, coinDelta?: number) => void;
+  onBackLayerActiveChange?: (active: boolean) => void;
+  onRegisterBackHandler?: (handler: (() => boolean) | null) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
 }
@@ -172,6 +176,7 @@ interface ActiveFollower {
   name: string;
   stage: 'baby' | 'teen' | 'adult';
   level: number;
+  skin?: PetSkinId;
   skills: SurvivorSkillId[];
   x: number;
   y: number;
@@ -218,6 +223,7 @@ interface Enemy3D {
   worldScale: number;
   quality: MonsterQuality;
   isShiny: boolean;
+  regionalSkin?: PetSkinId;
   isBoss: boolean;
   isTrainer: boolean;
   trainerSprite?: string;
@@ -500,6 +506,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   onUpdateProfile,
   onUpdatePrefs,
   onUpdateMeta,
+  onBackLayerActiveChange,
+  onRegisterBackHandler,
   isFullscreen = false,
   onToggleFullscreen,
 }) => {
@@ -530,6 +538,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const [hubModal, setHubModal] = useState<'none' | 'lab' | 'bounties' | 'news' | 'guide' | 'feedback' | 'more'>('none');
   const [mobilePartyOpen, setMobilePartyOpen] = useState(false);
   const [closingHubModal, setClosingHubModal] = useState(false);
+  const [newsTickerIdx, setNewsTickerIdx] = useState(0);
   const closeHubModal = () => {
     if (hubModal === 'none' || closingHubModal) return;
     sound.play('cancel');
@@ -1351,7 +1360,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
     const stageAsset = SPECIES_CATALOG[f.species].stageSprites[f.stage];
     const worldScale = getPokemonWorldScale3D(f.species, f.stage, 1.0);
-    const { sprite, shadow, animSheet, backAnimSheet, pmdSheet } = createSpriteEntity(stageAsset.static, worldScale, stageAsset.animated);
+    const skinDef = f.skin ? getSkinDef(f.skin) : undefined;
+    const { sprite, shadow, animSheet, backAnimSheet, pmdSheet } = createSpriteEntity(
+      stageAsset.static,
+      worldScale,
+      stageAsset.animated,
+      Boolean(skinDef?.usesOfficialShiny),
+    );
+    if (skinDef && skinDef.id !== 'classic' && !skinDef.usesOfficialShiny) {
+      (sprite.material as THREE.MeshBasicMaterial).color.setHex(skinDef.tintHex3D);
+    }
     sprite.position.set(f.x, f.y - 0.04, f.z);
     shadow.position.set(f.x, f.y + 0.06, f.z);
     scene.add(sprite, shadow);
@@ -1376,6 +1394,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     name?: string,
     stage: 'baby' | 'teen' | 'adult' = 'baby',
     sourcePetId?: string,
+    skin?: PetSkinId,
   ): boolean => {
     const sim = simRef.current;
     if (!sim || sim.followers.length >= maxFollowersRef.current) return false;
@@ -1390,6 +1409,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       name: name ?? meta.defaultName,
       stage,
       level: 1,
+      skin,
       skills: getDefaultSkillsForElement(meta.element),
       x: fx,
       y: getTerrainHeight3D(fx, fz),
@@ -1440,6 +1460,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         boxPet.name,
         getGrowthStage(boxPet.level, boxPet.species),
         boxPet.id,
+        boxPet.skin,
       );
     }
   };
@@ -1516,6 +1537,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           name: boxPet.name,
           stage,
           level: boxPet.level,
+          skin: boxPet.skin,
           skills: getDefaultSkillsForElement(spMeta.element),
           x: fx,
           y: getTerrainHeight3D(fx, fz),
@@ -1832,6 +1854,81 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, hubModal, profileOpen, squadEditorOpen, save.keyBindings, levelChoices, shopOpen, resultSummary, captureOffer, hud.inSafeZone, hud.hp, hud.maxHp]);
+
+  // Hub announcement marquee rotation (cycles across all rolling Kanto Daily editions!)
+  useEffect(() => {
+    if (phase !== 'hub') return;
+    const timer = window.setInterval(() => {
+      setNewsTickerIdx((i) => (i + 1) % DEFAULT_ANNOUNCEMENTS.length);
+    }, 4600);
+    return () => window.clearInterval(timer);
+  }, [phase]);
+
+  // Mobile Back / Swipe-Back coordination with App.tsx
+  const arenaHasCloseableLayer =
+    phase !== 'hub' || hubModal !== 'none' || profileOpen || squadEditorOpen || shopOpen;
+
+  useEffect(() => {
+    onBackLayerActiveChange?.(arenaHasCloseableLayer);
+  }, [arenaHasCloseableLayer, onBackLayerActiveChange]);
+
+  useEffect(() => {
+    if (!onRegisterBackHandler) return;
+    const handler = (): boolean => {
+      if (shopOpen) {
+        closeShopModal();
+        return phase !== 'hub';
+      }
+      if (squadEditorOpen) {
+        closeSquadEditor();
+        return phase !== 'hub';
+      }
+      if (hubModal !== 'none') {
+        closeHubModal();
+        return phase !== 'hub' || profileOpen;
+      }
+      if (profileOpen) {
+        closeProfileModal();
+        return phase !== 'hub';
+      }
+      if (phase === 'world_map') {
+        sound.play('cancel');
+        setPhase('hub');
+        return false;
+      }
+      if (phase === 'map_select') {
+        closeMapSelect();
+        return false;
+      }
+      if (phase === 'playing') {
+        if (resultSummary) {
+          closeResultAndRun(() => {
+            onFinish(pet.id, resultSummary.payload, false);
+            setPhase('hub');
+          });
+          return false;
+        }
+        // In live 3D adventure, pressing mobile Back opens the Handheld Tactics/Pause console
+        // (matching desktop ESC) instead of accidentally abandoning the run!
+        sound.play('cursor');
+        onOpenPokemonManager('tactics', true);
+        return true;
+      }
+      return false;
+    };
+    onRegisterBackHandler(handler);
+    return () => onRegisterBackHandler(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    onRegisterBackHandler,
+    phase,
+    hubModal,
+    profileOpen,
+    squadEditorOpen,
+    shopOpen,
+    resultSummary,
+    pet.id,
+  ]);
 
   // =========================================================================
   // HIGH-CRAFT PIXEL-TEXTURED STEPPED VOXEL-TERRACED 3D WORLD ENGINE
@@ -2740,6 +2837,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         name: p.name,
         stage,
         level: 1 + Math.floor((p.enhanceLevel ?? 0) / 3),
+        skin: p.skin,
         skills: fourSkills,
         x: fx,
         y: getTerrainHeight3D(fx, fz),
@@ -3210,18 +3308,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           spawnLoot3D(en.x - 0.5, en.z, 'magnet', 1);
         }
 
-        // Defeated Boss / Shiny / Elite / Epic Pokémon fall knocked-out on the grass (capped at 2 simultaneous non-Boss catchables so encounters stay special!)
+        // Defeated Boss / Shiny / Regional-Skin / Elite / Epic Pokémon fall knocked-out on the grass (capped at 2 simultaneous non-Boss catchables so encounters stay special!)
         const activeKoNonBoss = sim.enemies.filter((e) => e.knockedOut && !e.isBoss).length;
         const isCatchableKo =
           !en.isTrainer &&
-          (en.isBoss || (activeKoNonBoss < 2 && (en.isShiny || en.quality === 'elite' || en.quality === 'epic')));
+          (en.isBoss ||
+            (activeKoNonBoss < 2 &&
+              (en.isShiny || Boolean(en.regionalSkin) || en.quality === 'elite' || en.quality === 'epic')));
         if (isCatchableKo) {
           en.knockedOut = true;
           const koMult = metaBonusesRef.current.koDurationMult;
           en.koTimer = en.isBoss
             ? 999999
             : Math.round(
-                (en.isShiny ? 45 : en.quality === 'epic' ? 32 : 18) * koMult,
+                (en.isShiny ? 45 : en.regionalSkin ? 38 : en.quality === 'epic' ? 32 : 18) * koMult,
               );
           en.hp = 0;
           if (en.sprite) {
@@ -3248,7 +3348,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           }
           sound.play(en.isBoss ? 'levelup' : 'ko');
           const spTitle = SPECIES_CATALOG[en.species].stageNames[en.stage] ?? SPECIES_CATALOG[en.species].defaultName;
-          const tagPrefix = en.isShiny ? '★异色 ' : qMeta.label ? `[${qMeta.label}] ` : '';
+          const rSkinTag = en.regionalSkin ? `🏮[${getSkinDef(en.regionalSkin).name}] ` : '';
+          const tagPrefix = en.isShiny ? '★异色 ' : rSkinTag || (qMeta.label ? `[${qMeta.label}] ` : '');
           showBanner(`✨ ${tagPrefix}${spTitle} 倒地昏迷！走近它即可投掷精灵球收服！`, 3600);
         } else {
           if (en.sprite) scene.remove(en.sprite);
@@ -3449,6 +3550,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           ? 'normal'
           : rawQ;
       const isShiny = !isTrainer && Math.random() < (isBoss ? 0.06 : 0.02);
+      const cityRegionalSkin =
+        !isTrainer && !isShiny && activeWorldRun
+          ? (liveOverlandCityRef.current?.regionalSkinId ?? activeWorldRun.regionalSkinId)
+          : undefined;
+      const regionalSkin: PetSkinId | undefined =
+        cityRegionalSkin && Math.random() < (isBoss ? 0.5 : 0.3) ? cityRegionalSkin : undefined;
+      const regionalSkinDef = regionalSkin ? getSkinDef(regionalSkin) : undefined;
       const docileSpecies = new Set<SpeciesId>(['munchlax', 'jigglypuff', 'mew', 'psyduck', 'eevee']);
       const territorialSpecies = new Set<SpeciesId>(['bulbasaur', 'squirtle', 'pikachu', 'meowth']);
       const temperament: 'docile' | 'territorial' | 'aggressive' =
@@ -3479,6 +3587,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         animGif,
         isShiny,
       );
+      if (regionalSkinDef && regionalSkinDef.id !== 'classic') {
+        (sprite.material as THREE.MeshBasicMaterial).color.setHex(regionalSkinDef.tintHex3D);
+      }
       const gy = getTerrainHeight3D(x, z);
       sprite.position.set(x, gy - 0.04, z);
       sprite.rotation.set(-camOrbitRef.current.pitch * BILLBOARD_PITCH_TILT, camOrbitRef.current.yaw, 0);
@@ -3486,14 +3597,18 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       scene.add(sprite, shadow);
 
       let auraRing: THREE.Mesh | undefined;
-      if (!isTrainer && (quality !== 'normal' || isShiny || isBoss)) {
-        const ringColor = isShiny ? 0xffe066 : qMeta.hex;
+      if (!isTrainer && (quality !== 'normal' || isShiny || isBoss || Boolean(regionalSkinDef))) {
+        const ringColor = isShiny
+          ? 0xffe066
+          : regionalSkinDef
+            ? regionalSkinDef.tintHex3D
+            : qMeta.hex;
         auraRing = new THREE.Mesh(
           new THREE.RingGeometry(worldScale * 0.34, worldScale * 0.48, 22),
           new THREE.MeshBasicMaterial({
             color: ringColor,
             transparent: true,
-            opacity: isShiny || isBoss ? 0.78 : 0.56,
+            opacity: isShiny || isBoss ? 0.78 : regionalSkinDef ? 0.68 : 0.56,
             side: THREE.DoubleSide,
             depthWrite: false,
           }),
@@ -3526,6 +3641,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         worldScale,
         quality,
         isShiny,
+        regionalSkin,
         isBoss,
         isTrainer,
         trainerSprite: opts?.trainerSprite,
@@ -3937,6 +4053,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
         // Scenic Elevated Panoramic 3D Diorama Overlook during Hub & Map Select (Living Hero, Camera-Facing Squad, Meadow & Flying Wild Pokémon!)
         if (phase !== 'playing') {
+          // Completely pause WebGL 3D rendering while the Handheld Console / Manager modal covers the screen!
+          if (externalPausedRef.current) {
+            rafId = window.requestAnimationFrame(animate);
+            return;
+          }
           const t = now * 0.001;
           const isMapPreview = phase === 'map_select';
           const orbit = t * 0.085 + 0.42;
@@ -4229,6 +4350,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         }
         heroEmoteSprite.visible = false;
         petEmoteSprite.visible = false;
+
+        // Pause 3D GPU rendering when Handheld Console / Manager overlay is open on top of combat!
+        if (externalPausedRef.current) {
+          rafId = window.requestAnimationFrame(animate);
+          return;
+        }
 
         // Respect FPS Cap & Power Saver Mode
         const activeFpsCap = prefsRef.current.powerSaver ? 30 : prefsRef.current.fpsLimit;
@@ -5250,7 +5377,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             en.animTime += dt;
             if (en.hitFlash > 0) {
               en.hitFlash -= dt;
-              if (en.sprite) (en.sprite.material as THREE.MeshBasicMaterial).color.setHex(en.hitFlash > 0 ? 0xff9999 : 0xffffff);
+              if (en.sprite) {
+                const baseTint = en.regionalSkin ? getSkinDef(en.regionalSkin).tintHex3D : 0xffffff;
+                (en.sprite.material as THREE.MeshBasicMaterial).color.setHex(en.hitFlash > 0 ? 0xff9999 : baseTint);
+              }
             }
             const dx = sim.px - en.x;
             const dz = sim.pz - en.z;
@@ -5607,10 +5737,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     ? Math.min(32, pet.level + 4)
                     : Math.min(28, Math.max(4, pet.level + (en.quality === 'epic' ? 2 : en.isShiny ? 2 : 0)));
                   const spName = SPECIES_CATALOG[en.species].stageNames[en.stage] ?? SPECIES_CATALOG[en.species].defaultName;
-                  const tagTxt = en.isShiny ? '★异色 ' : MONSTER_QUALITY_META[en.quality].label ? `[${MONSTER_QUALITY_META[en.quality].label}] ` : '';
-                  onCaptureBoss?.(en.species, catchLv);
+                  const rSkinLabel = en.regionalSkin ? `🏮[${getSkinDef(en.regionalSkin).name}] ` : '';
+                  const tagTxt = en.isShiny ? '★异色 ' : rSkinLabel || (MONSTER_QUALITY_META[en.quality].label ? `[${MONSTER_QUALITY_META[en.quality].label}] ` : '');
+                  const caughtSkin: PetSkinId | undefined = en.isShiny ? 'shiny' : en.regionalSkin;
+                  onCaptureBoss?.(en.species, catchLv, caughtSkin);
                   if (sim.followers.length < maxFollowersRef.current) {
-                    addFollowerToRun(en.species, `${en.isShiny ? '★' : ''}${spName}`, en.stage);
+                    addFollowerToRun(en.species, `${en.isShiny ? '★' : ''}${spName}`, en.stage, undefined, caughtSkin);
                   }
                   if (en.isBoss) {
                     sim.capturedBoss = { species: en.species, name: spName, level: catchLv };
@@ -5630,7 +5762,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   if (en.sprite) {
                     en.sprite.visible = true;
                     en.sprite.scale.set(en.worldScale, en.worldScale, 1);
-                    (en.sprite.material as THREE.MeshBasicMaterial).color.setHex(0xffffff);
+                    const baseTint = en.regionalSkin ? getSkinDef(en.regionalSkin).tintHex3D : 0xffffff;
+                    (en.sprite.material as THREE.MeshBasicMaterial).color.setHex(baseTint);
                   }
                   if (en.shadow) en.shadow.visible = true;
                   damageEnemy3D(en, Math.round(en.maxHp * 0.28), '#ff922b');
@@ -6136,9 +6269,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               spawnGroundDecalWave(cap.targetX, gyT, cap.targetZ, vfxAtlas.healCircleDecal, 4.6, 0.62);
               spawnGlowFlash(cap.targetX, gyT, cap.targetZ, 0xffe066, 4.4, 0.55);
               spawnPixelParticles(cap.targetX, gyT + 0.9, cap.targetZ, vfxAtlas.starGlint, 16, 6.2, 1.05, 5.8, 5.5);
-              onCaptureBoss?.(en.species, catchLv);
+              const caughtSkin: PetSkinId | undefined = en.isShiny ? 'shiny' : en.regionalSkin;
+              onCaptureBoss?.(en.species, catchLv, caughtSkin);
               if (sim.followers.length < maxFollowersRef.current) {
-                addFollowerToRun(en.species, `${en.isShiny ? '★' : ''}${spName}`, en.stage);
+                addFollowerToRun(en.species, `${en.isShiny ? '★' : ''}${spName}`, en.stage, undefined, caughtSkin);
               }
               if (en.isBoss) {
                 sim.capturedBoss = { species: en.species, name: spName, level: catchLv };
@@ -6161,7 +6295,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   onShowCaptureInHandheld(
                     {
                       species: en.species,
-                      name: spName,
+                      name: en.regionalSkin ? `${spName}·${getSkinDef(en.regionalSkin).name.split('·')[0]}` : spName,
                       sprite: spMeta.stageSprites[en.stage].animated,
                       level: catchLv,
                       isShiny: en.isShiny,
@@ -6172,8 +6306,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                       lore: spMeta.description,
                       heightM: phys.heightM,
                       weightKg: phys.weightKg,
-                      qualityLabel: MONSTER_QUALITY_META[en.quality].label,
-                      qualityColor: MONSTER_QUALITY_META[en.quality].color,
+                      qualityLabel: en.regionalSkin
+                        ? `🏮${getSkinDef(en.regionalSkin).name}`
+                        : MONSTER_QUALITY_META[en.quality].label,
+                      qualityColor: en.regionalSkin
+                        ? getSkinDef(en.regionalSkin).rarityColor
+                        : MONSTER_QUALITY_META[en.quality].color,
                     },
                     () => {
                       if (en.isBoss && gameMode === 'story' && !endedRef.current) {
@@ -6197,7 +6335,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               if (en.sprite) {
                 en.sprite.visible = true;
                 en.sprite.scale.set(en.worldScale, en.worldScale, 1);
-                (en.sprite.material as THREE.MeshBasicMaterial).color.setHex(0xffffff);
+                const baseTint = en.regionalSkin ? getSkinDef(en.regionalSkin).tintHex3D : 0xffffff;
+                (en.sprite.material as THREE.MeshBasicMaterial).color.setHex(baseTint);
               }
               if (en.shadow) en.shadow.visible = true;
               damageEnemy3D(en, Math.round(en.maxHp * 0.25), '#ff922b');
@@ -7006,8 +7145,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   title="点击在掌机中查看官方公告与版本更新"
                 >
                   <PixelItemImg src="/sprites/items/poke-radar.png" size={16} />
-                  <span className="pkb-news-pill">{tr(lang, 'newsTag')}</span>
-                  <span className="pkb-news-text">{tr(lang, 'newsHeadline')}</span>
+                  <span className="pkb-news-pill">
+                    {lang === 'zh'
+                      ? DEFAULT_ANNOUNCEMENTS[newsTickerIdx % DEFAULT_ANNOUNCEMENTS.length]?.tag ?? tr(lang, 'newsTag')
+                      : tr(lang, 'newsTag')}
+                  </span>
+                  <span className="pkb-news-text">
+                    {lang === 'zh'
+                      ? `${DEFAULT_ANNOUNCEMENTS[newsTickerIdx % DEFAULT_ANNOUNCEMENTS.length]?.title ?? tr(lang, 'newsHeadline')}`
+                      : tr(lang, 'newsHeadline')}
+                  </span>
                   <em>→</em>
                 </button>
 

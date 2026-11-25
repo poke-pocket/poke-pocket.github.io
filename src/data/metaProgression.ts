@@ -290,7 +290,7 @@ export const HERO_ROSTER: HeroDef[] = [
     title: '华蓝水系大师',
     bio: '灵动与续航兼备的水系馆主，持续释放潮汐护盾与治愈水幕。',
     unlockCost: 160,
-    avatarSprite: '/sprites/trainers/misty.png',
+    avatarSprite: '/sprites/heroes/hero-misty-avatar.png',
     tintHex: 0xd0ebff,
     accentColor: '#1c7ed6',
     baseHpBonus: 15,
@@ -328,7 +328,7 @@ export const HERO_ROSTER: HeroDef[] = [
     title: '尼比磐石铁壁',
     bio: '高耐久重装指挥官，硬抗弹幕并以落地岩震碾碎包围圈。',
     unlockCost: 220,
-    avatarSprite: '/sprites/trainers/brock.png',
+    avatarSprite: '/sprites/heroes/hero-brock-avatar.png',
     tintHex: 0xffe8cc,
     accentColor: '#d97724',
     baseHpBonus: 45,
@@ -366,7 +366,7 @@ export const HERO_ROSTER: HeroDef[] = [
     title: '天才劲敌战略家',
     bio: '极限输出与猎杀首领的战术大师，主打高频连携与暴击穿透。',
     unlockCost: 320,
-    avatarSprite: '/sprites/trainers/blue.png',
+    avatarSprite: '/sprites/heroes/hero-blue-avatar.png',
     tintHex: 0xe5dbff,
     accentColor: '#7950f2',
     baseHpBonus: 0,
@@ -1811,7 +1811,7 @@ export const SPECIES_MEGA_FORMS: Record<string, MegaFormDef> = {
 };
 
 export interface PokemonSkinDef {
-  id: 'classic' | 'shiny' | 'magma' | 'blue_flame' | 'sakura' | 'solar_pharaoh';
+  id: import('../types/pet').PetSkinId;
   name: string;
   rarityLabel: string;
   rarityColor: string;
@@ -1883,6 +1883,66 @@ export const POKEMON_SKIN_CATALOG: PokemonSkinDef[] = [
     desc: '以青金石与鎏金雕成，周身流淌太阳神辉！',
     cssFilter: 'hue-rotate(195deg) saturate(2.2) contrast(1.18) drop-shadow(0 0 6px #ffd43b)',
     tintHex3D: 0xffe066,
+  },
+  {
+    id: 'porcelain',
+    name: '青花瓷·景德镇',
+    rarityLabel: '华夏限定',
+    rarityColor: '#1971c2',
+    priceCoins: 280,
+    desc: '釉下钴蓝与素白青花瓷韵，沪深江南地区限定出没配色！',
+    cssFilter: 'hue-rotate(195deg) saturate(1.55) brightness(1.12) contrast(1.08) drop-shadow(0 0 5px #339af0)',
+    tintHex3D: 0x99d6ff,
+  },
+  {
+    id: 'vermilion_palace',
+    name: '朱砂红·紫禁琉璃',
+    rarityLabel: '华夏限定',
+    rarityColor: '#c92a2a',
+    priceCoins: 300,
+    desc: '故宫宫墙朱砂红与鎏金祥辉，京城古都限定出没配色！',
+    cssFilter: 'sepia(0.45) saturate(2.4) hue-rotate(-35deg) contrast(1.12) drop-shadow(0 0 5px #e03131)',
+    tintHex3D: 0xff7a70,
+  },
+  {
+    id: 'jade_emerald',
+    name: '翡翠青·江南玉雕',
+    rarityLabel: '华夏限定',
+    rarityColor: '#0ca678',
+    priceCoins: 280,
+    desc: '温润翠玉碧色与西湖竹影灵光，江南水乡限定出没配色！',
+    cssFilter: 'hue-rotate(92deg) saturate(1.65) brightness(1.08) drop-shadow(0 0 5px #20c997)',
+    tintHex3D: 0x7ef2c8,
+  },
+  {
+    id: 'ink_wash',
+    name: '水墨丹青·徽派',
+    rarityLabel: '国风典藏',
+    rarityColor: '#343a40',
+    priceCoins: 320,
+    desc: '淡雅宣纸黑白水墨意境，巴蜀竹海限定出没配色！',
+    cssFilter: 'grayscale(0.92) contrast(1.38) brightness(1.06) drop-shadow(0 0 4px #495057)',
+    tintHex3D: 0xd0d4dc,
+  },
+  {
+    id: 'dunhuang_gold',
+    name: '敦煌丹霞·飞天金',
+    rarityLabel: '国风典藏',
+    rarityColor: '#e67700',
+    priceCoins: 340,
+    desc: '丝路壁画赤金流彩与南国烈阳，岭南维港限定出没配色！',
+    cssFilter: 'sepia(0.65) saturate(2.3) hue-rotate(-6deg) brightness(1.08) drop-shadow(0 0 5px #fab005)',
+    tintHex3D: 0xffd479,
+  },
+  {
+    id: 'ice_glaze',
+    name: '冰裂釉·北境霜瓷',
+    rarityLabel: '华夏限定',
+    rarityColor: '#15aabf',
+    priceCoins: 300,
+    desc: '宋代冰裂青瓷与极光霜华，东北冰城限定出没配色！',
+    cssFilter: 'hue-rotate(158deg) saturate(1.35) brightness(1.16) contrast(1.05) drop-shadow(0 0 5px #66d9e8)',
+    tintHex3D: 0xb8f3ff,
   },
 ];
 

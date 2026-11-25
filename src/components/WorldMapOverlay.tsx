@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SPECIES_CATALOG } from '../data/catalog';
 import type { AppLang } from '../data/i18n';
-import type { MetaProgressState } from '../data/metaProgression';
+import { getSkinDef, type MetaProgressState } from '../data/metaProgression';
 import {
   DEFAULT_WORLD_TOUR_STATE,
   HOTEL_TIERS,
@@ -18,7 +18,7 @@ import {
   type WorldZoneDef,
 } from '../data/worldTour';
 import type { BiomeId } from '../data/worldTextures3D';
-import type { SpeciesId } from '../types/pet';
+import type { PetSkinId, SpeciesId } from '../types/pet';
 import { sound } from '../utils/sound';
 import { PixelIcon, PixelItemImg } from './PixelSprite';
 
@@ -39,6 +39,7 @@ export interface WorldLaunchPayload {
   rewardCoins: number;
   hotelTier: HotelTierId | null;
   isHomeTurf: boolean;
+  regionalSkinId?: PetSkinId;
 }
 
 interface WorldMapOverlayProps {
@@ -668,42 +669,168 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     return () => cancelAnimationFrame(rafId);
   }, [stageSize, selectedCity, selectedCityId, tour, originPoint, flightAnim, activeHereCity]);
 
-  // Real Browser GPS Geolocation Handler (zooms smoothly right into user's real neighborhood!)
-  const handleLocateGps = () => {
+  // Real Browser GPS Geolocation Handler (3-stage waterfall: OS cached/network -> Hardware GNSS -> HTTPS IP fallback)
+  const handleLocateGps = async () => {
+    const applyLocatedCoords = (
+      rawLat: number,
+      rawLng: number,
+      isRealGps: boolean,
+      cityHint?: string,
+    ) => {
+      const lat = Number(rawLat.toFixed(5));
+      const lng = Number(rawLng.toFixed(5));
+      const eco = getLocalHomeEcology(lat, lng);
+      const label = isRealGps
+        ? eco.nearestDistKm <= 80
+          ? `${eco.nearestCity.name} · GPS老家`
+          : `GPS (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`
+        : cityHint
+          ? `${cityHint} · 网络定位`
+          : eco.nearestDistKm <= 120
+            ? `${eco.nearestCity.name} · 网络定位`
+            : `网络定位 (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`;
+      onUpdateMeta((prev) => ({
+        ...prev,
+        worldTour: {
+          ...(prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE),
+          homeCoords: { lat, lng, label, isRealGps },
+        },
+      }));
+      setCam({ mx: lngToMercX(lng), my: latToMercY(lat), zoom: isRealGps ? 13.5 : 11.2 });
+      setSelectedCityId(null);
+      setSelectedZoneId(null);
+      setGpsStatus(null);
+      sound.play('levelup');
+      showToast(
+        isRealGps
+          ? `📍 GPS 重生点已锚定：${label}（可双指放大至街道级！）`
+          : `📡 室内卫星信号较弱，已通过网络定位锚定：${label}`,
+      );
+    };
+
+    const requestGeo = (opts: PositionOptions) =>
+      new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, opts);
+      });
+
+    const tryIpFallback = async (): Promise<{ lat: number; lng: number; city?: string } | null> => {
+      const endpoints: Array<{
+        url: string;
+        parse: (d: Record<string, unknown>) => { lat: number; lng: number; city?: string } | null;
+      }> = [
+        {
+          url: 'https://get.geojs.io/v1/ip/geo.json',
+          parse: (d) => {
+            const lat = Number(d.latitude);
+            const lng = Number(d.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+            return { lat, lng, city: typeof d.city === 'string' && d.city ? d.city : undefined };
+          },
+        },
+        {
+          url: 'https://ipwho.is/',
+          parse: (d) => {
+            if (d.success === false) return null;
+            const lat = Number(d.latitude);
+            const lng = Number(d.longitude);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+            return { lat, lng, city: typeof d.city === 'string' && d.city ? d.city : undefined };
+          },
+        },
+      ];
+      for (const ep of endpoints) {
+        const ctrl = new AbortController();
+        const timer = window.setTimeout(() => ctrl.abort(), 4500);
+        try {
+          const res = await fetch(ep.url, { signal: ctrl.signal });
+          window.clearTimeout(timer);
+          if (!res.ok) continue;
+          const json = (await res.json()) as Record<string, unknown>;
+          const parsed = ep.parse(json);
+          if (parsed) return parsed;
+        } catch {
+          window.clearTimeout(timer);
+        }
+      }
+      return null;
+    };
+
     if (!('geolocation' in navigator)) {
-      setGpsStatus('当前浏览器不支持 GPS，将按语言使用默认出生点，也可花钱在任意城市定居');
+      setGpsStatus('当前浏览器不支持原生 GPS，正在尝试网络定位...');
+      const ipLoc = await tryIpFallback();
+      if (ipLoc) {
+        applyLocatedCoords(ipLoc.lat, ipLoc.lng, false, ipLoc.city);
+      } else {
+        setGpsStatus('当前浏览器不支持 GPS，将按语言使用默认出生点，也可花钱在任意城市定居');
+        sound.play('error');
+      }
       return;
     }
-    setGpsStatus('正在获取真实 GPS 坐标...');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = Number(pos.coords.latitude.toFixed(5));
-        const lng = Number(pos.coords.longitude.toFixed(5));
-        const eco = getLocalHomeEcology(lat, lng);
-        const label =
-          eco.nearestDistKm <= 80
-            ? `${eco.nearestCity.name} · GPS老家`
-            : `GPS (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`;
-        onUpdateMeta((prev) => ({
-          ...prev,
-          worldTour: {
-            ...(prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE),
-            homeCoords: { lat, lng, label, isRealGps: true },
-          },
-        }));
-        setCam({ mx: lngToMercX(lng), my: latToMercY(lat), zoom: 13.5 });
-        setSelectedCityId(null);
-        setSelectedZoneId(null);
-        setGpsStatus(null);
-        sound.play('levelup');
-        showToast(`📍 GPS 重生点已锚定：${label}（可继续滚轮放大至街道级！）`);
-      },
-      () => {
-        setGpsStatus('未授予 GPS 定位权限，将按当前语言使用默认出生点，也可花钱在其他城市定居');
+
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setGpsStatus('非 HTTPS 安全环境无法调用原生 GPS，正在尝试网络定位...');
+      const ipLoc = await tryIpFallback();
+      if (ipLoc) {
+        applyLocatedCoords(ipLoc.lat, ipLoc.lng, false, ipLoc.city);
+      } else {
+        setGpsStatus('浏览器要求通过 HTTPS 或 localhost 访问才可启用 GPS 定位');
         sound.play('error');
-      },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
-    );
+      }
+      return;
+    }
+
+    setGpsStatus('正在获取定位（快速模式）...');
+    let lastCode = 0;
+
+    // Stage 1: Fast OS-cached or Wi-Fi/Cell fix (instant if OS already has a fix!)
+    try {
+      const pos = await requestGeo({
+        enableHighAccuracy: false,
+        timeout: 6000,
+        maximumAge: 600000,
+      });
+      applyLocatedCoords(pos.coords.latitude, pos.coords.longitude, true);
+      return;
+    } catch (err) {
+      lastCode = (err as GeolocationPositionError)?.code ?? 0;
+    }
+
+    // Stage 2: Direct hardware GNSS (GPS / BeiDou) — works in China even without Google Location Services!
+    if (lastCode !== 1) {
+      setGpsStatus('正在连接手机 GPS / 北斗卫星定位（室内可能需要几秒）...');
+      try {
+        const pos = await requestGeo({
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 300000,
+        });
+        applyLocatedCoords(pos.coords.latitude, pos.coords.longitude, true);
+        return;
+      } catch (err) {
+        lastCode = (err as GeolocationPositionError)?.code ?? lastCode;
+      }
+    }
+
+    // Stage 3: Indoors / GMS-blocked fallback -> HTTPS IP city geolocation so mobile users aren't stuck!
+    if (lastCode !== 1) {
+      setGpsStatus('室内 GPS 卫星信号较弱，正在自动切换网络定位...');
+      const ipLoc = await tryIpFallback();
+      if (ipLoc) {
+        applyLocatedCoords(ipLoc.lat, ipLoc.lng, false, ipLoc.city);
+        return;
+      }
+    }
+
+    if (lastCode === 1) {
+      setGpsStatus(
+        '定位权限被系统拦截：请检查 ① 手机顶部「定位/GPS」总开关已开启 ② 系统设置已允许浏览器获取位置 ③ 网页已允许定位',
+      );
+    } else if (lastCode === 3) {
+      setGpsStatus('GPS 搜星超时（室内信号较弱）且网络定位失败，请移至窗边重试或直接在地图选城');
+    } else {
+      setGpsStatus('手机当前无法获取位置信号（室内无卫星信号或系统定位服务未就绪），请稍后重试');
+    }
+    sound.play('error');
   };
 
   // 60FPS Zero-Jank Multi-Touch Pinch + Pan Pointer Handlers
@@ -868,14 +995,15 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         calcGeoDistanceKm(tour.homeCoords.lat, tour.homeCoords.lng, target.lat, target.lng) <= 80,
     );
     const isSettled = settledIds.includes(target.id);
-    const ticketCost = calcFlightTicketCost(distKm, isRealHomeTurf);
+    // Visiting / travelling ALWAYS requires a round-trip ticket (one-way is only for settling/buying a house!)
+    const ticketCost = calcFlightTicketCost(distKm, isRealHomeTurf, 'round_trip');
     const tierMeta = HOTEL_TIERS.find((t) => t.id === selectedHotel) ?? HOTEL_TIERS[0];
     const hotelCost = isRealHomeTurf || isSettled ? 0 : tierMeta.pricePerStay;
     const totalCost = ticketCost + hotelCost;
 
     if (coins < totalCost) {
       sound.play('error');
-      showToast(`金币不足！需要 ${totalCost} 宝可币（当前 ${coins}）`);
+      showToast(`金币不足！需要 ${totalCost.toLocaleString()} 宝可币（当前 ${coins.toLocaleString()}）`);
       return;
     }
     if (totalCost > 0) {
@@ -905,9 +1033,20 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
   const handleSettleInCity = (city: WorldCityDef) => {
     const alreadySettled = settledIds.includes(city.id);
-    if (!alreadySettled && coins < city.settleCost) {
+    const isAlreadyHere = Boolean(activeHereCity && activeHereCity.id === city.id);
+    const distKm = calcGeoDistanceKm(originPoint.lat, originPoint.lng, city.lat, city.lng);
+    const isLocalWalk = isAlreadyHere || distKm <= 80;
+    // Only settling (buying a house) allows purchasing a one-way relocation ticket!
+    const oneWayCost = alreadySettled || isLocalWalk ? 0 : calcFlightTicketCost(distKm, false, 'one_way');
+    const totalSettleCost = (alreadySettled ? 0 : city.settleCost) + oneWayCost;
+
+    if (coins < totalSettleCost) {
       sound.play('error');
-      showToast(`金币不足！在${city.name}买房定居需要 ${city.settleCost} 宝可币（当前 ${coins}）`);
+      showToast(
+        oneWayCost > 0
+          ? `金币不足！在${city.name}买房定居 + 单程机票共需 ${totalSettleCost.toLocaleString()} 宝可币（当前 ${coins.toLocaleString()}）`
+          : `金币不足！在${city.name}买房定居需要 ${totalSettleCost.toLocaleString()} 宝可币（当前 ${coins.toLocaleString()}）`,
+      );
       return;
     }
     onUpdateMeta(
@@ -936,7 +1075,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           },
         };
       },
-      alreadySettled ? 0 : -city.settleCost,
+      -totalSettleCost,
     );
     setSelectedCityId(city.id);
     setSelectedZoneId(null);
@@ -948,8 +1087,10 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     sound.play('levelup');
     showToast(
       alreadySettled
-        ? `🏡 已将常驻定居点切换至「${city.name}」，永久免费停留！`
-        : `🏡 恭喜在${city.name}购置定居房产！从此永久免费停留并享五星全队增益！`,
+        ? `🏡 已将常驻私宅切换至「${city.name}」`
+        : oneWayCost > 0
+          ? `🏡 已购单程机票迁居并在${city.name}买房定居！以后再来只需买机票，永久免住酒店！`
+          : `🏡 恭喜在${city.name}买房定居！以后再来只需买机票，永久免住酒店并享全队增益！`,
     );
   };
 
@@ -1032,6 +1173,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         rewardCoins: targetHere.rewardCoins,
         hotelTier: isSettledHere ? 'grand' : tour.stayHotelTier,
         isHomeTurf,
+        regionalSkinId: targetHere.regionalSkinId,
       });
       return;
     }
@@ -1329,7 +1471,14 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     </div>
                   </div>
 
-                  <div className="wt-sec-lbl">本地区专属野生精灵</div>
+                  <div className="wt-sec-lbl">
+                    本地区专属野生精灵
+                    {selectedCity.regionalSkinId && (
+                      <em style={{ marginLeft: 6, fontStyle: 'normal', color: getSkinDef(selectedCity.regionalSkinId).rarityColor }}>
+                        · 🏮限定色：{getSkinDef(selectedCity.regionalSkinId).name}
+                      </em>
+                    )}
+                  </div>
                   <div className="wt-poke-strip">
                     {selectedCity.wildPool.map((sp) => (
                       <div key={sp} className="wt-poke-chip">
@@ -1365,7 +1514,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                         disabled={coins < selectedCity.settleCost}
                         onClick={() => handleSettleInCity(selectedCity)}
                       >
-                        🏡 在{selectedCity.name}购置定居房产 ({selectedCity.settleCost} 币 · 异色UP+全队攻+12%)
+                        🏡 在{selectedCity.name}买房定居 ({selectedCity.settleCost.toLocaleString()} 币 · 以后免酒店+全队攻+12%)
                       </button>
                     )
                   ) : !isSettled ? (
@@ -1376,7 +1525,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                         disabled={coins < selectedCity.settleCost}
                         onClick={() => handleSettleInCity(selectedCity)}
                       >
-                        🏡 定居此城 ({selectedCity.settleCost}币)
+                        🏡 买房定居 ({selectedCity.settleCost.toLocaleString()}币)
                       </button>
                       <button
                         type="button"
@@ -1388,7 +1537,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     </div>
                   ) : (
                     <button type="button" className="wt-secondary-btn" onClick={handleFlyHome}>
-                      🏠 返回老家 / GPS 原野
+                      ✈ 持返程机票返回老家
                     </button>
                   )}
                 </div>
@@ -1403,10 +1552,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 calcGeoDistanceKm(tour.homeCoords.lat, tour.homeCoords.lng, selectedCity.lat, selectedCity.lng) <= 80,
             );
             const isSettled = settledIds.includes(selectedCity.id);
-            const ticketCost = calcFlightTicketCost(distKm, isRealHomeTurf);
+            const roundTripTicketCost = calcFlightTicketCost(distKm, isRealHomeTurf, 'round_trip');
+            const oneWayTicketCost = calcFlightTicketCost(distKm, isRealHomeTurf, 'one_way');
             const tierMeta = HOTEL_TIERS.find((t) => t.id === selectedHotel) ?? HOTEL_TIERS[0];
             const hotelCost = isRealHomeTurf || isSettled ? 0 : tierMeta.pricePerStay;
-            const totalCost = ticketCost + hotelCost;
+            const totalCost = roundTripTicketCost + hotelCost;
+            const totalSettleCost = selectedCity.settleCost + oneWayTicketCost;
             const cleared = tour.clearedCityGyms.includes(selectedCity.id);
 
             return (
@@ -1421,7 +1572,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
                   {isSettled && (
                     <div className="wt-hometurf-pill">
-                      🏡 已在{selectedCity.name}定居！免全部住宿费，飞抵即永久免费入住！
+                      🏡 已在{selectedCity.name}买房定居！无需花钱住酒店，只需支付往返机票即可入住自有私宅！
                     </div>
                   )}
 
@@ -1443,7 +1594,14 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     </div>
                   </div>
 
-                  <div className="wt-sec-lbl">当地可捕获特色精灵</div>
+                  <div className="wt-sec-lbl">
+                    当地可捕获特色精灵
+                    {selectedCity.regionalSkinId && (
+                      <em style={{ marginLeft: 6, fontStyle: 'normal', color: getSkinDef(selectedCity.regionalSkinId).rarityColor }}>
+                        · 🏮限定色：{getSkinDef(selectedCity.regionalSkinId).name}
+                      </em>
+                    )}
+                  </div>
                   <div className="wt-poke-strip">
                     {selectedCity.wildPool.map((sp) => (
                       <div key={sp} className="wt-poke-chip">
@@ -1482,9 +1640,10 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 <div className="wt-card-footer">
                   <div className="wt-ticket-summary">
                     <span>
-                      机票 {ticketCost} 币 + {isSettled ? '自有居所 0 币' : `住宿 ${hotelCost} 币`}
+                      往返机票 {roundTripTicketCost.toLocaleString()} 币 +{' '}
+                      {isSettled ? '自有私宅 0 币' : `酒店 ${hotelCost.toLocaleString()} 币`}
                     </span>
-                    <strong>合计 {totalCost} 币</strong>
+                    <strong>合计 {totalCost.toLocaleString()} 币</strong>
                   </div>
 
                   <button
@@ -1496,22 +1655,22 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     {flightAnim
                       ? '✈ 正在飞行中...'
                       : coins < totalCost
-                        ? `宝可币不足（还差 ${totalCost - coins} 币）`
+                        ? `宝可币不足（还差 ${(totalCost - coins).toLocaleString()} 币）`
                         : isSettled
-                          ? `✈ 飞回定居点 · 永久免费 (${totalCost} 币)`
-                          : `✈ 购票起飞 · 入住 ${tierMeta.days} 天 (${totalCost} 币)`}
+                          ? `✈ 买往返机票入住私宅 (${totalCost.toLocaleString()} 币)`
+                          : `✈ 买往返机票+酒店${tierMeta.days}天 (${totalCost.toLocaleString()} 币)`}
                   </button>
 
                   {!isSettled && (
                     <button
                       type="button"
                       className="wt-secondary-btn is-settle"
-                      disabled={Boolean(flightAnim) || coins < selectedCity.settleCost}
+                      disabled={Boolean(flightAnim) || coins < totalSettleCost}
                       onClick={() => handleSettleInCity(selectedCity)}
                     >
-                      {coins < selectedCity.settleCost
-                        ? `🏡 在${selectedCity.name}定居置业 (${selectedCity.settleCost} 币 · 余额不足)`
-                        : `🏡 花钱在${selectedCity.name}定居置业 (${selectedCity.settleCost} 币 · 永久免房费)`}
+                      {coins < totalSettleCost
+                        ? `🏡 买房定居(${selectedCity.settleCost.toLocaleString()}) + 单程票(${oneWayTicketCost.toLocaleString()}) · 差 ${(totalSettleCost - coins).toLocaleString()} 币`
+                        : `🏡 单程迁居买房定居 (${totalSettleCost.toLocaleString()} 币 · 以后免酒店)`}
                     </button>
                   )}
                 </div>

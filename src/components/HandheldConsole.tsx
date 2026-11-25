@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { SHELL_THEMES } from '../data/catalog';
 import type {
   AccessoryId,
@@ -172,7 +172,6 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
 }) => {
   const theme = SHELL_THEMES[save.shellTheme];
 
-  const [fsScale, setFsScale] = useState(1);
   const [padTilt, setPadTilt] = useState({ x: 0, y: 0, active: false });
   const FLAT_3D = { rx: 0, ry: 0, glareX: 30, glareY: 20, charmLag: 0 };
   const [shell3d, setShell3d] = useState(FLAT_3D);
@@ -282,19 +281,6 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
     setPadTilt({ x: 0, y: 0, active: false });
   };
 
-  useEffect(() => {
-    if (save.showShell) return;
-    const BASE_W = 462;
-    const BASE_H = 380;
-    const recompute = () => {
-      const s = Math.min(window.innerWidth / BASE_W, window.innerHeight / BASE_H);
-      setFsScale(Math.max(0.5, Number(s.toFixed(4))));
-    };
-    recompute();
-    window.addEventListener('resize', recompute);
-    return () => window.removeEventListener('resize', recompute);
-  }, [save.showShell]);
-
   const lcdNode = (
     <LcdScreen
       save={save}
@@ -353,14 +339,7 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   if (!save.showShell) {
     return (
       <div className="fullscreen-lcd-wrap">
-        <div
-          className="fullscreen-lcd-stage"
-          style={{
-            transform: `scale(${fsScale})`,
-          }}
-        >
-          {lcdNode}
-        </div>
+        <div className="fullscreen-lcd-stage">{lcdNode}</div>
       </div>
     );
   }

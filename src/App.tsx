@@ -96,6 +96,10 @@ export function App() {
   const [captureReveal, setCaptureReveal] = useState<import('./types/pet').CaptureRevealPayload | null>(null);
   const [worldMapData, setWorldMapData] = useState<import('./components/WorldMapHud').WorldMapData | null>(null);
   const captureAfterCloseRef = useRef<(() => void) | null>(null);
+  const [arenaHasBackLayer, setArenaHasBackLayer] = useState(false);
+  const arenaBackHandlerRef = useRef<(() => boolean) | null>(null);
+  const backGuardPushedRef = useRef(false);
+  const ignoreNextPopRef = useRef(false);
   const [tacticsBridge, setTacticsBridge] = useState<LiveRunTacticsBridge | null>(null);
   const [battleIsTrainer, setBattleIsTrainer] = useState(false);
   const [bezelIndex, setBezelIndex] = useState(0);
@@ -380,6 +384,9 @@ export function App() {
       setManagerFromBattle(false);
       setManagerEntryMode(null);
       setLcdMode('survivors');
+      const cb = captureAfterCloseRef.current;
+      captureAfterCloseRef.current = null;
+      if (cb) cb();
       tacticsBridge?.onResumeBattle();
     }, 210);
   }, [managerOpen, managerClosing, tacticsBridge]);
@@ -539,8 +546,8 @@ export function App() {
   );
 
   const handleCaptureBoss = useCallback(
-    (species: SpeciesId, level: number) => {
-      setSave((prev) => captureBossPet(prev, species, level).save);
+    (species: SpeciesId, level: number, skin?: import('./types/pet').PetSkinId) => {
+      setSave((prev) => captureBossPet(prev, species, level, Date.now(), skin).save);
     },
     [],
   );
@@ -950,6 +957,101 @@ export function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleDpad, handleButtonA, handleButtonB, handleClosePokemonManager, lcdMode, managerOpen, save.pets.length, save.keyBindings]);
 
+  // Mobile Hardware Back / Swipe-Back (`popstate`) Integration:
+  // Keeps a lightweight history guard whenever Handheld Console or an in-game overlay/sub-page is open,
+  // so swiping back on phones steps back inside the console or closes it instead of exiting the web app!
+  const hasAnyBackLayer = managerOpen || arenaHasBackLayer;
+
+  useEffect(() => {
+    if (hasAnyBackLayer && !backGuardPushedRef.current) {
+      try {
+        window.history.pushState({ ppBackGuard: true }, '');
+        backGuardPushedRef.current = true;
+      } catch {
+        // ignore in restricted environments
+      }
+    } else if (!hasAnyBackLayer && backGuardPushedRef.current) {
+      backGuardPushedRef.current = false;
+      ignoreNextPopRef.current = true;
+      try {
+        window.history.back();
+      } catch {
+        ignoreNextPopRef.current = false;
+      }
+    }
+  }, [hasAnyBackLayer]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (ignoreNextPopRef.current) {
+        ignoreNextPopRef.current = false;
+        return;
+      }
+      backGuardPushedRef.current = false;
+
+      if (managerOpen) {
+        // Determine whether we are inside a nested LCD sub-page that should step back one level
+        const isNestedSubpage =
+          lcdMode === 'party_detail' ||
+          lcdMode === 'pokedex_detail' ||
+          lcdMode === 'play_menu' ||
+          lcdMode === 'game_catch' ||
+          lcdMode === 'game_peekaboo' ||
+          (managerEntryMode === 'menu' &&
+            (lcdMode === 'party' ||
+              lcdMode === 'pokedex' ||
+              lcdMode === 'achievements' ||
+              lcdMode === 'diary' ||
+              lcdMode === 'settings'));
+
+        if (isNestedSubpage) {
+          handleButtonB();
+          try {
+            window.history.pushState({ ppBackGuard: true }, '');
+            backGuardPushedRef.current = true;
+          } catch {
+            // ignore
+          }
+          return;
+        }
+
+        // At root of Handheld Console -> close the console cleanly!
+        handleClosePokemonManager();
+        if (arenaHasBackLayer) {
+          try {
+            window.history.pushState({ ppBackGuard: true }, '');
+            backGuardPushedRef.current = true;
+          } catch {
+            // ignore
+          }
+        }
+        return;
+      }
+
+      if (arenaHasBackLayer && arenaBackHandlerRef.current) {
+        const stillHasLayer = arenaBackHandlerRef.current();
+        if (stillHasLayer) {
+          try {
+            window.history.pushState({ ppBackGuard: true }, '');
+            backGuardPushedRef.current = true;
+          } catch {
+            // ignore
+          }
+        }
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [
+    managerOpen,
+    lcdMode,
+    managerEntryMode,
+    arenaHasBackLayer,
+    handleButtonB,
+    handleClosePokemonManager,
+  ]);
+
   const handleResetSave = () => {
     const fresh = createInitialSave();
     setSave(fresh);
@@ -985,6 +1087,10 @@ export function App() {
             }
             onUpdatePrefs={(prefsPatch) => handleUpdateSettings({ prefs: prefsPatch })}
             onUpdateMeta={handleUpdateMeta}
+            onBackLayerActiveChange={setArenaHasBackLayer}
+            onRegisterBackHandler={(fn) => {
+              arenaBackHandlerRef.current = fn;
+            }}
             isFullscreen={isFullscreen}
             onToggleFullscreen={handleHubToggleFullscreen}
           />
@@ -994,7 +1100,7 @@ export function App() {
       {/* NATIVE HANDHELD CONSOLE POPUP OVERLAY (Bidirectional Pull-Up & Tuck-Down Animations!) */}
       {activePet && managerOpen && (
         <div
-          className={`manager-overlay-wrap ${managerClosing ? 'is-closing' : ''}`}
+          className={`manager-overlay-wrap ${!save.showShell ? 'is-fullscreen-mode' : ''} ${managerClosing ? 'is-closing' : ''}`}
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               handleClosePokemonManager();

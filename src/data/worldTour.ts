@@ -1,4 +1,4 @@
-import type { SpeciesId } from '../types/pet';
+import type { PetSkinId, SpeciesId } from '../types/pet';
 import type { AppLang } from './i18n';
 import type { BiomeId } from './worldTextures3D';
 
@@ -55,14 +55,14 @@ export interface WorldZoneDef {
 export const WORLD_ZONES: WorldZoneDef[] = [
   {
     id: 'east_asia',
-    name: '东亚 · 华夏与关东赛区',
-    subtitle: '第 1 赛季已全面开放 · 9 座地标道馆',
+    name: '东亚 · 华夏与日本赛区',
+    subtitle: '第 1 赛季已全面开放 · 14 座地标道馆',
     unlocked: true,
     centerLat: 33.5,
-    centerLng: 118.5,
+    centerLng: 122.0,
     seasonTag: 'S1 已开放',
-    teaserText: '横跨燕京、魔都、江南、岭南、鹏城、巴蜀、冰城、维港与东京关东圣殿！',
-    teaserSpecies: ['pikachu', 'charmander', 'lapras', 'dratini', 'mewtwo'],
+    teaserText: '横跨北京、上海、杭州、广州、深圳、成都、哈尔滨、香港，以及日本东京、京都、大阪、札幌、福冈与冲绳 14 座道馆！',
+    teaserSpecies: ['pikachu', 'charmander', 'hooh', 'dratini', 'mewtwo'],
   },
   {
     id: 'southeast_asia',
@@ -145,6 +145,7 @@ export interface WorldCityDef {
   signatureSpecies: SpeciesId[];
   rewardCoins: number;
   settleCost: number;
+  regionalSkinId?: PetSkinId;
 }
 
 export const WORLD_CITIES: WorldCityDef[] = [
@@ -175,7 +176,8 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['tinglu', 'bronzor', 'kubfu', 'onix', 'rhyhorn', 'geodude', 'growlithe', 'charmander', 'pidgey'],
     signatureSpecies: ['tinglu', 'kubfu', 'onix'],
     rewardCoins: 160,
-    settleCost: 1500,
+    settleCost: 250000,
+    regionalSkinId: 'vermilion_palace',
   },
   {
     id: 'shanghai',
@@ -204,7 +206,8 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['pikachu', 'charmander', 'squirtle', 'chimchar', 'bronzor', 'magnemite', 'electabuzz', 'porygon', 'eevee'],
     signatureSpecies: ['pikachu', 'chimchar', 'porygon'],
     rewardCoins: 180,
-    settleCost: 1800,
+    settleCost: 260000,
+    regionalSkinId: 'porcelain',
   },
   {
     id: 'hangzhou',
@@ -233,7 +236,8 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['chiyu', 'drampa', 'squirtle', 'bulbasaur', 'staryu', 'magikarp', 'vaporeon', 'psyduck', 'jigglypuff'],
     signatureSpecies: ['chiyu', 'drampa', 'staryu'],
     rewardCoins: 170,
-    settleCost: 1200,
+    settleCost: 175000,
+    regionalSkinId: 'jade_emerald',
   },
   {
     id: 'guangzhou',
@@ -262,7 +266,8 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['chimchar', 'tepig', 'mienfoo', 'charmander', 'growlithe', 'vulpix', 'flareon', 'hitmonlee', 'hitmonchan'],
     signatureSpecies: ['chimchar', 'mienfoo', 'tepig'],
     rewardCoins: 190,
-    settleCost: 1500,
+    settleCost: 185000,
+    regionalSkinId: 'dunhuang_gold',
   },
   {
     id: 'shenzhen',
@@ -291,7 +296,8 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['wochien', 'kubfu', 'porygon', 'pikachu', 'charmander', 'abra', 'magnemite', 'jolteon', 'eevee'],
     signatureSpecies: ['wochien', 'kubfu', 'porygon'],
     rewardCoins: 200,
-    settleCost: 1600,
+    settleCost: 230000,
+    regionalSkinId: 'porcelain',
   },
   {
     id: 'chengdu',
@@ -320,7 +326,8 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['pancham', 'spinda', 'munchlax', 'bulbasaur', 'drampa', 'scyther', 'pinsir', 'eevee', 'farfetchd'],
     signatureSpecies: ['pancham', 'munchlax', 'spinda'],
     rewardCoins: 170,
-    settleCost: 1200,
+    settleCost: 135000,
+    regionalSkinId: 'ink_wash',
   },
   {
     id: 'harbin',
@@ -349,7 +356,8 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['chienpao', 'articuno', 'lapras', 'seel', 'shellder', 'jynx', 'vulpix', 'clefairy', 'dratini'],
     signatureSpecies: ['chienpao', 'lapras', 'articuno'],
     rewardCoins: 240,
-    settleCost: 1400,
+    settleCost: 108000,
+    regionalSkinId: 'ice_glaze',
   },
   {
     id: 'hongkong',
@@ -378,7 +386,8 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['hooh', 'drampa', 'zapdos', 'aerodactyl', 'magikarp', 'horsea', 'kabuto', 'electabuzz', 'pikachu'],
     signatureSpecies: ['hooh', 'drampa', 'zapdos'],
     rewardCoins: 240,
-    settleCost: 1800,
+    settleCost: 320000,
+    regionalSkinId: 'dunhuang_gold',
   },
   {
     id: 'tokyo',
@@ -407,7 +416,158 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['pikachu', 'charmander', 'bulbasaur', 'squirtle', 'gastly', 'abra', 'dratini', 'moltres', 'mewtwo', 'mew'],
     signatureSpecies: ['mewtwo', 'mew', 'dratini'],
     rewardCoins: 360,
-    settleCost: 2200,
+    settleCost: 280000,
+    regionalSkinId: 'sakura',
+  },
+  {
+    id: 'kyoto',
+    zoneId: 'east_asia',
+    name: '京都',
+    country: '日本 · 关西 / 城都原型',
+    lat: 35.0116,
+    lng: 135.7681,
+    biome: 'verdant_forest',
+    accentColor: '#e64980',
+    gymName: '圆朱凤王古殿',
+    gymBadgeName: '铃铛古都徽章',
+    gymTypeLabel: '幽灵 / 传说 / 火',
+    gymLeaderName: '馆主 松叶',
+    gymTrainerKey: 'tr_erika',
+    gymBossSpecies: 'hooh',
+    gymBossTitle: '虹色圣翼·凤王',
+    fieldEffect: '千年古刹：樱雨飘落与幽灵灵脉共鸣，传闻铃铛塔顶有传说凤王栖息！',
+    hotelNames: {
+      hostel: '祇园町屋青旅',
+      inn: '清水坂精灵驿站',
+      grand: '岚山樱庭温泉酒店',
+    },
+    specialtyName: '宇治抹茶和菓子',
+    description: '城都圆朱市原型古都，朱红鸟居与古刹枫林间出没着幽灵系、六尾与七彩凤王。',
+    wildPool: ['hooh', 'vulpix', 'gastly', 'abra', 'clefairy', 'eevee', 'pikachu', 'bulbasaur', 'growlithe'],
+    signatureSpecies: ['hooh', 'gastly', 'vulpix'],
+    rewardCoins: 260,
+    settleCost: 168000,
+    regionalSkinId: 'sakura',
+  },
+  {
+    id: 'osaka',
+    zoneId: 'east_asia',
+    name: '大阪',
+    country: '日本 · 关西商都',
+    lat: 34.6937,
+    lng: 135.5023,
+    biome: 'storm_coast',
+    accentColor: '#f76707',
+    gymName: '通天阁雷炎道馆',
+    gymBadgeName: '浪速爆炎徽章',
+    gymTypeLabel: '电 / 格斗 / 火',
+    gymLeaderName: '馆主 烈堂',
+    gymTrainerKey: 'tr_ltsurge',
+    gymBossSpecies: 'hitmonlee',
+    gymBossTitle: '浪速拳圣·飞腿郎',
+    fieldEffect: '道顿堀狂热：攻速与暴击双提升，繁华霓虹街头聚集喵喵、电击兽与格斗名家！',
+    hotelNames: {
+      hostel: '难波胶囊青旅',
+      inn: '梅田商业精灵驿站',
+      grand: '大阪城天守观景酒店',
+    },
+    specialtyName: '章鱼烧能量丸子',
+    description: '烟火气与霓虹招牌交织的关西不夜城，豪爽的格斗系与电火系宝可梦在此切磋。',
+    wildPool: ['pikachu', 'charmander', 'meowth', 'electabuzz', 'hitmonlee', 'hitmonchan', 'magnemite', 'magmar', 'growlithe'],
+    signatureSpecies: ['electabuzz', 'meowth', 'hitmonlee'],
+    rewardCoins: 210,
+    settleCost: 158000,
+    regionalSkinId: 'magma',
+  },
+  {
+    id: 'sapporo',
+    zoneId: 'east_asia',
+    name: '札幌',
+    country: '日本 · 北海道 / 神奥原型',
+    lat: 43.0618,
+    lng: 141.3545,
+    biome: 'sky_glacier',
+    accentColor: '#339af0',
+    gymName: '雪峰极寒道馆',
+    gymBadgeName: '北国冰晶徽章',
+    gymTypeLabel: '冰 / 水 / 龙',
+    gymLeaderName: '馆主 铃奈',
+    gymTrainerKey: 'tr_misty',
+    gymBossSpecies: 'lapras',
+    gymBossTitle: '北海霜翼·拉普拉斯',
+    fieldEffect: '北海道粉雪：冰霜招式范围扩大，雪原湖畔常现拉普拉斯、迷唇姐与急冻鸟！',
+    hotelNames: {
+      hostel: '薄野雪屋青旅',
+      inn: '大通公园精灵驿站',
+      grand: '小樽雪景温泉酒店',
+    },
+    specialtyName: '北海道浓郁鲜奶布丁',
+    description: '神奥地区原型雪国之都，皑皑粉雪与温泉海岸孕育出优雅强大的冰系精灵。',
+    wildPool: ['lapras', 'articuno', 'vulpix', 'seel', 'shellder', 'jynx', 'dratini', 'eevee', 'squirtle'],
+    signatureSpecies: ['lapras', 'articuno', 'jynx'],
+    rewardCoins: 250,
+    settleCost: 115000,
+    regionalSkinId: 'ice_glaze',
+  },
+  {
+    id: 'fukuoka',
+    zoneId: 'east_asia',
+    name: '福冈',
+    country: '日本 · 九州 / 丰缘原型',
+    lat: 33.5902,
+    lng: 130.4017,
+    biome: 'rocky_desert',
+    accentColor: '#2f9e44',
+    gymName: '博多火山岩道馆',
+    gymBadgeName: '九州炽岩徽章',
+    gymTypeLabel: '火 / 岩石 / 化石',
+    gymLeaderName: '馆主 亚莎影',
+    gymTrainerKey: 'tr_brock',
+    gymBossSpecies: 'magmar',
+    gymBossTitle: '阿苏炽核·鸭嘴火兽',
+    fieldEffect: '九州地热：火山温泉能量涌动，高概率偶遇鸭嘴火兽、化石翼龙与迷你龙！',
+    hotelNames: {
+      hostel: '中洲屋台青旅',
+      inn: '天神海风精灵驿站',
+      grand: '博多湾温泉度假酒店',
+    },
+    specialtyName: '博多豚骨拉面补给',
+    description: '丰缘地区原型九州门户，活火山温泉与玄界滩海岸汇聚着炽热与太古化石强者。',
+    wildPool: ['charmander', 'growlithe', 'magmar', 'rhyhorn', 'onix', 'aerodactyl', 'dratini', 'vulpix', 'pidgey'],
+    signatureSpecies: ['magmar', 'aerodactyl', 'dratini'],
+    rewardCoins: 220,
+    settleCost: 122000,
+    regionalSkinId: 'solar_pharaoh',
+  },
+  {
+    id: 'okinawa',
+    zoneId: 'east_asia',
+    name: '冲绳',
+    country: '日本 · 琉球海岛',
+    lat: 26.2124,
+    lng: 127.6809,
+    biome: 'storm_coast',
+    accentColor: '#15aabf',
+    gymName: '琉球珊瑚碧海道馆',
+    gymBadgeName: '碧海珊瑚徽章',
+    gymTypeLabel: '水 / 龙 / 妖精',
+    gymLeaderName: '馆主 沧海',
+    gymTrainerKey: 'tr_misty',
+    gymBossSpecies: 'dratini',
+    gymBossTitle: '琉球海龙·快龙',
+    fieldEffect: '碧海珊瑚潮：水系与龙系速度加成，清澈海岛盛产水伊布、宝石海星与迷你龙！',
+    hotelNames: {
+      hostel: '国际通海风青旅',
+      inn: '美丽海珊瑚驿站',
+      grand: '琉球蔚蓝海景度假村',
+    },
+    specialtyName: '冲绳黑糖海盐冰沙',
+    description: '碧海蓝天与珊瑚礁环绕的南国海岛，温暖黑潮吸引着海洋水系与传说龙族栖息。',
+    wildPool: ['squirtle', 'staryu', 'horsea', 'magikarp', 'vaporeon', 'lapras', 'dratini', 'psyduck', 'jigglypuff'],
+    signatureSpecies: ['dratini', 'vaporeon', 'staryu'],
+    rewardCoins: 240,
+    settleCost: 130000,
+    regionalSkinId: 'blue_flame',
   },
 ];
 
@@ -479,10 +639,26 @@ export function calcGeoDistanceKm(
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
-/** Flight ticket cost scales cleanly with real Earth distance (0 if local GPS home turf <= 80km!) */
-export function calcFlightTicketCost(distanceKm: number, isHomeTurf: boolean): number {
+/**
+ * Flight ticket cost scales noticeably with real Earth distance:
+ * - Same-metro / local GPS home turf (<= 80 km): 0 coins
+ * - One-way ticket (ONLY allowed when buying a house to settle!): starts at 1,500 + 1.45/km
+ * - Round-trip ticket (required for normal travel & visiting settled houses!): >= 3,000 coins (= 2 × one-way)
+ */
+export function calcOneWayTicketCost(distanceKm: number, isHomeTurf: boolean): number {
   if (isHomeTurf || distanceKm <= 80) return 0;
-  return Math.max(25, Math.min(180, Math.round(20 + distanceKm * 0.045)));
+  return Math.max(1500, Math.round((1500 + distanceKm * 1.45) / 10) * 10);
+}
+
+export function calcFlightTicketCost(
+  distanceKm: number,
+  isHomeTurf: boolean,
+  tripType: 'round_trip' | 'one_way' = 'round_trip',
+): number {
+  if (isHomeTurf || distanceKm <= 80) return 0;
+  const oneWay = calcOneWayTicketCost(distanceKm, isHomeTurf);
+  if (tripType === 'one_way') return oneWay;
+  return Math.max(3000, oneWay * 2);
 }
 
 /** Match any real-world GPS coordinate to the closest local biome & wild pool for Home exploration */

@@ -24,6 +24,7 @@ import {
   SPECIES_MEGA_FORMS,
   computePetBondBonuses,
   ensureFreshMetaProgress,
+  getHeroDef,
   getSkinDef,
 } from '../data/metaProgression';
 import { resolveBadgeIconName, type PixelIconName } from '../data/pixelIcons';
@@ -1948,7 +1949,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
               <div className="pkb-prof-body scroll-y">
                 <div className="pkb-prof-preview">
                   <div className="pkb-prof-avatar-lg">
-                    <PixelItemImg src="/sprites/heroes/hero-red-avatar.png" size={56} />
+                    <PixelItemImg src={getHeroDef(curMeta.activeHero).avatarSprite} size={56} />
                   </div>
                   <div className="pkb-prof-stats">
                     <strong>{prof.name}</strong>
@@ -2162,8 +2163,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                       <span>KANTO DAILY</span>
                     </div>
                     <div className="paper-masthead-meta">
-                      <span>关都历 11月25日 · 第 148 期</span>
-                      <span>☀ 全境放晴 · 适宜原野探索</span>
+                      <span>关都历 11月26日 · 第 149 期</span>
+                      <span>✈ 东亚 14 城巡礼 · 华夏限定色上线</span>
                       <span>点击任意报道阅读全文</span>
                     </div>
                   </header>
@@ -2262,8 +2263,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
                   {/* Bottom Newspaper Weather & Regional Brief Strip */}
                   <footer className="paper-brief-strip">
-                    <strong>【关都气象】</strong>
-                    <span>青翠森林 22°C 晴 · 风暴海岸 24°C 晴 · 天空冰川 -2°C 晴 · 红莲火山 31°C 多云</span>
+                    <strong>【东亚航线气象】</strong>
+                    <span>上海 18°C 晴 · 深圳/香港 25°C 多云 · 东京/京都 16°C 樱风 · 札幌/哈尔滨 -3°C 小雪</span>
                   </footer>
                 </div>
               )}

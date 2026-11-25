@@ -2070,6 +2070,7 @@ export function captureBossPet(
   species: SpeciesId,
   level: number,
   now = Date.now(),
+  skin?: import('../types/pet').PetSkinId,
 ): ActionOutcome {
   if (save.pets.length >= MAX_PET_SLOTS) {
     return {
@@ -2080,16 +2081,26 @@ export function captureBossPet(
   }
   const taken = save.pets.map((p) => p.name);
   const caughtName = pickRandomPetName(species, taken);
+  const basePet = createPet(species, caughtName, now, 'pokeball_room');
   const newPet: PetRecord = {
-    ...createPet(species, caughtName, now, 'pokeball_room'),
+    ...basePet,
     level: Math.max(5, Math.min(35, Math.round(level))),
+    ...(skin ? { skin } : {}),
   };
+  const nextMeta =
+    skin && skin !== 'classic' && save.meta
+      ? {
+          ...save.meta,
+          unlockedSkins: Array.from(new Set([...(save.meta.unlockedSkins ?? ['classic']), skin])),
+        }
+      : save.meta;
   const discoveredSpecies = Array.from(new Set([...save.discoveredSpecies, species]));
+  const skinNote = skin && skin !== 'classic' ? '（地区限定配色）' : '';
   const diary = addDiary(
     save,
     newPet,
     'pokeball',
-    `在 3D 野外幸存者中成功收服了霸主【${caughtName} (Lv.${newPet.level})】！`,
+    `在 3D 野外探索中成功收服了【${caughtName}${skinNote} (Lv.${newPet.level})】！`,
     now,
   );
   return {
@@ -2099,6 +2110,7 @@ export function captureBossPet(
       pets: [...save.pets, newPet],
       discoveredSpecies,
       diary,
+      ...(nextMeta ? { meta: nextMeta } : {}),
     },
     message: `成功收服霸主【${caughtName} Lv.${newPet.level}】入盒！`,
   };
