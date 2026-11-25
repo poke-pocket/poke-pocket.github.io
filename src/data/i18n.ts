@@ -9,7 +9,7 @@ export const LANG_LABELS: Record<AppLang, string> = {
 const DICT: Record<AppLang, Record<string, string>> = {
   zh: {
     startAdventure: '开始冒险',
-    startAdventureSub: '5 大区域 · 守护者讨伐',
+    startAdventureSub: '无界漫游 · 生态探索',
     endlessMode: '无尽模式',
     endlessModeSub: '无限波次挑战',
     pokemonManager: '掌机养成',
@@ -17,6 +17,7 @@ const DICT: Record<AppLang, Record<string, string>> = {
     squadBtn: '队伍',
     moreBtn: '更多',
     dockBox: '球盒',
+    dockBag: '背包',
     dockDex: '图鉴+',
     dockShop: '商店',
     dockLab: '研究所',
@@ -35,7 +36,7 @@ const DICT: Record<AppLang, Record<string, string>> = {
   },
   en: {
     startAdventure: 'ADVENTURE',
-    startAdventureSub: '5 Regions · Guardians',
+    startAdventureSub: 'Infinite World · Explore',
     endlessMode: 'ENDLESS',
     endlessModeSub: 'Infinite Waves',
     pokemonManager: 'HANDHELD',
@@ -43,6 +44,7 @@ const DICT: Record<AppLang, Record<string, string>> = {
     squadBtn: 'SQUAD',
     moreBtn: 'MORE',
     dockBox: 'BOX',
+    dockBag: 'BAG',
     dockDex: 'DEX+',
     dockShop: 'SHOP',
     dockLab: 'LAB',
@@ -61,7 +63,7 @@ const DICT: Record<AppLang, Record<string, string>> = {
   },
   ja: {
     startAdventure: 'ぼうけん',
-    startAdventureSub: '5エリア・守護者討伐',
+    startAdventureSub: '無限ワールド・生態探索',
     endlessMode: 'エンドレス',
     endlessModeSub: '無限ウェーブ挑戦',
     pokemonManager: '携帯機育成',
@@ -69,6 +71,7 @@ const DICT: Record<AppLang, Record<string, string>> = {
     squadBtn: 'パーティ',
     moreBtn: 'もっと',
     dockBox: 'ボックス',
+    dockBag: 'バッグ',
     dockDex: '図鑑+',
     dockShop: 'ショップ',
     dockLab: '研究所',

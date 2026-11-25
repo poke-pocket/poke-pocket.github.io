@@ -165,19 +165,20 @@ export function recordBattleOutcome(
     xpGain = 35;
   }
 
-  let pets = save.pets.map((p) =>
-    p.id === petId
-      ? {
-          ...p,
-          health: payload.result === 'run' ? Math.max(25, baseHealth) : baseHealth,
-          energy: clampStat(p.energy - (payload.result === 'run' ? 4 : 10)),
-          hunger: clampStat(p.hunger - (payload.result === 'run' ? 2 : 6)),
-          happiness: clampStat(p.happiness + (isWin ? 10 : 0)),
-          totalPlays: p.totalPlays + (isWin ? 1 : 0),
-          lastTickAt: now,
-        }
-      : p,
-  );
+  let pets = save.pets.map((p) => {
+    if (p.id !== petId) return p;
+    const bondDelta = isWin ? 22 : payload.result === 'lose' ? 8 : 0;
+    const withBond = addBondExpToPet(p, bondDelta).pet;
+    return {
+      ...withBond,
+      health: payload.result === 'run' ? Math.max(25, baseHealth) : baseHealth,
+      energy: clampStat(p.energy - (payload.result === 'run' ? 4 : 10)),
+      hunger: clampStat(p.hunger - (payload.result === 'run' ? 2 : 6)),
+      happiness: clampStat(p.happiness + (isWin ? 10 : 0)),
+      totalPlays: p.totalPlays + (isWin ? 1 : 0),
+      lastTickAt: now,
+    };
+  });
 
   let caughtPet: PetRecord | undefined;
   const discovered = new Set(save.discoveredSpecies);
@@ -270,19 +271,19 @@ export function recordSurvivorsOutcome(
   );
   const nextHealth = Math.max(25, Math.min(100, Math.round(payload.remainingHpPct)));
 
-  const pets = save.pets.map((p) =>
-    p.id === petId
-      ? {
-          ...p,
-          health: nextHealth,
-          energy: clampStat(p.energy - 12),
-          hunger: clampStat(p.hunger - 8),
-          happiness: clampStat(p.happiness + (payload.cleared ? 16 : 8)),
-          totalPlays: p.totalPlays + 1,
-          lastTickAt: now,
-        }
-      : p,
-  );
+  const pets = save.pets.map((p) => {
+    if (p.id !== petId) return p;
+    const withBond = addBondExpToPet(p, payload.cleared ? 35 : 18).pet;
+    return {
+      ...withBond,
+      health: nextHealth,
+      energy: clampStat(p.energy - 12),
+      hunger: clampStat(p.hunger - 8),
+      happiness: clampStat(p.happiness + (payload.cleared ? 16 : 8)),
+      totalPlays: p.totalPlays + 1,
+      lastTickAt: now,
+    };
+  });
 
   const diary = addDiary(
     save,
@@ -309,6 +310,113 @@ export function recordSurvivorsOutcome(
     message: payload.cleared
       ? `幸存者通关！击败 ${payload.kills} 敌，获 +${coinGain} 金币与 +${xpGain} EXP！`
       : `秘境结算：击败 ${payload.kills} 敌，获 +${coinGain} 金币与 +${xpGain} EXP！`,
+  };
+}
+
+export const MAX_BOND_LEVEL = 10;
+export const BOND_EXP_PER_LEVEL = 100;
+export const MAX_BOND_EXP = 1000;
+export const TEEN_EVO_BOND_REQ = 2;
+export const ADULT_EVO_BOND_REQ = 4;
+
+export interface PetBondInfo {
+  bondExp: number;
+  level: number;
+  progressPct: number;
+  bondScore100: number;
+  xpMult: number;
+  xpMultLabel: string;
+  evoBlockedByBond: { requiredBondLv: number; nextFormName: string; evoLevel: number } | null;
+}
+
+export function getPetBondExp(pet: Pick<PetRecord, 'bondExp' | 'happiness' | 'level' | 'totalPats' | 'totalFeeds' | 'totalPlays'>): number {
+  if (typeof pet.bondExp === 'number' && Number.isFinite(pet.bondExp)) {
+    return Math.max(0, Math.min(MAX_BOND_EXP, Math.round(pet.bondExp)));
+  }
+  const derived = Math.round(
+    pet.happiness * 1.4 +
+      Math.max(0, pet.level - 5) * 12 +
+      (pet.totalPats + pet.totalFeeds + pet.totalPlays) * 16,
+  );
+  return Math.max(20, Math.min(950, derived));
+}
+
+export function getRequiredBondLevelForEvolution(
+  species: SpeciesId,
+  targetLevel: number,
+  currentLevel: number,
+): { requiredBondLv: number; nextFormName: string; evoLevel: number } | null {
+  const meta = SPECIES_CATALOG[species];
+  if (!meta) return null;
+  if (
+    currentLevel < meta.evoLevels.teen &&
+    targetLevel >= meta.evoLevels.teen &&
+    meta.stageNames.teen !== meta.stageNames.baby
+  ) {
+    return {
+      requiredBondLv: TEEN_EVO_BOND_REQ,
+      nextFormName: meta.stageNames.teen,
+      evoLevel: meta.evoLevels.teen,
+    };
+  }
+  if (
+    meta.evoLevels.adult > meta.evoLevels.teen &&
+    currentLevel < meta.evoLevels.adult &&
+    targetLevel >= meta.evoLevels.adult &&
+    meta.stageNames.adult !== meta.stageNames.teen
+  ) {
+    return {
+      requiredBondLv: ADULT_EVO_BOND_REQ,
+      nextFormName: meta.stageNames.adult,
+      evoLevel: meta.evoLevels.adult,
+    };
+  }
+  return null;
+}
+
+export function getPetBondInfo(
+  pet: Pick<PetRecord, 'species' | 'bondExp' | 'happiness' | 'level' | 'totalPats' | 'totalFeeds' | 'totalPlays'>,
+): PetBondInfo {
+  const bondExp = getPetBondExp(pet);
+  const level = bondExp >= 900 ? 10 : Math.max(1, Math.min(MAX_BOND_LEVEL, Math.floor(bondExp / BOND_EXP_PER_LEVEL) + 1));
+  const progressPct = level >= MAX_BOND_LEVEL ? 100 : bondExp % BOND_EXP_PER_LEVEL;
+  const bondScore100 = Math.min(100, Math.round(bondExp / 10));
+  const xpMult =
+    level <= 1 ? 0.65 : level === 2 ? 0.85 : level <= 5 ? 1.0 : level <= 8 ? 1.12 : 1.25;
+  const xpMultLabel =
+    level <= 1
+      ? '亲密较低 · 经验 65%'
+      : level === 2
+        ? '磨合期 · 经验 85%'
+        : level <= 5
+          ? '信赖伙伴 · 经验 100%'
+          : level <= 8
+            ? '默契加成 · 经验 112%'
+            : '灵魂共鸣 · 经验 125%';
+
+  const nextCheck = getRequiredBondLevelForEvolution(pet.species, pet.level + 1, pet.level);
+  const evoBlockedByBond =
+    nextCheck && level < nextCheck.requiredBondLv ? nextCheck : null;
+
+  return {
+    bondExp,
+    level,
+    progressPct,
+    bondScore100,
+    xpMult,
+    xpMultLabel,
+    evoBlockedByBond,
+  };
+}
+
+function addBondExpToPet(pet: PetRecord, delta: number): { pet: PetRecord; bondLeveledUpTo: number | null } {
+  const prevExp = getPetBondExp(pet);
+  const prevLv = prevExp >= 900 ? 10 : Math.floor(prevExp / BOND_EXP_PER_LEVEL) + 1;
+  const nextExp = Math.max(0, Math.min(MAX_BOND_EXP, prevExp + Math.round(delta)));
+  const nextLv = nextExp >= 900 ? 10 : Math.floor(nextExp / BOND_EXP_PER_LEVEL) + 1;
+  return {
+    pet: { ...pet, bondExp: nextExp },
+    bondLeveledUpTo: nextLv > prevLv ? nextLv : null,
   };
 }
 
@@ -422,6 +530,7 @@ export function createPet(
     lastTickAt: now,
     hunger: 76,
     happiness: 82,
+    bondExp: 35,
     cleanliness: 92,
     energy: 86,
     health: 100,
@@ -939,10 +1048,12 @@ function grantXpAndCoins(
   save: GameSave;
   leveledUp: boolean;
   evolvedTo: string | null;
+  bondEvoBlockedHint?: string | null;
   newlyUnlocked: string[];
 } {
   let leveledUp = false;
   let evolvedTo: string | null = null;
+  let bondEvoBlockedHint: string | null = null;
   let bonusCoins = 0;
   let diary = save.diary;
   let targetPet: PetRecord | null = null;
@@ -950,16 +1061,19 @@ function grantXpAndCoins(
   const pets = save.pets.map((p) => {
     if (p.id !== petId) return p;
     const talent = getPetTalent(p);
-    const effectiveXpGain =
-      talent === 'prodigy'
-        ? Math.round(xpGain * 1.2)
-        : talent === 'shiny_soul'
-          ? Math.round(xpGain * 1.15)
-          : xpGain;
+    const bondInfo = getPetBondInfo(p);
+    const talentXpMult = talent === 'prodigy' ? 1.2 : talent === 'shiny_soul' ? 1.15 : 1.0;
+    const effectiveXpGain = xpGain > 0 ? Math.max(1, Math.round(xpGain * talentXpMult * bondInfo.xpMult)) : 0;
     const prevStage = getGrowthStage(p.level, p.species);
     let xp = p.xp + effectiveXpGain;
     let level = p.level;
     while (level < MAX_POKEMON_LEVEL && xp >= getXpForNextLevel(level)) {
+      const evoCheck = getRequiredBondLevelForEvolution(p.species, level + 1, level);
+      if (evoCheck && bondInfo.level < evoCheck.requiredBondLv) {
+        xp = Math.max(0, getXpForNextLevel(level) - 1);
+        bondEvoBlockedHint = `${p.name} 需亲密达到 Lv.${evoCheck.requiredBondLv} 才可进化为${evoCheck.nextFormName}！多抚摸/喂食/出战提升亲密吧～`;
+        break;
+      }
       xp -= getXpForNextLevel(level);
       level += 1;
       leveledUp = true;
@@ -1014,7 +1128,7 @@ function grantXpAndCoins(
     newlyUnlocked = evalRes.newlyUnlocked;
   }
 
-  return { save: nextSave, leveledUp, evolvedTo, newlyUnlocked };
+  return { save: nextSave, leveledUp, evolvedTo, bondEvoBlockedHint, newlyUnlocked };
 }
 
 export interface ActionOutcome {
@@ -1481,12 +1595,16 @@ export function feedPet(
   const coinGain = isFavorite ? 8 : 3;
   const shouldPoop = (pet.totalFeeds + 1) % 3 === 0 && pet.poopCount < 3;
 
+  let bondLeveledUpTo: number | null = null;
+  const bondDelta = Math.round((isFavorite ? 24 : 14) * gourmetMult);
   const pets = save.pets.map((p) => {
     if (p.id !== petId) return p;
     const nextHealth = clampStat(p.health + (food.health ?? 0));
     const cured = Boolean(food.curesSick) || (nextHealth >= 55 && Boolean(food.health));
+    const bondRes = addBondExpToPet(p, bondDelta);
+    bondLeveledUpTo = bondRes.bondLeveledUpTo;
     return {
-      ...p,
+      ...bondRes.pet,
       hunger: clampStat(p.hunger + hungerGain),
       happiness: clampStat(p.happiness + happinessGain),
       energy: clampStat(p.energy + food.energy),
@@ -1504,13 +1622,16 @@ export function feedPet(
     [foodId]: food.unlimited ? 99 : Math.max(0, stock - 1),
   };
 
-  const diary = addDiary(
+  let diary = addDiary(
     save,
     pet,
     'riceball',
-    `享用了${food.name}${isFavorite ? '（最爱！心情+10）' : ''}`,
+    `享用了${food.name}${isFavorite ? '（最爱！亲密大幅提升）' : ''}`,
     now,
   );
+  if (bondLeveledUpTo) {
+    diary = addDiary({ ...save, diary }, pet, 'heart', `亲密等级提升至 Lv.${bondLeveledUpTo}！`, now);
+  }
 
   const progressed = grantXpAndCoins(
     { ...save, pets, inventory: nextInventory, diary },
@@ -1525,11 +1646,15 @@ export function feedPet(
     ...progressed,
     coinsEarned: coinGain,
     xpEarned: xpGain,
-    message: isFavorite
-      ? `效果拔群！${pet.name} 超爱吃${food.name}！`
-      : food.curesSick && pet.isSick
-        ? `${pet.name} 吃下${food.name}，精神焕发恢复健康！`
-        : `${pet.name} 吃下了${food.name}，饱食度 +${food.hunger}！`,
+    message: progressed.bondEvoBlockedHint
+      ? progressed.bondEvoBlockedHint
+      : bondLeveledUpTo
+        ? `${pet.name} 亲密升至 Lv.${bondLeveledUpTo}！`
+        : isFavorite
+          ? `效果拔群！${pet.name} 超爱吃${food.name}！`
+          : food.curesSick && pet.isSick
+            ? `${pet.name} 吃下${food.name}，精神焕发恢复健康！`
+            : `${pet.name} 吃下了${food.name}，饱食度 +${food.hunger}！`,
   };
 }
 
@@ -1543,32 +1668,47 @@ export function patPet(
   if (pet.isSleeping) {
     return { ok: false, save, message: `${pet.name} 正在呼呼大睡～` };
   }
-  if (pet.happiness >= 100) {
-    return { ok: false, save, message: `${pet.name} 亲密度已满格，现在超开心啦！` };
+  const curBond = getPetBondInfo(pet);
+  if (curBond.level >= MAX_BOND_LEVEL && pet.happiness >= 100) {
+    return { ok: false, save, message: `${pet.name} 亲密已达满级 Lv.10，现在超开心啦！` };
   }
   const staminaRes = consumeStamina(save, STAMINA_COSTS.pat, now);
   if (!staminaRes.ok) return staminaRes;
   save = staminaRes.save;
   const talent = getPetTalent(pet);
   const patHappy = talent === 'sweetheart' ? 12 : 8;
+  const patBond = talent === 'sweetheart' ? 28 : 20;
   const patXp = talent === 'sweetheart' ? 20 : 15;
-  const pets = save.pets.map((p) =>
-    p.id === petId
-      ? {
-          ...p,
-          happiness: clampStat(p.happiness + patHappy),
-          totalPats: p.totalPats + 1,
-          lastTickAt: now,
-        }
-      : p,
-  );
-  const progressed = grantXpAndCoins({ ...save, pets }, petId, patXp, 3, now);
+  let bondLeveledUpTo: number | null = null;
+  const pets = save.pets.map((p) => {
+    if (p.id !== petId) return p;
+    const bondRes = addBondExpToPet(p, patBond);
+    bondLeveledUpTo = bondRes.bondLeveledUpTo;
+    return {
+      ...bondRes.pet,
+      happiness: clampStat(p.happiness + patHappy),
+      totalPats: p.totalPats + 1,
+      lastTickAt: now,
+    };
+  });
+  let nextSave: GameSave = { ...save, pets };
+  if (bondLeveledUpTo) {
+    nextSave = {
+      ...nextSave,
+      diary: addDiary(nextSave, pet, 'heart', `在温柔抚摸下亲密等级提升至 Lv.${bondLeveledUpTo}！`, now),
+    };
+  }
+  const progressed = grantXpAndCoins(nextSave, petId, patXp, 3, now);
   return {
     ok: true,
     ...progressed,
     coinsEarned: 3,
     xpEarned: patXp,
-    message: `抚摸了 ${pet.name}！亲密度提升了～`,
+    message: progressed.bondEvoBlockedHint
+      ? progressed.bondEvoBlockedHint
+      : bondLeveledUpTo
+        ? `亲密升级！与 ${pet.name} 的亲密度达到了 Lv.${bondLeveledUpTo}！`
+        : `抚摸了 ${pet.name}！亲密经验 +${patBond}～`,
   };
 }
 
@@ -1590,20 +1730,20 @@ export function bathPet(
   save = staminaRes.save;
   const hadPoop = pet.poopCount > 0;
   const bathHappy = getPetTalent(pet) === 'clean_freak' ? 20 : 12;
-  const pets = save.pets.map((p) =>
-    p.id === petId
-      ? {
-          ...p,
-          cleanliness: 100,
-          happiness: clampStat(p.happiness + bathHappy),
-          health: clampStat(p.health + 8),
-          poopCount: 0,
-          totalBaths: p.totalBaths + 1,
-          totalCleans: p.totalCleans + (hadPoop ? pet.poopCount : 0),
-          lastTickAt: now,
-        }
-      : p,
-  );
+  const pets = save.pets.map((p) => {
+    if (p.id !== petId) return p;
+    const withBond = addBondExpToPet(p, 16).pet;
+    return {
+      ...withBond,
+      cleanliness: 100,
+      happiness: clampStat(p.happiness + bathHappy),
+      health: clampStat(p.health + 8),
+      poopCount: 0,
+      totalBaths: p.totalBaths + 1,
+      totalCleans: p.totalCleans + (hadPoop ? pet.poopCount : 0),
+      lastTickAt: now,
+    };
+  });
   const coinGain = 12 + pet.poopCount * 6;
   const diary = addDiary(save, pet, 'bubble', '洗了闪闪发亮的泡泡澡！', now);
   const progressed = grantXpAndCoins(
@@ -2206,5 +2346,151 @@ export function withdrawPetFromStorage(save: GameSave, petId: string): ActionOut
       storedPets: stored.filter((p) => p.id !== petId),
     },
     message: `📤 已将「${target.name}」从寄放箱取回随身球盒！`,
+  };
+}
+
+/** Batch withdraw Pokémon from Storage Box back into the active Pokéball Box (respecting MAX_PET_SLOTS) */
+export function withdrawPetsBatch(
+  save: GameSave,
+  petIds: string[],
+  now = Date.now(),
+): ActionOutcome & { withdrawnCount?: number } {
+  const freeSlots = Math.max(0, MAX_PET_SLOTS - save.pets.length);
+  if (freeSlots <= 0) {
+    return {
+      ok: false,
+      save,
+      message: `随身球盒已满（${MAX_PET_SLOTS}/${MAX_PET_SLOTS}），请先放生或寄存其他精灵再取回！`,
+    };
+  }
+  const stored = save.storedPets ?? [];
+  const idSet = new Set(petIds);
+  const targets = stored.filter((p) => idSet.has(p.id));
+  if (targets.length === 0) {
+    return { ok: false, save, message: '请选择要放回球盒的宝可梦' };
+  }
+  const actual = targets.slice(0, freeSlots);
+  const actualIds = new Set(actual.map((p) => p.id));
+  const nextPets = [...save.pets, ...actual];
+  const nextStored = stored.filter((p) => !actualIds.has(p.id));
+  const lead = getActivePet(save) ?? nextPets[0];
+  const diary = lead
+    ? addDiary(save, lead, 'pokeball', `从寄放箱取回了 ${actual.length} 只宝可梦放回球盒。`, now)
+    : save.diary;
+  const leftOut = targets.length - actual.length;
+  return {
+    ok: true,
+    withdrawnCount: actual.length,
+    save: {
+      ...save,
+      pets: nextPets,
+      storedPets: nextStored,
+      diary,
+    },
+    message:
+      leftOut > 0
+        ? `已放回球盒 ${actual.length} 只（球盒已满，余 ${leftOut} 只仍在寄放箱）`
+        : `已将 ${actual.length} 只宝可梦放回随身球盒！`,
+  };
+}
+
+/** Release a single Pokémon directly from Storage Box */
+export function releaseStoredPet(
+  save: GameSave,
+  petId: string,
+  now = Date.now(),
+): ActionOutcome {
+  const stored = save.storedPets ?? [];
+  const target = stored.find((p) => p.id === petId);
+  if (!target) {
+    return { ok: false, save, message: '寄放箱中找不到该宝可梦' };
+  }
+  const reward = getReleaseReward(target);
+  const nextStored = stored.filter((p) => p.id !== petId);
+  const active = getActivePet(save) ?? save.pets[0];
+  const diary = addDiary(
+    save,
+    target,
+    'sparkle',
+    `从寄放箱温柔放生了「${target.name}」，留下 +${reward.coins} 金币与 +${reward.xp} EXP 祝福！`,
+    now,
+  );
+  const baseSave: GameSave = {
+    ...save,
+    storedPets: nextStored,
+    diary,
+  };
+  if (active) {
+    const progressed = grantXpAndCoins(baseSave, active.id, reward.xp, reward.coins, now);
+    return {
+      ok: true,
+      ...progressed,
+      coinsEarned: reward.coins,
+      xpEarned: reward.xp,
+      message: `已温柔放生「${target.name}」，获得 +${reward.coins} 金币与 +${reward.xp} EXP！`,
+    };
+  }
+  return {
+    ok: true,
+    save: { ...baseSave, coins: baseSave.coins + reward.coins },
+    coinsEarned: reward.coins,
+    xpEarned: 0,
+    message: `已温柔放生「${target.name}」，获得 +${reward.coins} 金币！`,
+  };
+}
+
+/** Batch release Pokémon directly from Storage Box */
+export function releaseStoredPetsBatch(
+  save: GameSave,
+  petIds: string[],
+  now = Date.now(),
+): ActionOutcome & { releasedCount?: number } {
+  const stored = save.storedPets ?? [];
+  const idSet = new Set(petIds);
+  const targets = stored.filter((p) => idSet.has(p.id));
+  if (targets.length === 0) {
+    return { ok: false, save, message: '请选择要放生的宝可梦' };
+  }
+  let totalCoins = 0;
+  let totalXp = 0;
+  for (const t of targets) {
+    const r = getReleaseReward(t);
+    totalCoins += r.coins;
+    totalXp += r.xp;
+  }
+  const nextStored = stored.filter((p) => !idSet.has(p.id));
+  const active = getActivePet(save) ?? save.pets[0];
+  const diary = active
+    ? addDiary(
+        save,
+        active,
+        'sparkle',
+        `从寄放箱批量放生了 ${targets.length} 只宝可梦，留下 +${totalCoins} 金币与 +${totalXp} EXP 祝福！`,
+        now,
+      )
+    : save.diary;
+  const baseSave: GameSave = {
+    ...save,
+    storedPets: nextStored,
+    diary,
+  };
+  if (active) {
+    const progressed = grantXpAndCoins(baseSave, active.id, totalXp, totalCoins, now);
+    return {
+      ok: true,
+      ...progressed,
+      releasedCount: targets.length,
+      coinsEarned: totalCoins,
+      xpEarned: totalXp,
+      message: `已批量放生 ${targets.length} 只宝可梦，获得 +${totalCoins} 金币与 +${totalXp} EXP！`,
+    };
+  }
+  return {
+    ok: true,
+    save: { ...baseSave, coins: baseSave.coins + totalCoins },
+    releasedCount: targets.length,
+    coinsEarned: totalCoins,
+    xpEarned: 0,
+    message: `已批量放生 ${targets.length} 只宝可梦，获得 +${totalCoins} 金币！`,
   };
 }

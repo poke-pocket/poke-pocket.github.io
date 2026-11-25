@@ -20,6 +20,7 @@ import {
 import type { BiomeId } from '../data/worldTextures3D';
 import type { PetSkinId, SpeciesId } from '../types/pet';
 import { sound } from '../utils/sound';
+import { fetchLiveWeatherAt, type LiveWeatherInfo } from '../utils/weatherSystem';
 import { PixelIcon, PixelItemImg } from './PixelSprite';
 
 export interface WorldLaunchPayload {
@@ -222,6 +223,49 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   const [selectedHotel, setSelectedHotel] = useState<HotelTierId>('inn');
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [viewedWeather, setViewedWeather] = useState<LiveWeatherInfo | null>(null);
+
+  const cityClickCounts = tour.cityClickCounts ?? {};
+  const sortedCities = useMemo(() => {
+    return [...WORLD_CITIES].sort((a, b) => {
+      const ca = cityClickCounts[a.id] ?? 0;
+      const cb = cityClickCounts[b.id] ?? 0;
+      if (cb !== ca) return cb - ca;
+      return WORLD_CITIES.indexOf(a) - WORLD_CITIES.indexOf(b);
+    });
+  }, [cityClickCounts]);
+
+  const recordCityClick = (cityId: string) => {
+    onUpdateMeta((prev) => {
+      const prevTour = prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+      const prevCounts = prevTour.cityClickCounts ?? {};
+      return {
+        ...prev,
+        worldTour: {
+          ...prevTour,
+          cityClickCounts: {
+            ...prevCounts,
+            [cityId]: (prevCounts[cityId] ?? 0) + 1,
+          },
+        },
+      };
+    });
+  };
+
+  // Fetch real-time weather for the currently viewed location (GPS Home or selected city)
+  useEffect(() => {
+    let cancelled = false;
+    const city = selectedCityId ? WORLD_CITIES.find((c) => c.id === selectedCityId) : null;
+    const lat = city ? city.lat : effectiveHome.lat;
+    const lng = city ? city.lng : effectiveHome.lng;
+    const lbl = city ? city.name : effectiveHome.label;
+    fetchLiveWeatherAt(lat, lng, lbl).then((info) => {
+      if (!cancelled) setViewedWeather(info);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCityId, effectiveHome.lat, effectiveHome.lng, effectiveHome.label]);
 
   const [flightAnim, setFlightAnim] = useState<{
     fromLng: number;
@@ -1323,7 +1367,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             >
               🏠 老家
             </button>
-            {WORLD_CITIES.map((c) => {
+            {sortedCities.map((c) => {
               const cleared = tour.clearedCityGyms.includes(c.id);
               const isHere = activeHereCity?.id === c.id;
               const isSettled = settledIds.includes(c.id);
@@ -1334,6 +1378,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   className={`wt-chip ${selectedCityId === c.id ? 'active' : ''} ${isHere ? 'is-here' : ''} ${isSettled ? 'is-settled' : ''}`}
                   onClick={() => {
                     sound.play('cursor');
+                    recordCityClick(c.id);
                     setSelectedCityId(c.id);
                     setSelectedZoneId(null);
                     setCam((prev) => ({
@@ -1385,6 +1430,18 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   <span>永久免费</span>
                 </div>
                 <div className="wt-card-body scroll-y">
+                  {viewedWeather && (
+                    <div
+                      className="wt-weather-bar"
+                      style={{ borderColor: viewedWeather.accentColor }}
+                    >
+                      <span className="wt-weather-main">
+                        {viewedWeather.emoji} <strong>{viewedWeather.label}</strong> {viewedWeather.tempC}°C
+                        <em>{viewedWeather.source === 'live' ? '实时气象' : '本地推演'}</em>
+                      </span>
+                      <small>{viewedWeather.buffText}</small>
+                    </div>
+                  )}
                   <p className="wt-desc">
                     当前匹配生态：<strong>{eco.regionLabel}</strong>（{lat.toFixed(3)}°, {lng.toFixed(3)}°）。
                     {!tour.homeCoords && '未开启 GPS 时自动按界面语言定位（中文默认上海 / 日语默认东京），也可花钱在任意城市置业定居！'}
@@ -1456,6 +1513,19 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                       {isSettled ? '永久定居' : isAtHomeCity ? '本城常驻' : formatRemainingStay(tour.stayUntilTs, nowMs)}
                     </em>
                   </div>
+
+                  {viewedWeather && (
+                    <div
+                      className="wt-weather-bar"
+                      style={{ borderColor: viewedWeather.accentColor }}
+                    >
+                      <span className="wt-weather-main">
+                        {viewedWeather.emoji} <strong>{viewedWeather.label}</strong> {viewedWeather.tempC}°C
+                        <em>{viewedWeather.source === 'live' ? '实时气象' : '本地推演'}</em>
+                      </span>
+                      <small>{viewedWeather.buffText}</small>
+                    </div>
+                  )}
 
                   <p className="wt-desc">{selectedCity.fieldEffect}</p>
 

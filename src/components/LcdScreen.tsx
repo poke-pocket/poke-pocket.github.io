@@ -72,10 +72,12 @@ import type {
 } from '../utils/petEngine';
 import {
   DEFAULT_KEY_BINDINGS,
+  MAX_BOND_LEVEL,
   MAX_PET_SLOTS,
   STAMINA_COSTS,
   getAccessoryAvailability,
   getBallAvailability,
+  getPetBondInfo,
   getPetIVs,
   getPetMood,
   getPetNature,
@@ -208,9 +210,12 @@ interface LcdScreenProps {
   onPullGachaTen: (boxId: GachaBoxId) => GachaTenOutcome;
   onReleasePet: (petId: string) => boolean;
   onReleasePetsBatch?: (petIds: string[]) => { ok: boolean; count: number; coins: number; xp: number; message: string };
+  onReleaseStoredPet?: (petId: string) => boolean;
+  onReleaseStoredPetsBatch?: (petIds: string[]) => { ok: boolean; count: number; coins: number; xp: number; message: string };
   onDepositPet?: (petId: string) => boolean;
   onDepositPetsBatch?: (petIds: string[]) => { ok: boolean; count: number; message: string };
   onWithdrawPet?: (petId: string) => boolean;
+  onWithdrawPetsBatch?: (petIds: string[]) => { ok: boolean; count: number; message: string };
   onSwitchPet: (petId: string) => void;
   onUpdatePetConfig?: (
     petId: string,
@@ -288,9 +293,12 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   onPullGachaTen,
   onReleasePet,
   onReleasePetsBatch,
+  onReleaseStoredPet,
+  onReleaseStoredPetsBatch,
   onDepositPet,
   onDepositPetsBatch,
   onWithdrawPet,
+  onWithdrawPetsBatch,
   onSwitchPet,
   onUpdatePetConfig,
   onUpdateSettings,
@@ -333,6 +341,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
   const [confirmBatchRelease, setConfirmBatchRelease] = useState(false);
   const [confirmBatchDeposit, setConfirmBatchDeposit] = useState(false);
+  const [confirmBatchWithdraw, setConfirmBatchWithdraw] = useState(false);
   const [batchFeedback, setBatchFeedback] = useState<string | null>(null);
   const [squadPickerSlot, setSquadPickerSlot] = useState<number | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
@@ -536,7 +545,12 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   };
 
   const partyDetailPet =
-    save.pets.find((p) => p.id === selectedPartyPetId) ?? pet;
+    save.pets.find((p) => p.id === selectedPartyPetId) ??
+    (save.storedPets ?? []).find((p) => p.id === selectedPartyPetId) ??
+    pet;
+  const partyDetailIsStored =
+    !save.pets.some((p) => p.id === partyDetailPet.id) &&
+    (save.storedPets ?? []).some((p) => p.id === partyDetailPet.id);
   const dexSpeciesMeta = SPECIES_CATALOG[selectedDexSpecies];
   const dexDiscovered = save.discoveredSpecies.includes(selectedDexSpecies);
 
@@ -2646,8 +2660,18 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                   <PixelItemImg src="/sprites/items/amulet-coin.png" size={14} />
                   <span>去市场</span>
                 </button>
-                <button type="button" className="lcd-mini-close" onClick={onExitMode}>
-                  返回
+                <button
+                  type="button"
+                  className="lcd-mini-close"
+                  onClick={() => {
+                    if (openedEntryMode === 'bag' && onCloseHandheldTo3D) {
+                      onCloseHandheldTo3D();
+                    } else {
+                      onExitMode();
+                    }
+                  }}
+                >
+                  {openedEntryMode === 'bag' ? '关闭' : '返回'}
                 </button>
               </div>
             </div>
@@ -3684,11 +3708,13 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
           );
         })()}
 
-        {/* PARTY GRID (精灵球收藏 / 同行队伍 — 支持搜索、筛选排序与批量放生!) */}
+        {/* PARTY GRID (精灵球盒 & 寄存箱 — 统一交互、搜索筛选排序与图标化批量管理!) */}
         {mode === 'party' && (() => {
+          const isStorageTab = partyBoxTab === 'storage';
+          const sourceList = isStorageTab ? (save.storedPets ?? []) : save.pets;
           const q = partySearch.trim().toLowerCase();
-          const rankWeight = (r: string) => (r === 'S' ? 3 : r === 'A' ? 2 : 1);
-          const filteredPets = save.pets
+          const rankWeight = (r: string) => (r === 'SS' ? 4 : r === 'S' ? 3 : r === 'A' ? 2 : 1);
+          const filteredPets = sourceList
             .filter((p) => {
               const sp = SPECIES_CATALOG[p.species];
               const ivRank = getIvRank(getPetIVs(p));
@@ -3711,18 +3737,35 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
               return 0;
             });
 
-          const selectedSet = new Set(batchSelectedIds.filter((id) => id !== pet.id && save.pets.some((p) => p.id === id)));
-          const selectedPets = save.pets.filter((p) => selectedSet.has(p.id));
+          const selectedSet = new Set(
+            batchSelectedIds.filter((id) => {
+              if (!isStorageTab && id === pet.id) return false;
+              return sourceList.some((p) => p.id === id);
+            }),
+          );
+          const selectedPets = sourceList.filter((p) => selectedSet.has(p.id));
           const previewCoins = selectedPets.reduce((acc, p) => acc + getReleaseReward(p).coins, 0);
-          const selectableVisible = filteredPets.filter((p) => p.id !== pet.id);
+          const selectableVisible = isStorageTab
+            ? filteredPets
+            : filteredPets.filter((p) => p.id !== pet.id);
+          const freeBoxSlots = Math.max(0, MAX_PET_SLOTS - save.pets.length);
 
           const toggleSelectPet = (id: string) => {
-            if (id === pet.id) return;
+            if (!isStorageTab && id === pet.id) return;
             sound.play('cursor');
             setConfirmBatchRelease(false);
+            setConfirmBatchDeposit(false);
+            setConfirmBatchWithdraw(false);
             setBatchSelectedIds((prev) =>
               prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
             );
+          };
+
+          const resetBatchState = () => {
+            setBatchSelectedIds([]);
+            setConfirmBatchRelease(false);
+            setConfirmBatchDeposit(false);
+            setConfirmBatchWithdraw(false);
           };
 
           return (
@@ -3734,6 +3777,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     className={`lcd-subtab inline-icon-btn ${partyBoxTab === 'active' ? 'active' : ''}`}
                     onClick={() => {
                       sound.play('cursor');
+                      resetBatchState();
                       setPartyBoxTab('active');
                     }}
                   >
@@ -3745,7 +3789,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     className={`lcd-subtab inline-icon-btn ${partyBoxTab === 'storage' ? 'active' : ''}`}
                     onClick={() => {
                       sound.play('cursor');
-                      setPartyBatchMode(false);
+                      resetBatchState();
                       setPartyBoxTab('storage');
                     }}
                   >
@@ -3753,24 +3797,19 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                   </button>
                 </div>
                 <div className="lcd-head-actions">
-                  {partyBoxTab === 'active' && (
-                    <button
-                      type="button"
-                      className={`lcd-subtab ${partyBatchMode ? 'active' : ''}`}
-                      onClick={() => {
-                        sound.play('cursor');
-                        setPartyBatchMode((v) => {
-                          if (v) {
-                            setBatchSelectedIds([]);
-                            setConfirmBatchRelease(false);
-                          }
-                          return !v;
-                        });
-                      }}
-                    >
-                      {partyBatchMode ? '完成管理' : '批量管理'}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className={`lcd-subtab ${partyBatchMode ? 'active' : ''}`}
+                    onClick={() => {
+                      sound.play('cursor');
+                      setPartyBatchMode((v) => {
+                        if (v) resetBatchState();
+                        return !v;
+                      });
+                    }}
+                  >
+                    {partyBatchMode ? '完成管理' : '批量管理'}
+                  </button>
                   <button
                     type="button"
                     className="lcd-subtab inline-icon-btn"
@@ -3788,8 +3827,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     className="lcd-mini-close inline-icon-row"
                     onClick={() => {
                       setPartyBatchMode(false);
-                      setBatchSelectedIds([]);
-                      setConfirmBatchRelease(false);
+                      resetBatchState();
                       if ((openedFromBattle || openedEntryMode === 'party') && onCloseHandheldTo3D) {
                         onCloseHandheldTo3D();
                       } else {
@@ -3854,7 +3892,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                 </div>
               </div>
 
-              {/* Batch Release Action Strip */}
+              {/* Unified Batch Action Strip (Active Box: 寄存 + 放生 | Storage Box: 放回球盒 + 放生) */}
               {partyBatchMode && (
                 <div className="party-batch-bar">
                   <div className="party-batch-quick">
@@ -3864,6 +3902,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                       onClick={() => {
                         sound.play('cursor');
                         setConfirmBatchRelease(false);
+                        setConfirmBatchDeposit(false);
+                        setConfirmBatchWithdraw(false);
                         const bIds = selectableVisible
                           .filter((p) => getIvRank(getPetIVs(p)) === 'B')
                           .map((p) => p.id);
@@ -3878,6 +3918,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                       onClick={() => {
                         sound.play('cursor');
                         setConfirmBatchRelease(false);
+                        setConfirmBatchDeposit(false);
+                        setConfirmBatchWithdraw(false);
                         if (selectedSet.size === selectableVisible.length && selectableVisible.length > 0) {
                           setBatchSelectedIds([]);
                         } else {
@@ -3892,41 +3934,80 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     )}
                   </div>
                   <div className="party-batch-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {onDepositPetsBatch && (
-                      <button
-                        type="button"
-                        className={`party-batch-deposit-btn inline-icon-btn ${confirmBatchDeposit ? 'is-confirm' : ''}`}
-                        disabled={selectedSet.size === 0 || Boolean(openedFromBattle)}
-                        title={
-                          openedFromBattle
-                            ? '战斗进行中无法寄存，请结束本局后再寄存'
-                            : '批量寄存至大木博士寄放箱'
-                        }
-                        aria-label="批量寄存"
-                        onClick={() => {
-                          if (selectedSet.size === 0 || openedFromBattle) return;
-                          if (!confirmBatchDeposit) {
-                            sound.play('cursor');
-                            setConfirmBatchRelease(false);
-                            setConfirmBatchDeposit(true);
-                            return;
+                    {isStorageTab ? (
+                      onWithdrawPetsBatch && (
+                        <button
+                          type="button"
+                          className={`party-batch-deposit-btn inline-icon-btn ${confirmBatchWithdraw ? 'is-confirm' : ''}`}
+                          disabled={selectedSet.size === 0 || Boolean(openedFromBattle) || freeBoxSlots <= 0}
+                          title={
+                            openedFromBattle
+                              ? '战斗进行中无法取出，请结束本局后再放回球盒'
+                              : freeBoxSlots <= 0
+                                ? `球盒已满 (${MAX_PET_SLOTS}/${MAX_PET_SLOTS})`
+                                : '批量放回随身球盒'
                           }
-                          const res = onDepositPetsBatch(Array.from(selectedSet));
-                          setConfirmBatchDeposit(false);
-                          setBatchSelectedIds([]);
-                          if (res?.ok) {
-                            setBatchFeedback(res.message);
-                            window.setTimeout(() => setBatchFeedback(null), 2600);
+                          aria-label="批量放回球盒"
+                          onClick={() => {
+                            if (selectedSet.size === 0 || openedFromBattle || freeBoxSlots <= 0) return;
+                            if (!confirmBatchWithdraw) {
+                              sound.play('cursor');
+                              setConfirmBatchRelease(false);
+                              setConfirmBatchWithdraw(true);
+                              return;
+                            }
+                            const res = onWithdrawPetsBatch(Array.from(selectedSet));
+                            resetBatchState();
+                            if (res?.message) {
+                              setBatchFeedback(res.message);
+                              window.setTimeout(() => setBatchFeedback(null), 2600);
+                            }
+                          }}
+                        >
+                          <PixelItemImg src="/sprites/items/poke-ball.png" size={14} />
+                          {confirmBatchWithdraw ? (
+                            <span>确认放回球盒 {Math.min(selectedSet.size, freeBoxSlots)} 只?</span>
+                          ) : (
+                            <span>{selectedSet.size > 0 ? selectedSet.size : '0'}</span>
+                          )}
+                        </button>
+                      )
+                    ) : (
+                      onDepositPetsBatch && (
+                        <button
+                          type="button"
+                          className={`party-batch-deposit-btn inline-icon-btn ${confirmBatchDeposit ? 'is-confirm' : ''}`}
+                          disabled={selectedSet.size === 0 || Boolean(openedFromBattle)}
+                          title={
+                            openedFromBattle
+                              ? '战斗进行中无法寄存，请结束本局后再寄存'
+                              : '批量寄存至大木博士寄放箱'
                           }
-                        }}
-                      >
-                        <PixelItemImg src="/sprites/items/poke-ball.png" size={14} />
-                        {confirmBatchDeposit ? (
-                          <span>确认寄存 {selectedSet.size} 只?</span>
-                        ) : (
-                          <span>{selectedSet.size > 0 ? selectedSet.size : '0'}</span>
-                        )}
-                      </button>
+                          aria-label="批量寄存"
+                          onClick={() => {
+                            if (selectedSet.size === 0 || openedFromBattle) return;
+                            if (!confirmBatchDeposit) {
+                              sound.play('cursor');
+                              setConfirmBatchRelease(false);
+                              setConfirmBatchDeposit(true);
+                              return;
+                            }
+                            const res = onDepositPetsBatch(Array.from(selectedSet));
+                            resetBatchState();
+                            if (res?.ok) {
+                              setBatchFeedback(res.message);
+                              window.setTimeout(() => setBatchFeedback(null), 2600);
+                            }
+                          }}
+                        >
+                          <PixelItemImg src="/sprites/items/poke-ball.png" size={14} />
+                          {confirmBatchDeposit ? (
+                            <span>确认寄存 {selectedSet.size} 只?</span>
+                          ) : (
+                            <span>{selectedSet.size > 0 ? selectedSet.size : '0'}</span>
+                          )}
+                        </button>
+                      )
                     )}
                     <button
                       type="button"
@@ -3939,12 +4020,14 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                         if (!confirmBatchRelease) {
                           sound.play('cursor');
                           setConfirmBatchDeposit(false);
+                          setConfirmBatchWithdraw(false);
                           setConfirmBatchRelease(true);
                           return;
                         }
-                        const res = onReleasePetsBatch?.(Array.from(selectedSet));
-                        setConfirmBatchRelease(false);
-                        setBatchSelectedIds([]);
+                        const res = isStorageTab
+                          ? onReleaseStoredPetsBatch?.(Array.from(selectedSet))
+                          : onReleasePetsBatch?.(Array.from(selectedSet));
+                        resetBatchState();
                         if (res?.ok) {
                           setBatchFeedback(res.message);
                           window.setTimeout(() => setBatchFeedback(null), 2600);
@@ -3966,56 +4049,16 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
               {batchFeedback && <div className="party-batch-toast">{batchFeedback}</div>}
 
-              {partyBoxTab === 'storage' ? (
-                <div className="scroll-y" style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0 }}>
-                  {openedFromBattle ? (
-                    <div className="party-storage-notice">
-                      ⚔ 战斗模式进行中无法寄存或取出精灵，请先结束本局冒险返回大厅后再操作大木博士寄放箱（局内若球盒已满请先放生多余精灵）。
-                    </div>
-                  ) : (
-                    <div className="party-storage-notice" style={{ color: '#1b4332', background: '#d3f9d8', borderColor: '#2f9e44' }}>
-                      📦 大木博士寄放箱：战斗结束后可自由寄存多余精灵释放球盒空间，或在宝可梦详情菜单中点击「寄存到大木处」。
-                    </div>
-                  )}
-                  {(save.storedPets ?? []).length === 0 ? (
-                    <div className="party-empty-hint">
-                      寄放箱目前为空。战后可在精灵详情页的「更多操作」里将伙伴寄存至此处！
-                    </div>
-                  ) : (
-                    <div className="lcd-grid-4 party-compact-grid">
-                      {(save.storedPets ?? []).map((sp) => {
-                        const st = getGrowthStage(sp.level, sp.species);
-                        return (
-                          <div key={sp.id} className="party-storage-card">
-                            <PixelPetPortrait species={sp.species} stage={st} size={42} />
-                            <strong>{sp.name}</strong>
-                            <small>Lv.{sp.level}</small>
-                            <button
-                              type="button"
-                              className="lcd-subtab"
-                              disabled={Boolean(openedFromBattle) || save.pets.length >= MAX_PET_SLOTS}
-                              onClick={() => {
-                                if (onWithdrawPet?.(sp.id)) {
-                                  setBatchFeedback(`📤 已将「${sp.name}」取回随身球盒！`);
-                                  window.setTimeout(() => setBatchFeedback(null), 2400);
-                                }
-                              }}
-                            >
-                              {openedFromBattle ? '战后可取' : save.pets.length >= MAX_PET_SLOTS ? '球盒已满' : '取出入盒'}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              ) : (
               <div className="lcd-grid-4 party-compact-grid scroll-y">
                 {filteredPets.length === 0 ? (
-                  <div className="party-empty-hint">未找到匹配的宝可梦，试试更换关键词或评级筛选</div>
+                  <div className="party-empty-hint">
+                    {isStorageTab && sourceList.length === 0
+                      ? '寄存箱目前为空'
+                      : '未找到匹配的宝可梦，试试更换关键词或评级筛选'}
+                  </div>
                 ) : (
                   filteredPets.map((p) => {
-                    const isCur = p.id === pet.id;
+                    const isCur = !isStorageTab && p.id === pet.id;
                     const isChecked = selectedSet.has(p.id);
                     const st = getGrowthStage(p.level, p.species);
                     const ballMeta =
@@ -4029,7 +4072,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                         title={
                           partyBatchMode
                             ? isCur
-                              ? '当前出战伙伴不可批量放生'
+                              ? '当前出战伙伴不可批量操作'
                               : `点击${isChecked ? '取消' : '选中'}「${p.name}」`
                             : `${p.name} · Lv.${p.level} · ${NATURE_CATALOG[getPetNature(p)].name} · ${ivRank}级`
                         }
@@ -4076,7 +4119,6 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                   })
                 )}
               </div>
-              )}
             </div>
           );
         })()}
@@ -4084,12 +4126,16 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
         {/* PARTY 2ND-LEVEL DETAIL (Actions moved cleanly to top-right with icons + secondary dropdown!) */}
         {mode === 'party_detail' && (() => {
           const p = partyDetailPet;
+          const isStored = partyDetailIsStored;
           const st = getGrowthStage(p.level, p.species);
           const meta = SPECIES_CATALOG[p.species];
           const pDex = getPokemonDexNo(p.species, p.level);
           const formName = getPokemonStageName(p.species, p.level);
-          const evoHint = getNextEvolutionHint(p.species, p.level);
-          const isCur = p.id === pet.id;
+          const bond = getPetBondInfo(p);
+          const evoHint = bond.evoBlockedByBond
+            ? `🔒 需亲密 Lv.${bond.evoBlockedByBond.requiredBondLv} 进化为${bond.evoBlockedByBond.nextFormName}`
+            : getNextEvolutionHint(p.species, p.level);
+          const isCur = !isStored && p.id === pet.id;
           const pXpNeed = getXpForNextLevel(p.level);
           const pXpPct = Math.min(100, Math.round((p.xp / pXpNeed) * 100));
           const natureMeta = NATURE_CATALOG[getPetNature(p)];
@@ -4112,7 +4158,29 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                 </span>
                 {/* Top-Right Pokémon Actions: Primary Frequent Outside + Secondary Infrequent Dropdown */}
                 <div className="lcd-head-actions detail-top-actions">
-                  {isCur ? (
+                  {isStored ? (
+                    <button
+                      type="button"
+                      className="lcd-subtab detail-act-btn is-primary"
+                      disabled={Boolean(openedFromBattle) || save.pets.length >= MAX_PET_SLOTS}
+                      onClick={() => {
+                        setPetActionMenuOpen(false);
+                        if (onWithdrawPet?.(p.id)) {
+                          onNavigateMode('party');
+                        }
+                      }}
+                      title={
+                        openedFromBattle
+                          ? '战斗进行中无法取出'
+                          : save.pets.length >= MAX_PET_SLOTS
+                            ? `随身球盒已满 (${MAX_PET_SLOTS}/${MAX_PET_SLOTS})`
+                            : `将 ${p.name} 放回随身球盒`
+                      }
+                    >
+                      <PixelItemImg src="/sprites/items/poke-ball.png" size={12} />
+                      <span>{openedFromBattle ? '战后可取' : save.pets.length >= MAX_PET_SLOTS ? '球盒满' : '放回球盒'}</span>
+                    </button>
+                  ) : isCur ? (
                     <span className="cur-ball-pill" title="当前正在球舱与队列首位的宝可梦">
                       <PixelIcon name="star" size={10} />
                       <span>当前</span>
@@ -4133,21 +4201,23 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                   )}
 
                   {/* Icon-only Heal Button (frequent action!) */}
-                  <button
-                    type="button"
-                    className={`lcd-subtab detail-icon-only-btn ${canHeal ? 'is-heal-ready' : ''}`}
-                    disabled={!canHeal}
-                    onClick={() => {
-                      setPetActionMenuOpen(false);
-                      onHealPet();
-                    }}
-                    title={canHeal ? `给 ${p.name} 使用伤药回满 HP` : '当前 HP 已满（仅可治疗当前主力）'}
-                    aria-label="使用伤药"
-                  >
-                    <PixelItemImg src="/sprites/items/potion.png" size={13} />
-                  </button>
+                  {!isStored && (
+                    <button
+                      type="button"
+                      className={`lcd-subtab detail-icon-only-btn ${canHeal ? 'is-heal-ready' : ''}`}
+                      disabled={!canHeal}
+                      onClick={() => {
+                        setPetActionMenuOpen(false);
+                        onHealPet();
+                      }}
+                      title={canHeal ? `给 ${p.name} 使用伤药回满 HP` : '当前 HP 已满（仅可治疗当前主力）'}
+                      aria-label="使用伤药"
+                    >
+                      <PixelItemImg src="/sprites/items/potion.png" size={13} />
+                    </button>
+                  )}
 
-                  {/* Secondary Dropdown Menu for Infrequent Actions (Care Room / Cry / Release) */}
+                  {/* Secondary Dropdown Menu for Infrequent Actions (Care Room / Cry / Deposit / Release) */}
                   <div className="detail-more-wrap">
                     <button
                       type="button"
@@ -4163,18 +4233,20 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     </button>
                     {petActionMenuOpen && (
                       <div className="detail-action-dropdown">
-                        <button
-                          type="button"
-                          className="detail-dd-item"
-                          onClick={() => {
-                            setPetActionMenuOpen(false);
-                            if (!isCur) onSwitchPet(p.id);
-                            onNavigateMode('home');
-                          }}
-                        >
-                          <PixelIcon name="house" size={11} />
-                          <span>进球舱照顾</span>
-                        </button>
+                        {!isStored && (
+                          <button
+                            type="button"
+                            className="detail-dd-item"
+                            onClick={() => {
+                              setPetActionMenuOpen(false);
+                              if (!isCur) onSwitchPet(p.id);
+                              onNavigateMode('home');
+                            }}
+                          >
+                            <PixelIcon name="house" size={11} />
+                            <span>进球舱照顾</span>
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="detail-dd-item"
@@ -4186,7 +4258,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                           <PixelIcon name="sound_on" size={11} />
                           <span>播放叫声</span>
                         </button>
-                        {save.pets.length > 1 && onDepositPet && (
+                        {!isStored && save.pets.length > 1 && onDepositPet && (
                           <button
                             type="button"
                             className="detail-dd-item"
@@ -4203,7 +4275,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                             <span>{openedFromBattle ? '寄存 (战后开放)' : '寄存到大木处'}</span>
                           </button>
                         )}
-                        {save.pets.length > 1 &&
+                        {(isStored || save.pets.length > 1) &&
                           (confirmReleaseId === p.id ? (
                             <button
                               type="button"
@@ -4211,7 +4283,10 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                               onClick={() => {
                                 setConfirmReleaseId(null);
                                 setPetActionMenuOpen(false);
-                                if (onReleasePet(p.id)) {
+                                const ok = isStored
+                                  ? onReleaseStoredPet?.(p.id)
+                                  : onReleasePet(p.id);
+                                if (ok) {
                                   onNavigateMode('party');
                                 }
                               }}
@@ -4367,11 +4442,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                   </div>
 
                   {partyDetailTab === 'bond_mega' && (() => {
-                    const bondVal = Math.min(
-                      100,
-                      Math.round(p.happiness * 0.55 + p.level * 1.8 + (p.totalPats + p.totalFeeds) * 1.5),
-                    );
-                    const bondInfo = computePetBondBonuses(bondVal);
+                    const bondInfo = computePetBondBonuses(bond.bondScore100);
                     const megaDef = SPECIES_MEGA_FORMS[p.species] ?? SPECIES_MEGA_FORMS.pikachu;
                     const curMeta = ensureFreshMetaProgress(save.meta);
                     const ownedSkins = new Set(curMeta.unlockedSkins ?? ['classic']);
@@ -4383,11 +4454,13 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                         <div className="bond-hero-banner">
                           <div className="bond-heart-badge">
                             <PixelIcon name="heart" size={14} />
-                            <strong>Lv.{bondInfo.lv}/10</strong>
+                            <strong>Lv.{bond.level}/{MAX_BOND_LEVEL}</strong>
                           </div>
                           <div className="bond-hero-meta">
                             <div className="inline-icon-row">
-                              <strong>与{p.name}的亲密度 ({bondVal}/100)</strong>
+                              <strong>
+                                与{p.name}的亲密 Lv.{bond.level} ({bond.level >= MAX_BOND_LEVEL ? 'MAX' : `${bond.progressPct}%`})
+                              </strong>
                               <span
                                 className="mega-status-pill"
                                 style={{ backgroundColor: bondInfo.megaUnlocked ? megaDef.auraColor : '#868e96' }}
@@ -4395,9 +4468,11 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                                 {bondInfo.megaUnlocked ? `★ ${megaDef.formName} 已解锁` : `Lv.5 解锁 ${megaDef.badgeLabel}`}
                               </span>
                             </div>
-                            <small>{megaDef.perkSummary}</small>
+                            <small>
+                              {bond.xpMultLabel} · Lv.2 解锁一阶进化 · Lv.4 解锁最终进化
+                            </small>
                             <div className="gba-exp-track">
-                              <div className="gba-exp-fill" style={{ width: `${Math.min(100, bondVal)}%`, background: '#f06595' }} />
+                              <div className="gba-exp-fill" style={{ width: `${bond.progressPct}%`, background: '#f06595' }} />
                             </div>
                           </div>
                         </div>
@@ -4406,7 +4481,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                         <div className="bond-section-title">亲密度等级奖励</div>
                         <div className="bond-ladder-grid">
                           {BOND_MILESTONES.map((m) => {
-                            const reached = bondInfo.lv >= m.level;
+                            const reached = bond.level >= m.level;
                             return (
                               <div key={m.level} className={`bond-ms-card ${reached ? 'is-reached' : ''}`}>
                                 <div className="bond-ms-head">
@@ -4470,30 +4545,44 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
                   {partyDetailTab === 'stats' && (
                     <div className="lcd-bars-grid">
-                      {STAT_BAR_ROWS.map((row) => (
-                        <div key={row.key} className="lcd-bar-cell">
-                          <div className="lcd-bar-head">
-                            <span className="inline-icon-row">
-                              <PixelIcon name={row.icon} size={11} />
-                              <span>{row.label}</span>
-                            </span>
-                            <strong>{p[row.key]}%</strong>
+                      {STAT_BAR_ROWS.map((row) => {
+                        const isBond = row.key === 'happiness';
+                        const valPct = isBond ? bond.progressPct : p[row.key];
+                        const barColor = isBond
+                          ? bond.level <= 1
+                            ? '#ff6b6b'
+                            : row.color
+                          : p[row.key] < 25
+                            ? '#ff4d6d'
+                            : row.color;
+                        return (
+                          <div key={row.key} className="lcd-bar-cell">
+                            <div className="lcd-bar-head">
+                              <span className="inline-icon-row">
+                                <PixelIcon name={row.icon} size={11} />
+                                <span>{isBond ? `亲密 Lv.${bond.level}` : row.label}</span>
+                              </span>
+                              <strong>{isBond && bond.level >= MAX_BOND_LEVEL ? 'MAX' : `${valPct}%`}</strong>
+                            </div>
+                            <div className="lcd-bar-track">
+                              <div
+                                className="lcd-bar-fill"
+                                style={{
+                                  width: `${valPct}%`,
+                                  backgroundColor: barColor,
+                                }}
+                              />
+                            </div>
                           </div>
-                          <div className="lcd-bar-track">
-                            <div
-                              className="lcd-bar-fill"
-                              style={{
-                                width: `${p[row.key]}%`,
-                                backgroundColor: p[row.key] < 25 ? '#ff4d6d' : row.color,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       <div className="lcd-bar-cell meta-cell">
                         <div className="detail-stat-note">
                           <PixelIcon name="sparkle" size={11} />
-                          <span>性格 {natureMeta.name} · {talentMeta.name} · 资质 {ivRank}</span>
+                          <span>
+                            {bond.xpMultLabel} · 性格 {natureMeta.name} · 资质 {ivRank}
+                            {bond.evoBlockedByBond ? ` · 🔒进化需亲密Lv.${bond.evoBlockedByBond.requiredBondLv}` : ''}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -5640,7 +5729,12 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
                   <div className="hud-mini-meters">
                     <PixelFillMeter name="meat" value={pet.hunger} label="饱食" size={14} />
-                    <PixelFillMeter name="heart" value={pet.happiness} label="亲密" size={14} />
+                    <PixelFillMeter
+                      name="heart"
+                      value={getPetBondInfo(pet).progressPct}
+                      label={`亲密 Lv.${getPetBondInfo(pet).level}`}
+                      size={14}
+                    />
                     <PixelFillMeter name="bubble" value={pet.cleanliness} label="清洁" size={14} />
                     <PixelFillMeter name="bolt" value={pet.energy} label="体力" size={14} />
                   </div>
@@ -5790,9 +5884,9 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
               title={
                 pet.isSleeping
                   ? `${pet.name} 正在呼呼大睡`
-                  : pet.happiness >= 100
-                    ? `${pet.name} 亲密度已满格`
-                    : '点击抚摸宝可梦'
+                  : getPetBondInfo(pet).level >= MAX_BOND_LEVEL && pet.happiness >= 100
+                    ? `${pet.name} 亲密已达满级 Lv.10`
+                    : `点击抚摸宝可梦（当前亲密 Lv.${getPetBondInfo(pet).level}）`
               }
             >
               <div className="pet-shadow" />

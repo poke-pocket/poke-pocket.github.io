@@ -586,6 +586,8 @@ export interface WorldTourState {
   clearedCityGyms: string[];
   visitedCities: string[];
   settledCityIds?: string[];
+  /** Per-city click counts so the World Map city list sorts by click frequency */
+  cityClickCounts?: Record<string, number>;
 }
 
 export const DEFAULT_WORLD_TOUR_STATE: WorldTourState = {
@@ -596,6 +598,7 @@ export const DEFAULT_WORLD_TOUR_STATE: WorldTourState = {
   clearedCityGyms: [],
   visitedCities: [],
   settledCityIds: [],
+  cityClickCounts: {},
 };
 
 /**

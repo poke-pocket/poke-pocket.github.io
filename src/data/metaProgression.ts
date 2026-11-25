@@ -941,6 +941,8 @@ function buildWeeklyBounties(weekKey: string): BountySlot[] {
   });
 }
 
+export const ALL_PLAYABLE_HERO_IDS: HeroId[] = ['red', 'misty', 'brock', 'blue'];
+
 export function createInitialMetaProgress(now = Date.now()): MetaProgressState {
   const dayKey = getUtcDayKey(now);
   const weekKey = getUtcWeekKey(now);
@@ -948,7 +950,7 @@ export function createInitialMetaProgress(now = Date.now()): MetaProgressState {
     stardust: 120, // Welcoming starter Stardust so players can immediately try Lab upgrades!
     labLevels: {},
     activeHero: 'red',
-    unlockedHeroes: ['red'],
+    unlockedHeroes: [...ALL_PLAYABLE_HERO_IDS],
     heroSkillLevels: {},
     dailyKey: dayKey,
     dailyStreak: 0,
@@ -982,7 +984,9 @@ export function ensureFreshMetaProgress(
     ...base,
     ...existing,
     labLevels: existing.labLevels ?? {},
-    unlockedHeroes: existing.unlockedHeroes?.length ? existing.unlockedHeroes : ['red'],
+    unlockedHeroes: Array.from(
+      new Set<HeroId>([...ALL_PLAYABLE_HERO_IDS, ...(existing.unlockedHeroes ?? [])]),
+    ),
     heroSkillLevels: existing.heroSkillLevels ?? {},
     dailyKey: dayKey,
     dailyBounties: sameDay ? existing.dailyBounties! : buildDailyBounties(dayKey),
@@ -1108,9 +1112,9 @@ export interface BondMilestoneDef {
 }
 
 export const BOND_MILESTONES: BondMilestoneDef[] = [
-  { level: 2, bondReq: 20, title: '初识伙伴', perkText: '基础攻击 +4%', stardustReward: 40, atkBonus: 0.04 },
-  { level: 3, bondReq: 30, title: '信赖', perkText: '最大 HP +12', stardustReward: 60, hpFlat: 12 },
-  { level: 4, bondReq: 40, title: '欢快步伐', perkText: '移动速度 +4%', stardustReward: 80, speedBonus: 0.04 },
+  { level: 2, bondReq: 20, title: '初识伙伴', perkText: '解锁一阶进化 · 基础攻击 +4%', stardustReward: 40, atkBonus: 0.04 },
+  { level: 3, bondReq: 30, title: '信赖', perkText: '解除经验折损(100%) · 最大 HP +12', stardustReward: 60, hpFlat: 12 },
+  { level: 4, bondReq: 40, title: '欢快步伐', perkText: '解锁最终进化 · 移动速度 +4%', stardustReward: 80, speedBonus: 0.04 },
   {
     level: 5,
     bondReq: 50,
@@ -1120,10 +1124,10 @@ export const BOND_MILESTONES: BondMilestoneDef[] = [
     unlocksMega: true,
     atkBonus: 0.06,
   },
-  { level: 6, bondReq: 60, title: '默契连携', perkText: '全招式冷却 -6%', stardustReward: 140, cdReduction: 0.06 },
+  { level: 6, bondReq: 60, title: '默契连携', perkText: '养成经验 +12% · 全招式冷却 -6%', stardustReward: 140, cdReduction: 0.06 },
   { level: 7, bondReq: 70, title: '守护之心', perkText: '受到伤害减免 -4%', stardustReward: 160, dmgReduction: 0.04 },
   { level: 8, bondReq: 80, title: '心有灵犀', perkText: '要害暴击率 +6%', stardustReward: 180, critBonus: 0.06 },
-  { level: 9, bondReq: 90, title: '共同成长', perkText: '对局经验获取 +8%', stardustReward: 220, xpBonus: 0.08 },
+  { level: 9, bondReq: 90, title: '共同成长', perkText: '养成经验 +25% · 对局经验 +8%', stardustReward: 220, xpBonus: 0.08 },
   {
     level: 10,
     bondReq: 100,
@@ -1810,6 +1814,8 @@ export const SPECIES_MEGA_FORMS: Record<string, MegaFormDef> = {
   },
 };
 
+export type SkinCollectionId = 'classic' | 'mythic' | 'vanguard' | 'celestial' | 'huaxia';
+
 export interface PokemonSkinDef {
   id: import('../types/pet').PetSkinId;
   name: string;
@@ -1820,49 +1826,108 @@ export interface PokemonSkinDef {
   cssFilter: string;
   tintHex3D: number;
   usesOfficialShiny?: boolean;
+  /** Showcase & signature Pokémon species line for editorial organization */
+  targetSpecies?: import('../types/pet').SpeciesId;
+  showcaseSpecies: import('../types/pet').SpeciesId;
+  showcaseStage: 'baby' | 'teen' | 'adult';
+  lineLabel: string;
+  collection: SkinCollectionId;
+  seriesTag: string;
+  backdropGradient: string;
+  highlights?: string[];
 }
 
 export const POKEMON_SKIN_CATALOG: PokemonSkinDef[] = [
   {
-    id: 'classic',
-    name: '经典原色',
-    rarityLabel: '普通',
-    rarityColor: '#868e96',
-    priceCoins: 0,
-    desc: '宝可梦一贯的经典配色。',
-    cssFilter: 'none',
-    tintHex3D: 0xffffff,
-  },
-  {
-    id: 'shiny',
-    name: '官方异色 ★',
-    rarityLabel: '稀有',
-    rarityColor: '#228be6',
-    priceCoins: 180,
-    desc: '启用官方异色精灵图与闪耀星芒光效！',
-    cssFilter: 'drop-shadow(0 0 4px #ffd43b)',
-    tintHex3D: 0xfff3bf,
-    usesOfficialShiny: true,
-  },
-  {
-    id: 'magma',
-    name: '岩浆裂纹',
-    rarityLabel: '史诗',
-    rarityColor: '#e8590c',
-    priceCoins: 260,
-    desc: '黑曜熔岩与炽热火纹在体表跃动。',
-    cssFilter: 'sepia(0.55) saturate(2.1) hue-rotate(-22deg) contrast(1.15) drop-shadow(0 0 4px #ff5924)',
-    tintHex3D: 0xff8c5a,
+    id: 'solar_pharaoh',
+    name: '太阳法老',
+    rarityLabel: '神话外观',
+    rarityColor: '#f59f00',
+    priceCoins: 520,
+    desc: '以青金石雕成，以金丝镶嵌，配有绿松石双翼与鎏金神辉。周身流淌炽热太阳圣光！',
+    cssFilter: 'hue-rotate(195deg) saturate(2.2) contrast(1.18) drop-shadow(0 0 8px #ffd43b)',
+    tintHex3D: 0xffe066,
+    targetSpecies: 'charmander',
+    showcaseSpecies: 'charmander',
+    showcaseStage: 'adult',
+    lineLabel: '适用于小火龙的整个进化线',
+    collection: 'mythic',
+    seriesTag: '神话 · 太阳神殿',
+    backdropGradient: 'radial-gradient(circle at 72% 48%, #2a3c8f 0%, #161c46 52%, #0c1029 100%)',
+    highlights: [
+      '青金石、黄金与绿松石的身躯',
+      '流过全身的太阳鎏金光辉',
+      '小火龙 / 火恐龙 / 喷火龙全线适配',
+      '3D 实战自带黄金烈焰气场',
+    ],
   },
   {
     id: 'blue_flame',
     name: '苍蓝圣炎',
-    rarityLabel: '传说',
+    rarityLabel: '先锋',
     rarityColor: '#3b5bdb',
     priceCoins: 360,
-    desc: '燃烧着永不熄灭的苍蓝灵焰。',
-    cssFilter: 'hue-rotate(175deg) saturate(1.85) brightness(1.08) drop-shadow(0 0 5px #4dabf7)',
+    desc: '燃烧着永不熄灭的苍蓝灵焰，幽影穿梭间留下一缕深海钴蓝残光。',
+    cssFilter: 'hue-rotate(175deg) saturate(1.85) brightness(1.08) drop-shadow(0 0 6px #4dabf7)',
     tintHex3D: 0x74c0fc,
+    targetSpecies: 'gastly',
+    showcaseSpecies: 'gastly',
+    showcaseStage: 'adult',
+    lineLabel: '鬼斯 · 耿鬼进化线',
+    collection: 'vanguard',
+    seriesTag: '先锋 · 幽焰',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #29469b 0%, #111936 72%)',
+  },
+  {
+    id: 'magma',
+    name: '黑曜熔岩',
+    rarityLabel: '先锋',
+    rarityColor: '#e8590c',
+    priceCoins: 260,
+    desc: '黑曜熔岩与炽热火纹在体表跃动，如火山奔腾般霸气灼目。',
+    cssFilter: 'sepia(0.55) saturate(2.1) hue-rotate(-22deg) contrast(1.15) drop-shadow(0 0 6px #ff5924)',
+    tintHex3D: 0xff8c5a,
+    targetSpecies: 'growlithe',
+    showcaseSpecies: 'growlithe',
+    showcaseStage: 'adult',
+    lineLabel: '卡蒂狗 · 风速狗进化线',
+    collection: 'vanguard',
+    seriesTag: '先锋 · 熔火',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #7c2d12 0%, #240f0a 72%)',
+  },
+  {
+    id: 'ice_glaze',
+    name: '冰裂釉·北境霜瓷',
+    rarityLabel: '先锋',
+    rarityColor: '#15aabf',
+    priceCoins: 300,
+    desc: '宋代冰裂青瓷与极光霜华交织，浮浪穿梭自带寒霜晶纹。',
+    cssFilter: 'hue-rotate(158deg) saturate(1.35) brightness(1.16) contrast(1.05) drop-shadow(0 0 6px #66d9e8)',
+    tintHex3D: 0xb8f3ff,
+    targetSpecies: 'lapras',
+    showcaseSpecies: 'lapras',
+    showcaseStage: 'adult',
+    lineLabel: '拉普拉斯 · 极光乘龙线',
+    collection: 'vanguard',
+    seriesTag: '先锋 · 浮冰瓷',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #115e75 0%, #0b2234 72%)',
+  },
+  {
+    id: 'porcelain',
+    name: '青花瓷·景德镇',
+    rarityLabel: '先锋',
+    rarityColor: '#1971c2',
+    priceCoins: 280,
+    desc: '釉下钴蓝与素白青花瓷韵，水炮轰鸣间宛如名窑青花流转。',
+    cssFilter: 'hue-rotate(195deg) saturate(1.55) brightness(1.12) contrast(1.08) drop-shadow(0 0 6px #339af0)',
+    tintHex3D: 0x99d6ff,
+    targetSpecies: 'squirtle',
+    showcaseSpecies: 'squirtle',
+    showcaseStage: 'adult',
+    lineLabel: '杰尼龟 · 水箭龟进化线',
+    collection: 'vanguard',
+    seriesTag: '先锋 · 青花',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #1d4ed8 0%, #101d3b 72%)',
   },
   {
     id: 'sakura',
@@ -1870,88 +1935,128 @@ export const POKEMON_SKIN_CATALOG: PokemonSkinDef[] = [
     rarityLabel: '星辰收藏',
     rarityColor: '#e64980',
     priceCoins: 320,
-    desc: '永恒之春的绯樱色泽与柔光花韵。',
-    cssFilter: 'hue-rotate(285deg) saturate(1.45) brightness(1.1) drop-shadow(0 0 5px #f783ac)',
+    desc: '永恒之春的绯樱色泽与柔光花韵，漫天花瓣随轻盈身姿飘落。',
+    cssFilter: 'hue-rotate(285deg) saturate(1.45) brightness(1.1) drop-shadow(0 0 6px #f783ac)',
     tintHex3D: 0xffc9e3,
-  },
-  {
-    id: 'solar_pharaoh',
-    name: '太阳法老',
-    rarityLabel: '神话',
-    rarityColor: '#f59f00',
-    priceCoins: 520,
-    desc: '以青金石与鎏金雕成，周身流淌太阳神辉！',
-    cssFilter: 'hue-rotate(195deg) saturate(2.2) contrast(1.18) drop-shadow(0 0 6px #ffd43b)',
-    tintHex3D: 0xffe066,
-  },
-  {
-    id: 'porcelain',
-    name: '青花瓷·景德镇',
-    rarityLabel: '华夏限定',
-    rarityColor: '#1971c2',
-    priceCoins: 280,
-    desc: '釉下钴蓝与素白青花瓷韵，沪深江南地区限定出没配色！',
-    cssFilter: 'hue-rotate(195deg) saturate(1.55) brightness(1.12) contrast(1.08) drop-shadow(0 0 5px #339af0)',
-    tintHex3D: 0x99d6ff,
-  },
-  {
-    id: 'vermilion_palace',
-    name: '朱砂红·紫禁琉璃',
-    rarityLabel: '华夏限定',
-    rarityColor: '#c92a2a',
-    priceCoins: 300,
-    desc: '故宫宫墙朱砂红与鎏金祥辉，京城古都限定出没配色！',
-    cssFilter: 'sepia(0.45) saturate(2.4) hue-rotate(-35deg) contrast(1.12) drop-shadow(0 0 5px #e03131)',
-    tintHex3D: 0xff7a70,
-  },
-  {
-    id: 'jade_emerald',
-    name: '翡翠青·江南玉雕',
-    rarityLabel: '华夏限定',
-    rarityColor: '#0ca678',
-    priceCoins: 280,
-    desc: '温润翠玉碧色与西湖竹影灵光，江南水乡限定出没配色！',
-    cssFilter: 'hue-rotate(92deg) saturate(1.65) brightness(1.08) drop-shadow(0 0 5px #20c997)',
-    tintHex3D: 0x7ef2c8,
-  },
-  {
-    id: 'ink_wash',
-    name: '水墨丹青·徽派',
-    rarityLabel: '国风典藏',
-    rarityColor: '#343a40',
-    priceCoins: 320,
-    desc: '淡雅宣纸黑白水墨意境，巴蜀竹海限定出没配色！',
-    cssFilter: 'grayscale(0.92) contrast(1.38) brightness(1.06) drop-shadow(0 0 4px #495057)',
-    tintHex3D: 0xd0d4dc,
+    targetSpecies: 'mew',
+    showcaseSpecies: 'mew',
+    showcaseStage: 'baby',
+    lineLabel: '梦幻 · 妖精超能系列',
+    collection: 'celestial',
+    seriesTag: '星辰收藏 · 花见',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #9d174d 0%, #2d1024 72%)',
   },
   {
     id: 'dunhuang_gold',
     name: '敦煌丹霞·飞天金',
-    rarityLabel: '国风典藏',
+    rarityLabel: '华夏典藏',
     rarityColor: '#e67700',
     priceCoins: 340,
-    desc: '丝路壁画赤金流彩与南国烈阳，岭南维港限定出没配色！',
-    cssFilter: 'sepia(0.65) saturate(2.3) hue-rotate(-6deg) brightness(1.08) drop-shadow(0 0 5px #fab005)',
+    desc: '丝路壁画赤金流彩与南国烈阳，雷电奔袭时金光如飞天飘带！',
+    cssFilter: 'sepia(0.65) saturate(2.3) hue-rotate(-6deg) brightness(1.08) drop-shadow(0 0 6px #fab005)',
     tintHex3D: 0xffd479,
+    targetSpecies: 'pikachu',
+    showcaseSpecies: 'pikachu',
+    showcaseStage: 'baby',
+    lineLabel: '皮卡丘 · 雷丘进化线',
+    collection: 'huaxia',
+    seriesTag: '华夏典藏 · 丝路金',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #9a4a08 0%, #2a1708 72%)',
   },
   {
-    id: 'ice_glaze',
-    name: '冰裂釉·北境霜瓷',
-    rarityLabel: '华夏限定',
-    rarityColor: '#15aabf',
+    id: 'vermilion_palace',
+    name: '朱砂红·紫禁琉璃',
+    rarityLabel: '华夏典藏',
+    rarityColor: '#c92a2a',
     priceCoins: 300,
-    desc: '宋代冰裂青瓷与极光霜华，东北冰城限定出没配色！',
-    cssFilter: 'hue-rotate(158deg) saturate(1.35) brightness(1.16) contrast(1.05) drop-shadow(0 0 5px #66d9e8)',
-    tintHex3D: 0xb8f3ff,
+    desc: '故宫宫墙朱砂红与鎏金祥辉，京城古都限定风雅配色！',
+    cssFilter: 'sepia(0.45) saturate(2.4) hue-rotate(-35deg) contrast(1.12) drop-shadow(0 0 6px #e03131)',
+    tintHex3D: 0xff7a70,
+    targetSpecies: 'eevee',
+    showcaseSpecies: 'eevee',
+    showcaseStage: 'baby',
+    lineLabel: '伊布家族全进化线',
+    collection: 'huaxia',
+    seriesTag: '华夏典藏 · 紫禁红',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #8c1d18 0%, #2b0c0c 72%)',
+  },
+  {
+    id: 'jade_emerald',
+    name: '翡翠青·江南玉雕',
+    rarityLabel: '华夏典藏',
+    rarityColor: '#0ca678',
+    priceCoins: 280,
+    desc: '温润翠玉碧色与西湖竹影灵光，江南水乡温雅限定配色！',
+    cssFilter: 'hue-rotate(92deg) saturate(1.65) brightness(1.08) drop-shadow(0 0 6px #20c997)',
+    tintHex3D: 0x7ef2c8,
+    targetSpecies: 'bulbasaur',
+    showcaseSpecies: 'bulbasaur',
+    showcaseStage: 'adult',
+    lineLabel: '妙蛙种子 · 妙蛙花进化线',
+    collection: 'huaxia',
+    seriesTag: '华夏典藏 · 江南玉',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #0f6b50 0%, #09261f 72%)',
+  },
+  {
+    id: 'ink_wash',
+    name: '水墨丹青·徽派',
+    rarityLabel: '华夏典藏',
+    rarityColor: '#495057',
+    priceCoins: 320,
+    desc: '淡雅宣纸黑白水墨意境，如挥毫泼墨般腾云驾雾！',
+    cssFilter: 'grayscale(0.92) contrast(1.38) brightness(1.06) drop-shadow(0 0 5px #adb5bd)',
+    tintHex3D: 0xd0d4dc,
+    targetSpecies: 'dratini',
+    showcaseSpecies: 'dratini',
+    showcaseStage: 'adult',
+    lineLabel: '迷你龙 · 快龙进化线',
+    collection: 'huaxia',
+    seriesTag: '华夏典藏 · 水墨',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #3f4652 0%, #16191f 72%)',
+  },
+  {
+    id: 'shiny',
+    name: '官方异色 ★',
+    rarityLabel: '全图鉴稀有',
+    rarityColor: '#228be6',
+    priceCoins: 180,
+    desc: '解锁全图鉴宝可梦官方异色精灵图与闪耀星芒光效！任何伙伴皆可穿戴。',
+    cssFilter: 'drop-shadow(0 0 5px #ffd43b)',
+    tintHex3D: 0xfff3bf,
+    usesOfficialShiny: true,
+    showcaseSpecies: 'mewtwo',
+    showcaseStage: 'baby',
+    lineLabel: '全图鉴宝可梦通用',
+    collection: 'celestial',
+    seriesTag: '星辰收藏 · 闪光',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #1d5ca8 0%, #0d1d38 72%)',
+  },
+  {
+    id: 'classic',
+    name: '经典原色',
+    rarityLabel: '普通',
+    rarityColor: '#868e96',
+    priceCoins: 0,
+    desc: '宝可梦一贯的经典原色。',
+    cssFilter: 'none',
+    tintHex3D: 0xffffff,
+    showcaseSpecies: 'pikachu',
+    showcaseStage: 'baby',
+    lineLabel: '全图鉴默认配色',
+    collection: 'classic',
+    seriesTag: '经典原色',
+    backdropGradient: 'radial-gradient(circle at 50% 42%, #495057 0%, #212529 72%)',
   },
 ];
 
 export function getSkinDef(id?: string): PokemonSkinDef {
-  return POKEMON_SKIN_CATALOG.find((s) => s.id === id) ?? POKEMON_SKIN_CATALOG[0];
+  return POKEMON_SKIN_CATALOG.find((s) => s.id === id) ?? POKEMON_SKIN_CATALOG[POKEMON_SKIN_CATALOG.length - 1];
 }
 
 export function getPetBondLevel(bond: number): number {
-  return Math.max(1, Math.min(10, Math.floor(Math.max(0, bond) / 10)));
+  const clamped = Math.max(0, Math.min(100, bond));
+  if (clamped >= 90) return 10;
+  return Math.max(1, Math.min(10, Math.floor(clamped / 10) + 1));
 }
 
 export function computePetBondBonuses(bond: number) {

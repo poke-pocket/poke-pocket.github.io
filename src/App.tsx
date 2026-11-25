@@ -51,6 +51,8 @@ import {
   recordSurvivorsOutcome,
   releasePet,
   releasePetsBatch,
+  releaseStoredPet,
+  releaseStoredPetsBatch,
   spendStaminaForBattle,
   spendStaminaForGame,
   switchPet,
@@ -58,6 +60,7 @@ import {
   tickStamina,
   toggleSleep,
   withdrawPetFromStorage,
+  withdrawPetsBatch,
   type ActionOutcome,
   type BattleResultPayload,
   type SurvivorsResultPayload,
@@ -731,6 +734,46 @@ export function App() {
     [save, managerFromBattle, applyOutcome, showSpeech],
   );
 
+  const handleWithdrawPetsBatch = useCallback(
+    (petIds: string[]) => {
+      if (managerFromBattle) {
+        sound.play('error');
+        return { ok: false, count: 0, message: '战斗进行中无法从寄放箱取出宝可梦！' };
+      }
+      const outcome = withdrawPetsBatch(save, petIds);
+      const ok = applyOutcome(outcome, 'confirm', true);
+      return {
+        ok,
+        count: outcome.withdrawnCount ?? 0,
+        message: outcome.message ?? '',
+      };
+    },
+    [save, managerFromBattle, applyOutcome],
+  );
+
+  const handleReleaseStoredPet = useCallback(
+    (petId: string): boolean => {
+      const outcome = releaseStoredPet(save, petId);
+      return applyOutcome(outcome, 'coin', false);
+    },
+    [save, applyOutcome],
+  );
+
+  const handleReleaseStoredPetsBatch = useCallback(
+    (petIds: string[]) => {
+      const outcome = releaseStoredPetsBatch(save, petIds);
+      const ok = applyOutcome(outcome, 'coin', true);
+      return {
+        ok,
+        count: outcome.releasedCount ?? 0,
+        coins: outcome.coinsEarned ?? 0,
+        xp: outcome.xpEarned ?? 0,
+        message: outcome.message ?? '',
+      };
+    },
+    [save, applyOutcome],
+  );
+
   const handleReleasePetsBatch = useCallback(
     (petIds: string[]) => {
       const outcome = releasePetsBatch(save, petIds);
@@ -1135,6 +1178,12 @@ export function App() {
             }
             onUpdatePrefs={(prefsPatch) => handleUpdateSettings({ prefs: prefsPatch })}
             onUpdateMeta={handleUpdateMeta}
+            onBuyFood={handleBuyFood}
+            onBuyAccessory={handleBuyAccessory}
+            onBuyPokeball={handleBuyPokeball}
+            onPullGacha={handlePullGacha}
+            onPullGachaTen={handlePullGachaTen}
+            onUpdatePetConfig={handleUpdatePetConfig}
             onBackLayerActiveChange={setArenaHasBackLayer}
             onRegisterBackHandler={(fn) => {
               arenaBackHandlerRef.current = fn;
@@ -1229,9 +1278,12 @@ export function App() {
               onPullGachaTen={handlePullGachaTen}
               onReleasePet={handleReleasePet}
               onReleasePetsBatch={handleReleasePetsBatch}
+              onReleaseStoredPet={handleReleaseStoredPet}
+              onReleaseStoredPetsBatch={handleReleaseStoredPetsBatch}
               onDepositPet={handleDepositPet}
               onDepositPetsBatch={handleDepositPetsBatch}
               onWithdrawPet={handleWithdrawPet}
+              onWithdrawPetsBatch={handleWithdrawPetsBatch}
               onUpdateSettings={handleUpdateSettings}
               onUpdateMeta={handleUpdateMeta}
               onUpdatePetConfig={handleUpdatePetConfig}

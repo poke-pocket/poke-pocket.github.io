@@ -39,7 +39,6 @@ import {
   createPixelWaterMaterial,
   createSculptedTerrainMaterial,
   getAnimatedGifTextures,
-  getBiomePreviewStyle,
   getBiomeTextures,
   getHeroSpriteFrames,
   getPixelEmoteTexture,
@@ -64,7 +63,12 @@ import {
   setActiveGeoTerrainOrigin,
   subscribeGeoDemLoaded,
 } from '../data/geoTerrain3D';
-import { DEFAULT_WORLD_TOUR_STATE, type WorldCityDef } from '../data/worldTour';
+import {
+  DEFAULT_WORLD_TOUR_STATE,
+  WORLD_CITIES,
+  getDefaultHomeByLanguage,
+  type WorldCityDef,
+} from '../data/worldTour';
 import { WorldMapOverlay, type WorldLaunchPayload } from './WorldMapOverlay';
 import {
   DEFAULT_GAME_PREFS,
@@ -98,9 +102,18 @@ import {
 } from '../data/metaProgression';
 import { LANG_LABELS, tr, type AppLang } from '../data/i18n';
 import { BountiesOverlay, DEFAULT_ANNOUNCEMENTS, HubInfoModal, LabOverlay } from './MetaOverlays';
+import { ShopOverlay } from './ShopOverlay';
 import { WorldMapHud, type LiveMapSnapshot, type WorldMapData } from './WorldMapHud';
-import type { SurvivorsResultPayload } from '../utils/petEngine';
+import type { GachaOutcome, GachaTenOutcome, SurvivorsResultPayload } from '../utils/petEngine';
+import type { AccessoryId, FoodId, GachaBoxId, RoomThemeId } from '../types/pet';
 import { sound } from '../utils/sound';
+import { buildProceduralTown3D, type ProceduralTownInstance, type TownInteractPoint } from '../utils/townBuilder3D';
+import {
+  buildFallbackWeather,
+  fetchLiveWeatherAt,
+  getWeatherCombatBonus,
+  type LiveWeatherInfo,
+} from '../utils/weatherSystem';
 import { PixelIcon, PixelItemImg } from './PixelSprite';
 import { TrimmedSpriteImg } from './TrimmedSpriteImg';
 
@@ -166,6 +179,19 @@ interface Survivors3DArenaProps {
   onUpdateProfile?: (patch: Partial<TrainerProfile>) => void;
   onUpdatePrefs?: (patch: Partial<GamePrefs>) => void;
   onUpdateMeta?: (updater: (prev: MetaProgressState) => MetaProgressState, coinDelta?: number) => void;
+  onBuyFood?: (foodId: FoodId) => void;
+  onBuyAccessory?: (id: AccessoryId) => void;
+  onBuyPokeball?: (roomId: RoomThemeId) => void;
+  onPullGacha?: (boxId: GachaBoxId) => GachaOutcome;
+  onPullGachaTen?: (boxId: GachaBoxId) => GachaTenOutcome;
+  onUpdatePetConfig?: (
+    petId: string,
+    patch: {
+      skin?: PetSkinId;
+      skinCost?: number;
+      unlockSkin?: string;
+    },
+  ) => boolean;
   onBackLayerActiveChange?: (active: boolean) => void;
   onRegisterBackHandler?: (handler: (() => boolean) | null) => void;
   isFullscreen?: boolean;
@@ -509,6 +535,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   onUpdateProfile,
   onUpdatePrefs,
   onUpdateMeta,
+  onBuyFood,
+  onBuyAccessory,
+  onBuyPokeball,
+  onPullGacha,
+  onPullGachaTen,
+  onUpdatePetConfig,
   onBackLayerActiveChange,
   onRegisterBackHandler,
   isFullscreen = false,
@@ -523,7 +555,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const savePetsCountRef = useRef(save.pets.length);
   savePetsCountRef.current = save.pets.length;
   const dockRowRef = useRef<HTMLDivElement | null>(null);
-  const [visibleDockCount, setVisibleDockCount] = useState(7);
+  const [visibleDockCount, setVisibleDockCount] = useState(8);
   const metaBonuses = computeMetaCombatBonuses(meta);
   const metaBonusesRef = useRef(metaBonuses);
   metaBonusesRef.current = metaBonuses;
@@ -541,8 +573,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     onUpdatePrefs?.({ language: next });
   };
 
-  // Hub Meta Overlays (Lab, Bounties, News, Guide, Feedback) with Bidirectional Close Animations!
-  const [hubModal, setHubModal] = useState<'none' | 'lab' | 'bounties' | 'news' | 'guide' | 'feedback' | 'more'>('none');
+  // Hub Meta Overlays (Shop, Lab, Bounties, News, Guide, Feedback) with Bidirectional Close Animations!
+  const [hubModal, setHubModal] = useState<'none' | 'shop' | 'lab' | 'bounties' | 'news' | 'guide' | 'feedback' | 'more'>('none');
+  const [inRunTownShopOpen, setInRunTownShopOpen] = useState(false);
+  const inRunTownShopOpenRef = useRef(false);
+  inRunTownShopOpenRef.current = inRunTownShopOpen;
+  const [liveWeather, setLiveWeather] = useState<LiveWeatherInfo>(() =>
+    buildFallbackWeather(31.23, 121.47, '上海'),
+  );
+  const liveWeatherRef = useRef<LiveWeatherInfo>(liveWeather);
+  liveWeatherRef.current = liveWeather;
   const [mobilePartyOpen, setMobilePartyOpen] = useState(false);
   const [closingHubModal, setClosingHubModal] = useState(false);
   const [newsTickerIdx, setNewsTickerIdx] = useState(0);
@@ -1024,7 +1064,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   });
   const [nearbyInteract, setNearbyInteract] = useState<{
     id: string;
-    kind: 'mushroom' | 'berry_tree' | 'ore_rock' | 'signpost';
+    kind: 'mushroom' | 'berry_tree' | 'ore_rock' | 'signpost' | 'pokemon_center' | 'poke_mart' | 'transit_station';
     label: string;
     hp: number;
     maxHp: number;
@@ -1945,9 +1985,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const recalc = () => {
       const w = el.clientWidth;
       if (w <= 0) return;
-      const TILE_MIN_W = 86;
+      const TILE_MIN_W = 84;
       const GAP = 8;
-      const fit = Math.max(3, Math.min(7, Math.floor((w + GAP) / (TILE_MIN_W + GAP))));
+      const fit = Math.max(3, Math.min(8, Math.floor((w + GAP) / (TILE_MIN_W + GAP))));
       setVisibleDockCount(fit);
     };
     recalc();
@@ -1955,6 +1995,23 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     ro.observe(el);
     return () => ro.disconnect();
   }, [phase]);
+
+  // Live Real-Time Weather Sync (uses GPS Home or current World Tour city via Open-Meteo!)
+  useEffect(() => {
+    let cancelled = false;
+    const tour = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+    const curCity = tour.currentCityId ? WORLD_CITIES.find((c) => c.id === tour.currentCityId) : null;
+    const defHome = getDefaultHomeByLanguage(lang);
+    const lat = curCity ? curCity.lat : (tour.homeCoords?.lat ?? defHome.lat);
+    const lng = curCity ? curCity.lng : (tour.homeCoords?.lng ?? defHome.lng);
+    const label = curCity ? curCity.name : (tour.homeCoords?.label ?? defHome.label);
+    fetchLiveWeatherAt(lat, lng, label).then((info) => {
+      if (!cancelled) setLiveWeather(info);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [meta.worldTour?.currentCityId, meta.worldTour?.homeCoords?.lat, meta.worldTour?.homeCoords?.lng, lang]);
 
   // Mobile Back / Swipe-Back coordination with App.tsx
   const arenaHasCloseableLayer =
@@ -2142,6 +2199,52 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     // Uses Shared Upright Y-Billboard MeshBasicMaterials (authentic 3D top-down foreshortening!) + 2-Tier LOD Streaming + Far Culling!
     const floraGroup = new THREE.Group();
     scene.add(floraGroup);
+
+    // 2B. Procedurally Assembled Cel-Outlined Pixel-Textured 3D Towns (Pokémon Center, Poké Mart, Houses, Bus Stop & Rail Train!)
+    const townsGroup = new THREE.Group();
+    scene.add(townsGroup);
+    const townSpecs: { id: string; x: number; z: number; seed: number; name: string }[] = [
+      { id: 'town_pallet', x: 0, z: -30, seed: 101, name: '真新小镇' },
+      { id: 'town_viridian', x: 86, z: 18, seed: 202, name: '常磐镇' },
+      { id: 'town_cerulean', x: -84, z: -22, seed: 303, name: '华蓝水岸' },
+      { id: 'town_celadon', x: 22, z: 92, seed: 404, name: '玉虹花都' },
+      { id: 'town_vermilion', x: -78, z: 86, seed: 505, name: '枯叶港镇' },
+    ];
+    const proceduralTowns: ProceduralTownInstance[] = townSpecs.map((spec) => {
+      const t = buildProceduralTown3D(
+        spec.id,
+        spec.x,
+        spec.z,
+        spec.seed,
+        (x, z) => getTerrainHeight3D(x, z),
+        spec.name,
+      );
+      townsGroup.add(t.group);
+      return t;
+    });
+    const isInsideAnyTownPlaza = (wx: number, wz: number, pad = 2.5) =>
+      proceduralTowns.some((t) => Math.hypot(wx - t.centerX, wz - t.centerZ) < t.safeRadius + pad);
+
+    // 2C. Live 3D Weather Particle System (Rain Streaks / Falling Snowflakes synced to real GPS/city weather!)
+    const WEATHER_PARTICLE_COUNT = 180;
+    const weatherPositions = new Float32Array(WEATHER_PARTICLE_COUNT * 3);
+    for (let i = 0; i < WEATHER_PARTICLE_COUNT; i++) {
+      weatherPositions[i * 3] = (Math.random() - 0.5) * 44;
+      weatherPositions[i * 3 + 1] = Math.random() * 20;
+      weatherPositions[i * 3 + 2] = (Math.random() - 0.5) * 44;
+    }
+    const weatherGeo = new THREE.BufferGeometry();
+    weatherGeo.setAttribute('position', new THREE.BufferAttribute(weatherPositions, 3));
+    const weatherMat = new THREE.PointsMaterial({
+      color: 0xa5d8ff,
+      size: 0.34,
+      transparent: true,
+      opacity: 0.78,
+      depthWrite: false,
+    });
+    const weatherPoints = new THREE.Points(weatherGeo, weatherMat);
+    weatherPoints.visible = false;
+    scene.add(weatherPoints);
     const sharedFloraMatCache = new Map<THREE.Texture, THREE.MeshBasicMaterial>();
     const getSharedFloraMat = (t: THREE.Texture, alphaTest = 0.15) => {
       let m = sharedFloraMatCache.get(t);
@@ -2291,7 +2394,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
           const wx = gx * TERRACE_CELL;
           const wz = gz * TERRACE_CELL;
-          if (Math.hypot(wx, wz) < 5.5) {
+          if (Math.hypot(wx, wz) < 5.5 || isInsideAnyTownPlaza(wx, wz, 2.5)) {
             if (!existing) placedFloraCells.set(key, { gx, gz, tier: wantTier, objs: [], bbs: [], nodeIds: [] });
             else existing.tier = wantTier;
             continue;
@@ -3474,8 +3577,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         (tac.castMode === 'charged' ? 1.42 : salvoBonus && tac.castMode === 'salvo' ? 1.28 : 1.0) *
         (sim.boostTimer > 0 ? 1.55 : 1.0);
       const syn = getElementalSynergyBonus(SPECIES_CATALOG[f.species].element, metaRef.current);
+      const wMod = getWeatherCombatBonus(liveWeatherRef.current.kind, SPECIES_CATALOG[f.species].element);
       const dmg = Math.round(
-        sim.baseAtk * sim.atkMult * syn.atkMult * meta.powerMult * (0.9 + f.level * 0.25) * modeMult,
+        sim.baseAtk * sim.atkMult * syn.atkMult * wMod.atkMult * meta.powerMult * (0.9 + f.level * 0.25) * modeMult,
       );
       const targets = pickTargetForFollower(f, sim.enemies, tac.targetPriority);
 
@@ -4590,7 +4694,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         lastRenderTs = now;
         fpsSmooth = fpsSmooth * 0.88 + (1000 / renderGap) * 0.12;
 
-        if (!pausedRef.current && !externalPausedRef.current && !endedRef.current) {
+        if (!pausedRef.current && !externalPausedRef.current && !inRunTownShopOpenRef.current && !endedRef.current) {
           sim.elapsed += dt;
           if (sim.invuln > 0) sim.invuln = Math.max(0, sim.invuln - dt);
           if (sim.timers.safeHealCd > 0) sim.timers.safeHealCd = Math.max(0, sim.timers.safeHealCd - dt);
@@ -4731,6 +4835,80 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const bbTiltX = -camPitchNow * BILLBOARD_PITCH_TILT;
           windClock += dt;
           syncFloraBillboards(camYawNow, camPitchNow, windClock);
+          // Animate live 3D Weather Particles (Rain / Storm / Snow) + Procedural Town Trains + Town Colliders!
+          const curWeatherKind = liveWeatherRef.current.kind;
+          const isPrecip = curWeatherKind === 'rain' || curWeatherKind === 'storm' || curWeatherKind === 'snow';
+          weatherPoints.visible = isPrecip;
+          if (isPrecip) {
+            weatherMat.color.setHex(
+              curWeatherKind === 'snow' ? 0xffffff : curWeatherKind === 'storm' ? 0x748ffc : 0xa5d8ff,
+            );
+            weatherMat.size = curWeatherKind === 'snow' ? 0.36 : 0.28;
+            const posAttr = weatherGeo.getAttribute('position') as THREE.BufferAttribute;
+            const fallSpeed = curWeatherKind === 'snow' ? 3.2 : curWeatherKind === 'storm' ? 24 : 18;
+            const driftX = curWeatherKind === 'snow' ? Math.sin(windClock * 1.4) * 1.6 : curWeatherKind === 'storm' ? 4.5 : 1.8;
+            for (let i = 0; i < WEATHER_PARTICLE_COUNT; i++) {
+              let px = posAttr.getX(i) + driftX * dt;
+              let py = posAttr.getY(i) - fallSpeed * dt;
+              let pz = posAttr.getZ(i);
+              if (py < 0.2) {
+                py = 16 + Math.random() * 6;
+                px = (Math.random() - 0.5) * 44;
+                pz = (Math.random() - 0.5) * 44;
+              }
+              posAttr.setXYZ(i, px, py, pz);
+            }
+            posAttr.needsUpdate = true;
+            weatherPoints.position.set(sim.px, sim.py, sim.pz);
+          }
+
+          let closestTownPoint: TownInteractPoint | null = null;
+          let closestTownDist = 999;
+          for (const town of proceduralTowns) {
+            if (town.trainGroup && town.trainBaseX !== undefined) {
+              town.trainGroup.position.x = town.trainBaseX + Math.sin(windClock * 0.28) * 6.5;
+            }
+            if (Math.hypot(sim.px - town.centerX, sim.pz - town.centerZ) < town.safeRadius + 6) {
+              // Gentle AABB collision against town buildings
+              for (const box of town.colliders) {
+                const pad = 0.75;
+                if (
+                  sim.px > box.minX - pad &&
+                  sim.px < box.maxX + pad &&
+                  sim.pz > box.minZ - pad &&
+                  sim.pz < box.maxZ + pad
+                ) {
+                  const dxL = Math.abs(sim.px - (box.minX - pad));
+                  const dxR = Math.abs(box.maxX + pad - sim.px);
+                  const dzT = Math.abs(sim.pz - (box.minZ - pad));
+                  const dzB = Math.abs(box.maxZ + pad - sim.pz);
+                  const m = Math.min(dxL, dxR, dzT, dzB);
+                  if (m === dxL) sim.px = box.minX - pad;
+                  else if (m === dxR) sim.px = box.maxX + pad;
+                  else if (m === dzT) sim.pz = box.minZ - pad;
+                  else sim.pz = box.maxZ + pad;
+                }
+              }
+              // Keep wild enemies politely outside town streets
+              for (const en of sim.enemies) {
+                if (en.hp <= 0 || en.isBoss) continue;
+                const ed = Math.hypot(en.x - town.centerX, en.z - town.centerZ);
+                if (ed < town.safeRadius && ed > 0.1) {
+                  const push = (town.safeRadius + 0.5) / ed;
+                  en.x = town.centerX + (en.x - town.centerX) * push;
+                  en.z = town.centerZ + (en.z - town.centerZ) * push;
+                }
+              }
+              for (const pt of town.interactPoints) {
+                const d = Math.hypot(pt.x - sim.px, pt.z - sim.pz);
+                if (d < pt.radius && d < closestTownDist) {
+                  closestTownDist = d;
+                  closestTownPoint = pt;
+                }
+              }
+            }
+          }
+
           // Tick interactive world nodes (regrow cooldowns & hit-shake timers) + detect closest interactable!
           let closestNode: WorldInteractNode | null = null;
           let closestNodeDist = 4.1;
@@ -4756,7 +4934,36 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               closestNode = node;
             }
           }
-          triggerInteractRef.current = closestNode
+          triggerInteractRef.current = closestTownPoint
+            ? () => {
+                const tp = closestTownPoint!;
+                if (tp.kind === 'pokemon_center') {
+                  sim.hp = sim.maxHp;
+                  sim.healCharges = Math.max(sim.healCharges, 4);
+                  onHealParty();
+                  sound.play('levelup');
+                  spawnPixelParticles(sim.px, sim.py + 1.2, sim.pz, vfxAtlas.starGlint, 16, 3.6, 0.85, 5.2, 6.2);
+                  showBanner(`🏥 「${tp.townName}」宝可梦中心治疗完毕！全队体力已完全恢复并补满伤药！`, 3200);
+                  return;
+                }
+                if (tp.kind === 'poke_mart') {
+                  if (document.pointerLockElement) {
+                    try { document.exitPointerLock(); } catch {}
+                  }
+                  sound.play('confirm');
+                  setInRunTownShopOpen(true);
+                  return;
+                }
+                if (tp.kind === 'transit_station') {
+                  if (document.pointerLockElement) {
+                    try { document.exitPointerLock(); } catch {}
+                  }
+                  sound.play('confirm');
+                  setPhase('world_map');
+                  return;
+                }
+              }
+            : closestNode
             ? () => {
                 const target = closestNode!;
                 if (target.cooldown > 0) return;
@@ -5183,8 +5390,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 if (en.hp > 0 && !f.dashHitIds?.has(en.id) && Math.hypot(en.x - f.x, en.z - f.z) < en.radius + contactR) {
                   f.dashHitIds?.add(en.id);
                   const syn = getElementalSynergyBonus(SPECIES_CATALOG[f.species].element, metaRef.current);
+                  const wMod = getWeatherCombatBonus(liveWeatherRef.current.kind, SPECIES_CATALOG[f.species].element);
                   const slamDmg = Math.round(
-                    sim.baseAtk * sim.atkMult * syn.atkMult * (f.species === 'munchlax' ? 1.55 : 1.15) * (0.9 + f.level * 0.25),
+                    sim.baseAtk * sim.atkMult * syn.atkMult * wMod.atkMult * (f.species === 'munchlax' ? 1.55 : 1.15) * (0.9 + f.level * 0.25),
                   );
                   damageEnemy3D(en, slamDmg, f.species === 'munchlax' ? '#ffd43b' : '#ffa94d', f.id);
                   spawnSpriteBurst(en.x, en.y + 1.0, en.z, vfxAtlas.explosionBurst, f.species === 'munchlax' ? 2.4 : 1.65, 0.26);
@@ -5432,9 +5640,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 f.cds[sIdx] = (f.cds[sIdx] ?? 0.5) - dt;
                 if (f.cds[sIdx] <= 0) {
                   const slotPace = 1 + sIdx * 0.14;
+                  const wModCd = getWeatherCombatBonus(liveWeatherRef.current.kind, SPECIES_CATALOG[f.species].element).cdMult;
                   f.cds[sIdx] = Math.max(
                     0.42,
-                    SURVIVOR_SKILLS[sid].baseCd * cdFactor * slotPace * Math.max(0.6, 1 - f.level * 0.05),
+                    SURVIVOR_SKILLS[sid].baseCd * cdFactor * wModCd * slotPace * Math.max(0.6, 1 - f.level * 0.05),
                   );
                   fireSkill(f, sid, false);
                 }
@@ -6252,8 +6461,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               nearbyKoIdRef.current = null;
               setNearbyKoTarget(null);
             }
-            // Sync nearby interactive foraging / mining / signpost prompt
-            if (closestNode) {
+            // Sync nearby interactive town building OR foraging / mining / signpost prompt
+            if (closestTownPoint) {
+              setNearbyInteract({
+                id: closestTownPoint.id,
+                kind: closestTownPoint.kind,
+                label: `${closestTownPoint.label} · ${closestTownPoint.hint}`,
+                hp: 1,
+                maxHp: 1,
+                icon:
+                  closestTownPoint.kind === 'pokemon_center'
+                    ? '/sprites/items/potion.png'
+                    : closestTownPoint.kind === 'poke_mart'
+                      ? '/sprites/items/amulet-coin.png'
+                      : '/sprites/items/town-map.png',
+              });
+            } else if (closestNode) {
               setNearbyInteract({
                 id: closestNode.id,
                 kind: closestNode.kind,
@@ -7070,8 +7293,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   <button
                     type="button"
                     className="pkb-top-avatar-btn is-add"
-                    onClick={() => onOpenPokemonManager('market', false)}
-                    title="抽取或招募更多宝可梦伙伴"
+                    onClick={() => {
+                      sound.play('confirm');
+                      setHubModal('shop');
+                    }}
+                    title="打开精品商店与精灵盲盒"
                   >
                     <span>+</span>
                   </button>
@@ -7101,6 +7327,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             <div className="pkb-top-right">
               <button
                 type="button"
+                className="pkb-weather-pill"
+                style={{ borderColor: liveWeather.accentColor }}
+                onClick={() => {
+                  sound.play('confirm');
+                  setPhase('world_map');
+                }}
+                title={`${liveWeather.locationLabel ?? '当地'} ${liveWeather.summary}（${liveWeather.source === 'live' ? '实时气象' : '本地推演'}）\n${liveWeather.buffText}\n点击查看世界地图与 GPS 定位`}
+              >
+                <span>{liveWeather.emoji}</span>
+                <strong>{liveWeather.label} {liveWeather.tempC}°C</strong>
+              </button>
+
+              <button
+                type="button"
                 className="pkb-profile-pill is-clickable"
                 onClick={() => onOpenPokemonManager('profile', false)}
                 title="点击在掌机中查看与编辑训练家名片"
@@ -7120,8 +7360,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               <button
                 type="button"
                 className="pkb-coin-standalone"
-                onClick={() => onOpenPokemonManager('market', false)}
-                title="当前持有金币 · 点击前往盲盒商店"
+                onClick={() => {
+                  sound.play('confirm');
+                  setHubModal('shop');
+                }}
+                title="当前持有金币 · 点击打开宝可梦精品商店"
               >
                 <PixelItemImg src="/sprites/items/amulet-coin.png" size={18} />
                 <span>{save.coins}</span>
@@ -7331,6 +7574,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     onClick: () => onOpenPokemonManager('party', false),
                   },
                   {
+                    id: 'bag',
+                    label: tr(lang, 'dockBag'),
+                    icon: '/sprites/items/berry-pouch.png',
+                    title: '训练家背包 · 树果补给与携带道具',
+                    onClick: () => onOpenPokemonManager('bag', false),
+                  },
+                  {
                     id: 'dex',
                     label: tr(lang, 'dockDex'),
                     icon: '/sprites/items/town-map.png',
@@ -7366,10 +7616,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     id: 'shop',
                     label: tr(lang, 'dockShop'),
                     icon: '/sprites/items/amulet-coin.png',
-                    title: '盲盒商店 · 抽卡与补给',
-                    badge: '盲盒',
+                    title: '宝可梦精品商店 · 专属外观 / 盲盒 / 补给',
+                    badge: '精品',
                     badgeClass: 'is-gold',
-                    onClick: () => onOpenPokemonManager('market', false),
+                    onClick: () => {
+                      sound.play('confirm');
+                      setHubModal('shop');
+                    },
                   },
                   {
                     id: 'achieve',
@@ -7556,6 +7809,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                       },
                     },
                     {
+                      id: 'bag',
+                      label: tr(lang, 'dockBag'),
+                      icon: '/sprites/items/berry-pouch.png',
+                      onClick: () => {
+                        setHubModal('none');
+                        onOpenPokemonManager('bag', false);
+                      },
+                    },
+                    {
                       id: 'dex',
                       label: tr(lang, 'dockDex'),
                       icon: '/sprites/items/town-map.png',
@@ -7591,11 +7853,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                       id: 'shop',
                       label: tr(lang, 'dockShop'),
                       icon: '/sprites/items/amulet-coin.png',
-                      badge: '盲盒',
+                      badge: '精品',
                       badgeClass: 'is-gold',
                       onClick: () => {
-                        setHubModal('none');
-                        onOpenPokemonManager('market', false);
+                        sound.play('confirm');
+                        setHubModal('shop');
                       },
                     },
                     {
@@ -7666,7 +7928,25 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             </div>
           )}
 
-          {/* Fullscreen Lab, Bounties & Info Modals */}
+          {/* Fullscreen Shop, Lab, Bounties & Info Modals */}
+          {hubModal === 'shop' && (
+            <ShopOverlay
+              save={save}
+              pet={pet}
+              closing={closingHubModal}
+              onClose={closeHubModal}
+              onBuyFood={(fid) => onBuyFood?.(fid)}
+              onBuyAccessory={(aid) => onBuyAccessory?.(aid)}
+              onBuyPokeball={(rid) => onBuyPokeball?.(rid)}
+              onPullGacha={(bid) =>
+                onPullGacha?.(bid) ?? { ok: false, save, message: '暂不可用' }
+              }
+              onPullGachaTen={(bid) =>
+                onPullGachaTen?.(bid) ?? { ok: false, save, results: [], message: '暂不可用' }
+              }
+              onUpdatePetConfig={onUpdatePetConfig}
+            />
+          )}
           {hubModal === 'lab' && (
             <LabOverlay
               meta={meta}
@@ -7732,62 +8012,31 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               <PixelIcon name="arrow_left" size={13} />
               <span>返回</span>
             </button>
-            <div className="pkb-ms-ribbon">选择地图</div>
+            <div className="pkb-ms-ribbon">冒险准备 · 无限大世界</div>
             <div className="pkb-gen-pill">
-              <PixelItemImg src="/sprites/items/poke-ball.png" size={16} />
-              <span>第 1 世代 · 关都地区</span>
+              <span>{liveWeather.emoji}</span>
+              <span>{liveWeather.label} {liveWeather.tempC}°C</span>
             </div>
           </div>
 
-          {/* 5-Biome Horizontal Map Carousel Strip */}
-          <div className="pkb-map-carousel">
-            {MAP_REGIONS.map((reg) => {
-              const active = reg.id === selectedBiome;
-              return (
-                <button
-                  key={reg.id}
-                  type="button"
-                  className={`pkb-map-tab ${active ? 'is-active' : ''}`}
-                  onClick={() => {
-                    sound.play('cursor');
-                    setSelectedBiome(reg.id);
-                  }}
-                >
-                  <span
-                    className="pkb-map-thumb"
-                    style={{ background: getBiomePreviewStyle(reg.id) }}
-                  />
-                  <div className="pkb-map-tab-meta">
-                    <strong>{reg.name}</strong>
-                    <div className="pkb-type-dots">
-                      {reg.types.slice(0, 3).map((t) => (
-                        <i key={t.label} style={{ backgroundColor: t.color }}>
-                          {t.label}
-                        </i>
-                      ))}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Main 2-Column Split: Left Live 3D Showcase Window + Right Ready Panel */}
+          {/* Main 2-Column Split: Left Live 3D Infinite World Showcase + Right Ready Panel */}
           <div className="pkb-ms-split">
-            {/* LEFT: Transparent Frame Exposing the LIVE 3D Stepped Pixel Valley! */}
+            {/* LEFT: Transparent Frame Exposing the LIVE 3D Seamless Multi-Biome World! */}
             <div className="pkb-ms-showcase">
               <div className="pkb-ms-showcase-top">
                 <div className="pkb-ms-title-card">
-                  <small>地区</small>
-                  <h2>{regionMeta.name}</h2>
+                  <small>无界探索 · 剧情冒险</small>
+                  <h2>关都无限大世界</h2>
                   <div className="pkb-type-row">
-                    {regionMeta.types.map((t) => (
-                      <span key={t.label} className="pkb-type-pill" style={{ backgroundColor: t.color }}>
-                        {t.label}
-                      </span>
-                    ))}
+                    <span className="pkb-type-pill" style={{ backgroundColor: '#2f9e44' }}>森林</span>
+                    <span className="pkb-type-pill" style={{ backgroundColor: '#d97724' }}>沙漠</span>
+                    <span className="pkb-type-pill" style={{ backgroundColor: '#1971c2' }}>海岸</span>
+                    <span className="pkb-type-pill" style={{ backgroundColor: '#15aabf' }}>冰川</span>
+                    <span className="pkb-type-pill" style={{ backgroundColor: '#c92a2a' }}>火山</span>
                   </div>
-                  <p>{regionMeta.desc}</p>
+                  <p>
+                    单一连续的无限随机大世界：向任意方向漫游即可自然跨越五大生态与随机拼装的城镇（出生点北侧即「真新小镇」，可进入宝可梦中心治疗、友好商店购物或乘车巡礼）。当前天气：{liveWeather.summary}（{liveWeather.buffText}）。
+                  </p>
                 </div>
 
                 {/* Compact Vertically Stacked Squad Presets (Avatars Only!) */}
@@ -8122,13 +8371,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 return (
                   <div className="surv-top-status-deck">
                     <div className="top-deck-wing is-left">
-                      <strong>{regionMeta.name}</strong>
+                      <strong>无限大世界</strong>
                       <div className="top-deck-sub">
-                        {regionMeta.types.slice(0, 2).map((t) => (
-                          <i key={t.label} style={{ backgroundColor: t.color }}>
-                            {t.label}
-                          </i>
-                        ))}
+                        <span
+                          className="top-weather-chip"
+                          style={{ backgroundColor: liveWeather.accentColor }}
+                          title={`${liveWeather.summary} · ${liveWeather.buffText}`}
+                        >
+                          {liveWeather.emoji} {liveWeather.label} {liveWeather.tempC}°C
+                        </span>
                         <span className={`top-diff-tag is-${difficultyId}`}>{diffMeta.label}</span>
                       </div>
                     </div>
@@ -8346,6 +8597,30 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 <div className="boss-hp-fill" style={{ width: `${hud.bossHpPct}%` }} />
               </div>
             </div>
+          )}
+
+          {/* In-Run Town Poké Mart Full-Screen Boutique Shop Overlay */}
+          {inRunTownShopOpen && (
+            <ShopOverlay
+              save={save}
+              pet={pet}
+              closing={false}
+              onClose={() => {
+                sound.play('cancel');
+                setInRunTownShopOpen(false);
+                tryRestorePointerLock();
+              }}
+              onBuyFood={(fid) => onBuyFood?.(fid)}
+              onBuyAccessory={(aid) => onBuyAccessory?.(aid)}
+              onBuyPokeball={(rid) => onBuyPokeball?.(rid)}
+              onPullGacha={(bid) =>
+                onPullGacha?.(bid) ?? { ok: false, save, message: '暂不可用' }
+              }
+              onPullGachaTen={(bid) =>
+                onPullGachaTen?.(bid) ?? { ok: false, save, results: [], message: '暂不可用' }
+              }
+              onUpdatePetConfig={onUpdatePetConfig}
+            />
           )}
 
           {/* Optional Live FPS Counter & Kill Combo Streak Badges + Neo-Brutalist Pixel Minimap & Big World Map */}

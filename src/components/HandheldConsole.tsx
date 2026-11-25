@@ -87,9 +87,12 @@ interface HandheldConsoleProps {
   onPullGachaTen: (boxId: GachaBoxId) => GachaTenOutcome;
   onReleasePet: (petId: string) => boolean;
   onReleasePetsBatch?: (petIds: string[]) => { ok: boolean; count: number; coins: number; xp: number; message: string };
+  onReleaseStoredPet?: (petId: string) => boolean;
+  onReleaseStoredPetsBatch?: (petIds: string[]) => { ok: boolean; count: number; coins: number; xp: number; message: string };
   onDepositPet?: (petId: string) => boolean;
   onDepositPetsBatch?: (petIds: string[]) => { ok: boolean; count: number; message: string };
   onWithdrawPet?: (petId: string) => boolean;
+  onWithdrawPetsBatch?: (petIds: string[]) => { ok: boolean; count: number; message: string };
   onSwitchPet: (petId: string) => void;
   onUpdatePetConfig?: (
     petId: string,
@@ -161,9 +164,12 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   onPullGachaTen,
   onReleasePet,
   onReleasePetsBatch,
+  onReleaseStoredPet,
+  onReleaseStoredPetsBatch,
   onDepositPet,
   onDepositPetsBatch,
   onWithdrawPet,
+  onWithdrawPetsBatch,
   onSwitchPet,
   onUpdatePetConfig,
   onUpdateSettings,
@@ -330,9 +336,12 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
       onPullGachaTen={onPullGachaTen}
       onReleasePet={onReleasePet}
       onReleasePetsBatch={onReleasePetsBatch}
+      onReleaseStoredPet={onReleaseStoredPet}
+      onReleaseStoredPetsBatch={onReleaseStoredPetsBatch}
       onDepositPet={onDepositPet}
       onDepositPetsBatch={onDepositPetsBatch}
       onWithdrawPet={onWithdrawPet}
+      onWithdrawPetsBatch={onWithdrawPetsBatch}
       onSwitchPet={onSwitchPet}
       onUpdatePetConfig={onUpdatePetConfig}
       onUpdateSettings={onUpdateSettings}

@@ -307,6 +307,8 @@ export interface PetRecord {
   totalPlays: number;
   totalPats: number;
   totalCleans: number;
+  /** Cumulative bond EXP (0..1000 => Bond Lv.1..Lv.10; 100 per level) */
+  bondExp?: number;
   /** Direct training enhancement level in Pet Detail (+6% ATK/HP per level) */
   enhanceLevel?: number;
   /** Pinned Survivor skills guaranteed in 3D runs (slots scale with Level & IV Rank) */
