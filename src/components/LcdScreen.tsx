@@ -1395,15 +1395,100 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     <div className="settings-card is-span-2">
                       <div className="settings-card-head">
                         <div>
-                          <strong>⚡ 皮卡丘叫声试听与挑选</strong>
-                          <small className="audio-track-hint">觉得原声刺耳？点击「试听」挑一款最顺耳的，抚摸时不再叠加尖锐提示音</small>
+                          <strong>🎧 全图鉴叫声质感（175 只宝可梦全局生效）</strong>
+                          <small className="audio-track-hint">Switch 暖音滤镜自动削弱 2.5–5kHz 刺耳高频并柔化压限，彻底不扎耳</small>
+                        </div>
+                        <div className="inline-icon-row">
+                          {(
+                            [
+                              ['warm', 'Switch 暖音护耳'],
+                              ['cute', '萌系柔和轻鸣'],
+                              ['raw', '原版直出'],
+                            ] as const
+                          ).map(([modeId, lbl]) => (
+                            <button
+                              key={modeId}
+                              type="button"
+                              className={`lcd-subtab ${(prefs.cryToneMode ?? 'warm') === modeId ? 'active' : ''}`}
+                              onClick={() => {
+                                setPref({ cryToneMode: modeId });
+                                sound.setCryToneMode(modeId);
+                                sound.previewCry(getPokemonCryId(pet.species, pet.level), modeId);
+                              }}
+                            >
+                              {lbl}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="settings-row" style={{ marginTop: 6 }}>
+                        <div>
+                          <strong style={{ fontSize: 10.5 }}>皮卡丘 & 伊布 · Let's Go 官方人声配音</strong>
+                          <small className="audio-track-hint">开启后皮卡丘与伊布优先使用官方可爱配音</small>
+                        </div>
+                        <button
+                          type="button"
+                          className={`px-switch ${(prefs.letsGoVoices ?? true) ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const nextVal = !(prefs.letsGoVoices ?? true);
+                            setPref({ letsGoVoices: nextVal });
+                            sound.setLetsGoVoices(nextVal);
+                            sound.previewCry(25);
+                          }}
+                        >
+                          {(prefs.letsGoVoices ?? true) ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div className="pika-cry-picker-grid" style={{ marginTop: 6 }}>
+                        {(
+                          [
+                            [25, '皮卡丘'],
+                            [133, '伊布'],
+                            [1, '妙蛙种子'],
+                            [4, '小火龙'],
+                            [7, '杰尼龟'],
+                          ] as const
+                        ).map(([dexId, spLabel]) => (
+                          <div key={dexId} className="pika-cry-opt">
+                            <div className="pika-cry-info">
+                              <strong>{spLabel}</strong>
+                              <small>对比试听</small>
+                            </div>
+                            <div className="pika-cry-actions">
+                              <button
+                                type="button"
+                                className="lcd-subtab"
+                                onClick={() => sound.previewCry(dexId, 'warm')}
+                              >
+                                ▶ 暖音
+                              </button>
+                              <button
+                                type="button"
+                                className="lcd-subtab"
+                                onClick={() => sound.previewCry(dexId, 'raw')}
+                              >
+                                ▶ 原版
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="settings-card is-span-2">
+                      <div className="settings-card-head">
+                        <div>
+                          <strong>⚡ 皮卡丘专属叫声挑选</strong>
+                          <small className="audio-track-hint">若关闭上方 Let's Go 人声或想换口味，可任选 5 款皮卡丘音色</small>
                         </div>
                       </div>
                       <div className="pika-cry-picker-grid">
                         {(
                           [
-                            ['soft_voice', '柔化暖音版', '降噪减刺耳（推荐）'],
                             ['letsgo', "Let's Go 配音", '官方可爱人声版'],
+                            ['soft_voice', '柔化暖音版', '降噪减刺耳 EQ 版'],
                             ['classic_gba', '经典 GBA 版', '复古掌机柔化电音'],
                             ['pichu_cute', '软萌皮丘版', '轻柔幼年短叫声'],
                             ['original_raw', '原版未处理', '原始高频对照'],
@@ -1428,7 +1513,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                                   type="button"
                                   className={`lcd-subtab ${active ? 'active' : ''}`}
                                   onClick={() => {
-                                    setPref({ pikachuCryVariant: id });
+                                    setPref({ pikachuCryVariant: id, letsGoVoices: id === 'letsgo' ? true : false });
+                                    sound.setLetsGoVoices(id === 'letsgo');
                                     sound.setPikachuCryVariant(id);
                                     sound.previewPikachuCry(id);
                                   }}

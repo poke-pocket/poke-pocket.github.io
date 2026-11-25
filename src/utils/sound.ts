@@ -201,7 +201,11 @@ class RetroSoundEngine {
   private bgmTimer: number | null = null;
   private bgmStep = 0;
   private activeCry: HTMLAudioElement | null = null;
+  private activeCryNode: AudioBufferSourceNode | null = null;
   private cryCache = new Map<string, HTMLAudioElement>();
+  private cryBufferCache = new Map<string, AudioBuffer>();
+  private cryToneMode: 'warm' | 'cute' | 'raw' = 'warm';
+  private letsGoVoices = true;
   private pikachuCryVariant: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw' = 'soft_voice';
 
   constructor() {
@@ -240,6 +244,14 @@ class RetroSoundEngine {
     this.cryVolume = Math.max(0, Math.min(100, Math.round(volume)));
   }
 
+  setCryToneMode(mode: 'warm' | 'cute' | 'raw') {
+    this.cryToneMode = mode;
+  }
+
+  setLetsGoVoices(enabled: boolean) {
+    this.letsGoVoices = enabled;
+  }
+
   setPikachuCryVariant(
     variant: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw',
   ) {
@@ -251,27 +263,223 @@ class RetroSoundEngine {
     variant: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw',
   ) {
     if (typeof window === 'undefined') return;
-    this.playAudioUrl(`/cries/pikachu/${variant}.mp3`, true);
+    const forceRaw = variant === 'original_raw';
+    this.playAudioUrl(`/cries/pikachu/${variant}.mp3`, true, forceRaw ? 'raw' : this.cryToneMode);
   }
 
-  private playAudioUrl(url: string, forcePreview = false) {
-    if (!forcePreview && (this.isSilenceActive() || !this.cryEnabled || this.cryVolume <= 0)) return;
-    if (typeof window === 'undefined') return;
-    try {
-      if (this.activeCry) {
+  /** Audition any species cry with an optional tone mode override (great for A/B comparison in Settings!) */
+  previewCry(dexId: number, modeOverride?: 'warm' | 'cute' | 'raw') {
+    const mode = modeOverride ?? this.cryToneMode;
+    if (mode === 'cute') {
+      this.playCuteChirp(dexId, true);
+      return;
+    }
+    const url = this.resolveCryUrl(dexId);
+    this.playAudioUrl(url, true, mode);
+  }
+
+  private resolveCryUrl(dexId: number): string {
+    if (dexId === 25) {
+      if (this.letsGoVoices && this.pikachuCryVariant === 'soft_voice') {
+        return '/cries/pikachu/letsgo.mp3';
+      }
+      return `/cries/pikachu/${this.pikachuCryVariant}.mp3`;
+    }
+    if (dexId === 133 && this.letsGoVoices) {
+      return '/cries/eevee/letsgo.mp3';
+    }
+    return `/cries/${dexId}.mp3`;
+  }
+
+  private stopActiveCry() {
+    if (this.activeCry) {
+      try {
         this.activeCry.pause();
         this.activeCry.currentTime = 0;
+      } catch {
+        // ignore
       }
+      this.activeCry = null;
+    }
+    if (this.activeCryNode) {
+      try {
+        this.activeCryNode.stop();
+        this.activeCryNode.disconnect();
+      } catch {
+        // ignore
+      }
+      this.activeCryNode = null;
+    }
+  }
+
+  /** Cozy Animal-Crossing / Tamagotchi style velvety melodic chirp (zero harsh synth frequencies!) */
+  private playCuteChirp(dexId: number, forcePreview = false) {
+    if (!forcePreview && (this.isSilenceActive() || !this.cryEnabled || this.cryVolume <= 0)) return;
+    const ctx = this.getCtx(true);
+    if (!ctx) return;
+    this.stopActiveCry();
+    const volScale = forcePreview
+      ? Math.max(0.3, (this.cryVolume / 100) * (this.masterVolume / 100))
+      : (this.cryVolume / 100) * (this.masterVolume / 100);
+    if (volScale <= 0) return;
+
+    // Derive a deterministic pleasant pentatonic 2-note chirp per dexId
+    const scale = [392.0, 440.0, 493.88, 523.25, 587.33, 659.25, 783.99];
+    const baseHz = scale[dexId % scale.length];
+    const secondHz = baseHz * (dexId % 2 === 0 ? 1.25 : 1.189);
+    const now = ctx.currentTime;
+
+    const playSoftNote = (f0: number, f1: number, start: number, dur: number, peak: number) => {
+      const osc = ctx.createOscillator();
+      const sub = ctx.createOscillator();
+      const lpf = ctx.createBiquadFilter();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      sub.type = 'sine';
+      osc.frequency.setValueAtTime(f0, start);
+      osc.frequency.exponentialRampToValueAtTime(f1, start + dur);
+      sub.frequency.setValueAtTime(f0 * 0.5, start);
+      sub.frequency.exponentialRampToValueAtTime(f1 * 0.5, start + dur);
+
+      lpf.type = 'lowpass';
+      lpf.frequency.setValueAtTime(1900, start);
+
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.linearRampToValueAtTime(peak * volScale, start + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+
+      osc.connect(lpf);
+      sub.connect(lpf);
+      lpf.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      sub.start(start);
+      osc.stop(start + dur + 0.02);
+      sub.stop(start + dur + 0.02);
+    };
+
+    playSoftNote(baseHz, baseHz * 1.12, now, 0.11, 0.12);
+    playSoftNote(secondHz, secondHz * 1.06, now + 0.1, 0.16, 0.13);
+  }
+
+  /**
+   * Switch-Console Style Warm Cry Mastering Chain via Web Audio API:
+   * - Highpass @ 120Hz (removes muddy low-end thump)
+   * - Peaking Dip @ 2850Hz (-7.5dB, Q=1.0) — removes ear-piercing 2.5–4kHz Game Boy/DS synth screech!
+   * - Highshelf @ 4000Hz (-8.5dB) + Lowpass @ 5000Hz — warm velvety console speaker roll-off
+   * - DynamicsCompressor — smooths wild volume spikes across all 175 Pokémon
+   * - 12ms attack / 30ms release soft envelope — zero clicks or pops!
+   */
+  private playAudioUrl(
+    url: string,
+    forcePreview = false,
+    toneOverride?: 'warm' | 'cute' | 'raw',
+  ) {
+    if (!forcePreview && (this.isSilenceActive() || !this.cryEnabled || this.cryVolume <= 0)) return;
+    if (typeof window === 'undefined') return;
+    const tone = toneOverride ?? this.cryToneMode;
+    const volBase = forcePreview
+      ? Math.max(0.28, (this.cryVolume / 100) * (this.masterVolume / 100))
+      : (this.cryVolume / 100) * (this.masterVolume / 100);
+    if (volBase <= 0) return;
+
+    const ctx = this.getCtx(true);
+    if (ctx && tone === 'warm') {
+      this.stopActiveCry();
+      const playDecoded = (buf: AudioBuffer) => {
+        try {
+          if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
+          this.stopActiveCry();
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+
+          const hpf = ctx.createBiquadFilter();
+          hpf.type = 'highpass';
+          hpf.frequency.value = 120;
+
+          const deHarsh = ctx.createBiquadFilter();
+          deHarsh.type = 'peaking';
+          deHarsh.frequency.value = 2850;
+          deHarsh.Q.value = 1.0;
+          deHarsh.gain.value = -7.5;
+
+          const warmShelf = ctx.createBiquadFilter();
+          warmShelf.type = 'highshelf';
+          warmShelf.frequency.value = 4000;
+          warmShelf.gain.value = -8.5;
+
+          const lpf = ctx.createBiquadFilter();
+          lpf.type = 'lowpass';
+          lpf.frequency.value = 5000;
+          lpf.Q.value = 0.65;
+
+          const comp = ctx.createDynamicsCompressor();
+          comp.threshold.value = -18;
+          comp.knee.value = 12;
+          comp.ratio.value = 4;
+          comp.attack.value = 0.005;
+          comp.release.value = 0.12;
+
+          const gain = ctx.createGain();
+          const targetGain = Math.max(0.03, Math.min(0.95, volBase * 0.72));
+          const now = ctx.currentTime;
+          const dur = Math.max(0.08, buf.duration);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.linearRampToValueAtTime(targetGain, now + 0.012);
+          if (dur > 0.06) {
+            gain.gain.setValueAtTime(targetGain, now + dur - 0.035);
+            gain.gain.linearRampToValueAtTime(0.0001, now + dur);
+          }
+
+          src.connect(hpf);
+          hpf.connect(deHarsh);
+          deHarsh.connect(warmShelf);
+          warmShelf.connect(lpf);
+          lpf.connect(comp);
+          comp.connect(gain);
+          gain.connect(ctx.destination);
+
+          this.activeCryNode = src;
+          src.onended = () => {
+            if (this.activeCryNode === src) this.activeCryNode = null;
+          };
+          src.start(now);
+        } catch {
+          this.playHtmlAudioFallback(url, volBase * 0.65);
+        }
+      };
+
+      const cached = this.cryBufferCache.get(url);
+      if (cached) {
+        playDecoded(cached);
+        return;
+      }
+      fetch(url)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error('cry fetch failed'))))
+        .then((ab) => ctx.decodeAudioData(ab))
+        .then((decoded) => {
+          this.cryBufferCache.set(url, decoded);
+          playDecoded(decoded);
+        })
+        .catch(() => {
+          this.playHtmlAudioFallback(url, volBase * 0.65);
+        });
+      return;
+    }
+
+    this.playHtmlAudioFallback(url, volBase * 0.8);
+  }
+
+  private playHtmlAudioFallback(url: string, volume: number) {
+    try {
+      this.stopActiveCry();
       let audio = this.cryCache.get(url);
       if (!audio) {
         audio = new Audio(url);
         audio.preload = 'auto';
         this.cryCache.set(url, audio);
       }
-      const volBase = forcePreview
-        ? Math.max(0.25, (this.cryVolume / 100) * (this.masterVolume / 100) * 0.85)
-        : (this.cryVolume / 100) * (this.masterVolume / 100) * 0.85;
-      audio.volume = Math.max(0.03, Math.min(1, volBase));
+      audio.volume = Math.max(0.03, Math.min(1, volume));
       audio.currentTime = 0;
       this.activeCry = audio;
       void audio.play().catch(() => {});
@@ -430,10 +638,18 @@ class RetroSoundEngine {
     }
   }
 
-  /** Play authentic official Pokémon cry (/cries/{dexId}.mp3) respecting independent cry toggle, volume & master volume */
+  /** Play authentic official Pokémon cry respecting Switch warm-EQ filter, cute chirp mode, or raw mode */
   playCry(dexId: number) {
-    const url = dexId === 25 ? `/cries/pikachu/${this.pikachuCryVariant}.mp3` : `/cries/${dexId}.mp3`;
-    this.playAudioUrl(url, false);
+    if (this.cryToneMode === 'cute') {
+      // Even in cute chirp mode, Pikachu & Eevee can keep their adorable Let's Go voices if enabled!
+      if (this.letsGoVoices && (dexId === 25 || dexId === 133)) {
+        this.playAudioUrl(this.resolveCryUrl(dexId), false, 'warm');
+        return;
+      }
+      this.playCuteChirp(dexId, false);
+      return;
+    }
+    this.playAudioUrl(this.resolveCryUrl(dexId), false, this.cryToneMode);
   }
 
   play(kind: SfxKind) {

@@ -357,6 +357,8 @@ export interface GamePrefs {
   showDamageNumbers: boolean;
   showComboCounter: boolean;
   // Audio
+  cryToneMode?: 'warm' | 'cute' | 'raw';
+  letsGoVoices?: boolean;
   pikachuCryVariant?: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw';
   // Graphics & Performance
   graphicsQuality: GraphicsQualityMode;
@@ -376,6 +378,8 @@ export const DEFAULT_GAME_PREFS: GamePrefs = {
   language: 'zh',
   masterVolume: 80,
   muteOnBlur: true,
+  cryToneMode: 'warm',
+  letsGoVoices: true,
   pikachuCryVariant: 'soft_voice',
   hudScale: 100,
   hudOpacity: 100,

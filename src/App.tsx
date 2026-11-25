@@ -148,6 +148,8 @@ export function App() {
     sound.setBgm(save.bgmEnabled, save.bgmVolume);
     sound.setMuted(save.muted);
     sound.setCry(save.cryEnabled ?? true, save.cryVolume ?? 80);
+    sound.setCryToneMode(save.prefs?.cryToneMode ?? 'warm');
+    sound.setLetsGoVoices(save.prefs?.letsGoVoices ?? true);
     sound.setPikachuCryVariant(save.prefs?.pikachuCryVariant ?? 'soft_voice');
     sound.setCombatSfx(save.combatSfxEnabled ?? true);
     persistSave(save);
@@ -790,6 +792,8 @@ export function App() {
       sound.setBgm(next.bgmEnabled, next.bgmVolume);
       sound.setMuted(next.muted);
       sound.setCry(next.cryEnabled ?? true, next.cryVolume ?? 80);
+      sound.setCryToneMode(nextPrefs?.cryToneMode ?? 'warm');
+      sound.setLetsGoVoices(nextPrefs?.letsGoVoices ?? true);
       sound.setPikachuCryVariant(nextPrefs?.pikachuCryVariant ?? 'soft_voice');
       sound.setCombatSfx(next.combatSfxEnabled ?? true);
       return next;
