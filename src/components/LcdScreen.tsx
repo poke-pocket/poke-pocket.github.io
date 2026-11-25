@@ -324,6 +324,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [feedbackSent, setFeedbackSent] = useState(false);
   const [selectedNewsId, setSelectedNewsId] = useState<string | null>(null);
   const [newsPhotoIdx, setNewsPhotoIdx] = useState(0);
+  const [achCategory, setAchCategory] = useState<'all' | 'care' | 'dex' | 'battle' | 'collect' | 'legend'>('all');
   const [captureWhoStage, setCaptureWhoStage] = useState(false);
 
   useEffect(() => {
@@ -5044,49 +5045,92 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
         )}
 
         {/* ACHIEVEMENTS */}
-        {mode === 'achievements' && (
-          <div className="lcd-submenu">
-            <div className="lcd-submenu-head">
-              <span className="inline-icon-row">
-                <PixelItemImg src="/sprites/items/kings-rock.png" size={15} />
-                <span>成就徽章 ({save.unlockedAchievements.length}/{ACHIEVEMENTS.length})</span>
-              </span>
-              <button
-                type="button"
-                className="lcd-mini-close"
-                onClick={() => {
-                  if (openedEntryMode === 'achievements' && onCloseHandheldTo3D) {
-                    onCloseHandheldTo3D();
-                  } else {
-                    onNavigateMode('menu');
-                  }
-                }}
-              >
-                {openedEntryMode === 'achievements' && onCloseHandheldTo3D ? '关闭' : '返回'}
-              </button>
-            </div>
-            <div className="lcd-grid-2 compact-grid scroll-y">
-              {ACHIEVEMENTS.map((ach) => {
-                const done = save.unlockedAchievements.includes(ach.id);
-                return (
-                  <div
-                    key={ach.id}
-                    className={`lcd-room-tile compact ${done ? 'is-selected' : ''}`}
-                  >
-                    <div className="inline-icon-row">
-                      <PixelIcon
-                        name={done ? resolveBadgeIconName(ach.badge) : 'lock'}
-                        size={14}
-                      />
-                      <strong>{ach.title}</strong>
+        {mode === 'achievements' && (() => {
+          const ACH_TABS: { id: 'all' | 'care' | 'dex' | 'battle' | 'collect' | 'legend'; label: string }[] = [
+            { id: 'all', label: '全部' },
+            { id: 'care', label: '养成' },
+            { id: 'dex', label: '图鉴' },
+            { id: 'battle', label: '战斗' },
+            { id: 'collect', label: '收藏' },
+            { id: 'legend', label: '传说' },
+          ];
+          const filteredAchs = ACHIEVEMENTS.filter(
+            (a) => achCategory === 'all' || a.category === achCategory,
+          ).sort((a, b) => {
+            const ad = save.unlockedAchievements.includes(a.id) ? 1 : 0;
+            const bd = save.unlockedAchievements.includes(b.id) ? 1 : 0;
+            return bd - ad;
+          });
+          return (
+            <div className="lcd-submenu">
+              <div className="lcd-submenu-head">
+                <span className="inline-icon-row">
+                  <PixelItemImg src="/sprites/items/kings-rock.png" size={15} />
+                  <span>成就徽章 ({save.unlockedAchievements.length}/{ACHIEVEMENTS.length})</span>
+                </span>
+                <button
+                  type="button"
+                  className="lcd-mini-close"
+                  onClick={() => {
+                    if (openedEntryMode === 'achievements' && onCloseHandheldTo3D) {
+                      onCloseHandheldTo3D();
+                    } else {
+                      onNavigateMode('menu');
+                    }
+                  }}
+                >
+                  {openedEntryMode === 'achievements' && onCloseHandheldTo3D ? '关闭' : '返回'}
+                </button>
+              </div>
+              <div className="ach-cat-bar">
+                {ACH_TABS.map((tab) => {
+                  const tabAll = tab.id === 'all'
+                    ? ACHIEVEMENTS
+                    : ACHIEVEMENTS.filter((a) => a.category === tab.id);
+                  const tabDone = tabAll.filter((a) => save.unlockedAchievements.includes(a.id)).length;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={`party-mini-pill ${achCategory === tab.id ? 'active' : ''}`}
+                      onClick={() => {
+                        sound.play('cursor');
+                        setAchCategory(tab.id);
+                      }}
+                    >
+                      {tab.label} {tabDone}/{tabAll.length}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="lcd-grid-2 compact-grid scroll-y">
+                {filteredAchs.map((ach) => {
+                  const done = save.unlockedAchievements.includes(ach.id);
+                  return (
+                    <div
+                      key={ach.id}
+                      className={`lcd-room-tile compact ach-badge-card ${done ? 'is-selected' : ''}`}
+                    >
+                      <div className="ach-card-top">
+                        <div className="inline-icon-row">
+                          <PixelIcon
+                            name={done ? resolveBadgeIconName(ach.badge) : 'lock'}
+                            size={14}
+                          />
+                          <strong>{ach.title}</strong>
+                        </div>
+                        <span className={`ach-reward-pill ${done ? 'is-done' : ''}`}>
+                          {done ? '✓ 已达成' : `+${ach.rewardCoins}币`}
+                        </span>
+                      </div>
+                      <small className="ach-card-desc">{ach.description}</small>
                     </div>
-                    <small>{done ? '✓ 已解锁' : `奖励 +${ach.rewardCoins} 金币`}</small>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* DIARY & RESET */}
         {mode === 'diary' && (

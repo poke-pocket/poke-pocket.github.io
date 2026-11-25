@@ -15875,3 +15875,58 @@ body,
     overflow-y: auto;
   }
 }
+
+/* Achievements Category Filter Bar & Rich Cards */
+.ach-cat-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 0 4px;
+  flex-shrink: 0;
+}
+
+.ach-badge-card {
+  align-items: stretch !important;
+  text-align: left !important;
+  gap: 4px !important;
+  padding: 6px 7px !important;
+}
+
+.ach-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.ach-card-top .inline-icon-row {
+  min-width: 0;
+}
+
+.ach-card-top strong {
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ach-reward-pill {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  font-family: var(--font-pixel);
+  font-size: 8.5px;
+  color: #161420;
+  background: #fff3bf;
+  border: 1.5px solid #161420;
+}
+
+.ach-reward-pill.is-done {
+  color: #fffdf5;
+  background: #2f9e44;
+}
+
+.ach-card-desc {
+  font-size: 9.5px !important;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}

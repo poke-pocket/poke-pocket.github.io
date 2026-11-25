@@ -43,6 +43,7 @@ import {
   pullGachaTen,
   recordBattleOutcome,
   recordMiniGameResult,
+  syncAchievements,
   recordSurvivorsOutcome,
   releasePet,
   releasePetsBatch,
@@ -384,11 +385,11 @@ export function App() {
       setSave((prev) => {
         const curMeta = ensureFreshMetaProgress(prev.meta);
         const nextMeta = updater(curMeta);
-        return {
+        return syncAchievements({
           ...prev,
           coins: Math.max(0, prev.coins + coinDelta),
           meta: nextMeta,
-        };
+        });
       });
     },
     [],
