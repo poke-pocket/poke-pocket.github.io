@@ -1,4 +1,5 @@
 import { WORLD_CITIES, calcGeoDistanceKm, type WorldCityDef } from './worldTour';
+import { getShanghaiRiverSignedDist } from '../utils/townStreetGen';
 
 /**
  * Dual-Resolution Real-Earth 3D Geographic Terrain Engine (NASA SRTM / AWS Mapzen Terrarium DEM)
@@ -258,18 +259,22 @@ export function sampleGeoTerrainHeight3D(
   }
 
   // Deterministic Urban Core Elevation (identical at t=0ms AND after NASA DEM loads -> ZERO road/character height desync!):
-  // - Central Civic Plaza (r <= 44m): exact flat 1.65m (zero road/plaza Z-fighting!)
-  // - Downtown Street Grid (44m < r <= 184m): smooth gentle hillside around 1.65m
-  // - Outer Suburb Blend (184m < r < 224m): smoothly blends into real NASA/SRTM coastlines, bays & hills!
+  // Carves the real S-curving Huangpu River & Suzhou Creek water channel cleanly through downtown Shanghai!
   if (!preferMacro) {
     const cityDist = Math.hypot(wx, wz);
-    if (cityDist <= 44) {
-      return 1.65;
-    }
     if (cityDist < 224) {
-      const gentleCityY = 1.65 + Math.sin(wx * 0.007) * 0.36 + Math.cos(wz * 0.007) * 0.36;
-      const plazaBlend = Math.max(0, 1 - (cityDist - 44) / 20);
-      const cityTargetY = gentleCityY * (1 - plazaBlend) + 1.65 * plazaBlend;
+      // Smooth river channel carving for Huangpu River & Suzhou Creek!
+      const rivSigned = getShanghaiRiverSignedDist(wx, wz);
+      const riverElev = -1.65;
+      const dryCityY = 1.65;
+      let cityTargetY = dryCityY;
+      if (rivSigned < 0) {
+        cityTargetY = riverElev;
+      } else if (rivSigned < 7.5) {
+        const bankT = rivSigned / 7.5;
+        const smoothBank = bankT * bankT * (3 - 2 * bankT);
+        cityTargetY = riverElev * (1 - smoothBank) + dryCityY * smoothBank;
+      }
       if (cityDist <= 184) {
         return cityTargetY;
       }
@@ -436,6 +441,117 @@ export const REAL_WORLD_CORRIDORS: RealWorldCorridor[] = [
       [31.23, 121.47], // 上海
       [28.70, 124.90],
       [26.21, 127.68], // 冲绳
+    ],
+  },
+];
+
+export interface RealWorldRiver {
+  id: string;
+  name: string;
+  widthKm: number;
+  points: [number, number][]; // [lat, lng] upstream -> mouth
+}
+
+/** Major Real-World East Asia River Systems rendered on the topographic map (underneath highways & rail bridges!) */
+export const REAL_WORLD_RIVERS: RealWorldRiver[] = [
+  {
+    id: 'yangtze',
+    name: '长江',
+    widthKm: 7.5,
+    points: [
+      [28.75, 104.63], // 宜宾
+      [29.56, 106.55], // 重庆
+      [30.82, 108.40], // 万州
+      [30.69, 111.29], // 宜昌
+      [29.42, 113.12], // 岳阳
+      [30.59, 114.31], // 武汉
+      [29.71, 115.99], // 九江
+      [30.53, 117.05], // 安庆
+      [31.33, 118.38], // 芜湖
+      [32.06, 118.80], // 南京
+      [32.20, 119.45], // 镇江
+      [31.98, 120.89], // 南通
+      [31.48, 121.90], // 长江入海口
+    ],
+  },
+  {
+    id: 'yellow_river',
+    name: '黄河',
+    widthKm: 6.0,
+    points: [
+      [36.06, 103.83], // 兰州
+      [38.48, 106.23], // 银川
+      [40.65, 109.84], // 包头
+      [39.90, 111.15], // 托克托
+      [34.62, 110.28], // 潼关
+      [34.91, 113.65], // 郑州
+      [36.68, 117.00], // 济南
+      [37.75, 119.15], // 渤海入海口
+    ],
+  },
+  {
+    id: 'pearl_river',
+    name: '珠江',
+    widthKm: 5.5,
+    points: [
+      [23.48, 111.28], // 梧州
+      [23.05, 112.46], // 肇庆
+      [23.12, 113.26], // 广州
+      [22.78, 113.62], // 虎门
+      [22.42, 113.78], // 珠江口
+    ],
+  },
+  {
+    id: 'qiantang',
+    name: '钱塘江',
+    widthKm: 4.5,
+    points: [
+      [29.10, 119.15], // 建德
+      [29.80, 119.95], // 富阳
+      [30.20, 120.20], // 杭州
+      [30.35, 120.80], // 杭州湾口
+    ],
+  },
+  {
+    id: 'huangpu_macro',
+    name: '黄浦江',
+    widthKm: 2.2,
+    points: [
+      [30.98, 121.02], // 淀山湖/太湖水系
+      [31.02, 121.38], // 闵行弯
+      [31.23, 121.49], // 陆家嘴/外滩
+      [31.38, 121.52], // 吴淞口入长江
+    ],
+  },
+  {
+    id: 'songhua',
+    name: '松花江',
+    widthKm: 5.0,
+    points: [
+      [43.84, 126.55], // 吉林
+      [45.40, 124.82], // 松原
+      [45.80, 126.53], // 哈尔滨
+      [46.82, 130.36], // 佳木斯
+    ],
+  },
+  {
+    id: 'tone_river',
+    name: '利根川',
+    widthKm: 3.2,
+    points: [
+      [36.40, 139.06], // 前桥
+      [36.12, 139.72], // 关东平原
+      [35.74, 140.85], // 铫子入海口
+    ],
+  },
+  {
+    id: 'yodo_river',
+    name: '淀川',
+    widthKm: 2.8,
+    points: [
+      [35.15, 135.95], // 琵琶湖
+      [34.95, 135.75], // 京都南
+      [34.69, 135.42], // 大阪湾
     ],
   },
 ];

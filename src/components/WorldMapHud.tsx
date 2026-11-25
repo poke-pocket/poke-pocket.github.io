@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   GEO_UNITS_PER_KM,
   REAL_WORLD_CORRIDORS,
+  REAL_WORLD_RIVERS,
   geoToWorld,
   getActiveGeoTerrainOrigin,
   getProjectedGeoCities,
@@ -184,9 +185,9 @@ function paintRealWorldMapTiles(
   const brFrac = latLngToTileFracMap(brGeo.lat, brGeo.lng, z);
 
   const txMin = Math.floor(Math.min(tlFrac.fx, brFrac.fx));
-  const txMax = Math.floor(Math.max(tlFrac.fx, brFrac.fx));
+  const txMax = Math.ceil(Math.max(tlFrac.fx, brFrac.fx));
   const tyMin = Math.max(0, Math.floor(Math.min(tlFrac.fy, brFrac.fy)));
-  const tyMax = Math.min(n - 1, Math.floor(Math.max(tlFrac.fy, brFrac.fy)));
+  const tyMax = Math.min(n - 1, Math.ceil(Math.max(tlFrac.fy, brFrac.fy)));
 
   // Safety cap so extreme pan never floods tile requests
   if ((txMax - txMin + 1) * (tyMax - tyMin + 1) > 42) return true;
@@ -276,6 +277,7 @@ function paintRoadsAndTownsOnMap(
   toScreen: (wx: number, wz: number) => { sx: number; sy: number },
   unitsPerPx: number,
   detailed: boolean,
+  skipPixelRoadOverlay = false,
 ) {
   const activeGeo = getActiveGeoTerrainOrigin();
   const invScale = 1 / Math.max(0.1, unitsPerPx);
@@ -285,21 +287,139 @@ function paintRoadsAndTownsOnMap(
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  // ==================== REAL-EARTH GEO MODE: REAL WORLD MAP TILES ALREADY RENDER REAL STREETS, RIVERS & HIGHWAYS! ====================
+  // ==================== REAL-EARTH GEO MODE: PIXEL-ART REAL CHINA/JAPAN CORRIDORS + ASYMMETRIC DOWNTOWN STREETS! ====================
   if (activeGeo) {
-    // Only overlay subtle trans-ocean routes when zoomed far out; never stamp fake cartoon roads over real Shanghai streets!
-    if (detailed && unitsPerPx > 3.5) {
-      for (const cor of REAL_WORLD_CORRIDORS) {
-        if (cor.kind !== 'ferry') continue;
-        const pts: { sx: number; sy: number }[] = [];
-        for (const [lat, lng] of cor.points) {
-          const wp = geoToWorld(lat, lng, activeGeo);
-          if (wp) pts.push(toScreen(wp.x, wp.z));
+    if (skipPixelRoadOverlay) {
+      // Live ArcGIS real street layer is active: only draw subtle ocean routes when zoomed far out
+      if (detailed && unitsPerPx > 3.5) {
+        for (const cor of REAL_WORLD_CORRIDORS) {
+          if (cor.kind !== 'ferry') continue;
+          const pts: { sx: number; sy: number }[] = [];
+          for (const [lat, lng] of cor.points) {
+            const wp = geoToWorld(lat, lng, activeGeo);
+            if (wp) pts.push(toScreen(wp.x, wp.z));
+          }
+          if (pts.length < 2) continue;
+          ctx.strokeStyle = 'rgba(25, 113, 194, 0.72)';
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          ctx.moveTo(pts[0].sx, pts[0].sy);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+          ctx.stroke();
+          ctx.setLineDash([]);
         }
-        if (pts.length < 2) continue;
-        ctx.strokeStyle = 'rgba(25, 113, 194, 0.72)';
-        ctx.lineWidth = 1.6;
+      }
+      ctx.restore();
+      return;
+    }
+
+    // 0. Real-World East Asia River Systems (长江 / 黄河 / 珠江 / 钱塘江 / 黄浦江 / 松花江 / 利根川 / 淀川) underneath highways & bridges!
+    for (const riv of REAL_WORLD_RIVERS) {
+      const pts: { sx: number; sy: number }[] = [];
+      for (const [lat, lng] of riv.points) {
+        const wp = geoToWorld(lat, lng, activeGeo);
+        if (wp) pts.push(toScreen(wp.x, wp.z));
+      }
+      if (pts.length < 2) continue;
+      const rw = Math.max(detailed ? 2.4 : 1.4, Math.min(12, riv.widthKm * GEO_UNITS_PER_KM * 0.14 * invScale));
+      ctx.strokeStyle = '#1b4965';
+      ctx.lineWidth = rw + (detailed ? 1.8 : 0.8);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].sx, pts[0].sy);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#339af0';
+      ctx.lineWidth = rw;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].sx, pts[0].sy);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+      ctx.stroke();
+
+      if (detailed && rw >= 3.2) {
+        ctx.strokeStyle = 'rgba(165, 216, 255, 0.72)';
+        ctx.lineWidth = Math.max(1, rw * 0.28);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+      }
+
+      if (detailed && unitsPerPx > 2.2) {
+        const mid = pts[Math.floor(pts.length / 2)];
+        ctx.font = 'bold 9px monospace';
+        ctx.fillStyle = '#0b3d66';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(riv.name, mid.sx + 1, mid.sy + 1);
+        ctx.fillStyle = '#d0ebff';
+        ctx.fillText(riv.name, mid.sx, mid.sy);
+      }
+    }
+
+    // 1. Real-Geography Curved Inter-City Highways, High-Speed Rail / Shinkansen & Ocean Routes (matching GBA pixel-art map palette!)
+    for (const cor of REAL_WORLD_CORRIDORS) {
+      const pts: { sx: number; sy: number }[] = [];
+      for (const [lat, lng] of cor.points) {
+        const wp = geoToWorld(lat, lng, activeGeo);
+        if (wp) pts.push(toScreen(wp.x, wp.z));
+      }
+      if (pts.length < 2) continue;
+
+      if (cor.kind === 'ferry') {
+        ctx.strokeStyle = 'rgba(186, 230, 253, 0.85)';
+        ctx.lineWidth = detailed ? 1.6 : 1.0;
         ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        continue;
+      }
+
+      if (cor.kind === 'highway') {
+        const w = detailed ? Math.max(2.6, Math.min(7, 18 * invScale)) : 1.8;
+        ctx.strokeStyle = '#3b4252';
+        ctx.lineWidth = w + 1.8;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+
+        if (detailed && unitsPerPx > 1.8) {
+          const mid = pts[Math.floor(pts.length / 2)];
+          ctx.font = 'bold 8px monospace';
+          const tw = ctx.measureText(cor.label).width + 6;
+          ctx.fillStyle = '#2b8a3e';
+          ctx.fillRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 0.9;
+          ctx.strokeRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(cor.label, mid.sx, mid.sy + 0.5);
+        }
+      } else if (cor.kind === 'rail') {
+        ctx.strokeStyle = '#1e2430';
+        ctx.lineWidth = detailed ? 2.2 : 1.4;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#f8f9fa';
+        ctx.lineWidth = detailed ? 1.1 : 0.7;
+        ctx.setLineDash([4, 4]);
         ctx.beginPath();
         ctx.moveTo(pts[0].sx, pts[0].sy);
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
@@ -307,6 +427,239 @@ function paintRoadsAndTownsOnMap(
         ctx.setLineDash([]);
       }
     }
+
+    // 2. Active Real-Earth City's GBA Pixel-Art Shanghai Masterplan (Warm Urban Parchment + S-Curving Huangpu River + Suzhou Creek + Parks + Organic Roads + Bridges + Colored Metro + Terracotta/Skyscraper Blocks!)
+    if (unitsPerPx < 4.5) {
+      const cityId = activeGeo.startCityId ?? 'shanghai';
+      const activeAnchor = {
+        id: `geo_city_${cityId}`,
+        name: activeGeo.startCityName,
+        x: 0,
+        z: 0,
+        seed: 101,
+        plazaRadius: 190,
+        plateauY: 1.65,
+        landmarkCityId: cityId,
+      };
+      const layout = generateTownLayout(activeAnchor);
+
+      // 2A. Warm Sunlit Urban Parchment Footprint (matches retro GBA pixel city map palette!)
+      const cOrigin = toScreen(0, 0);
+      const urbanR = Math.max(12, 182 * invScale);
+      ctx.fillStyle = '#efe2be';
+      ctx.beginPath();
+      ctx.ellipse(cOrigin.sx, cOrigin.sy, urbanR * 1.04, urbanR * 0.96, -0.1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 2B. Lush Green Urban Parks (人民广场公园 & 世纪公园 with blue ponds & pixel tree dots!)
+      for (const pk of layout.parks) {
+        const pp = toScreen(pk.x, pk.z);
+        const pw = pk.w * invScale;
+        const pd = pk.d * invScale;
+        ctx.fillStyle = '#67b84e';
+        ctx.strokeStyle = '#3f7d2e';
+        ctx.lineWidth = detailed ? 1.4 : 0.8;
+        ctx.fillRect(pp.sx - pw * 0.5, pp.sy - pd * 0.5, pw, pd);
+        ctx.strokeRect(pp.sx - pw * 0.5, pp.sy - pd * 0.5, pw, pd);
+
+        if (pk.hasPond && pw >= 10) {
+          ctx.fillStyle = '#2f80ed';
+          ctx.beginPath();
+          ctx.ellipse(pp.sx, pp.sy, pw * 0.22, pd * 0.2, 0.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#90e0ef';
+          ctx.fillRect(pp.sx - pw * 0.08, pp.sy - pd * 0.05, Math.max(2, pw * 0.07), 1.5);
+        }
+        // Tiny pixel tree clusters inside park
+        if (detailed && pw >= 16) {
+          ctx.fillStyle = '#2b7a2b';
+          for (const [ox, oy] of [[-0.32, -0.3], [0.32, -0.28], [-0.3, 0.3], [0.3, 0.3]]) {
+            ctx.beginPath();
+            ctx.arc(pp.sx + ox * pw, pp.sy + oy * pd, Math.max(2, pw * 0.07), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // 2C. S-Curving Blue Huangpu River (黄浦江) & Suzhou Creek (苏州河) with Crisp Riverbanks & White Wave Marks!
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const riv of layout.rivers) {
+        const pts = riv.points.map(([rx, rz]) => toScreen(rx, rz));
+        const rw = Math.max(detailed ? 4 : 2.2, riv.width * invScale);
+        // Green riverfront promenade strip
+        ctx.strokeStyle = '#6ec056';
+        ctx.lineWidth = rw + (detailed ? 5.5 : 2.5);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+
+        // Dark riverbank outline
+        ctx.strokeStyle = '#1b4965';
+        ctx.lineWidth = rw + (detailed ? 2.2 : 1.0);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+
+        // Vibrant GBA Blue River Water
+        ctx.strokeStyle = '#2f80ed';
+        ctx.lineWidth = rw;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+
+        // White pixel wave ripples along the Huangpu River!
+        if (detailed && rw >= 8) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+          ctx.lineWidth = 1.2;
+          for (let i = 1; i < pts.length - 1; i++) {
+            const wx = (pts[i].sx + pts[i + 1].sx) * 0.5;
+            const wy = (pts[i].sy + pts[i + 1].sy) * 0.5;
+            ctx.beginPath();
+            ctx.moveTo(wx - 4, wy);
+            ctx.lineTo(wx - 1, wy - 1.5);
+            ctx.lineTo(wx + 2, wy);
+            ctx.lineTo(wx + 5, wy - 1.5);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // 2D. Two-Pass Organic City Streets (Land streets first, then Bridges cleanly ON TOP of rivers!)
+      const landStreets = layout.streets.filter((s) => !s.isBridge);
+      const bridgeStreets = layout.streets.filter((s) => s.isBridge);
+
+      // Pass 1: Unified warm-brown road outline casing (ZERO internal seam lines!)
+      ctx.strokeStyle = '#5c4b37';
+      ctx.fillStyle = '#5c4b37';
+      for (const st of landStreets) {
+        const a = toScreen(st.x1, st.z1);
+        const b = toScreen(st.x2, st.z2);
+        const w = Math.max(detailed ? 2.2 : 1.2, st.width * invScale);
+        ctx.lineWidth = w + (detailed ? 2.2 : 1.0);
+        ctx.beginPath();
+        ctx.moveTo(a.sx, a.sy);
+        ctx.lineTo(b.sx, b.sy);
+        ctx.stroke();
+      }
+
+      // Pass 2: Seamless merged road fills (Cream-ivory grid + Golden-amber curved arterials!)
+      for (const st of [...landStreets.filter((s) => s.kind !== 'arterial'), ...landStreets.filter((s) => s.kind === 'arterial')]) {
+        const a = toScreen(st.x1, st.z1);
+        const b = toScreen(st.x2, st.z2);
+        const w = Math.max(detailed ? 2.2 : 1.2, st.width * invScale);
+        ctx.strokeStyle = st.kind === 'arterial' ? '#f4b942' : st.kind === 'street' ? '#fff8e6' : '#f1e7cf';
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        ctx.moveTo(a.sx, a.sy);
+        ctx.lineTo(b.sx, b.sy);
+        ctx.stroke();
+      }
+
+      // Pass 2B: Bridges Spanning Right Over the Blue Rivers (Nanpu / Yangpu / Waibaidu Red Steel Truss!)
+      ctx.lineCap = 'butt';
+      for (const br of bridgeStreets) {
+        const a = toScreen(br.x1, br.z1);
+        const b = toScreen(br.x2, br.z2);
+        const w = Math.max(detailed ? 3.2 : 1.8, br.width * invScale);
+        ctx.strokeStyle = br.bridgeStyle === 'waibaidu' ? '#c92a2a' : '#3b4252';
+        ctx.lineWidth = w + (detailed ? 3.2 : 1.6);
+        ctx.beginPath();
+        ctx.moveTo(a.sx, a.sy);
+        ctx.lineTo(b.sx, b.sy);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#d8dee9';
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        ctx.moveTo(a.sx, a.sy);
+        ctx.lineTo(b.sx, b.sy);
+        ctx.stroke();
+      }
+
+      // 2E. Colored Shanghai Metro Lines (地铁 2 号线绿 / 1 号线紫) + Tiny Crisp White Station Dots!
+      ctx.lineCap = 'round';
+      for (const ml of layout.metroLines) {
+        const pts = ml.points.map(([mx, mz]) => toScreen(mx, mz));
+        ctx.strokeStyle = ml.color;
+        ctx.lineWidth = detailed ? 2.0 : 1.1;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+
+        if (detailed) {
+          for (const st of ml.stations) {
+            const sp = toScreen(st.x, st.z);
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = ml.color;
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(sp.sx, sp.sy, 3.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+      }
+
+      // 2F. Dense Terracotta Puxi Buildings + Sleek Blue-Glass Lujiazui Skyscrapers + Oriental Pearl Tower!
+      for (const lot of layout.lots) {
+        const lp = toScreen(lot.x, lot.z);
+        const bw = Math.max(detailed ? 4.0 : 2.2, lot.width * invScale);
+        const bd = Math.max(detailed ? 3.4 : 2.0, lot.depth * invScale);
+        ctx.save();
+        ctx.translate(lp.sx, lp.sy);
+        ctx.rotate(-lot.rotY);
+        if (detailed && bw >= 4.5) {
+          ctx.fillStyle = 'rgba(38, 28, 20, 0.3)';
+          ctx.fillRect(-bw / 2 + 2, -bd / 2 + 2, bw, bd);
+        }
+        ctx.fillStyle =
+          lot.kind === 'pokemon_center'
+            ? '#fa5252'
+            : lot.kind === 'poke_mart'
+              ? '#228be6'
+              : lot.kind === 'hotel'
+                ? '#e67700'
+                : lot.kind === 'restaurant'
+                  ? '#fd7e14'
+                  : lot.kind === 'landmark'
+                    ? '#e64980'
+                    : lot.kind === 'skyscraper'
+                      ? '#5aa9e6'
+                      : '#b86b52';
+        ctx.strokeStyle = '#3b2d22';
+        ctx.lineWidth = detailed ? 1.0 : 0.5;
+        ctx.fillRect(-bw / 2, -bd / 2, bw, bd);
+        ctx.strokeRect(-bw / 2, -bd / 2, bw, bd);
+        if (detailed && bw >= 7) {
+          ctx.fillStyle = lot.kind === 'skyscraper' ? 'rgba(220,245,255,0.4)' : 'rgba(255,235,210,0.28)';
+          ctx.fillRect(-bw / 2 + 1.2, -bd / 2 + 1.2, bw - 2.4, Math.max(1.8, bd * 0.34));
+        }
+        ctx.restore();
+
+        if (detailed && bw >= 10 && lot.kind !== 'house' && lot.kind !== 'skyscraper') {
+          const sym =
+            lot.kind === 'pokemon_center'
+              ? '🏥'
+              : lot.kind === 'poke_mart'
+                ? '🏪'
+                : lot.kind === 'hotel'
+                  ? '🏨'
+                  : lot.kind === 'restaurant'
+                    ? '🍜'
+                    : '🗼';
+          ctx.font = `${Math.min(13, Math.max(9, Math.round(bw * 0.5)))}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(sym, lp.sx, lp.sy);
+        }
+      }
+    }
+
     ctx.restore();
     return;
   }
@@ -707,17 +1060,7 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
     });
 
     paintTopographicMap(ctx, W, H, snapshot.px, snapshot.pz, span, biome, 4);
-    paintRealWorldMapTiles(
-      ctx,
-      W,
-      H,
-      snapshot.px,
-      snapshot.pz,
-      span / Math.max(1, W),
-      toScreen,
-      () => setDemTick((t) => t + 1),
-    );
-    paintRoadsAndTownsOnMap(ctx, toScreen, span / Math.max(1, W), false);
+    paintRoadsAndTownsOnMap(ctx, toScreen, span / Math.max(1, W), false, false);
 
     if (geoOrigin) {
       for (const gc of getProjectedGeoCities()) {
@@ -827,6 +1170,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   const [focusedPoiId, setFocusedPoiId] = useState<string | null>(null);
   const [poiCycleIdx, setPoiCycleIdx] = useState<Record<string, number>>({});
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showLiveStreetTiles, setShowLiveStreetTiles] = useState(false);
   const geoOrigin = getActiveGeoTerrainOrigin();
   const [zoom, setZoom] = useState(geoOrigin ? 0.25 : 1.0);
   const [pan, setPan] = useState({ x: 0, z: 0 });
@@ -931,12 +1275,14 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
 
     const onIconReady = () => setIconTick((t) => t + 1);
 
-    // Base map: genuine Real-World Carto Voyager Map Tiles (real Shanghai / China / Japan streets, rivers & highways!)
-    // with NASA/SRTM topographic elevation seamlessly underneath while tiles stream in!
+    // Default: crisp Pixel-Art Real-Earth NASA Topography + Real Curved China/Japan Highways & Exact 1:1 Downtown Streets!
+    // Optional 1-click toggle: live ArcGIS Real Street Map tiles!
     paintTopographicMap(ctx, W, H, cx, cz, spanMin, biome, isInteracting ? 7 : 4);
-    const hasRealMapTiles = paintRealWorldMapTiles(ctx, W, H, cx, cz, unitsPerPx, toScreen, onIconReady);
+    const hasRealMapTiles = showLiveStreetTiles
+      ? paintRealWorldMapTiles(ctx, W, H, cx, cz, unitsPerPx, toScreen, onIconReady)
+      : false;
 
-    // Subtle world-grid lines ONLY in fallback procedural mode (never clutter real Carto street map!)
+    // Subtle world-grid lines ONLY in pixel map mode
     if (!hasRealMapTiles) {
       const gridWorldStep = zoom < 0.35 ? 100 : zoom < 0.85 ? 50 : zoom > 3 ? 10 : 25;
       ctx.strokeStyle = 'rgba(22, 20, 32, 0.14)';
@@ -961,7 +1307,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       }
     }
 
-    paintRoadsAndTownsOnMap(ctx, toScreen, unitsPerPx, true);
+    paintRoadsAndTownsOnMap(ctx, toScreen, unitsPerPx, true, hasRealMapTiles);
 
     ctx.imageSmoothingEnabled = false;
 
@@ -1152,7 +1498,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ctx.textBaseline = 'middle';
       ctx.fillText(`主角 ${distM}m`, ex, ey + 15);
     }
-  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick, isInteracting]);
+  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick, isInteracting, showLiveStreetTiles]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragRef.current.dragged) return;
@@ -1342,8 +1688,21 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
           })()}
         </div>
 
-        {/* Top-Right Floating Drawer Toggle & Close Controls */}
+        {/* Top-Right Floating Drawer Toggle, Map Layer Switch & Close Controls */}
         <div className="lcd-map-float-tr">
+          {getActiveGeoTerrainOrigin() && (
+            <button
+              type="button"
+              className={`lcd-map-float-btn ${showLiveStreetTiles ? 'is-active' : ''}`}
+              onClick={() => {
+                sound.play('cursor');
+                setShowLiveStreetTiles((v) => !v);
+              }}
+              title="切换像素地球地图 / 真实街景底图"
+            >
+              {showLiveStreetTiles ? '像素地图' : '实景底图'}
+            </button>
+          )}
           <button
             type="button"
             className={`lcd-map-float-btn ${drawerOpen ? 'is-active' : ''}`}

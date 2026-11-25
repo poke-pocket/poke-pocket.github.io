@@ -3150,10 +3150,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       attachFollowerMeshes(f);
     });
 
-    // Start cleanly on the Grand Central Plaza Promenade of the active real-Earth city (facing the fountain & downtown skyline!),
+    // Start cleanly on the sunlit Puxi Promenade beside People's Square Park (dry land, looking across Huangpu River toward Oriental Pearl Tower!),
     // or resume the player's last saved position in that city!
-    let startPx = 0;
-    let startPz = 26;
+    let startPx = -22;
+    let startPz = 12;
     if (phase === 'playing') {
       try {
         const geoOrigin = getActiveGeoTerrainOrigin();

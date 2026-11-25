@@ -1,5 +1,6 @@
 import type { PokemonElement, SpeciesId } from '../types/pet';
 import { sampleGeoTerrainHeight3D } from './geoTerrain3D';
+import { isOnShanghaiBridgeLocal } from '../utils/townStreetGen';
 import type { BiomeId } from './worldTextures3D';
 
 export type SurvivorSkillId =
@@ -621,8 +622,13 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number): number {
       }
     }
   } else {
-    // Active Real-Earth city centered at (0, 0) has paved plazas & avenues at +0.05..+0.13 above ground
-    if (Math.hypot(wx, wz) < 210) {
+    // Active Real-Earth city centered at (0, 0):
+    // 1. Walkable Bridge Decks across Huangpu River & Suzhou Creek (Nanpu / Yangpu / Waibaidu bridges!)
+    if (isOnShanghaiBridgeLocal(wx, wz)) {
+      return Math.max(ground + 0.14, 1.85);
+    }
+    // 2. Dry paved city avenues & parks sit flush at ground + 0.14
+    if (Math.hypot(wx, wz) < 210 && ground >= WATER_LEVEL_3D) {
       return ground + 0.14;
     }
   }

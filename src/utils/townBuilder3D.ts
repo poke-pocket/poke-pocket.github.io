@@ -1760,14 +1760,69 @@ export function buildProceduralTown3D(
   const medianGrassMat = new THREE.MeshLambertMaterial({ color: 0x37a84f });
 
   for (const seg of layout.streets) {
+    if (seg.isBridge) {
+      // REAL 3D RIVER BRIDGE (Nanpu Bridge / Yangpu Bridge / Waibaidu Red Steel Truss Bridge across Huangpu River & Suzhou Creek!)
+      const bLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
+      const bYaw = Math.atan2(seg.x2 - seg.x1, seg.z2 - seg.z1);
+      const bMidX = (seg.x1 + seg.x2) * 0.5 - centerX;
+      const bMidZ = (seg.z1 + seg.z2) * 0.5 - centerZ;
+      const deckY = Math.max(1.8, baseY + 0.16) - baseY;
+      const deckMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(seg.width, 0.45, bLen),
+        new THREE.MeshLambertMaterial({ map: tex.collector2Lane }),
+      );
+      deckMesh.position.set(bMidX, deckY - 0.22, bMidZ);
+      deckMesh.rotation.y = bYaw;
+      deckMesh.receiveShadow = true;
+      group.add(deckMesh);
+
+      const railCol = seg.bridgeStyle === 'waibaidu' ? 0xc92a2a : 0x5c677d;
+      const railMat = new THREE.MeshLambertMaterial({ color: railCol });
+      const pierMat = new THREE.MeshLambertMaterial({ color: 0x868e96 });
+      const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
+      const bDirX = (seg.x2 - seg.x1) / Math.max(0.01, bLen);
+      const bDirZ = (seg.z2 - seg.z1) / Math.max(0.01, bLen);
+      const bNx = -bDirZ;
+      const bNz = bDirX;
+
+      for (const side of [-1, 1]) {
+        const rx = bMidX + bNx * side * (seg.width * 0.48);
+        const rz = bMidZ + bNz * side * (seg.width * 0.48);
+        const topBeam = new THREE.Mesh(
+          new THREE.BoxGeometry(0.45, seg.bridgeStyle === 'waibaidu' ? 2.4 : 1.15, bLen),
+          railMat,
+        );
+        topBeam.position.set(rx, deckY + (seg.bridgeStyle === 'waibaidu' ? 1.2 : 0.6), rz);
+        topBeam.rotation.y = bYaw;
+        group.add(topBeam);
+
+        // Bridge piers & cable-stayed towers (Nanpu / Yangpu iconic pylons!)
+        for (const frac of [-0.32, 0, 0.32]) {
+          const px = rx + bDirX * (bLen * frac);
+          const pz = rz + bDirZ * (bLen * frac);
+          const pier = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.85, 5.2, 8), pierMat);
+          pier.position.set(px, deckY - 2.6, pz);
+          group.add(pier);
+          if (seg.bridgeStyle !== 'waibaidu' && Math.abs(frac) > 0.1) {
+            const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.95, 16.5, 0.95), railMat);
+            pylon.position.set(px, deckY + 8.2, pz);
+            group.add(pylon);
+          }
+          const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), lampMat);
+          lamp.position.set(px, deckY + (seg.bridgeStyle === 'waibaidu' ? 2.7 : 1.6), pz);
+          group.add(lamp);
+        }
+      }
+      continue;
+    }
+
     const roadTex =
       seg.kind === 'arterial'
         ? tex.boulevard4Lane
         : seg.kind === 'street'
           ? tex.collector2Lane
           : tex.alleyCobble;
-    // Ultra-flush layered road elevations (+0.04 / +0.06 / +0.08) strictly BELOW intersection pads (+0.10) & Plaza (+0.13)
-    // so characters walking at ground + 0.14 ALWAYS stand squarely ON TOP of every road & zero green medians poke into the plaza!
+    // Ultra-flush layered road elevations (+0.04 / +0.06 / +0.08) so characters walking at ground + 0.14 ALWAYS stand squarely ON TOP!
     const liftY = seg.kind === 'arterial' ? 0.08 : seg.kind === 'street' ? 0.06 : 0.04;
     const polyOff = seg.kind === 'arterial' ? -2 : seg.kind === 'street' ? -1 : 0;
     group.add(buildStreetRibbonMesh(seg, baseY, centerX, centerZ, roadTex, getGroundHeight, liftY, polyOff));
@@ -1899,68 +1954,92 @@ export function buildProceduralTown3D(
     }
   }
 
-    // Grand Spacious Civic Square / Central Plaza (r = 38.5m matching the 68m-wide 8-lane grand boulevards!)
-  const hubPlaza = new THREE.Mesh(
-    new THREE.CircleGeometry(38.5, 40),
-    new THREE.MeshLambertMaterial({
-      map: tex.cobblePlaza,
-      polygonOffset: true,
-      polygonOffsetFactor: -8,
-      polygonOffsetUnits: -8,
-    }),
-  );
-  hubPlaza.rotation.x = -Math.PI / 2;
-  hubPlaza.position.set(0, 0.13, 0);
-  hubPlaza.receiveShadow = true;
-  group.add(hubPlaza);
-
-  const plazaRim = new THREE.Mesh(
-    new THREE.RingGeometry(37.0, 38.8, 40),
-    new THREE.MeshLambertMaterial({
-      color: 0xe6dfd1,
-      side: THREE.DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -9,
-      polygonOffsetUnits: -9,
-    }),
-  );
-  plazaRim.rotation.x = -Math.PI / 2;
-  plazaRim.position.set(0, 0.135, 0);
-  group.add(plazaRim);
-
+  // 1C. REAL LUSH URBAN PARKS (人民广场公园 & 世纪公园 — ZERO giant circular concrete roundabout!)
+  const parkLawnMat = new THREE.MeshLambertMaterial({
+    color: 0x51b748,
+    polygonOffset: true,
+    polygonOffsetFactor: -6,
+    polygonOffsetUnits: -6,
+  });
+  const parkWalkMat = new THREE.MeshLambertMaterial({
+    map: tex.cobblePlaza,
+    polygonOffset: true,
+    polygonOffsetFactor: -7,
+    polygonOffsetUnits: -7,
+  });
+  const pondWaterMat = new THREE.MeshLambertMaterial({
+    color: 0x339af0,
+    emissive: 0x1864ab,
+    polygonOffset: true,
+    polygonOffsetFactor: -8,
+    polygonOffsetUnits: -8,
+  });
   const benchWoodMat = new THREE.MeshLambertMaterial({ color: 0x9c6644 });
-  for (let i = 0; i < 4; i++) {
-    const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    const bx = Math.cos(ang) * 16.5;
-    const bz = Math.sin(ang) * 16.5;
-    const bench = new THREE.Group();
-    bench.position.set(bx, 0.22, bz);
-    bench.rotation.y = Math.atan2(-bx, -bz);
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.26, 1.1), benchWoodMat);
-    seat.position.y = 0.56;
-    const back = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.78, 0.22), benchWoodMat);
-    back.position.set(0, 0.96, -0.45);
-    bench.add(seat, back);
-    group.add(bench);
 
-    // Plaza Corner Pixel-Art Shade Trees & Flowers in stone planters!
-    const px = Math.cos(ang) * 24.5;
-    const pz = Math.sin(ang) * 24.5;
-    const bed = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.8, 0.48, 8), curbStoneMat);
-    bed.position.set(px, 0.42, pz);
-    const bedGrass = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 0.14, 8), medianGrassMat);
-    bedGrass.position.set(px, 0.7, pz);
-    group.add(bed, bedGrass);
-    const pTreeTex = floraTex.treeSprites[(i + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
-    spawnPixelGreenery(pTreeTex, px, 0.74, pz, 6.2, 7.2);
-    const flTex = floraTex.flowers[i % floraTex.flowers.length] ?? floraTex.flower;
-    spawnPixelGreenery(flTex, px + 1.4, 0.74, pz + 1.0, 1.8, 1.6);
+  for (const pk of layout.parks) {
+    const px = pk.x - centerX;
+    const pz = pk.z - centerZ;
+    const py = localGroundY(pk.x, pk.z);
+
+    // Park stone border + lush rectangular lawn
+    const border = new THREE.Mesh(new THREE.PlaneGeometry(pk.w + 3.2, pk.d + 3.2), parkWalkMat);
+    border.rotation.x = -Math.PI / 2;
+    border.position.set(px, py + 0.09, pz);
+    border.receiveShadow = true;
+    const lawn = new THREE.Mesh(new THREE.PlaneGeometry(pk.w, pk.d), parkLawnMat);
+    lawn.rotation.x = -Math.PI / 2;
+    lawn.position.set(px, py + 0.11, pz);
+    lawn.receiveShadow = true;
+    // Cross stone footpaths through the park
+    const pathEW = new THREE.Mesh(new THREE.PlaneGeometry(pk.w + 2, 5.2), parkWalkMat);
+    pathEW.rotation.x = -Math.PI / 2;
+    pathEW.position.set(px, py + 0.125, pz);
+    const pathNS = new THREE.Mesh(new THREE.PlaneGeometry(5.2, pk.d + 2), parkWalkMat);
+    pathNS.rotation.x = -Math.PI / 2;
+    pathNS.position.set(px, py + 0.125, pz);
+    group.add(border, lawn, pathEW, pathNS);
+
+    // Sparkling park pond OR refined marble civic fountain in People's Square Park!
+    if (pk.hasFountain) {
+      const plazaPad = new THREE.Mesh(new THREE.CircleGeometry(10.5, 24), parkWalkMat);
+      plazaPad.rotation.x = -Math.PI / 2;
+      plazaPad.position.set(px, py + 0.13, pz);
+      group.add(plazaPad);
+      const fountain = createPlazaFountain(fountains);
+      fountain.position.set(px, py + 0.13, pz);
+      group.add(fountain);
+      colliders.push(makeObbCollider(pk.x, pk.z, 5.2, 5.2, 0, 6.5));
+    } else if (pk.hasPond) {
+      const pond = new THREE.Mesh(new THREE.CircleGeometry(11.5, 20), pondWaterMat);
+      pond.rotation.x = -Math.PI / 2;
+      pond.position.set(px, py + 0.13, pz);
+      group.add(pond);
+    }
+
+    // Wooden park benches & lush hand-drawn Pixel-Art Trees around park quadrants!
+    for (let qi = 0; qi < 4; qi++) {
+      const sx = qi % 2 === 0 ? -1 : 1;
+      const sz = qi < 2 ? -1 : 1;
+      const bx = px + sx * (pk.w * 0.24);
+      const bz = pz + sz * (pk.d * 0.24);
+      const bench = new THREE.Group();
+      bench.position.set(bx, py + 0.13, bz);
+      bench.rotation.y = Math.atan2(-sx, -sz);
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.24, 1.0), benchWoodMat);
+      seat.position.y = 0.52;
+      const back = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.72, 0.2), benchWoodMat);
+      back.position.set(0, 0.9, -0.42);
+      bench.add(seat, back);
+      group.add(bench);
+
+      const tx = px + sx * (pk.w * 0.36);
+      const tz = pz + sz * (pk.d * 0.34);
+      const pTreeTex = floraTex.treeSprites[(qi + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
+      spawnPixelGreenery(pTreeTex, tx, py + 0.14, tz, 6.4, 7.6);
+      const flTex = floraTex.flowers[qi % floraTex.flowers.length] ?? floraTex.flower;
+      spawnPixelGreenery(flTex, tx - sx * 2.2, py + 0.14, tz - sz * 1.4, 1.9, 1.7);
+    }
   }
-
-  const fountain = createPlazaFountain(fountains);
-  fountain.position.set(0, 0.2, 0);
-  group.add(fountain);
-  colliders.push(makeObbCollider(centerX, centerZ, 5.4, 5.4, 0, 6.5));
 
   // 2. Mount ALL Street-Aligned Building Lots from the Procedural Subdivision Graph!
   for (const lot of layout.lots) {
@@ -2168,6 +2247,26 @@ export function buildProceduralTown3D(
         group.add(lm);
         colliders.push(makeObbCollider(lot.x, lot.z, 5.4, 5.4, 0, 26));
       }
+    } else if (lot.kind === 'skyscraper') {
+      // Lujiazui Pudong Sleek Modern Blue-Glass Skyscrapers (matching Shanghai pixel art concept!)
+      const skyModels = [
+        '/models/town/commercial/shop-g.glb',
+        '/models/town/commercial/shop-k.glb',
+        '/models/town/commercial/shop-d.glb',
+      ];
+      const skyTints = [0x74c0fc, 0xa5d8ff, 0x99e9f2];
+      void mountGlbModel(group, skyModels[lot.houseVariant % skyModels.length], {
+        x: lx,
+        y: ly,
+        z: lz,
+        rotY: lot.rotY,
+        targetWidth: lot.width,
+        heightMult: 2.35 + (lot.houseVariant % 3) * 0.42,
+        tintHex: skyTints[lot.houseVariant % skyTints.length],
+        addInkEdges: true,
+        cloneMaterials: true,
+      });
+      colliders.push(makeObbCollider(lot.x, lot.z, lot.width * 0.45, lot.depth * 0.44, lot.rotY, 24.0));
     } else if (lot.kind === 'house') {
       // Randomized Architectural Diversity: mix pitched villas, flat-roof modern townhouses, varied facade colors & street signs!
       const hHash = Math.abs(anchor.seed * 19 + lot.houseVariant * 37 + Math.round(lot.x) * 7 + Math.round(lot.z) * 13);
@@ -2328,15 +2427,15 @@ export function buildProceduralTown3D(
     });
   }
 
-  // 5. LIVE CITY LIFE: Cruising Pixel-Shaded Taxis/Cars on 8-Lane Boulevards + Strolling Chibi Pixel Citizens + Pixel Vending Machines!
+  // 5. LIVE CITY LIFE: Cruising Pixel-Shaded Taxis on Dry Puxi Avenues & Bridges + Strolling Chibi Citizens in People's Square Park!
   const carColors = [0x3bc9db, 0xffd43b, 0xfa5252, 0xf8f9fa, 0x339af0, 0x51cf66];
   const carConfigs: { axis: 'x' | 'z'; laneOffset: number; dir: 1 | -1; minC: number; maxC: number; start: number; spd: number }[] = [
-    { axis: 'z', laneOffset: 9.5, dir: 1, minC: 35, maxC: 122, start: 54, spd: 11.5 },
-    { axis: 'z', laneOffset: -9.5, dir: -1, minC: 35, maxC: 122, start: 96, spd: 13.0 },
-    { axis: 'z', laneOffset: 9.5, dir: 1, minC: -122, maxC: -35, start: -88, spd: 12.2 },
-    { axis: 'z', laneOffset: -9.5, dir: -1, minC: -122, maxC: -35, start: -52, spd: 10.8 },
-    { axis: 'x', laneOffset: 9.5, dir: 1, minC: 35, maxC: 122, start: 68, spd: 11.8 },
-    { axis: 'x', laneOffset: -9.5, dir: -1, minC: -122, maxC: -35, start: -74, spd: 12.6 },
+    { axis: 'z', laneOffset: -10, dir: 1, minC: -120, maxC: 120, start: -40, spd: 11.5 },
+    { axis: 'z', laneOffset: -19, dir: -1, minC: -120, maxC: 120, start: 62, spd: 12.8 },
+    { axis: 'z', laneOffset: -94, dir: 1, minC: -130, maxC: 130, start: 18, spd: 10.6 },
+    { axis: 'x', laneOffset: 109, dir: 1, minC: -16, maxC: 96, start: 22, spd: 12.0 }, // cruising across Nanpu Bridge!
+    { axis: 'x', laneOffset: 115, dir: -1, minC: -16, maxC: 96, start: 70, spd: 11.2 },
+    { axis: 'x', laneOffset: -23, dir: 1, minC: -158, maxC: -22, start: -88, spd: 10.4 },
   ];
   const headLampMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
   const tailLampMat = new THREE.MeshBasicMaterial({ color: 0xff4d4f });
@@ -2396,13 +2495,15 @@ export function buildProceduralTown3D(
   const shadowGeo = new THREE.CircleGeometry(0.85, 12);
   shadowGeo.rotateX(-Math.PI / 2);
 
+  const pkCx = layout.plazaX - centerX;
+  const pkCz = layout.plazaZ - centerZ;
   for (let wi = 0; wi < 7; wi++) {
     const spriteUrl = citizenPool[(wi + styleIdx) % citizenPool.length];
-    const orbitR = wi < 4 ? 12.5 + wi * 3.8 : 26.5 + (wi - 4) * 1.4;
+    const orbitR = 9.5 + (wi % 4) * 3.2;
     const initAng = (wi / 7) * Math.PI * 2;
-    const px = Math.cos(initAng) * orbitR;
-    const pz = Math.sin(initAng) * orbitR;
-    const py = localGroundY(centerX + px, centerZ + pz) + 0.22;
+    const px = pkCx + Math.cos(initAng) * orbitR;
+    const pz = pkCz + Math.sin(initAng) * orbitR;
+    const py = localGroundY(centerX + px, centerZ + pz) + 0.16;
     const citizenMesh = createNpcBillboard(spriteUrl, px, py, pz, 2.35);
     const cShadow = new THREE.Mesh(shadowGeo, shadowMat);
     cShadow.position.set(px, py + 0.04, pz);
@@ -2411,8 +2512,8 @@ export function buildProceduralTown3D(
       mesh: citizenMesh,
       shadow: cShadow,
       mode: 'plaza_orbit',
-      cx: 0,
-      cz: 0,
+      cx: pkCx,
+      cz: pkCz,
       radius: orbitR,
       angle: initAng,
       speed: (wi % 2 === 0 ? 1 : -1) * (0.14 + (wi % 3) * 0.05),
