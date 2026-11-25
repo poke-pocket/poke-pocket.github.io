@@ -2214,38 +2214,180 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     );
                   })()}
 
-                  {/* Secondary 2-Column Editorial Grid (次条双栏排版) */}
+                  {/* Asymmetric Broadsheet Editorial Mosaic (不规则报刊版面：按重要级别区分大小与图文形态) */}
                   {DEFAULT_ANNOUNCEMENTS.length > 1 && (
-                    <div className="paper-columns">
+                    <div className="paper-bento-grid">
                       {DEFAULT_ANNOUNCEMENTS.slice(1).map((a) => {
                         const photoCount = a.photos?.length ?? (a.photo ? 1 : 0);
+                        const layout = a.layout ?? 'feature_tall';
+                        const openArticle = () => {
+                          sound.play('cursor');
+                          setSelectedNewsId(a.id);
+                          setNewsPhotoIdx(0);
+                        };
+                        const onKey = (e: React.KeyboardEvent) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openArticle();
+                          }
+                        };
+
+                        if (layout === 'photo_spotlight') {
+                          return (
+                            <article
+                              key={a.id}
+                              className="paper-bento-card is-photo-spotlight"
+                              role="button"
+                              tabIndex={0}
+                              onClick={openArticle}
+                              onKeyDown={onKey}
+                            >
+                              {a.photo && (
+                                <img
+                                  className="paper-spotlight-img"
+                                  src={a.photo}
+                                  alt={a.title}
+                                  draggable={false}
+                                />
+                              )}
+                              <span className="paper-spotlight-tag">{a.tag}</span>
+                              {photoCount > 1 && (
+                                <span className="paper-spotlight-count">📷 {photoCount}图</span>
+                              )}
+                              <div className="paper-spotlight-overlay">
+                                <time>{a.date}</time>
+                                <h4>{a.title}</h4>
+                              </div>
+                            </article>
+                          );
+                        }
+
+                        if (layout === 'wide_horizontal') {
+                          return (
+                            <article
+                              key={a.id}
+                              className="paper-bento-card is-wide-horizontal"
+                              role="button"
+                              tabIndex={0}
+                              onClick={openArticle}
+                              onKeyDown={onKey}
+                            >
+                              {a.photo && (
+                                <figure className="paper-wide-photo">
+                                  <img src={a.photo} alt={a.title} draggable={false} />
+                                  {photoCount > 1 && <span className="paper-photo-badge">📷 {photoCount}图</span>}
+                                </figure>
+                              )}
+                              <div className="paper-wide-body">
+                                <div className="paper-col-kicker">
+                                  <span className="paper-kicker is-teal">{a.tag}</span>
+                                  <time>{a.date}</time>
+                                </div>
+                                <h4 className="paper-col-headline is-lg">{a.title}</h4>
+                                <p className="paper-col-excerpt">{a.body}</p>
+                                <div className="paper-col-foot">
+                                  <span>{a.reporter?.split('·')[1]?.trim() ?? '技术专报'}</span>
+                                  <em>阅读全文 ›</em>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        }
+
+                        if (layout === 'text_wire') {
+                          return (
+                            <article
+                              key={a.id}
+                              className="paper-bento-card is-text-wire"
+                              role="button"
+                              tabIndex={0}
+                              onClick={openArticle}
+                              onKeyDown={onKey}
+                            >
+                              <div className="paper-col-kicker">
+                                <span className="paper-kicker is-amber">⚡ {a.tag}</span>
+                                <time>{a.date}</time>
+                              </div>
+                              <h4 className="paper-wire-headline">{a.title}</h4>
+                              <p className="paper-wire-excerpt">{a.body}</p>
+                              <div className="paper-col-foot">
+                                <span>{photoCount > 0 ? `含 ${photoCount} 张现场图` : '快讯'}</span>
+                                <em>详情 ›</em>
+                              </div>
+                            </article>
+                          );
+                        }
+
+                        if (layout === 'photo_title') {
+                          return (
+                            <article
+                              key={a.id}
+                              className="paper-bento-card is-photo-title"
+                              role="button"
+                              tabIndex={0}
+                              onClick={openArticle}
+                              onKeyDown={onKey}
+                            >
+                              <div className="paper-col-kicker">
+                                <span className="paper-kicker">{a.tag}</span>
+                                <time>{a.date}</time>
+                              </div>
+                              {a.photo && (
+                                <figure className="paper-col-photo is-compact">
+                                  <img src={a.photo} alt={a.title} draggable={false} />
+                                  {photoCount > 1 && <span className="paper-photo-badge">📷 {photoCount}图</span>}
+                                </figure>
+                              )}
+                              <h4 className="paper-col-headline">{a.title}</h4>
+                            </article>
+                          );
+                        }
+
+                        if (layout === 'archive_right_thumb') {
+                          return (
+                            <article
+                              key={a.id}
+                              className="paper-bento-card is-archive-right"
+                              role="button"
+                              tabIndex={0}
+                              onClick={openArticle}
+                              onKeyDown={onKey}
+                            >
+                              <div className="paper-archive-copy">
+                                <div className="paper-col-kicker">
+                                  <span className="paper-kicker is-purple">{a.tag}</span>
+                                  <time>{a.date}</time>
+                                </div>
+                                <h4 className="paper-col-headline">{a.title}</h4>
+                                <p className="paper-col-excerpt is-two-line">{a.body}</p>
+                              </div>
+                              {a.photo && (
+                                <figure className="paper-archive-thumb">
+                                  <img src={a.photo} alt={a.title} draggable={false} />
+                                  {photoCount > 1 && <span className="paper-photo-badge">📷 {photoCount}</span>}
+                                </figure>
+                              )}
+                            </article>
+                          );
+                        }
+
+                        // Default: 'feature_tall' (large feature photo + headline + summary + footer)
                         return (
                           <article
                             key={a.id}
-                            className="paper-col-story"
+                            className="paper-bento-card is-feature-tall"
                             role="button"
                             tabIndex={0}
-                            onClick={() => {
-                              sound.play('cursor');
-                              setSelectedNewsId(a.id);
-                              setNewsPhotoIdx(0);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                sound.play('cursor');
-                                setSelectedNewsId(a.id);
-                                setNewsPhotoIdx(0);
-                              }
-                            }}
+                            onClick={openArticle}
+                            onKeyDown={onKey}
                           >
                             <div className="paper-col-kicker">
-                              <span className="paper-kicker">{a.tag}</span>
+                              <span className="paper-kicker is-red">{a.tag}</span>
                               <time>{a.date}</time>
                             </div>
-                            <h4 className="paper-col-headline">{a.title}</h4>
+                            <h4 className="paper-col-headline is-lg">{a.title}</h4>
                             {a.photo && (
-                              <figure className="paper-col-photo">
+                              <figure className="paper-col-photo is-tall">
                                 <img src={a.photo} alt={a.title} draggable={false} />
                                 {photoCount > 1 && <span className="paper-photo-badge">📷 {photoCount}图</span>}
                               </figure>

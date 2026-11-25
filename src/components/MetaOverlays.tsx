@@ -23,12 +23,22 @@ export interface NewsPhotoItem {
   caption: string;
 }
 
+export type NewsCardLayout =
+  | 'lead_banner'
+  | 'feature_tall'
+  | 'photo_spotlight'
+  | 'wide_horizontal'
+  | 'text_wire'
+  | 'photo_title'
+  | 'archive_right_thumb';
+
 export interface ServerAnnouncement {
   id: string;
   tag: string;
   date: string;
   title: string;
   body: string;
+  layout?: NewsCardLayout;
   photo?: string;
   photoCaption?: string;
   photos?: NewsPhotoItem[];
@@ -40,16 +50,17 @@ export interface ServerAnnouncement {
 export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
   {
     id: 'ann_east_asia_14_gyms',
+    layout: 'lead_banner',
     tag: '环球巡礼',
     date: '关都历 11-26',
     title: '东亚 14 座地标道馆全线贯通！日本新增 5 城道馆、实景航班与城市买房定居开放',
     body: '世界巡礼第 1 赛季迎来重磅扩建！除北京、上海、杭州、广州、深圳、成都、哈尔滨、香港外，日本赛区全新开放京都、大阪、札幌、福冈、冲绳五大城市道馆，并同步启用真实卫星地形、浮动往返机票与城市置业定居体系！',
-    photo: '/sprites/news/news-gym-reopen.png',
-    photoCaption: '东亚 14 城道馆巡礼航线全面开通，深港双城现已支持 3D 实景海滨徒步互通',
+    photo: '/sprites/news/news-east-asia-tour.png',
+    photoCaption: '东亚 14 城道馆巡礼航线全面开通，樱花古塔与海滨航班迎来大批训练家',
     photos: [
       {
-        src: '/sprites/news/news-gym-reopen.png',
-        caption: '东亚 14 城道馆巡礼航线全面开通，深港双城现已支持 3D 实景海滨徒步互通',
+        src: '/sprites/news/news-east-asia-tour.png',
+        caption: '东亚 14 城道馆巡礼航线全面开通，樱花古塔与海滨航班迎来大批训练家',
       },
       {
         src: '/sprites/news/news-gym-arena.png',
@@ -66,16 +77,17 @@ export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
   },
   {
     id: 'ann_chinese_species_palettes',
-    tag: '生态快讯',
+    layout: 'feature_tall',
+    tag: '生态特刊',
     date: '关都历 11-26',
     title: '13 支华夏风宝可梦家族登场！青花瓷、朱砂红等 6 款地域限定配色野外可捕',
     body: '大木博士联合东亚生态观察站宣布：凤王、小火焰猴、暖暖猪、功夫鼬、顽皮熊猫、老翁龙、熊徒弟及帕底亚四凶兽等 13 支东方特色家族正式加入图鉴，华夏各大城市野外更会随机出没专属国风地域配色！',
-    photo: '/sprites/news/news-mega-lab.png',
-    photoCaption: '研究实拍：华夏限定「青花瓷」「朱砂红」「翡翠青」灵光共鸣样本',
+    photo: '/sprites/news/news-chinese-palettes.png',
+    photoCaption: '古园实拍：竹林宫灯间现身的青花瓷与翡翠青限定灵光宝可梦',
     photos: [
       {
-        src: '/sprites/news/news-mega-lab.png',
-        caption: '研究实拍：华夏限定「青花瓷」「朱砂红」「翡翠青」灵光共鸣样本',
+        src: '/sprites/news/news-chinese-palettes.png',
+        caption: '古园实拍：竹林宫灯间现身的青花瓷与翡翠青限定灵光宝可梦',
       },
       {
         src: '/sprites/news/news-lab-shiny.png',
@@ -90,46 +102,22 @@ export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
     ],
   },
   {
-    id: 'ann_mobile_and_combat_upgrade',
-    tag: '系统升级',
-    date: '关都历 11-26',
-    title: '手机端全屏掌机与操控全面进化！升级奖励重构聚焦纯构筑体验',
-    body: '联盟技术部已完成移动端与战斗系统的深度调优：局内升级与商店全面移除精灵抽取，专注随从升级、被动词条与道具补给；手机端新增双指地图缩放、防卡死摇杆、原生零卡顿全屏掌机及系统返回手势！',
-    photo: '/sprites/news/news-rail-repaired.png',
-    photoCaption: '3D 实景高原地形与双指缩放卫星航图全面提速，手机端顺滑 60FPS 运行',
-    photos: [
-      {
-        src: '/sprites/news/news-rail-repaired.png',
-        caption: '3D 实景高原地形与双指缩放卫星航图全面提速，手机端顺滑 60FPS 运行',
-      },
-      {
-        src: '/sprites/news/news-rail-viaduct.png',
-        caption: '掌机界面弹出时自动暂停底层 3D 渲染以显著降耗提帧，并支持手机返回键逐层关闭',
-      },
-    ],
-    reporter: '联盟工程快讯 · 健太',
-    details: [
-      '局内升级与安全屋商店不再提供直接获得宝可梦的选项，所有奖励聚焦于「升级精灵」「获取/强化被动」与「补给道具」，精灵获取回归野外投球收服与球盒养成！',
-      '修复手机端虚拟摇杆在弹窗切换时偶发方向卡死的问题，地图拖拽与双指缩放升级为原生零延迟 60FPS 响应。',
-      '全屏掌机重构为原生视口布局并自动暂停底层 3D 渲染，修复异常滚动与卡顿；手机实体/侧滑返回键现可逐层返回或关闭掌机与地图界面！',
-    ],
-  },
-  {
     id: 'ann_real_dem_overland',
-    tag: '地理实测',
+    layout: 'photo_spotlight',
+    tag: '摄影特写',
     date: '关都历 11-25',
-    title: '实景高程 3D 地貌上线！深圳与香港率先实现真实海岸线与跨城徒步互通',
+    title: '深港实景海岸线贯通！3D 徒步跨湾实拍',
     body: '联盟地理测绘局接入全球卫星影像与双层高程数据：沿海城市呈现真实海湾与浅滩，内陆山脉拔地而起，训练家甚至可以从深圳湾一路向南徒步跨过陆海边界直抵香港维港！',
-    photo: '/sprites/news/news-rail-viaduct.png',
-    photoCaption: '实景高程地貌与 18 级无缝像素卫星地图现已全面联动',
+    photo: '/sprites/news/news-szhk-coast.png',
+    photoCaption: '晴空下的海湾步道与跨海长桥，训练家携水系伙伴沿真实海岸线徒步前行',
     photos: [
+      {
+        src: '/sprites/news/news-szhk-coast.png',
+        caption: '晴空下的海湾步道与跨海长桥，训练家携水系伙伴沿真实海岸线徒步前行',
+      },
       {
         src: '/sprites/news/news-rail-viaduct.png',
         caption: '实景高程地貌与 18 级无缝像素卫星地图现已全面联动',
-      },
-      {
-        src: '/sprites/news/news-gym-reopen.png',
-        caption: '无 GPS 环境下将自动依据语言设定默认出生点（中文上海 / 日语东京）',
       },
     ],
     reporter: '地理测绘特派员 · 阿驯',
@@ -140,11 +128,34 @@ export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
     ],
   },
   {
+    id: 'ann_mobile_and_combat_upgrade',
+    layout: 'wide_horizontal',
+    tag: '技术专报',
+    date: '关都历 11-26',
+    title: '手机端全屏掌机与操控大进化！升级奖励重构聚焦纯构筑',
+    body: '局内升级与安全屋商店全面移除精灵抽取，专注升级、被动与道具；手机端升级双指地图缩放、防卡死摇杆、原生零卡顿全屏掌机及侧滑返回手势！',
+    photo: '/sprites/news/news-handheld-mobile.png',
+    photoCaption: '联盟技术工坊实拍：研发团队正在调校新一代全屏像素掌机与全球卫星航图终端',
+    photos: [
+      {
+        src: '/sprites/news/news-handheld-mobile.png',
+        caption: '联盟技术工坊实拍：研发团队正在调校新一代全屏像素掌机与全球卫星航图终端',
+      },
+    ],
+    reporter: '联盟工程快讯 · 健太',
+    details: [
+      '局内升级与安全屋商店不再提供直接获得宝可梦的选项，所有奖励聚焦于「升级精灵」「获取/强化被动」与「补给道具」，精灵获取回归野外投球收服与球盒养成！',
+      '修复手机端虚拟摇杆在弹窗切换时偶发方向卡死的问题，地图拖拽与双指缩放升级为原生零延迟 60FPS 响应。',
+      '全屏掌机重构为原生视口布局并自动暂停底层 3D 渲染，修复异常滚动与卡顿；手机实体/侧滑返回键现可逐层返回或关闭掌机与地图界面！',
+    ],
+  },
+  {
     id: 'ann_gym_reopen',
-    tag: '道馆通告',
+    layout: 'text_wire',
+    tag: '联盟电讯',
     date: '关都历 11-25',
-    title: '天气放晴！尼比与华蓝道馆等关都 6 大道馆重新开放挑战',
-    body: '此前因风暴海岸强雷雨及山谷大雾，关都各处道馆曾临时暂停接待。今日全境晴空万里，各道馆馆主已重新整装待发，欢迎训练家们前往挑战并赢取道馆徽章！',
+    title: '尼比与华蓝等关都 6 大道馆全面重开',
+    body: '此前因风暴海岸强雷雨及山谷大雾暂停接待的关都道馆已恢复开放，小刚、小霞、马志士等馆主整装待发，击败即可点亮徽章永久增益！',
     photo: '/sprites/news/news-gym-reopen.png',
     photoCaption: '雨后放晴的海滨道馆广场，彩旗飘扬、训练家陆续抵达现场',
     photos: [
@@ -166,9 +177,10 @@ export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
   },
   {
     id: 'ann_rail_repaired',
-    tag: '交通快讯',
+    layout: 'photo_title',
+    tag: '交通简讯',
     date: '关都历 11-24',
-    title: '抢修通车！通往天空冰川与红莲火山的山区铁路恢复运行',
+    title: '通往天空冰川与红莲火山的山区铁路全线复通',
     body: '前几日因野生快龙与卡比兽在阶梯峡谷激战，导致前往岩石沙漠、天空冰川及红莲火山的铁路桥与海滨步道受损。经宝可梦救援队连夜抢修，五大生态区现已全线恢复通行！',
     photo: '/sprites/news/news-rail-repaired.png',
     photoCaption: '首班复通快车驶过新修峡谷石桥，远处可见天空冰川与红莲火山',
@@ -191,10 +203,11 @@ export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
   },
   {
     id: 'ann_mega_lab',
-    tag: '研究快报',
+    layout: 'archive_right_thumb',
+    tag: '研究档案',
     date: '关都历 11-23',
     title: '大木研究所突破：「超进化共鸣」与稀有异色外观正式开放',
-    body: '大木博士团队正式公布羁绊共鸣研究：当训练家与伙伴的亲密度达到 Lv.5 时，即可在战斗齐射中觉醒超进化 / 超极巨化形态！研究所亦扩充至 16 项永久特训。',
+    body: '当训练家与伙伴亲密度达 Lv.5 时可在战斗齐射中觉醒超进化/超极巨化形态，研究所同步扩充至 16 项永久特训与全新像素主角头像！',
     photo: '/sprites/news/news-mega-lab.png',
     photoCaption: '研究所实拍：悬浮的虹色进化钥石正释放共鸣星辉波动',
     photos: [
@@ -211,7 +224,7 @@ export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
     details: [
       '研究所新增「携带上限、气势披带复活、焦点会心、磐石护甲、收服大师、冒险补给包」等共 16 项特训。',
       '精灵详情页新增「亲密·外观」档案，解锁 Lv.2–Lv.10 全套亲密度被动奖励。',
-      '友好商店全新上架「官方异色 ★」「岩浆裂纹」「苍蓝圣炎」「花见·樱之灵」「太阳法老」等珍藏外观！',
+      '友好商店全新上架「官方异色 ★」「岩浆裂纹」「苍蓝圣炎」「花见·樱之灵」「太阳法老」及六大华夏限定外观！',
     ],
   },
 ];

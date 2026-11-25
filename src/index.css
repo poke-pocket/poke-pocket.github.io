@@ -4185,16 +4185,18 @@ button:disabled {
   color: #c92a2a;
 }
 
-/* Secondary 2-Column Newspaper Section */
-.paper-columns {
+/* Asymmetric Broadsheet Editorial Mosaic Grid (12-column irregular newspaper bento!) */
+.paper-bento-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-flow: dense;
+  gap: 7px;
   padding-top: 6px;
   border-top: 2px solid #161420;
+  align-items: stretch;
 }
 
-.paper-col-story {
+.paper-bento-card {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -4202,11 +4204,227 @@ button:disabled {
   background: #fffdf5;
   border: 1.5px solid #161420;
   cursor: pointer;
-  transition: background-color 0.08s;
+  transition: background-color 0.08s, transform 0.08s;
+  min-width: 0;
 }
 
-.paper-col-story:hover {
+.paper-bento-card:hover {
   background: #fff9db;
+}
+
+.paper-kicker.is-teal {
+  background: #0b7285;
+}
+
+.paper-kicker.is-amber {
+  background: #d9480f;
+}
+
+.paper-kicker.is-purple {
+  background: #5f3dc4;
+}
+
+/* 1. Large Feature Card (7 cols): Tall Press Photo + Bold Headline + Full Summary */
+.paper-bento-card.is-feature-tall {
+  grid-column: span 7;
+  padding: 7px;
+  border-width: 2px;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.paper-col-photo.is-tall img {
+  height: 108px;
+}
+
+/* 2. Full-Bleed Visual Photo Spotlight (5 cols): Pure Press Photo + Overlay Caption (No body clutter) */
+.paper-bento-card.is-photo-spotlight {
+  grid-column: span 5;
+  position: relative;
+  padding: 0;
+  min-height: 178px;
+  overflow: hidden;
+  border-width: 2px;
+  background: #161420;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.paper-spotlight-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.paper-spotlight-tag {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 900;
+  color: #161420;
+  background: #ffe066;
+  border: 1.5px solid #161420;
+}
+
+.paper-spotlight-count {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  padding: 1px 5px;
+  font-size: 8px;
+  font-weight: 800;
+  color: #ffe066;
+  background: rgba(22, 20, 32, 0.85);
+  border: 1px solid #ffe066;
+}
+
+.paper-spotlight-overlay {
+  position: relative;
+  z-index: 2;
+  margin-top: auto;
+  padding: 22px 7px 7px;
+  background: linear-gradient(180deg, rgba(22, 20, 32, 0) 0%, rgba(22, 20, 32, 0.88) 45%, rgba(22, 20, 32, 0.96) 100%);
+  color: #fffdf5;
+}
+
+.paper-spotlight-overlay time {
+  display: block;
+  font-family: var(--font-pixel);
+  font-size: 7.5px;
+  color: #ffe066;
+  margin-bottom: 2px;
+}
+
+.paper-spotlight-overlay h4 {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 900;
+  line-height: 1.3;
+  color: #fffdf5;
+  text-shadow: 1px 1px 0 #161420;
+}
+
+/* 3. Wide Horizontal Split Card (8 cols): Side-by-side Photo + Copy */
+.paper-bento-card.is-wide-horizontal {
+  grid-column: span 8;
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.18fr);
+  gap: 8px;
+  align-items: stretch;
+  padding: 6px;
+}
+
+.paper-wide-photo {
+  position: relative;
+  margin: 0;
+  border: 2px solid #161420;
+  background: #161420;
+  overflow: hidden;
+  min-height: 98px;
+}
+
+.paper-wide-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 98px;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.paper-wide-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* 4. Classic Boxed Text-Only Wire Dispatch (4 cols): Typographic Newspaper Column (No cover photo) */
+.paper-bento-card.is-text-wire {
+  grid-column: span 4;
+  background: #f3ecd8;
+  border: 3px double #161420;
+  padding: 7px;
+  justify-content: space-between;
+}
+
+.paper-bento-card.is-text-wire:hover {
+  background: #fff3bf;
+}
+
+.paper-wire-headline {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  font-weight: 900;
+  line-height: 1.32;
+  color: #161420;
+  border-bottom: 1px solid #868e96;
+  padding-bottom: 4px;
+}
+
+.paper-wire-excerpt {
+  margin: 0;
+  font-size: 9.5px;
+  line-height: 1.48;
+  color: #2b2d42;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 5. Compact Photo + Title Only Card (5 cols): No excerpt body */
+.paper-bento-card.is-photo-title {
+  grid-column: span 5;
+  padding: 5px 6px 6px;
+  background: #fffaf0;
+}
+
+.paper-col-photo.is-compact img {
+  height: 68px;
+}
+
+/* 6. Archive Right-Thumbnail Split Card (7 cols): Left Copy + Compact Right Thumbnail */
+.paper-bento-card.is-archive-right {
+  grid-column: span 7;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  gap: 7px;
+  align-items: center;
+  padding: 6px 7px;
+  background: #fffdf5;
+  border-style: dashed;
+}
+
+.paper-archive-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.paper-archive-thumb {
+  position: relative;
+  margin: 0;
+  width: 92px;
+  height: 74px;
+  border: 1.5px solid #161420;
+  background: #161420;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.paper-archive-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
 }
 
 .paper-col-kicker {
@@ -4217,7 +4435,7 @@ button:disabled {
 
 .paper-col-headline {
   margin: 0;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 900;
   line-height: 1.32;
   color: #161420;
@@ -4225,6 +4443,10 @@ button:disabled {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.paper-col-headline.is-lg {
+  font-size: 12px;
 }
 
 .paper-col-photo img {
@@ -4244,6 +4466,49 @@ button:disabled {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.paper-col-excerpt.is-two-line {
+  -webkit-line-clamp: 2;
+}
+
+@media (max-width: 520px) {
+  .paper-bento-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .paper-bento-card.is-feature-tall {
+    grid-column: span 6;
+  }
+
+  .paper-bento-card.is-photo-spotlight {
+    grid-column: span 3;
+    min-height: 138px;
+  }
+
+  .paper-bento-card.is-text-wire {
+    grid-column: span 3;
+  }
+
+  .paper-bento-card.is-wide-horizontal {
+    grid-column: span 6;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  }
+
+  .paper-bento-card.is-photo-title {
+    grid-column: span 3;
+  }
+
+  .paper-bento-card.is-archive-right {
+    grid-column: span 3;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .paper-archive-thumb {
+    width: 100%;
+    height: 60px;
+  }
 }
 
 .paper-col-foot {
