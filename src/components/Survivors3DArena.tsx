@@ -524,7 +524,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   };
 
   // Hub Meta Overlays (Lab, Bounties, News, Guide, Feedback) with Bidirectional Close Animations!
-  const [hubModal, setHubModal] = useState<'none' | 'lab' | 'bounties' | 'news' | 'guide' | 'feedback'>('none');
+  const [hubModal, setHubModal] = useState<'none' | 'lab' | 'bounties' | 'news' | 'guide' | 'feedback' | 'more'>('none');
+  const [mobilePartyOpen, setMobilePartyOpen] = useState(false);
   const [closingHubModal, setClosingHubModal] = useState(false);
   const closeHubModal = () => {
     if (hubModal === 'none' || closingHubModal) return;
@@ -6205,41 +6206,26 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
          ===================================================================== */}
       {phase === 'hub' && (
         <div className="pkb-hub-overlay">
-          {/* Top Status Ribbon: Left Horizontal Squad Avatar Row + Right Trainer Pill & Matched-Height Settings Button */}
+          {/* Top Status Ribbon: Left Clean Squad Entry Pill + Right Trainer Pill & Settings */}
           <header className="pkb-topbar">
-            <div className="pkb-top-squad" title={`当前出战队伍：${activeSquadPreset.name} · 点击管理当前队伍`}>
-              {effectiveSquadPets.slice(0, 6).map((p) => {
-                const stg = getGrowthStage(p.level, p.species);
-                const spMeta = SPECIES_CATALOG[p.species];
-                const isLead = p.id === pet.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className={`pkb-top-avatar-btn ${isLead ? 'is-lead' : ''}`}
-                    onClick={() => onOpenPokemonManager('squad', false)}
-                    title={`${p.name} (${spMeta.typeLabel}) · Lv.${p.level} · 点击管理当前队伍`}
-                  >
-                    <TrimmedSpriteImg
-                      src={spMeta.stageSprites[stg].animated}
-                      alt={p.name}
-                      size={36}
-                      fillRatio={0.86}
-                    />
-                    <em>{p.level}</em>
-                  </button>
-                );
-              })}
-              {save.pets.length < 6 && (
-                <button
-                  type="button"
-                  className="pkb-top-avatar-btn is-add"
-                  onClick={() => onOpenPokemonManager('market', false)}
-                  title="抽取或招募更多宝可梦伙伴"
-                >
-                  <span>+</span>
-                </button>
-              )}
+            <div className="pkb-top-squad">
+              <button
+                type="button"
+                className="pkb-squad-entry-btn"
+                onClick={() => onOpenPokemonManager('squad', false)}
+                title={`管理出战队伍（${activeSquadPreset.name} · ${effectiveSquadPets.length}/${maxFollowers}）`}
+              >
+                <span className="pkb-squad-entry-ava">
+                  <TrimmedSpriteImg
+                    src={petMeta.stageSprites[petStage].static}
+                    alt={pet.name}
+                    size={26}
+                    fillRatio={0.86}
+                  />
+                </span>
+                <strong>{tr(lang, 'squadBtn')}</strong>
+                <em className="pkb-squad-entry-count">{effectiveSquadPets.length}/{maxFollowers}</em>
+              </button>
             </div>
 
             <div className="pkb-top-right">
@@ -6247,7 +6233,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 type="button"
                 className="pkb-profile-pill is-clickable"
                 onClick={() => onOpenPokemonManager('profile', false)}
-                title="点击在掌机中查看与编辑训练家名片（昵称 / 称号 / 展示签名）"
+                title="点击在掌机中查看与编辑训练家名片"
               >
                 <img
                   src={petMeta.stageSprites[petStage].static}
@@ -6257,7 +6243,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 />
                 <div className="pkb-trainer-meta">
                   <span className="pkb-trainer-name">{trainerProfile.name}</span>
-                  <small className="pkb-trainer-sub">{trainerProfile.title} · {pet.name}</small>
+                  <small className="pkb-trainer-sub">{trainerProfile.title}</small>
                 </div>
               </button>
 
@@ -6456,125 +6442,41 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 </div>
               </div>
 
-              {/* Secondary Management Navigation Strip (7 Full-Width Square Icon Tiles incl. Lab & Bounties!) */}
-              <div className="pkb-dock-row is-7">
+              {/* Compact Bottom Action Bar: Announcement Ticker + Clean "More" Drawer Button */}
+              <div className="pkb-hub-bar">
                 <button
                   type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('party', false)}
-                  title={`精灵球盒 · 共 ${save.pets.length} 只伙伴`}
+                  className="pkb-news-ticker"
+                  onClick={() => onOpenPokemonManager('news', false)}
+                  title="点击在掌机中查看官方公告与版本更新"
                 >
-                  <em className="pkb-dock-badge">{save.pets.length}</em>
-                  <PixelItemImg src="/sprites/items/great-ball.png" size={40} />
-                  <strong>{tr(lang, 'dockBox')}</strong>
+                  <PixelItemImg src="/sprites/items/poke-radar.png" size={16} />
+                  <span className="pkb-news-pill">{tr(lang, 'newsTag')}</span>
+                  <span className="pkb-news-text">{tr(lang, 'newsHeadline')}</span>
+                  <em>→</em>
                 </button>
+
                 <button
                   type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('pokedex', false)}
-                  title={`宝可梦图鉴+ · 已收录 ${save.discoveredSpecies.length}/${POKEDEX_ORDER.length}`}
-                >
-                  <em className="pkb-dock-badge is-blue">
-                    {save.discoveredSpecies.length}/{POKEDEX_ORDER.length}
-                  </em>
-                  <PixelItemImg src="/sprites/items/town-map.png" size={40} />
-                  <strong>{tr(lang, 'dockDex')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
+                  className="pkb-more-btn"
                   onClick={() => {
                     sound.play('confirm');
-                    setHubModal('lab');
+                    setHubModal('more');
                   }}
-                  title={`研究所 · 星星沙子 ${meta.stardust} · 永久强化与切换主角 (${activeHeroDef.name})`}
-                >
-                  <em className="pkb-dock-badge is-purple">{meta.stardust}</em>
-                  <PixelItemImg src="/sprites/items/bright-powder.png" size={40} />
-                  <strong>{tr(lang, 'dockLab')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => {
-                    sound.play('confirm');
-                    setHubModal('bounties');
-                  }}
-                  title="每日 & 每周任务委托 · 赚取星星沙子"
+                  title="展开更多功能（球盒 / 图鉴 / 研究所 / 委托 / 商店 / 成就 / 日记）"
                 >
                   {claimableBountyCount > 0 && (
                     <em className="pkb-dock-badge">{claimableBountyCount}</em>
                   )}
-                  <PixelItemImg src="/sprites/items/vs-seeker.png" size={40} />
-                  <strong>{tr(lang, 'dockBounties')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('market', false)}
-                  title="盲盒商店 · 抽卡与补给"
-                >
-                  <em className="pkb-dock-badge is-gold">盲盒</em>
-                  <PixelItemImg src="/sprites/items/amulet-coin.png" size={40} />
-                  <strong>{tr(lang, 'dockShop')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('achievements', false)}
-                  title={`成就徽章 · 已解锁 ${save.unlockedAchievements.length} 枚`}
-                >
-                  <em className="pkb-dock-badge is-green">{save.unlockedAchievements.length}</em>
-                  <PixelItemImg src="/sprites/items/kings-rock.png" size={40} />
-                  <strong>{tr(lang, 'dockAchieve')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('diary', false)}
-                  title="冒险日记 · 成长与战绩"
-                >
-                  <PixelItemImg src="/sprites/items/poke-radar.png" size={40} />
-                  <strong>{tr(lang, 'dockDiary')}</strong>
+                  <PixelItemImg src="/sprites/items/town-map.png" size={18} />
+                  <strong>{tr(lang, 'moreBtn')}</strong>
                 </button>
               </div>
-
-              {/* Server-Ready Announcement Banner Ticker -> Opens inside Handheld Console! */}
-              <button
-                type="button"
-                className="pkb-news-ticker"
-                onClick={() => onOpenPokemonManager('news', false)}
-                title="点击在掌机中查看官方公告与版本更新"
-              >
-                <PixelItemImg src="/sprites/items/poke-radar.png" size={18} />
-                <span className="pkb-news-pill">{tr(lang, 'newsTag')}</span>
-                <span className="pkb-news-text">{tr(lang, 'newsHeadline')}</span>
-                <em>→</em>
-              </button>
             </div>
           </div>
 
-          {/* Bottom Community, Guide, Feedback & Multi-Language Pixel Icon Strip */}
+          {/* Minimal Corner Footer (Only Install PWA if available + Language toggle) */}
           <footer className="pkb-hub-footer">
-            <button
-              type="button"
-              className="pkb-util-btn"
-              onClick={() => onOpenPokemonManager('guide', false)}
-              title={tr(lang, 'guideBtn')}
-            >
-              <PixelItemImg src="/sprites/items/light-ball.png" size={16} />
-              <span>{tr(lang, 'guideBtn')}</span>
-            </button>
-            <button
-              type="button"
-              className="pkb-util-btn"
-              onClick={() => onOpenPokemonManager('feedback', false)}
-              title={tr(lang, 'feedbackBtn')}
-            >
-              <PixelItemImg src="/sprites/items/potion.png" size={16} />
-              <span>{tr(lang, 'feedbackBtn')}</span>
-            </button>
-            {/* Discord & Twitter social links temporarily hidden for deployment */}
             {pwaInstallPrompt && (
               <button
                 type="button"
@@ -6589,7 +6491,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   }
                 }}
               >
-                <PixelItemImg src="/sprites/items/poke-ball.png" size={16} />
+                <PixelItemImg src="/sprites/items/poke-ball.png" size={15} />
                 <span>安装应用</span>
               </button>
             )}
@@ -6600,10 +6502,165 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               aria-label="语言"
               title="切换界面语言 (中文 / English / 日本語)"
             >
-              <PixelItemImg src="/sprites/items/town-map.png" size={16} />
+              <PixelItemImg src="/sprites/items/town-map.png" size={15} />
               <span>{LANG_LABELS[lang]}</span>
             </button>
           </footer>
+
+          {/* Clean "More" Hub Drawer Modal (All 7 Secondary Features + Guide/Feedback) */}
+          {hubModal === 'more' && (
+            <div
+              className={`surv-modal-backdrop ${closingHubModal ? 'is-closing' : ''}`}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeHubModal();
+              }}
+            >
+              <div className="surv-upgrade-box pkb-more-modal">
+                <div className="surv-upgrade-head shop-head-row">
+                  <span className="inline-icon-row">
+                    <PixelItemImg src="/sprites/items/town-map.png" size={18} />
+                    <span>更多功能</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="lcd-mini-close"
+                    onClick={closeHubModal}
+                  >
+                    {tr(lang, 'close')}
+                  </button>
+                </div>
+
+                <div className="pkb-more-grid">
+                  <button
+                    type="button"
+                    className="pkb-dock-tile"
+                    onClick={() => {
+                      setHubModal('none');
+                      onOpenPokemonManager('party', false);
+                    }}
+                  >
+                    <em className="pkb-dock-badge">{save.pets.length}</em>
+                    <PixelItemImg src="/sprites/items/great-ball.png" size={34} />
+                    <strong>{tr(lang, 'dockBox')}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className="pkb-dock-tile"
+                    onClick={() => {
+                      setHubModal('none');
+                      onOpenPokemonManager('pokedex', false);
+                    }}
+                  >
+                    <em className="pkb-dock-badge is-blue">
+                      {save.discoveredSpecies.length}/{POKEDEX_ORDER.length}
+                    </em>
+                    <PixelItemImg src="/sprites/items/town-map.png" size={34} />
+                    <strong>{tr(lang, 'dockDex')}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className="pkb-dock-tile"
+                    onClick={() => {
+                      sound.play('confirm');
+                      setHubModal('lab');
+                    }}
+                  >
+                    <em className="pkb-dock-badge is-purple">{meta.stardust}</em>
+                    <PixelItemImg src="/sprites/items/bright-powder.png" size={34} />
+                    <strong>{tr(lang, 'dockLab')}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className="pkb-dock-tile"
+                    onClick={() => {
+                      sound.play('confirm');
+                      setHubModal('bounties');
+                    }}
+                  >
+                    {claimableBountyCount > 0 && (
+                      <em className="pkb-dock-badge">{claimableBountyCount}</em>
+                    )}
+                    <PixelItemImg src="/sprites/items/vs-seeker.png" size={34} />
+                    <strong>{tr(lang, 'dockBounties')}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className="pkb-dock-tile"
+                    onClick={() => {
+                      setHubModal('none');
+                      onOpenPokemonManager('market', false);
+                    }}
+                  >
+                    <em className="pkb-dock-badge is-gold">盲盒</em>
+                    <PixelItemImg src="/sprites/items/amulet-coin.png" size={34} />
+                    <strong>{tr(lang, 'dockShop')}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className="pkb-dock-tile"
+                    onClick={() => {
+                      setHubModal('none');
+                      onOpenPokemonManager('achievements', false);
+                    }}
+                  >
+                    <em className="pkb-dock-badge is-green">{save.unlockedAchievements.length}</em>
+                    <PixelItemImg src="/sprites/items/kings-rock.png" size={34} />
+                    <strong>{tr(lang, 'dockAchieve')}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className="pkb-dock-tile"
+                    onClick={() => {
+                      setHubModal('none');
+                      onOpenPokemonManager('diary', false);
+                    }}
+                  >
+                    <PixelItemImg src="/sprites/items/poke-radar.png" size={34} />
+                    <strong>{tr(lang, 'dockDiary')}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className="pkb-dock-tile"
+                    onClick={() => {
+                      setHubModal('none');
+                      onOpenPokemonManager('squad', false);
+                    }}
+                  >
+                    <em className="pkb-dock-badge is-blue">
+                      {effectiveSquadPets.length}/{maxFollowers}
+                    </em>
+                    <PixelItemImg src="/sprites/items/poke-ball.png" size={34} />
+                    <strong>{tr(lang, 'squadBtn')}</strong>
+                  </button>
+                </div>
+
+                <div className="pkb-more-footer">
+                  <button
+                    type="button"
+                    className="pkb-util-btn"
+                    onClick={() => {
+                      setHubModal('none');
+                      onOpenPokemonManager('guide', false);
+                    }}
+                  >
+                    <PixelItemImg src="/sprites/items/light-ball.png" size={15} />
+                    <span>{tr(lang, 'guideBtn')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="pkb-util-btn"
+                    onClick={() => {
+                      setHubModal('none');
+                      onOpenPokemonManager('feedback', false);
+                    }}
+                  >
+                    <PixelItemImg src="/sprites/items/potion.png" size={15} />
+                    <span>{tr(lang, 'feedbackBtn')}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Fullscreen Lab, Bounties & Info Modals */}
           {hubModal === 'lab' && (
@@ -7107,9 +7164,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             </div>
           </div>
 
-          {/* Left-Edge Vertically Centered Minimalist RPG Party Status List (Drag or click ▲/▼ to reorder, click card for details!) */}
+          {/* Left-Edge RPG Party Status List (Collapsible toggle pill on mobile so 3D viewport stays wide open!) */}
           {!resultModal && (
-            <div className="surv-party-list is-centered" title="拖拽或点击上下箭头调整出战顺序；点击卡片查看详情">
+            <div
+              className={`surv-party-list is-centered ${mobilePartyOpen ? 'is-mobile-open' : 'is-mobile-collapsed'}`}
+              title="拖拽或点击上下箭头调整出战顺序；点击卡片查看详情"
+            >
+              <button
+                type="button"
+                className="surv-party-mobile-toggle"
+                onClick={() => setMobilePartyOpen((v) => !v)}
+              >
+                <PixelItemImg src="/sprites/items/poke-ball.png" size={14} />
+                <span>队伍 {followersView.length}</span>
+                <em>{mobilePartyOpen ? '▲' : '▼'}</em>
+              </button>
+              <div className="surv-party-cards-wrap">
               {followersView.map((f, fIdx) => {
                 const vitals = hud.followerVitals[f.id] ?? {
                   hp: Math.round((95 + f.level * 28) * (hpPct / 100)),
@@ -7227,6 +7297,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   </div>
                 );
               })}
+              </div>
             </div>
           )}
 

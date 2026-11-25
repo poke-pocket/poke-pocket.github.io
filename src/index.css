@@ -13835,3 +13835,1957 @@ button.gba-status-box.is-clickable-card {
   background: #74c0fc;
   border: 1.5px solid #161420;
 }
+
+/* =========================================================================
+   UNIVERSAL OVERFLOW / SAFE-AREA / TEXT-TRUNCATION & TOUCH DEVICE GUARDS
+   ========================================================================= */
+html,
+body,
+#root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.world3d-root-layer,
+.world3d-stage {
+  height: 100dvh;
+}
+
+.meta-panel,
+.surv-result-fullscreen {
+  height: 100dvh;
+}
+
+/* Prevent flex/grid children from pushing outside their boxes */
+.pkb-trainer-meta,
+.pkb-cta-txt,
+.pkb-sub-cta > .pkb-unskew-inner > div:last-child,
+.surv-hero-info,
+.party-info,
+.ko-prompt-meta,
+.bounty-info,
+.hero-pick-info,
+.gba-status-box,
+.lcd-submenu-head > .inline-icon-row {
+  min-width: 0;
+}
+
+.pkb-trainer-name,
+.pkb-trainer-sub,
+.party-head-line strong,
+.surv-hero-top strong,
+.gba-name-line strong,
+.top-deck-wing strong,
+.top-trainer-tag,
+.lcd-submenu-head-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pkb-cta-txt small,
+.pkb-sub-cta small,
+.pkb-ms-title-card p,
+.lab-card p,
+.bounty-info small,
+.news-card p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Hide desktop keyboard hints on touch devices for a clean native-app look */
+@media (pointer: coarse) {
+  .px-keycap,
+  .surv-cam-hint,
+  .surv-interact-key,
+  .pkb-launch-cta em,
+  .pkb-esc-btn em,
+  .mm-tab-chip {
+    display: none !important;
+  }
+}
+
+/* =========================================================================
+   MOBILE & TABLET PORTRAIT LAYOUT (max-width: 768px)
+   ========================================================================= */
+@media (max-width: 768px) {
+  /* --- LAYER 1: 3D MAIN HUB (PORTRAIT) --- */
+  .pkb-hub-overlay {
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom))
+      max(12px, env(safe-area-inset-left));
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    justify-content: flex-start;
+    gap: 10px;
+  }
+
+  .pkb-topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .pkb-top-squad {
+    order: 2;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    gap: 5px;
+  }
+
+  .pkb-top-avatar-btn {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
+  }
+
+  .pkb-top-avatar-btn img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .pkb-top-right {
+    order: 1;
+    width: 100%;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .pkb-profile-pill {
+    flex: 1;
+    min-width: 0;
+    height: 38px;
+    padding: 0 8px 0 6px;
+    gap: 7px;
+  }
+
+  .pkb-avatar {
+    width: 26px;
+    height: 26px;
+  }
+
+  .pkb-trainer-name {
+    font-size: 12px;
+  }
+
+  .pkb-trainer-sub {
+    font-size: 10px;
+    display: block;
+  }
+
+  .pkb-coin-standalone {
+    height: 38px !important;
+    padding: 0 8px !important;
+    font-size: 12px !important;
+    flex-shrink: 0;
+  }
+
+  .pkb-icon-btn {
+    height: 38px;
+    padding: 0 9px;
+    flex-shrink: 0;
+  }
+
+  .pkb-hub-body {
+    max-width: 100% !important;
+    margin: auto 0;
+  }
+
+  .pkb-hub-left {
+    max-width: 100%;
+    gap: 10px;
+  }
+
+  .pkb-title-block h1 {
+    font-size: clamp(20px, 6.4vw, 30px);
+    letter-spacing: 1px;
+    line-height: 1.2;
+  }
+
+  .pkb-3d-tag {
+    font-size: clamp(12px, 3.6vw, 16px);
+    padding: 1px 6px;
+    margin-left: 4px;
+    border-width: 2px;
+  }
+
+  .pkb-hero-grid.is-slanted-deck {
+    grid-template-columns: 1fr;
+    transform: none !important;
+    padding-inline: 0;
+    gap: 8px;
+  }
+
+  .pkb-hero-grid.is-slanted-deck .pkb-unskew-inner {
+    transform: none !important;
+    gap: 10px;
+  }
+
+  .pkb-hero-cta {
+    padding: 12px 14px;
+  }
+
+  .pkb-hero-ico-box.is-lg {
+    width: 44px;
+    height: 44px;
+  }
+
+  .pkb-hero-ico-box.is-lg img {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .pkb-hero-ico-box {
+    width: 36px;
+    height: 36px;
+  }
+
+  .pkb-hero-ico-box img {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .pkb-cta-txt strong {
+    font-size: 18px;
+  }
+
+  .pkb-cta-txt small {
+    font-size: 11px;
+  }
+
+  .pkb-hero-subcol {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .pkb-sub-cta {
+    padding: 9px 10px;
+  }
+
+  .pkb-sub-cta strong {
+    font-size: 13px;
+  }
+
+  .pkb-sub-cta small {
+    font-size: 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* 7-Tile Dock: crisp 4-column grid instead of overflowing 590px flex row! */
+  .pkb-dock-row,
+  .pkb-dock-row.is-7 {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100%;
+  }
+
+  .pkb-dock-row.is-7 .pkb-dock-tile {
+    width: auto !important;
+    height: auto !important;
+    min-height: 62px;
+    padding: 8px 4px 6px;
+    gap: 3px;
+  }
+
+  .pkb-dock-tile img {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .pkb-dock-tile strong {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .pkb-news-ticker {
+    margin-top: 2px;
+    padding: 7px 9px;
+    gap: 6px;
+  }
+
+  .pkb-news-text {
+    font-size: 11px;
+  }
+
+  .pkb-hub-footer {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-top: 4px;
+    margin-top: auto;
+  }
+
+  .pkb-util-btn {
+    height: 30px;
+    padding: 0 9px;
+    font-size: 11px;
+  }
+
+  /* --- LAYER 2: MAP SELECT (PORTRAIT) --- */
+  .pkb-mapselect-overlay {
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(10px, env(safe-area-inset-right))
+      max(14px, env(safe-area-inset-bottom))
+      max(10px, env(safe-area-inset-left));
+    gap: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pkb-ms-header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .pkb-esc-btn,
+  .pkb-ms-ribbon,
+  .pkb-gen-pill {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .pkb-gen-pill span {
+    max-width: 135px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pkb-map-carousel {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    gap: 8px;
+    padding-bottom: 4px;
+    flex-shrink: 0;
+  }
+
+  .pkb-map-tab {
+    flex: 0 0 auto;
+    min-width: 136px;
+    scroll-snap-align: start;
+    padding: 5px 7px;
+  }
+
+  .pkb-map-thumb {
+    width: 34px;
+    height: 30px;
+  }
+
+  .pkb-ms-split {
+    flex: none;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .pkb-ms-showcase {
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .pkb-ms-showcase-top {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .pkb-ms-title-card {
+    max-width: 100%;
+  }
+
+  .pkb-ms-title-card h2 {
+    font-size: 22px;
+  }
+
+  .pkb-squad-stack {
+    width: 100%;
+  }
+
+  .pkb-guard-chain {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .pkb-guard-img {
+    width: 34px;
+    height: 34px;
+  }
+
+  .pkb-ready-panel {
+    width: 100%;
+  }
+
+  .pkb-mode-pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pkb-launch-cta {
+    padding: 12px 14px;
+    font-size: 16px;
+  }
+
+  /* --- LAYER 3: LIVE 3D COMBAT HUD (PORTRAIT) --- */
+  .surv-hud-row.is-wide,
+  .surv-hud-row.is-wide.is-no-top-xp {
+    top: max(6px, env(safe-area-inset-top));
+    left: max(6px, env(safe-area-inset-left));
+    right: max(6px, env(safe-area-inset-right));
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    row-gap: 5px;
+    column-gap: 5px;
+  }
+
+  .hud-col-left {
+    order: 1;
+    flex: 1 1 52%;
+    min-width: 0;
+  }
+
+  .hud-col-right {
+    order: 2;
+    flex: 0 0 auto;
+  }
+
+  .hud-col-center {
+    order: 3;
+    flex: 1 0 100%;
+    width: 100%;
+  }
+
+  .surv-hero-card {
+    min-width: 0;
+    width: 100%;
+    padding: 3px 6px 3px 4px;
+    gap: 6px;
+  }
+
+  .surv-hero-avatar {
+    width: 34px;
+    height: 34px;
+  }
+
+  .surv-hero-avatar img {
+    width: 32px;
+    height: 32px;
+  }
+
+  .surv-hero-info {
+    min-width: 0;
+    gap: 3px;
+  }
+
+  .surv-hero-top strong {
+    font-size: 11px;
+  }
+
+  .surv-hero-hp-num,
+  .surv-surf-pill,
+  .surv-boost-pill {
+    font-size: 9px;
+    white-space: nowrap;
+  }
+
+  .surv-hero-hp-track {
+    height: 8px;
+  }
+
+  .surv-hero-xp-track {
+    height: 4px;
+  }
+
+  .surv-right-stats {
+    gap: 4px;
+  }
+
+  .surv-top-btn.is-lg {
+    height: 30px;
+    padding: 0 7px;
+    font-size: 10px;
+    gap: 3px;
+  }
+
+  .surv-top-btn.is-lg img {
+    width: 13px !important;
+    height: 13px !important;
+  }
+
+  .surv-top-status-deck {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .top-deck-wing {
+    min-width: 0;
+    padding: 3px 7px;
+    flex: 1;
+  }
+
+  .top-deck-wing.is-left strong {
+    font-size: 11px;
+  }
+
+  .top-deck-center {
+    min-width: 82px;
+    padding: 3px 8px;
+  }
+
+  .top-deck-center strong {
+    font-size: 13px;
+  }
+
+  .top-deck-center small {
+    font-size: 8px;
+  }
+
+  .top-trainer-tag {
+    font-size: 9px;
+    padding: 1px 4px;
+    max-width: 100%;
+  }
+
+  .top-badge-mini {
+    font-size: 9px;
+  }
+
+  .surv-minimap-box {
+    top: calc(max(6px, env(safe-area-inset-top)) + 88px);
+    right: max(6px, env(safe-area-inset-right));
+    width: 78px;
+    height: 78px;
+  }
+
+  .surv-combo-badge {
+    top: calc(max(6px, env(safe-area-inset-top)) + 172px) !important;
+    right: max(6px, env(safe-area-inset-right));
+    width: 78px;
+    padding: 3px 4px;
+  }
+
+  .surv-combo-badge em {
+    font-size: 8px;
+  }
+
+  .surv-combo-badge strong {
+    font-size: 14px;
+  }
+
+  .surv-fps-badge {
+    top: calc(max(6px, env(safe-area-inset-top)) + 88px);
+    left: max(6px, env(safe-area-inset-left));
+    font-size: 9px;
+  }
+
+  .surv-boss-bar.is-wide {
+    top: calc(max(6px, env(safe-area-inset-top)) + 90px);
+    width: min(290px, calc(100vw - 170px));
+    min-width: 180px;
+  }
+
+  .surv-event-banner.is-top-banner {
+    top: calc(max(6px, env(safe-area-inset-top)) + 92px) !important;
+    max-width: calc(100vw - 24px);
+    font-size: 11px !important;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .surv-party-list.is-centered {
+    left: max(6px, env(safe-area-inset-left));
+    width: 116px;
+    top: 52%;
+    max-height: calc(100% - 290px);
+    overflow-y: auto;
+    gap: 4px;
+  }
+
+  .surv-party-card {
+    padding: 3px 4px !important;
+    gap: 4px !important;
+  }
+
+  .party-portrait {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .party-portrait img {
+    width: 26px !important;
+    height: 26px !important;
+  }
+
+  .party-head-line strong {
+    font-size: 10px !important;
+  }
+
+  .party-skill-icons {
+    display: none !important;
+  }
+
+  .vpad-360 {
+    left: max(10px, env(safe-area-inset-left));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    width: 88px;
+    height: 88px;
+  }
+
+  .surv-moba-wheel {
+    right: max(8px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    transform: scale(0.75);
+    transform-origin: right bottom;
+  }
+
+  .surv-ko-prompt {
+    min-width: 0;
+    width: calc(100vw - 16px);
+    max-width: 390px;
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 148px);
+    padding: 7px 9px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .ko-prompt-thumb {
+    width: 40px;
+    height: 40px;
+  }
+
+  .ko-prompt-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .surv-interact-pill {
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 150px);
+    max-width: calc(100vw - 24px);
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+
+  .cap-cinema-subtitle {
+    bottom: 24px;
+    max-width: calc(100vw - 24px);
+    white-space: normal;
+    text-align: center;
+    font-size: 12px;
+    padding: 5px 12px;
+  }
+
+  /* --- LAYER 4: DRAFT, RESULT, LAB, BOUNTIES & MODALS (PORTRAIT) --- */
+  .surv-draft-stage {
+    width: min(520px, 95vw);
+    max-height: 92dvh;
+    overflow-y: auto;
+    gap: 10px;
+    padding: 6px 2px;
+  }
+
+  .surv-draft-ribbon {
+    font-size: 15px;
+    padding: 5px 18px;
+  }
+
+  .surv-draft-grid {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .surv-draft-card {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .draft-card-banner {
+    width: 96px;
+    height: auto;
+    min-height: 86px;
+    flex-shrink: 0;
+    border-bottom: none;
+    border-right: 3px solid #161420;
+  }
+
+  .draft-card-body {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px !important;
+  }
+
+  .surv-draft-utils {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .surv-upgrade-box,
+  .surv-upgrade-box.is-wide-modal {
+    width: min(520px, 95vw) !important;
+    max-height: 90dvh;
+    overflow-y: auto;
+  }
+
+  /* Result Fullscreen */
+  .surv-result-fullscreen {
+    overflow-y: auto;
+  }
+
+  .res-fs-head {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .res-title-row h3 {
+    font-size: 18px;
+  }
+
+  .res-fs-body {
+    grid-template-columns: 1fr !important;
+    overflow-y: visible !important;
+    padding: 10px !important;
+    gap: 10px !important;
+  }
+
+  .res-squad-grid-2x3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .res-fs-footer {
+    flex-wrap: wrap;
+    padding: 10px !important;
+    gap: 8px !important;
+  }
+
+  .res-fs-footer .res-btn {
+    flex: 1 1 120px;
+    font-size: 12px;
+    padding: 9px 10px;
+  }
+
+  /* Meta Overlays: Research Lab & Bounties */
+  .meta-head {
+    flex-wrap: wrap;
+    padding:
+      max(8px, env(safe-area-inset-top))
+      10px
+      8px;
+    gap: 6px;
+  }
+
+  .meta-ribbon {
+    padding: 4px 10px;
+  }
+
+  .meta-ribbon h2 {
+    font-size: 13px;
+  }
+
+  .meta-head-right {
+    width: 100%;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .meta-split-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .meta-side-rail {
+    flex-direction: row;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 8px 10px;
+    gap: 8px;
+    border-right: none;
+    border-bottom: 3px solid #161420;
+  }
+
+  .meta-rail-tab {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+  }
+
+  .meta-body {
+    padding: 10px;
+    overflow-y: auto;
+  }
+
+  .lab-upgrade-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .hero-lab-layout {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .hero-roster-col {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+  }
+
+  .hero-pick-card {
+    flex: 0 0 164px;
+    padding: 7px;
+  }
+
+  .hero-banner-card {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .hero-skills-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bounties-grid-2 {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+    padding: 10px;
+    gap: 12px;
+  }
+
+  .bounty-col {
+    overflow: visible;
+  }
+
+  .bounty-card {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .bounty-actions {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .guide-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .worldmap-body {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* --- LAYER 5: HANDHELD CONSOLE & LCD (PORTRAIT) --- */
+  .manager-overlay-wrap {
+    padding:
+      max(8px, env(safe-area-inset-top))
+      6px
+      max(8px, env(safe-area-inset-bottom));
+    overflow-y: auto;
+    align-items: flex-start !important;
+  }
+
+  .console-column {
+    max-width: 100% !important;
+    gap: 6px;
+  }
+
+  .handheld-shell,
+  .handheld-shell.is-3d-chassis {
+    padding: 8px 8px 10px;
+    border-radius: 16px 16px 32px 16px;
+    transform: none !important;
+    box-shadow:
+      inset 0 2px 3px rgba(255, 255, 255, 0.55),
+      0 10px 24px rgba(10, 8, 20, 0.42);
+  }
+
+  .screen-bezel {
+    padding: 8px 8px 6px;
+    border-radius: 10px 10px 24px 10px;
+  }
+
+  .lens-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .battery-column,
+  .shell-side-charm-anchor,
+  .shell-fs-charm-anchor {
+    display: none !important;
+  }
+
+  .lcd-viewport {
+    height: min(60dvh, 460px) !important;
+    min-height: 320px;
+  }
+
+  .gba-hud-row {
+    gap: 5px;
+    padding: 6px 6px 0;
+  }
+
+  .gba-status-box {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+    height: auto;
+    min-height: 62px;
+    padding: 4px 5px;
+  }
+
+  .gba-dex-coin {
+    height: auto;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .hud-stamina-pill {
+    min-width: 78px;
+  }
+
+  .hud-coin-btn {
+    height: 30px;
+    font-size: 11px;
+    padding: 0 6px 0 3px;
+  }
+
+  .lcd-sq-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .party-tool-bar {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .party-filter-pills {
+    flex-wrap: wrap;
+  }
+
+  .dex-kpi-row,
+  .dex-medal-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .news-sec-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .shell-embossed-logo {
+    margin-top: 6px;
+    font-size: 9px;
+  }
+
+  .controls-deck {
+    margin-top: 8px !important;
+    padding: 0 4px !important;
+  }
+}
+
+/* Extra-narrow phones (320px–380px): keep top HUD & cards ultra-crisp */
+@media (max-width: 390px) {
+  .pkb-hero-subcol {
+    grid-template-columns: 1fr;
+  }
+
+  .pkb-dock-row,
+  .pkb-dock-row.is-7 {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .top-deck-wing.is-right {
+    display: none;
+  }
+
+  .surv-moba-wheel {
+    transform: scale(0.68);
+  }
+}
+
+/* =========================================================================
+   MOBILE LANDSCAPE LAYOUT (max-height: 520px and orientation: landscape)
+   ========================================================================= */
+@media (max-height: 520px) and (orientation: landscape) {
+  /* --- LAYER 1: 3D MAIN HUB (LANDSCAPE PHONE) --- */
+  .pkb-hub-overlay {
+    padding:
+      6px
+      max(14px, env(safe-area-inset-right))
+      6px
+      max(14px, env(safe-area-inset-left));
+    overflow-y: auto;
+    overflow-x: hidden;
+    gap: 6px;
+  }
+
+  .pkb-topbar {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .pkb-top-squad {
+    order: 0;
+    width: auto;
+    max-width: 44vw;
+    overflow-x: auto;
+    gap: 4px;
+  }
+
+  .pkb-top-avatar-btn {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  .pkb-top-avatar-btn img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .pkb-top-right {
+    order: 0;
+    width: auto;
+    gap: 6px;
+  }
+
+  .pkb-profile-pill,
+  .pkb-coin-standalone,
+  .pkb-icon-btn {
+    height: 32px !important;
+  }
+
+  .pkb-profile-pill {
+    max-width: 210px;
+    padding: 0 8px 0 5px;
+    gap: 6px;
+  }
+
+  .pkb-avatar {
+    width: 22px;
+    height: 22px;
+  }
+
+  .pkb-trainer-name {
+    font-size: 11px;
+  }
+
+  .pkb-trainer-sub {
+    display: none;
+  }
+
+  .pkb-hub-body {
+    max-width: 720px !important;
+    margin: auto;
+  }
+
+  .pkb-hub-left {
+    gap: 6px;
+  }
+
+  .pkb-title-block h1 {
+    font-size: 22px;
+    letter-spacing: 1px;
+  }
+
+  .pkb-3d-tag {
+    font-size: 12px;
+    padding: 1px 6px;
+  }
+
+  .pkb-hero-grid.is-slanted-deck {
+    grid-template-columns: 1.15fr 1fr;
+    gap: 8px;
+    padding-inline: 6px;
+  }
+
+  .pkb-hero-cta {
+    padding: 8px 12px;
+  }
+
+  .pkb-hero-ico-box.is-lg {
+    width: 38px;
+    height: 38px;
+  }
+
+  .pkb-hero-ico-box.is-lg img {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  .pkb-hero-ico-box {
+    width: 30px;
+    height: 30px;
+  }
+
+  .pkb-hero-ico-box img {
+    width: 26px !important;
+    height: 26px !important;
+  }
+
+  .pkb-cta-txt strong {
+    font-size: 16px;
+  }
+
+  .pkb-cta-txt small,
+  .pkb-sub-cta small {
+    font-size: 10px;
+  }
+
+  .pkb-hero-subcol {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .pkb-sub-cta {
+    padding: 5px 10px;
+  }
+
+  .pkb-sub-cta strong {
+    font-size: 13px;
+  }
+
+  .pkb-dock-row,
+  .pkb-dock-row.is-7 {
+    display: grid !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  .pkb-dock-row.is-7 .pkb-dock-tile {
+    width: auto !important;
+    height: 50px !important;
+    min-height: 0;
+    padding: 4px 2px;
+    gap: 2px;
+  }
+
+  .pkb-dock-tile img {
+    width: 22px !important;
+    height: 22px !important;
+  }
+
+  .pkb-dock-tile strong {
+    font-size: 10px;
+  }
+
+  .pkb-news-ticker {
+    margin-top: 2px;
+    padding: 4px 8px;
+    gap: 6px;
+  }
+
+  .pkb-news-text {
+    font-size: 10px;
+  }
+
+  .pkb-hub-footer {
+    padding-top: 2px;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+
+  .pkb-util-btn {
+    height: 26px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  /* --- LAYER 2: MAP SELECT (LANDSCAPE PHONE) --- */
+  .pkb-mapselect-overlay {
+    padding:
+      6px
+      max(12px, env(safe-area-inset-right))
+      6px
+      max(12px, env(safe-area-inset-left));
+    gap: 6px;
+    overflow-y: auto;
+  }
+
+  .pkb-esc-btn,
+  .pkb-ms-ribbon,
+  .pkb-gen-pill {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .pkb-map-carousel {
+    display: flex;
+    overflow-x: auto;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .pkb-map-tab {
+    flex: 0 0 auto;
+    padding: 4px 7px;
+    gap: 6px;
+  }
+
+  .pkb-map-thumb {
+    width: 28px;
+    height: 24px;
+  }
+
+  .pkb-map-tab-meta strong {
+    font-size: 11px;
+  }
+
+  .pkb-ms-split {
+    grid-template-columns: minmax(0, 1.2fr) minmax(240px, 285px);
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .pkb-ms-showcase {
+    padding: 8px;
+    overflow-y: auto;
+  }
+
+  .pkb-ms-title-card h2 {
+    font-size: 18px;
+    margin-bottom: 3px;
+  }
+
+  .pkb-ms-title-card p {
+    font-size: 10px;
+    padding: 4px 7px;
+  }
+
+  .pkb-squad-stack {
+    width: 196px;
+    gap: 4px;
+  }
+
+  .pkb-guardians-bar {
+    padding: 6px 8px;
+  }
+
+  .pkb-guard-img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .pkb-ready-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .pkb-ready-head {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .pkb-ready-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 6px 8px;
+    gap: 5px;
+  }
+
+  .pkb-mode-card {
+    padding: 5px 6px;
+  }
+
+  .pkb-mode-card strong,
+  .pkb-diff-btn strong {
+    font-size: 11px;
+  }
+
+  .pkb-mode-card small,
+  .pkb-diff-btn small {
+    font-size: 9px;
+  }
+
+  .pkb-diff-btn {
+    padding: 5px 8px;
+  }
+
+  .pkb-record-box {
+    display: none;
+  }
+
+  .pkb-launch-cta {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  /* --- LAYER 3: LIVE 3D COMBAT HUD (LANDSCAPE PHONE) --- */
+  .surv-hud-row.is-wide,
+  .surv-hud-row.is-wide.is-no-top-xp {
+    top: 6px;
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+
+  .hud-col-left,
+  .hud-col-center,
+  .hud-col-right {
+    order: 0;
+    flex: 0 1 auto;
+    width: auto;
+  }
+
+  .surv-hero-card {
+    min-width: 152px;
+    max-width: 205px;
+    padding: 3px 6px 3px 4px;
+    gap: 6px;
+  }
+
+  .surv-hero-avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  .surv-hero-avatar img {
+    width: 28px;
+    height: 28px;
+  }
+
+  .surv-hero-info {
+    min-width: 96px;
+    gap: 3px;
+  }
+
+  .surv-hero-top strong {
+    font-size: 10px;
+  }
+
+  .surv-hero-hp-num {
+    font-size: 9px;
+  }
+
+  .surv-hero-hp-track {
+    height: 7px;
+  }
+
+  .surv-hero-xp-track {
+    height: 4px;
+  }
+
+  .surv-top-status-deck {
+    width: auto;
+  }
+
+  .top-deck-wing {
+    min-width: 0;
+    padding: 2px 7px;
+  }
+
+  .top-deck-wing.is-right {
+    display: none;
+  }
+
+  .top-deck-center {
+    min-width: 78px;
+    padding: 2px 10px;
+    border-right: none;
+  }
+
+  .top-deck-center strong {
+    font-size: 13px;
+  }
+
+  .surv-top-btn.is-lg {
+    height: 28px;
+    padding: 0 7px;
+    font-size: 10px;
+  }
+
+  .surv-minimap-box {
+    top: 40px;
+    right: max(10px, env(safe-area-inset-right));
+    width: 74px;
+    height: 74px;
+  }
+
+  .surv-combo-badge {
+    top: 120px !important;
+    right: max(10px, env(safe-area-inset-right));
+    width: 74px;
+    padding: 2px 4px;
+  }
+
+  .surv-combo-badge em {
+    font-size: 8px;
+  }
+
+  .surv-combo-badge strong {
+    font-size: 13px;
+  }
+
+  .surv-fps-badge {
+    top: 44px;
+    left: max(10px, env(safe-area-inset-left));
+    font-size: 9px;
+  }
+
+  .surv-party-list.is-centered {
+    left: max(10px, env(safe-area-inset-left));
+    top: 44%;
+    width: 118px;
+    max-height: calc(100% - 146px);
+    overflow-y: auto;
+    gap: 4px;
+  }
+
+  .surv-party-card {
+    padding: 2px 4px !important;
+    gap: 4px !important;
+  }
+
+  .party-portrait {
+    width: 26px !important;
+    height: 26px !important;
+  }
+
+  .party-portrait img {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  .party-skill-icons {
+    display: none !important;
+  }
+
+  .vpad-360 {
+    left: max(14px, env(safe-area-inset-left));
+    bottom: 10px;
+    width: 82px;
+    height: 82px;
+  }
+
+  .surv-moba-wheel {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: 8px;
+    transform: scale(0.7);
+    transform-origin: right bottom;
+  }
+
+  .surv-ko-prompt {
+    min-width: 0;
+    max-width: min(360px, 54vw);
+    bottom: 10px;
+    padding: 5px 8px;
+    gap: 8px;
+  }
+
+  .ko-prompt-thumb {
+    width: 36px;
+    height: 36px;
+  }
+
+  .surv-interact-pill {
+    bottom: 16px;
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  .surv-boss-bar.is-wide {
+    top: 44px;
+    width: min(320px, 46vw);
+  }
+
+  .surv-event-banner.is-top-banner {
+    top: 46px !important;
+    font-size: 11px !important;
+    padding: 3px 10px !important;
+  }
+
+  /* --- LAYER 4: DRAFT, RESULT, LAB & BOUNTIES (LANDSCAPE PHONE) --- */
+  .surv-draft-stage {
+    width: min(760px, 94vw);
+    max-height: 94dvh;
+    overflow-y: auto;
+    gap: 6px;
+  }
+
+  .surv-draft-ribbon {
+    font-size: 14px;
+    padding: 4px 18px;
+  }
+
+  .surv-draft-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .surv-draft-card {
+    flex-direction: column;
+  }
+
+  .draft-card-banner {
+    width: 100%;
+    height: 64px;
+    min-height: 64px;
+    border-right: none;
+    border-bottom: 2px solid #161420;
+  }
+
+  .draft-hero-art img {
+    max-height: 50px !important;
+  }
+
+  .draft-card-body {
+    padding: 6px 8px !important;
+  }
+
+  .res-fs-head {
+    padding: 6px 12px;
+  }
+
+  .res-fs-body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) !important;
+    padding: 8px 12px !important;
+    gap: 10px !important;
+    overflow-y: auto;
+  }
+
+  .res-fs-footer {
+    padding: 6px 12px !important;
+  }
+
+  .meta-head {
+    padding: 6px 12px;
+  }
+
+  .meta-split-shell {
+    grid-template-columns: 58px minmax(0, 1fr);
+    grid-template-rows: 1fr;
+  }
+
+  .meta-side-rail {
+    flex-direction: column;
+    padding: 6px 4px;
+    gap: 6px;
+    border-right: 3px solid #161420;
+    border-bottom: none;
+    overflow-y: auto;
+  }
+
+  .meta-rail-tab {
+    width: 44px;
+    height: 44px;
+  }
+
+  .meta-body {
+    padding: 8px 10px;
+  }
+
+  .lab-upgrade-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .hero-lab-layout {
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .bounties-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 8px;
+    gap: 10px;
+    overflow-y: auto;
+  }
+
+  /* --- LAYER 5: HANDHELD CONSOLE (WIDESCREEN LANDSCAPE TOUCH MODE!) --- */
+  .manager-overlay-wrap {
+    padding: 6px max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left));
+    align-items: center !important;
+    overflow-y: auto;
+  }
+
+  .console-column {
+    max-width: min(740px, 92vw) !important;
+    gap: 4px;
+  }
+
+  .handheld-shell,
+  .handheld-shell.is-3d-chassis {
+    padding: 6px 8px;
+    border-radius: 14px;
+    transform: none !important;
+  }
+
+  .screen-bezel {
+    padding: 6px 8px 4px;
+    border-radius: 10px;
+  }
+
+  .lens-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .battery-column,
+  .bezel-brand-footer,
+  .shell-embossed-logo,
+  .controls-deck,
+  .lower-deck,
+  .shell-side-charm-anchor,
+  .shell-fs-charm-anchor {
+    display: none !important;
+  }
+
+  .lcd-viewport {
+    height: calc(100dvh - 58px) !important;
+    min-height: 240px !important;
+    max-height: 360px !important;
+  }
+
+  .pkb-return-3d-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+}
+
+/* =========================================================================
+   CLEAN CONVERGED HUB UI: SQUAD ENTRY PILL, COMPACT NEWS + "MORE" DRAWER,
+   AND COLLAPSIBLE MOBILE COMBAT PARTY TOGGLE
+   ========================================================================= */
+.pkb-squad-entry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px 0 6px;
+  color: #fffdf5;
+  background: rgba(22, 26, 40, 0.92);
+  border: 2.5px solid #161420;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.16),
+    4px 4px 0 #161420;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.12s ease;
+}
+
+.pkb-squad-entry-btn:hover {
+  background: #2b3352;
+  transform: translateY(-1px);
+}
+
+.pkb-squad-entry-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+.pkb-squad-entry-ava {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff3bf;
+  border: 2px solid #161420;
+  flex-shrink: 0;
+}
+
+.pkb-squad-entry-btn strong {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pkb-squad-entry-count {
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  padding: 2px 6px;
+  color: #161420;
+  background: #ffe066;
+  border: 1.5px solid #161420;
+  white-space: nowrap;
+}
+
+.pkb-hub-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.pkb-hub-bar .pkb-news-ticker {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.pkb-more-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+  flex-shrink: 0;
+  color: #161420;
+  background: linear-gradient(180deg, #fff9db 0%, #ffe066 100%);
+  border: 2.5px solid #161420;
+  box-shadow:
+    inset 1.5px 1.5px 0 rgba(255, 255, 255, 0.85),
+    4px 4px 0 #161420;
+  cursor: pointer;
+  transition: transform 0.1s ease, filter 0.12s ease;
+}
+
+.pkb-more-btn:hover {
+  filter: brightness(1.04);
+  transform: translate(-1px, -1px);
+}
+
+.pkb-more-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+.pkb-more-btn strong {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* "More" Modal Drawer */
+.pkb-more-modal {
+  width: min(500px, 94vw) !important;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pkb-more-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 12px 10px;
+}
+
+.pkb-more-grid .pkb-dock-tile {
+  width: 100%;
+  height: auto;
+  min-height: 76px;
+  padding: 10px 6px 8px;
+}
+
+.pkb-more-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px 12px;
+  border-top: 2px dashed rgba(22, 20, 32, 0.18);
+}
+
+/* Collapsible Combat Party Toggle (Desktop: hidden, shows cards directly; Mobile: pure toggle pill!) */
+.surv-party-mobile-toggle {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fffdf5;
+  background: rgba(22, 26, 40, 0.92);
+  border: 2px solid #161420;
+  box-shadow: 3px 3px 0 #161420;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.surv-party-mobile-toggle em {
+  font-style: normal;
+  font-size: 8px;
+  color: #ffe066;
+}
+
+.surv-party-cards-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+@media (max-width: 768px) {
+  .pkb-topbar {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+  }
+
+  .pkb-top-squad {
+    order: 0 !important;
+    width: auto !important;
+    overflow: visible !important;
+    flex-shrink: 0;
+  }
+
+  .pkb-squad-entry-btn {
+    height: 36px;
+    padding: 0 8px 0 4px;
+    gap: 5px;
+  }
+
+  .pkb-squad-entry-ava {
+    width: 24px;
+    height: 24px;
+  }
+
+  .pkb-squad-entry-btn strong {
+    font-size: 11px;
+  }
+
+  .pkb-squad-entry-count {
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+
+  .pkb-top-right {
+    order: 0 !important;
+    width: auto !important;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-end !important;
+    gap: 5px !important;
+  }
+
+  .pkb-profile-pill {
+    height: 36px !important;
+    flex: 0 1 138px;
+    min-width: 0;
+  }
+
+  .pkb-trainer-sub {
+    display: none !important;
+  }
+
+  .pkb-coin-standalone,
+  .pkb-icon-btn {
+    height: 36px !important;
+  }
+
+  .pkb-hub-bar {
+    gap: 7px;
+  }
+
+  .pkb-more-btn {
+    padding: 0 12px;
+  }
+
+  .pkb-more-btn strong {
+    font-size: 12px;
+  }
+
+  .pkb-more-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .pkb-more-grid .pkb-dock-tile {
+    min-height: 66px;
+    padding: 8px 4px 6px;
+  }
+
+  /* Live 3D Combat: keep left edge wide open on mobile until tapped! */
+  .surv-party-list.is-centered {
+    width: auto !important;
+    align-items: flex-start;
+  }
+
+  .surv-party-mobile-toggle {
+    display: inline-flex;
+  }
+
+  .surv-party-list.is-mobile-collapsed .surv-party-cards-wrap {
+    display: none;
+  }
+
+  .surv-party-list.is-mobile-open .surv-party-cards-wrap {
+    display: flex;
+    width: 124px;
+    max-height: 44dvh;
+    overflow-y: auto;
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .pkb-squad-entry-btn {
+    height: 32px;
+    padding: 0 8px 0 4px;
+    gap: 5px;
+  }
+
+  .pkb-squad-entry-ava {
+    width: 22px;
+    height: 22px;
+  }
+
+  .pkb-squad-entry-btn strong {
+    font-size: 11px;
+  }
+
+  .pkb-hub-bar {
+    margin-top: 4px;
+    gap: 8px;
+  }
+
+  .pkb-more-btn {
+    padding: 0 12px;
+  }
+
+  .pkb-more-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .pkb-more-grid .pkb-dock-tile {
+    min-height: 58px;
+    padding: 6px 4px;
+  }
+
+  .surv-party-list.is-centered {
+    width: auto !important;
+    align-items: flex-start;
+  }
+
+  .surv-party-mobile-toggle {
+    display: inline-flex;
+  }
+
+  .surv-party-list.is-mobile-collapsed .surv-party-cards-wrap {
+    display: none;
+  }
+
+  .surv-party-list.is-mobile-open .surv-party-cards-wrap {
+    display: flex;
+    width: 126px;
+    max-height: 52dvh;
+    overflow-y: auto;
+  }
+}
