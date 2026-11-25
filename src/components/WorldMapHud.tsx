@@ -51,6 +51,7 @@ export interface WorldMapData {
   biome: BiomeId;
   regionName: string;
   snapshot: LiveMapSnapshot;
+  onFastTravelCity?: (cityId: string) => void;
 }
 
 export interface MapPin {
@@ -466,12 +467,37 @@ function paintRoadsAndTownsOnMap(
         };
         const layout = generateTownLayout(cityAnchor);
 
-        // 2A. Warm Sunlit Urban Parchment Footprint (uniquely oriented per city!)
-        const citySeedRot = ((hashCitySeed(rc.id) % 314) - 157) * 0.005;
-        ctx.fillStyle = '#efe2be';
+        // 2A. Organic Multi-Lobe Sunlit Urban Parchment Sprawl (derived from actual city blocks — ZERO sterile circle stamp!)
+        const citySeed = hashCitySeed(rc.id);
+        const citySeedRot = ((citySeed % 314) - 157) * 0.005;
+        ctx.fillStyle = '#d7c69c';
         ctx.beginPath();
-        ctx.ellipse(cOrigin.sx, cOrigin.sy, urbanR * 1.04, urbanR * 0.94, citySeedRot, 0, Math.PI * 2);
+        ctx.ellipse(cOrigin.sx, cOrigin.sy, urbanR * 0.96, urbanR * 0.86, citySeedRot, 0, Math.PI * 2);
         ctx.fill();
+        ctx.fillStyle = '#efe2be';
+        for (let li = 0; li < 6; li++) {
+          const ang = citySeedRot + (li / 6) * Math.PI * 2 + (((citySeed >> (li % 5)) & 7) - 3.5) * 0.08;
+          const distF = 0.24 + (((citySeed + li * 37) % 10) / 10) * 0.18;
+          const rx = cOrigin.sx + Math.cos(ang) * urbanR * distF;
+          const ry = cOrigin.sy + Math.sin(ang) * urbanR * distF;
+          const lw = urbanR * (0.52 + ((citySeed + li * 19) % 7) * 0.032);
+          const lh = urbanR * (0.44 + ((citySeed + li * 29) % 7) * 0.03);
+          ctx.beginPath();
+          ctx.ellipse(rx, ry, lw, lh, ang * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Subtle pixel block parcel hatching inside urban core
+        if (detailed && urbanR >= 40) {
+          ctx.strokeStyle = 'rgba(182, 160, 118, 0.28)';
+          ctx.lineWidth = 1;
+          const stepPx = Math.max(10, Math.round(28 * invScale));
+          for (let gx = -urbanR * 0.85; gx <= urbanR * 0.85; gx += stepPx) {
+            ctx.beginPath();
+            ctx.moveTo(cOrigin.sx + gx, cOrigin.sy - urbanR * 0.65);
+            ctx.lineTo(cOrigin.sx + gx, cOrigin.sy + urbanR * 0.65);
+            ctx.stroke();
+          }
+        }
 
         // 2B. Lush Green Urban Parks with blue ponds & pixel tree dots
         for (const pk of layout.parks) {
@@ -542,6 +568,18 @@ function paintRoadsAndTownsOnMap(
               ctx.lineTo(wx + 5, wy - 1.5);
               ctx.stroke();
             }
+          }
+          // Crisp GBA River Name Tag (黄浦江 / 苏州河 / unique local river) when zoomed in!
+          if (detailed && unitsPerPx < 2.0 && pts.length >= 2 && riv.name) {
+            const mIdx = Math.floor(pts.length * 0.5);
+            const rp = pts[mIdx];
+            ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#0b3d66';
+            ctx.fillText(riv.name, rp.sx + 1, rp.sy + 1);
+            ctx.fillStyle = '#e7f5ff';
+            ctx.fillText(riv.name, rp.sx, rp.sy);
           }
         }
 
@@ -615,6 +653,16 @@ function paintRoadsAndTownsOnMap(
               ctx.arc(sp.sx, sp.sy, 3.2, 0, Math.PI * 2);
               ctx.fill();
               ctx.stroke();
+              if (unitsPerPx < 1.35 && st.name) {
+                ctx.font = 'bold 8px "PingFang SC", "Microsoft YaHei", monospace';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(255, 252, 240, 0.86)';
+                const tw = ctx.measureText(st.name).width + 4;
+                ctx.fillRect(sp.sx + 5, sp.sy - 5, tw, 10);
+                ctx.fillStyle = '#1b202c';
+                ctx.fillText(st.name, sp.sx + 7, sp.sy + 0.5);
+              }
             }
           }
         }
@@ -1806,7 +1854,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
           <aside className="lcd-map-drawer scroll-y">
             {geoOrigin && (
               <>
-                <div className="lcd-map-side-head">周边真实城市 (可徒步跨城)</div>
+                <div className="lcd-map-side-head">真实城市 (点击预览 / 飞往探索)</div>
                 <div className="lcd-map-poi-list">
                   {getProjectedGeoCities()
                     .sort(
@@ -1814,28 +1862,56 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                         Math.hypot(a.x - snapshot.px, a.z - snapshot.pz) -
                         Math.hypot(b.x - snapshot.px, b.z - snapshot.pz),
                     )
-                    .slice(0, 5)
+                    .slice(0, 10)
                     .map((gc) => {
                       const dKm = Math.round(
                         Math.hypot(gc.x - snapshot.px, gc.z - snapshot.pz) / GEO_UNITS_PER_KM,
                       );
+                      const isCurrent = gc.city.id === (geoOrigin.startCityId ?? 'shanghai');
                       return (
-                        <button
+                        <div
                           key={gc.city.id}
-                          type="button"
-                          className="lcd-map-poi-btn"
-                          onClick={() => {
-                            sound.play('confirm');
-                            setPan({ x: gc.x - snapshot.px, z: gc.z - snapshot.pz });
-                            setZoom((z) => Math.min(z, 0.18));
-                          }}
+                          style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}
                         >
-                          <span className="lcd-map-poi-ico" style={{ borderColor: gc.city.accentColor }}>
-                            <PixelItemImg src="/sprites/items/town-map.png" size={13} />
-                          </span>
-                          <span className="lcd-map-poi-lbl">{gc.city.name}</span>
-                          <em>{dKm}km</em>
-                        </button>
+                          <button
+                            type="button"
+                            className={`lcd-map-poi-btn ${isCurrent ? 'is-active' : ''}`}
+                            style={{ flex: 1, minWidth: 0 }}
+                            onClick={() => {
+                              sound.play('confirm');
+                              setPan({ x: gc.x - snapshot.px, z: gc.z - snapshot.pz });
+                              setZoom(0.28);
+                              setDrawerOpen(false);
+                            }}
+                          >
+                            <span className="lcd-map-poi-ico" style={{ borderColor: gc.city.accentColor }}>
+                              <PixelItemImg src="/sprites/items/town-map.png" size={13} />
+                            </span>
+                            <span className="lcd-map-poi-lbl">{gc.city.name}</span>
+                            <em>{isCurrent ? '当前' : `${dKm}km`}</em>
+                          </button>
+                          {data.onFastTravelCity && !isCurrent && (
+                            <button
+                              type="button"
+                              className="lcd-map-poi-btn"
+                              style={{
+                                flex: '0 0 auto',
+                                padding: '0 7px',
+                                background: '#fff3bf',
+                                color: '#212529',
+                                fontWeight: 700,
+                              }}
+                              title={`直飞前往${gc.city.name}探索3D城景`}
+                              onClick={() => {
+                                sound.play('confirm');
+                                data.onFastTravelCity?.(gc.city.id);
+                                onClose?.();
+                              }}
+                            >
+                              ✈
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                 </div>

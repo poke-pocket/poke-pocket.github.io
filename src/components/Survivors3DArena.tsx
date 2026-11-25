@@ -1140,7 +1140,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       .map((f) => f.sourcePetId)
       .filter((id): id is string => Boolean(id));
     if (nextPetIds.length > 0 && onUpdateMeta) {
-      onUpdateMeta((prev) => {
+      onUpdateMeta?.((prev) => {
         const list = prev.squadPresets && prev.squadPresets.length > 0 ? prev.squadPresets : squadPresets;
         const idx = Math.min(list.length - 1, Math.max(0, prev.activeSquadIdx ?? activeSquadIdx));
         const nextList = list.map((pr, i) => (i === idx ? { ...pr, petIds: nextPetIds } : pr));
@@ -1148,12 +1148,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       });
     }
   };
+  const fastTravelCityRef = useRef<(cityId: string) => void>(() => {});
+  const handleFastTravelCity = (cityId: string) => {
+    fastTravelCityRef.current(cityId);
+  };
   const toggleWorldMap = () => {
     sound.play('confirm');
     onSyncWorldMapData?.({
       biome: selectedBiome,
       regionName: regionMeta.name,
       snapshot: mapSnapshot,
+      onFastTravelCity: handleFastTravelCity,
     });
     onOpenPokemonManager('map', true);
   };
@@ -1405,7 +1410,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       .sort((a, b) => b.damageDealt - a.damageDealt || b.kills - a.kills);
     if (cleared && activeWorldRun?.isGymChallenge && activeWorldRun.cityId && onUpdateMeta) {
       const wonCityId = activeWorldRun.cityId;
-      onUpdateMeta((prev) => {
+      onUpdateMeta?.((prev) => {
         const curTour = prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
         if (curTour.clearedCityGyms.includes(wonCityId)) return prev;
         return {
@@ -2182,11 +2187,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           : 2.0;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
     renderer.setSize(initW, initH, false);
+    const enableShadows = !prefsRef.current.powerSaver;
+    renderer.shadowMap.enabled = enableShadows;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(pal.skyHex);
-    scene.fog = new THREE.Fog(pal.fogHex, 82, 205);
+    scene.fog = new THREE.Fog(pal.fogHex, 92, 225);
 
     const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.35, 250);
     camera.position.set(0, 4.8, 10.5);
@@ -2201,12 +2209,26 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
     window.addEventListener('resize', onResize);
 
-    // Rich sunlit 3D Lighting
-    const hemi = new THREE.HemisphereLight(pal.ambientHex, 0x3b7a42, 1.25);
+    // Rich HD-2D Sunlit 3D Lighting with Real-Time Directional Building & Bridge Shadows!
+    const hemi = new THREE.HemisphereLight(pal.ambientHex, 0x3b7a42, 1.18);
     scene.add(hemi);
-    const sun = new THREE.DirectionalLight(pal.sunHex, 1.08);
-    sun.position.set(26, 38, 22);
+    const sun = new THREE.DirectionalLight(pal.sunHex, 1.24);
+    sun.position.set(34, 50, 28);
+    if (enableShadows) {
+      const smSize = prefsRef.current.graphicsQuality === 'low' ? 1024 : 1536;
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(smSize, smSize);
+      sun.shadow.camera.near = 6;
+      sun.shadow.camera.far = 165;
+      sun.shadow.camera.left = -74;
+      sun.shadow.camera.right = 74;
+      sun.shadow.camera.top = 74;
+      sun.shadow.camera.bottom = -74;
+      sun.shadow.bias = -0.0008;
+      sun.shadow.normalBias = 0.045;
+    }
     scene.add(sun);
+    scene.add(sun.target);
 
     // 0. 360° Sunny Sky + Pixel Clouds + Layered Distant Mountain Skyline Ring!
     const horizonBackdrop = createHorizonBackdropMesh(selectedBiome);
@@ -2220,6 +2242,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const terrainPosAttr = terrainGeo.attributes.position as THREE.BufferAttribute;
     const terrainMat = createSculptedTerrainMaterial(selectedBiome, tex, WORLD_SECTOR_SIZE);
     const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+    terrainMesh.receiveShadow = true;
     scene.add(terrainMesh);
 
     // 1B. Terrain-Clipped Organic Water Sheet (Automatically conforms to EVERY natural FBM lake, bay, peninsula & winding river — ZERO circular discs!)
@@ -5313,8 +5336,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               : `${dirKey}_idle${idleFrame}`;
           playerSpriteMat.map = heroFrames[frameKey] ?? heroFrames[`${dirKey}_0`] ?? heroFrames.down_idle0;
           const walkBob = mLen > 0.08 && !isAirborne ? Math.abs(Math.sin(sim.walkDist * 2.8)) * 0.16 : 0;
+          const walkTiltZ = mLen > 0.08 && !isAirborne ? Math.sin(sim.walkDist * 2.8) * 0.042 : 0;
           playerSprite.position.set(sim.px, sim.py + walkBob + 0.02, sim.pz);
-          playerSprite.rotation.set(bbTiltX, camYawNow, 0);
+          playerSprite.rotation.set(bbTiltX, camYawNow, walkTiltZ);
+          // Keep real-time sun shadow frustum smoothly centered on the player (snapped to 2m texel grid to prevent shadow swimming!)
+          if (sun.castShadow) {
+            const sSnapX = Math.round(sim.px * 0.5) * 2;
+            const sSnapZ = Math.round(sim.pz * 0.5) * 2;
+            sun.position.set(sSnapX + 34, sim.py + 50, sSnapZ + 28);
+            sun.target.position.set(sSnapX, sim.py, sSnapZ);
+            sun.target.updateMatrixWorld();
+          }
           // Lab Passive HP Regen + Hero Exclusive Periodic Signatures (Red Ball Burst / Misty Tide & Heal / Brock Quake!)
           const cb = metaBonusesRef.current;
           if (cb.regenPerSec > 0 && sim.hp > 0 && sim.hp < sim.maxHp) {
@@ -6866,6 +6898,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               biome: liveOverlandCityRef.current?.biome ?? selectedBiome,
               regionName: liveOverlandCityRef.current?.name ?? regionMeta.name,
               snapshot: nextMapSnap,
+              onFastTravelCity: handleFastTravelCity,
             });
 
             const tags: FloatingTag2D[] = [];
@@ -7243,6 +7276,45 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         : `🌍 ${payload.cityName} 真实地形已加载：可沿海岸与平原探索，甚至徒步跨越邻城！${buffNote}`,
       4200,
     );
+  };
+
+  fastTravelCityRef.current = (cityId: string) => {
+    const city = WORLD_CITIES.find((c) => c.id === cityId);
+    if (!city) return;
+    const wt = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+    onUpdateMeta?.((prev) => {
+      const prevTour = prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+      const visited = prevTour.visitedCities.includes(city.id)
+        ? prevTour.visitedCities
+        : [...prevTour.visitedCities, city.id];
+      return {
+        ...prev,
+        worldTour: {
+          ...prevTour,
+          currentCityId: city.id,
+          visitedCities: visited,
+        },
+      };
+    });
+    handleLaunchWorldRun({
+      cityId: city.id,
+      cityName: `${city.name}市`.replace(/市市$/, '市'),
+      gymName: city.gymName,
+      gymBadgeName: city.gymBadgeName,
+      biome: city.biome,
+      wildPool: city.wildPool,
+      bossSpecies: city.gymBossSpecies,
+      bossName: city.gymBossTitle,
+      bossTrainerKey: city.gymTrainerKey,
+      bossTrainerName: city.gymLeaderName,
+      regionalSkinId: city.regionalSkinId,
+      rewardCoins: city.rewardCoins,
+      originLat: city.lat,
+      originLng: city.lng,
+      isGymChallenge: false,
+      isHomeTurf: false,
+      hotelTier: wt.stayHotelTier ?? null,
+    });
   };
 
   const handleChooseUpgrade = (choice: LevelChoice) => {

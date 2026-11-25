@@ -290,9 +290,9 @@ const TEX_LOADER = new THREE.TextureLoader();
 const MODEL_PROMISE_CACHE = new Map<string, Promise<THREE.Group | null>>();
 const NPC_TEX_CACHE = new Map<string, THREE.Texture>();
 const INK_LINE_MAT = new THREE.LineBasicMaterial({
-  color: 0x1a1e29,
+  color: 0x141824,
   transparent: true,
-  opacity: 0.45,
+  opacity: 0.74,
 });
 
 function getNpcTexture(url: string): THREE.Texture {
@@ -327,13 +327,14 @@ function createNpcBillboard(
 }
 
 /**
- * World-Space HD-2D Pixel-Art Architecture Shader Hook:
- * Injects crisp 16cm world-space pixel masonry/brick courses on vertical walls,
- * pixel roof shingle rows on roofs, subtle GBA Bayer dithering, and gentle 3-band HD-2D
- * cel quantization so EVERY 3D building/prop matches our chibi pixel characters & pixel trees!
+ * World-Space HD-2D Pixel-Art Architecture Shader Hook v2:
+ * - Crisp 15cm world-space pixel running-bond brick / tile masonry on vertical walls
+ * - Crisp pixel shingle rows on roofs & ledges
+ * - Ground-contact stone foundation AO shading so buildings sit solidly anchored on sidewalks
+ * - Refined GBA 2x2 Bayer dither + HD-2D sunlit-warm / cool-shadow cel cohesion matching chibi sprites!
  */
 function applyPixelArtArchShader(mat: THREE.MeshLambertMaterial): THREE.MeshLambertMaterial {
-  mat.customProgramCacheKey = () => 'pk_pixel_arch_hd2d_v1';
+  mat.customProgramCacheKey = () => 'pk_pixel_arch_hd2d_v2';
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -366,34 +367,39 @@ float archHash21(vec2 p) {
         '#include <color_fragment>',
         `#include <color_fragment>
 vec3 aNorm = normalize(vArchWorldNorm);
-vec3 pxCoord = floor(vArchWorldPos * 6.0);
+vec3 pxCoord = floor(vArchWorldPos * 6.5);
 float grain = 1.0;
 if (abs(aNorm.y) < 0.55) {
-  // Vertical facades: crisp pixel running-bond brick / tile courses!
+  // Vertical facades: crisp pixel running-bond brick / stone courses + subtle architectural floor bands!
   float hCoord = abs(aNorm.x) > abs(aNorm.z) ? pxCoord.z : pxCoord.x;
   float rowIdx = floor(pxCoord.y * 0.333);
-  float mortarH = step(2.6, mod(pxCoord.y, 3.0));
+  float mortarH = step(2.62, mod(pxCoord.y, 3.0));
   float brickCol = floor((hCoord + mod(rowIdx, 2.0) * 3.0) * 0.1667);
-  float mortarV = step(5.5, mod(hCoord + mod(rowIdx, 2.0) * 3.0, 6.0));
-  float brickVar = (archHash21(vec2(brickCol, rowIdx)) - 0.5) * 0.095;
+  float mortarV = step(5.55, mod(hCoord + mod(rowIdx, 2.0) * 3.0, 6.0));
+  float brickVar = (archHash21(vec2(brickCol, rowIdx)) - 0.5) * 0.115;
   float mortarMask = max(mortarH, mortarV);
-  grain = 1.0 + brickVar - mortarMask * 0.075;
+  // Subtle stone plinth base ambient occlusion near ground level
+  float groundAo = mix(0.86, 1.0, clamp((vArchWorldPos.y - 1.4) * 0.45, 0.0, 1.0));
+  grain = (1.0 + brickVar - mortarMask * 0.095) * groundAo;
 } else {
   // Roofs & horizontal trims: crisp pixel shingle / tile rows!
-  float shingleRow = step(2.5, mod(pxCoord.x + pxCoord.z, 3.0));
-  float tileVar = (archHash21(pxCoord.xz * 0.5) - 0.5) * 0.085;
-  grain = 1.0 + tileVar - shingleRow * 0.06;
+  float shingleRow = step(2.45, mod(pxCoord.x + pxCoord.z, 3.0));
+  float tileVar = (archHash21(pxCoord.xz * 0.5) - 0.5) * 0.105;
+  grain = 1.0 + tileVar - shingleRow * 0.075;
 }
-// Subtle GBA 2x2 Bayer pixel dither + preserve bright glass/white highlights
-float bayer = mod(pxCoord.x + pxCoord.y + pxCoord.z, 2.0) * 0.024 - 0.012;
-diffuseColor.rgb *= clamp(grain + bayer, 0.84, 1.12);`,
+// Crisp GBA 2x2 Bayer pixel dither
+float bayer = mod(pxCoord.x + pxCoord.y + pxCoord.z, 2.0) * 0.028 - 0.014;
+diffuseColor.rgb *= clamp(grain + bayer, 0.78, 1.14);`,
       )
       .replace(
         '#include <dithering_fragment>',
-        `// Gentle HD-2D cel-stepped tone cohesion (crisp shadow/mid/sunlight bands without crushing whites)
+        `// HD-2D cel-stepped tone cohesion + warm sunlight / cool-slate shadow tint
 float lum = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
-float qLum = floor(lum * 7.5 + 0.5) / 7.5;
-gl_FragColor.rgb *= mix(1.0, qLum / max(0.05, lum), 0.32);
+float qLum = floor(lum * 8.0 + 0.5) / 8.0;
+gl_FragColor.rgb *= mix(1.0, qLum / max(0.05, lum), 0.36);
+vec3 coolShadowTint = vec3(0.92, 0.96, 1.06);
+vec3 warmSunTint = vec3(1.04, 1.02, 0.96);
+gl_FragColor.rgb *= mix(coolShadowTint, warmSunTint, smoothstep(0.32, 0.78, lum));
 #include <dithering_fragment>`,
       );
   };
@@ -506,7 +512,7 @@ async function mountGlbModel(
         }
       }
       if (opts.addInkEdges && mesh.geometry) {
-        const edges = new THREE.EdgesGeometry(mesh.geometry, 36);
+        const edges = new THREE.EdgesGeometry(mesh.geometry, 28);
         const line = new THREE.LineSegments(edges, INK_LINE_MAT.clone());
         mesh.add(line);
       }
@@ -595,6 +601,10 @@ interface TownGroundTex {
   clinicFloor: THREE.CanvasTexture;
   martFloor: THREE.CanvasTexture;
   woodFloor: THREE.CanvasTexture;
+  skyGlassTex: THREE.CanvasTexture;
+  awningRed: THREE.CanvasTexture;
+  awningBlue: THREE.CanvasTexture;
+  awningGold: THREE.CanvasTexture;
 }
 
 let CACHED_GROUND_TEX: TownGroundTex | null = null;
@@ -603,17 +613,22 @@ function getGroundTex(): TownGroundTex {
   if (CACHED_GROUND_TEX) return CACHED_GROUND_TEX;
 
   const makeSign = (bg: string, txt: string, fg = '#ffffff') =>
-    makePixelTex(64, 24, (ctx) => {
+    makePixelTex(96, 28, (ctx) => {
       ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, 64, 24);
+      ctx.fillRect(0, 0, 96, 28);
+      // Subtle top pixel bevel highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillRect(3, 3, 90, 4);
       ctx.strokeStyle = '#141926';
       ctx.lineWidth = 3;
-      ctx.strokeRect(1.5, 1.5, 61, 21);
-      ctx.fillStyle = fg;
-      ctx.font = 'bold 12px monospace';
+      ctx.strokeRect(1.5, 1.5, 93, 25);
+      ctx.fillStyle = '#141926';
+      ctx.font = 'bold 13px "PingFang SC", "Microsoft YaHei", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(txt, 32, 13);
+      ctx.fillText(txt, 49, 15.5);
+      ctx.fillStyle = fg;
+      ctx.fillText(txt, 48, 14.5);
     });
 
   const cobblePlaza = makePixelTex(
@@ -879,6 +894,53 @@ function getGroundTex(): TownGroundTex {
     4,
   );
 
+  // Crisp HD-2D Pixel-Art Glass Curtain-Wall Texture for Lujiazui / Downtown Skyscrapers!
+  const skyGlassTex = makePixelTex(
+    64,
+    128,
+    (ctx) => {
+      ctx.fillStyle = '#2b5d8f';
+      ctx.fillRect(0, 0, 64, 128);
+      for (let y = 0; y < 128; y += 8) {
+        // Horizontal steel floor slab spandrel
+        ctx.fillStyle = '#1d3c5e';
+        ctx.fillRect(0, y, 64, 2);
+        for (let x = 0; x < 64; x += 8) {
+          // Vertical mullion
+          ctx.fillStyle = '#193554';
+          ctx.fillRect(x, y, 1, 8);
+          const hash = ((x * 37 + y * 91) >>> 0) % 13;
+          // Sunlit sky-blue reflection band + occasional warm-lit office windows!
+          const diagShine = (x + y) % 32 < 10;
+          ctx.fillStyle =
+            hash === 0 || hash === 5
+              ? '#ffe066'
+              : hash === 9
+                ? '#ffd8a8'
+                : diagShine
+                  ? '#74c0fc'
+                  : '#4dabf7';
+          ctx.fillRect(x + 1, y + 2, 6, 5);
+          // 1px specular window highlight
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          ctx.fillRect(x + 1, y + 2, 6, 1);
+        }
+      }
+    },
+    2,
+    3,
+  );
+
+  const makeAwning = (c1: string, c2: string) =>
+    makePixelTex(32, 16, (ctx) => {
+      for (let x = 0; x < 32; x += 8) {
+        ctx.fillStyle = (x / 8) % 2 === 0 ? c1 : c2;
+        ctx.fillRect(x, 0, 8, 14);
+        ctx.fillStyle = '#181c28';
+        ctx.fillRect(x, 14, 8, 2);
+      }
+    }, 2, 1);
+
   CACHED_GROUND_TEX = {
     cobblePlaza,
     roadTile,
@@ -888,21 +950,25 @@ function getGroundTex(): TownGroundTex {
     junctionAsphalt,
     highwayTile,
     crosswalk,
-    martSign: makeSign('#1971c2', 'MART'),
-    hotelSign: makeSign('#f08c00', 'HOTEL'),
-    cafeSign: makeSign('#d9480f', 'CAFE'),
+    martSign: makeSign('#1971c2', '友好商店'),
+    hotelSign: makeSign('#e67700', '驿站酒店'),
+    cafeSign: makeSign('#d9480f', '树果饭店'),
     extraSigns: [
-      makeSign('#2b8a3e', 'TEA'),
-      makeSign('#c2255c', 'BAKERY'),
-      makeSign('#5f3dc4', 'BOOKS'),
-      makeSign('#e67700', 'RAMEN'),
-      makeSign('#0b7285', 'FLOWER'),
-      makeSign('#a61e4d', 'INN'),
+      makeSign('#2b8a3e', '便民茶室'),
+      makeSign('#c2255c', '烘焙工坊'),
+      makeSign('#5f3dc4', '旧书屋'),
+      makeSign('#e67700', '拉面馆'),
+      makeSign('#0b7285', '花艺铺'),
+      makeSign('#a61e4d', '奶茶铺'),
     ],
     busSign,
     clinicFloor,
     martFloor,
     woodFloor,
+    skyGlassTex,
+    awningRed: makeAwning('#e03131', '#fff5f5'),
+    awningBlue: makeAwning('#1c7ed6', '#e7f5ff'),
+    awningGold: makeAwning('#f08c00', '#fff9db'),
   };
   return CACHED_GROUND_TEX;
 }
@@ -1805,6 +1871,7 @@ export function buildProceduralTown3D(
 
       const railCol = seg.bridgeStyle === 'waibaidu' ? 0xc92a2a : 0x5c677d;
       const railMat = new THREE.MeshLambertMaterial({ color: railCol });
+      const cableMat = new THREE.MeshBasicMaterial({ color: 0xe9ecef });
       const pierMat = new THREE.MeshLambertMaterial({ color: 0x868e96 });
       const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
       const bDirX = (seg.x2 - seg.x1) / Math.max(0.01, bLen);
@@ -1816,14 +1883,34 @@ export function buildProceduralTown3D(
         const rx = bMidX + bNx * side * (seg.width * 0.48);
         const rz = bMidZ + bNz * side * (seg.width * 0.48);
         const topBeam = new THREE.Mesh(
-          new THREE.BoxGeometry(0.45, seg.bridgeStyle === 'waibaidu' ? 2.4 : 1.15, bLen),
+          new THREE.BoxGeometry(0.45, seg.bridgeStyle === 'waibaidu' ? 1.1 : 1.15, bLen),
           railMat,
         );
-        topBeam.position.set(rx, deckY + (seg.bridgeStyle === 'waibaidu' ? 1.2 : 0.6), rz);
+        topBeam.position.set(rx, deckY + (seg.bridgeStyle === 'waibaidu' ? 3.2 : 0.6), rz);
         topBeam.rotation.y = bYaw;
+        topBeam.castShadow = true;
         group.add(topBeam);
 
-        // Bridge piers & cable-stayed towers (Nanpu / Yangpu iconic pylons!)
+        // Waibaidu Bridge iconic red steel truss vertical posts + lower guard rail!
+        if (seg.bridgeStyle === 'waibaidu') {
+          const lowRail = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.85, bLen), railMat);
+          lowRail.position.set(rx, deckY + 0.45, rz);
+          lowRail.rotation.y = bYaw;
+          group.add(lowRail);
+          const trussCount = Math.max(4, Math.floor(bLen / 7.5));
+          for (let ti = 0; ti <= trussCount; ti++) {
+            const f = -0.48 + (ti / trussCount) * 0.96;
+            const px = rx + bDirX * (bLen * f);
+            const pz = rz + bDirZ * (bLen * f);
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.42, 3.4, 0.42), railMat);
+            post.position.set(px, deckY + 1.7, pz);
+            post.rotation.y = bYaw;
+            post.castShadow = true;
+            group.add(post);
+          }
+        }
+
+        // Bridge piers & Nanpu/Yangpu iconic cable-stayed towers + fan cables!
         for (const frac of [-0.32, 0, 0.32]) {
           const px = rx + bDirX * (bLen * frac);
           const pz = rz + bDirZ * (bLen * frac);
@@ -1831,13 +1918,50 @@ export function buildProceduralTown3D(
           pier.position.set(px, deckY - 2.6, pz);
           group.add(pier);
           if (seg.bridgeStyle !== 'waibaidu' && Math.abs(frac) > 0.1) {
-            const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.95, 16.5, 0.95), railMat);
-            pylon.position.set(px, deckY + 8.2, pz);
+            const pylon = new THREE.Mesh(new THREE.BoxGeometry(1.05, 17.5, 1.05), railMat);
+            pylon.position.set(px, deckY + 8.7, pz);
+            pylon.castShadow = true;
             group.add(pylon);
+            // Fan stay-cables descending from pylon top to bridge deck!
+            for (const cSpan of [-0.24, -0.14, 0.14, 0.24]) {
+              const targetX = px + bDirX * (bLen * cSpan);
+              const targetZ = pz + bDirZ * (bLen * cSpan);
+              const dx = targetX - px;
+              const dz = targetZ - pz;
+              const dy = -15.6;
+              const cLen = Math.hypot(dx, dy, dz);
+              const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, cLen, 4), cableMat);
+              cable.position.set((px + targetX) * 0.5, deckY + 16.4 + dy * 0.5, (pz + targetZ) * 0.5);
+              cable.quaternion.setFromUnitVectors(
+                new THREE.Vector3(0, 1, 0),
+                new THREE.Vector3(dx, dy, dz).normalize(),
+              );
+              group.add(cable);
+            }
           }
           const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), lampMat);
-          lamp.position.set(px, deckY + (seg.bridgeStyle === 'waibaidu' ? 2.7 : 1.6), pz);
+          lamp.position.set(px, deckY + (seg.bridgeStyle === 'waibaidu' ? 4.0 : 1.6), pz);
           group.add(lamp);
+        }
+      }
+      // Overhead steel portal beams across Waibaidu Bridge & cable-stayed pylons!
+      if (seg.bridgeStyle === 'waibaidu') {
+        for (const f of [-0.36, 0, 0.36]) {
+          const cxB = bMidX + bDirX * (bLen * f);
+          const czB = bMidZ + bDirZ * (bLen * f);
+          const cross = new THREE.Mesh(new THREE.BoxGeometry(seg.width, 0.52, 0.52), railMat);
+          cross.position.set(cxB, deckY + 3.55, czB);
+          cross.rotation.y = bYaw;
+          group.add(cross);
+        }
+      } else {
+        for (const f of [-0.32, 0.32]) {
+          const cxB = bMidX + bDirX * (bLen * f);
+          const czB = bMidZ + bDirZ * (bLen * f);
+          const tie = new THREE.Mesh(new THREE.BoxGeometry(seg.width, 0.9, 0.9), railMat);
+          tie.position.set(cxB, deckY + 15.8, czB);
+          tie.rotation.y = bYaw;
+          group.add(tie);
         }
       }
       continue;
@@ -2100,6 +2224,14 @@ export function buildProceduralTown3D(
           beacon.position.set(0, h + 1.85, 0);
           wrapper.add(beacon);
           spinners.push(beacon);
+          const awn = new THREE.Mesh(
+            new THREE.BoxGeometry(lot.width * 0.56, 0.32, 2.2),
+            new THREE.MeshLambertMaterial({ map: tex.awningRed }),
+          );
+          awn.position.set(0, 3.65, lot.depth * 0.48);
+          awn.rotation.x = 0.28;
+          awn.castShadow = true;
+          wrapper.add(awn);
         },
       });
       const rW = lot.width * 0.82;
@@ -2158,11 +2290,19 @@ export function buildProceduralTown3D(
         cloneMaterials: true,
         onMounted: (wrapper, h) => {
           const signMesh = new THREE.Mesh(
-            new THREE.BoxGeometry(5.4, 2.0, 0.45),
+            new THREE.BoxGeometry(5.8, 2.0, 0.45),
             new THREE.MeshBasicMaterial({ map: tex.martSign }),
           );
           signMesh.position.set(0, h + 1.15, 3.4);
           wrapper.add(signMesh);
+          const awn = new THREE.Mesh(
+            new THREE.BoxGeometry(lot.width * 0.54, 0.32, 2.1),
+            new THREE.MeshLambertMaterial({ map: tex.awningBlue }),
+          );
+          awn.position.set(0, 3.6, lot.depth * 0.48);
+          awn.rotation.x = 0.28;
+          awn.castShadow = true;
+          wrapper.add(awn);
         },
       });
       const rW = lot.width * 0.82;
@@ -2280,25 +2420,54 @@ export function buildProceduralTown3D(
         colliders.push(makeObbCollider(lot.x, lot.z, 5.4, 5.4, 0, 26));
       }
     } else if (lot.kind === 'skyscraper') {
-      // Lujiazui Pudong Sleek Modern Blue-Glass Skyscrapers (matching Shanghai pixel art concept!)
-      const skyModels = [
-        '/models/town/commercial/shop-g.glb',
-        '/models/town/commercial/shop-k.glb',
-        '/models/town/commercial/shop-d.glb',
-      ];
-      const skyTints = [0x74c0fc, 0xa5d8ff, 0x99e9f2];
-      void mountGlbModel(group, skyModels[lot.houseVariant % skyModels.length], {
-        x: lx,
-        y: ly,
-        z: lz,
-        rotY: lot.rotY,
-        targetWidth: lot.width,
-        heightMult: 2.35 + (lot.houseVariant % 3) * 0.42,
-        tintHex: skyTints[lot.houseVariant % skyTints.length],
-        addInkEdges: true,
-        cloneMaterials: true,
+      // Dedicated Crisp HD-2D Pixel-Art Glass Curtain-Wall Skyscrapers (Lujiazui Pudong / Downtown Core!)
+      const skyGrp = new THREE.Group();
+      skyGrp.position.set(lx, ly, lz);
+      skyGrp.rotation.y = lot.rotY;
+      const baseH = 26 + (lot.houseVariant % 3) * 8;
+      const skyW = lot.width * 0.88;
+      const skyD = lot.depth * 0.86;
+      const skyTintList = [0xffffff, 0xd0ebff, 0xffe8cc];
+      const glassMat = new THREE.MeshLambertMaterial({
+        map: tex.skyGlassTex,
+        color: skyTintList[lot.houseVariant % skyTintList.length],
       });
-      colliders.push(makeObbCollider(lot.x, lot.z, lot.width * 0.45, lot.depth * 0.44, lot.rotY, 24.0));
+      const trimMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x3b495c }));
+      const lobbyMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xced4da }));
+
+      // Ground stone lobby podium
+      const podium = new THREE.Mesh(new THREE.BoxGeometry(skyW * 1.06, 4.2, skyD * 1.06), lobbyMat);
+      podium.position.y = 2.1;
+      podium.castShadow = true;
+      podium.receiveShadow = true;
+      // Main pixel glass tower shaft + crisp ink edges
+      const shaftGeo = new THREE.BoxGeometry(skyW, baseH, skyD);
+      const shaft = new THREE.Mesh(shaftGeo, glassMat);
+      shaft.position.y = 4.2 + baseH * 0.5;
+      shaft.castShadow = true;
+      shaft.receiveShadow = true;
+      shaft.add(new THREE.LineSegments(new THREE.EdgesGeometry(shaftGeo, 30), INK_LINE_MAT));
+      // Stepped architectural crown + mechanical penthouse + glowing red aviation spire!
+      const crownGeo = new THREE.BoxGeometry(skyW * 0.72, 6.2, skyD * 0.72);
+      const crown = new THREE.Mesh(crownGeo, glassMat);
+      crown.position.y = 4.2 + baseH + 3.1;
+      crown.castShadow = true;
+      crown.add(new THREE.LineSegments(new THREE.EdgesGeometry(crownGeo, 30), INK_LINE_MAT));
+      const parapet = new THREE.Mesh(new THREE.BoxGeometry(skyW * 0.78, 0.9, skyD * 0.78), trimMat);
+      parapet.position.y = 4.2 + baseH + 6.4;
+      const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.36, 7.5, 6), trimMat);
+      spire.position.y = 4.2 + baseH + 10.2;
+      const beaconRed = new THREE.Mesh(
+        new THREE.SphereGeometry(0.45, 6, 6),
+        new THREE.MeshBasicMaterial({ color: 0xff4d4f }),
+      );
+      beaconRed.position.y = 4.2 + baseH + 14.1;
+      // Ground-floor retaining plinth
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(skyW * 1.02, 2.6, skyD * 1.02), trimMat);
+      plinth.position.y = -1.3;
+      skyGrp.add(plinth, podium, shaft, crown, parapet, spire, beaconRed);
+      group.add(skyGrp);
+      colliders.push(makeObbCollider(lot.x, lot.z, lot.width * 0.46, lot.depth * 0.45, lot.rotY, baseH + 10));
     } else if (lot.kind === 'house') {
       // Randomized Architectural Diversity: mix pitched villas, flat-roof modern townhouses, varied facade colors & street signs!
       const hHash = Math.abs(anchor.seed * 19 + lot.houseVariant * 37 + Math.round(lot.x) * 7 + Math.round(lot.z) * 13);
@@ -2376,11 +2545,28 @@ export function buildProceduralTown3D(
           onMounted: attachShopSign
             ? (wrapper, h) => {
                 const sign = new THREE.Mesh(
-                  new THREE.BoxGeometry(4.4, 1.65, 0.36),
+                  new THREE.BoxGeometry(4.8, 1.7, 0.36),
                   new THREE.MeshBasicMaterial({ map: signTex }),
                 );
                 sign.position.set(0, Math.min(h * 0.72, 6.2), lot.depth * 0.44);
                 wrapper.add(sign);
+                // Striped pixel cloth storefront awning + flat-roof AC compressor unit!
+                const awnTex = [tex.awningRed, tex.awningBlue, tex.awningGold][hHash % 3];
+                const awn = new THREE.Mesh(
+                  new THREE.BoxGeometry(lot.width * 0.52, 0.28, 1.85),
+                  new THREE.MeshLambertMaterial({ map: awnTex }),
+                );
+                awn.position.set(0, 3.25, lot.depth * 0.48);
+                awn.rotation.x = 0.28;
+                awn.castShadow = true;
+                wrapper.add(awn);
+                if (styleDef.isFlatUrban) {
+                  const acMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xb0b8c4 }));
+                  const acUnit = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 1.4), acMat);
+                  acUnit.position.set(lot.width * 0.18, h + 0.55, -lot.depth * 0.14);
+                  acUnit.castShadow = true;
+                  wrapper.add(acUnit);
+                }
               }
             : undefined,
         });
@@ -2459,16 +2645,51 @@ export function buildProceduralTown3D(
     });
   }
 
-  // 5. LIVE CITY LIFE: Cruising Pixel-Shaded Taxis on Dry Puxi Avenues & Bridges + Strolling Chibi Citizens in People's Square Park!
+  // 5. LIVE CITY LIFE: Dynamically Routed Cruising Pixel-Shaded Taxis on THIS City's Real Dry Avenues & Bridges!
   const carColors = [0x3bc9db, 0xffd43b, 0xfa5252, 0xf8f9fa, 0x339af0, 0x51cf66];
-  const carConfigs: { axis: 'x' | 'z'; laneOffset: number; dir: 1 | -1; minC: number; maxC: number; start: number; spd: number }[] = [
-    { axis: 'z', laneOffset: -10, dir: 1, minC: -120, maxC: 120, start: -40, spd: 11.5 },
-    { axis: 'z', laneOffset: -19, dir: -1, minC: -120, maxC: 120, start: 62, spd: 12.8 },
-    { axis: 'z', laneOffset: -94, dir: 1, minC: -130, maxC: 130, start: 18, spd: 10.6 },
-    { axis: 'x', laneOffset: 109, dir: 1, minC: -16, maxC: 96, start: 22, spd: 12.0 }, // cruising across Nanpu Bridge!
-    { axis: 'x', laneOffset: 115, dir: -1, minC: -16, maxC: 96, start: 70, spd: 11.2 },
-    { axis: 'x', laneOffset: -23, dir: 1, minC: -158, maxC: -22, start: -88, spd: 10.4 },
-  ];
+  const carConfigs: { axis: 'x' | 'z'; laneOffset: number; dir: 1 | -1; minC: number; maxC: number; start: number; spd: number }[] = [];
+  for (const seg of layout.streets) {
+    if (carConfigs.length >= 6) break;
+    const dxS = seg.x2 - seg.x1;
+    const dzS = seg.z2 - seg.z1;
+    const lenS = Math.hypot(dxS, dzS);
+    if (lenS < 44) continue;
+    const isMainNS = Math.abs(dzS) > Math.abs(dxS) * 2.2;
+    const isMainEW = Math.abs(dxS) > Math.abs(dzS) * 2.2;
+    if (!isMainNS && !isMainEW) continue;
+    const dir: 1 | -1 = carConfigs.length % 2 === 0 ? 1 : -1;
+    if (isMainNS) {
+      const avgX = (seg.x1 + seg.x2) * 0.5 - centerX + dir * 3.8;
+      const minZ = Math.min(seg.z1, seg.z2) - centerZ + 6;
+      const maxZ = Math.max(seg.z1, seg.z2) - centerZ - 6;
+      if (maxZ - minZ > 32) {
+        carConfigs.push({
+          axis: 'z',
+          laneOffset: avgX,
+          dir,
+          minC: minZ,
+          maxC: maxZ,
+          start: minZ + ((carConfigs.length * 0.29 + 0.2) % 0.75) * (maxZ - minZ),
+          spd: 10.4 + (carConfigs.length % 3) * 1.1,
+        });
+      }
+    } else {
+      const avgZ = (seg.z1 + seg.z2) * 0.5 - centerZ + dir * 3.6;
+      const minX = Math.min(seg.x1, seg.x2) - centerX + 6;
+      const maxX = Math.max(seg.x1, seg.x2) - centerX - 6;
+      if (maxX - minX > 32) {
+        carConfigs.push({
+          axis: 'x',
+          laneOffset: avgZ,
+          dir,
+          minC: minX,
+          maxC: maxX,
+          start: minX + ((carConfigs.length * 0.31 + 0.15) % 0.75) * (maxX - minX),
+          spd: 10.2 + (carConfigs.length % 3) * 1.0,
+        });
+      }
+    }
+  }
   const headLampMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
   const tailLampMat = new THREE.MeshBasicMaterial({ color: 0xff4d4f });
 
@@ -2578,17 +2799,42 @@ export function buildProceduralTown3D(
   const vendSideMat = new THREE.MeshLambertMaterial({ color: 0xc92a2a });
   const vendFrontMat = new THREE.MeshBasicMaterial({ map: vendFrontTex });
   const vendMats = [vendSideMat, vendSideMat, vendSideMat, vendSideMat, vendFrontMat, vendSideMat];
-  for (const [vx, vz, ry] of [
-    [-20.5, 34.5, 0],
-    [20.5, -34.5, Math.PI],
-    [34.5, 20.5, -Math.PI / 2],
-    [-34.5, -20.5, Math.PI / 2],
-  ]) {
-    const vm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.4, 1.0), vendMats);
-    vm.position.set(vx, localGroundY(centerX + vx, centerZ + vz) + 1.35, vz);
-    vm.rotation.y = ry;
-    vm.castShadow = true;
-    group.add(vm);
+  const postboxMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x2b8a3e }));
+  const postCapMat = new THREE.MeshLambertMaterial({ color: 0x1e602c });
+
+  // Place pixel vending machines & iconic green postal boxes safely along park entrances & sidewalks (zero road/water overlap!)
+  const placedProps: { x: number; z: number }[] = [];
+  for (let pi = 0; pi < layout.parks.length; pi++) {
+    const pk = layout.parks[pi];
+    const candidates: [number, number, number][] = [
+      [pk.x - pk.w * 0.5 - 2.6, pk.z - 5, -Math.PI / 2],
+      [pk.x + pk.w * 0.5 + 2.6, pk.z + 5, Math.PI / 2],
+      [pk.x - 6, pk.z + pk.d * 0.5 + 2.6, 0],
+    ];
+    for (const [wx, wz, ry] of candidates) {
+      if (getGroundHeight(wx, wz) < WATER_LEVEL_3D + 0.45) continue;
+      if (layout.streets.some((s) => distToSeg2D(wx, wz, s.x1, s.z1, s.x2, s.z2) < s.width * 0.44)) continue;
+      if (placedProps.some((p) => Math.hypot(p.x - wx, p.z - wz) < 8)) continue;
+      placedProps.push({ x: wx, z: wz });
+      if (placedProps.length % 2 === 1) {
+        const vm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.4, 1.0), vendMats);
+        vm.position.set(wx - centerX, localGroundY(wx, wz) + 1.35, wz - centerZ);
+        vm.rotation.y = ry;
+        vm.castShadow = true;
+        group.add(vm);
+      } else {
+        // Classic Pixel Street Postbox (邮政绿邮筒!)
+        const pb = new THREE.Group();
+        pb.position.set(wx - centerX, localGroundY(wx, wz) + 0.16, wz - centerZ);
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.48, 1.65, 8), postboxMat);
+        body.position.y = 0.85;
+        body.castShadow = true;
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.52, 0.22, 8), postCapMat);
+        cap.position.y = 1.72;
+        pb.add(body, cap);
+        group.add(pb);
+      }
+    }
   }
 
   interactPoints.push(
