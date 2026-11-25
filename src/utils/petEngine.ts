@@ -1,6 +1,7 @@
 import {
   ACCESSORY_CATALOG,
   ACHIEVEMENTS,
+  buildAchievementContext,
   FOOD_CATALOG,
   GACHA_BOXES,
   MAX_POKEMON_LEVEL,
@@ -886,94 +887,30 @@ function evaluateAchievements(
     }
   };
 
-  const totalOwnedCosmetics =
-    save.unlockedAccessories.filter((a) => a !== 'none').length +
-    save.unlockedRooms.filter((r) => r !== 'pokeball_room').length;
-
-  const totalFeeds = save.pets.reduce((s, p) => s + p.totalFeeds, 0);
-  const totalCleanOrBath = save.pets.reduce(
-    (s, p) => s + p.totalBaths + p.totalCleans,
-    0,
+  const ctx = buildAchievementContext(
+    save,
+    {
+      getPetIVs,
+      getIvRank,
+      getGrowthStage,
+      getElement: (sp) => SPECIES_CATALOG[sp]?.element,
+      totalSpeciesCount: Object.keys(SPECIES_CATALOG).length,
+    },
+    unlocked.size,
   );
-  const totalPats = save.pets.reduce((s, p) => s + p.totalPats, 0);
-  const hasTeenOrHigher = save.pets.some(
-    (p) => getGrowthStage(p.level, p.species) !== 'baby',
-  );
-  const hasAdultStage = save.pets.some(
-    (p) => getGrowthStage(p.level, p.species) === 'adult',
-  );
-  const maxPetLevel = save.pets.reduce((mx, p) => Math.max(mx, p.level), 0);
-  const discovered = new Set(save.discoveredSpecies);
-  const hasAll = (ids: SpeciesId[]) => ids.every((sp) => discovered.has(sp));
-
-  const meta = save.meta;
-  const totalLabLevels = meta?.labLevels
-    ? Object.values(meta.labLevels).reduce((s, v) => s + (v ?? 0), 0)
-    : 0;
-  const bestCoins = Math.max(save.coins, meta?.totalCoinsEarned ?? 0);
-  const hasRankS = save.pets.some((p) => {
-    const r = getIvRank(getPetIVs(p));
-    return r === 'S' || r === 'SS';
-  });
-  const hasRankSS = save.pets.some((p) => getIvRank(getPetIVs(p)) === 'SS');
-
-  // 1. Care & Growth
-  check('first_pet', save.pets.length >= 1);
-  check('feeder_5', totalFeeds >= 5);
-  check('feeder_30', totalFeeds >= 30);
-  check('cleaner_5', totalCleanOrBath >= 5);
-  check('cleaner_25', totalCleanOrBath >= 25);
-  check('pat_10', totalPats >= 10);
-  check('pat_50', totalPats >= 50);
-  check('teen_stage', hasTeenOrHigher);
-  check('adult_stage', hasAdultStage);
-  check('lv_50', maxPetLevel >= 50);
-  check('lv_100', maxPetLevel >= 100);
-  check('full_squad_6', save.pets.length >= 6);
-
-  // 2. Kanto 151 Pokédex
-  check('dex_10', discovered.size >= 10);
-  check('dex_25', discovered.size >= 25);
-  check('dex_50', discovered.size >= 50);
-  check('dex_all_kanto', discovered.size >= Object.keys(SPECIES_CATALOG).length);
-  check('kanto_starters', hasAll(['bulbasaur', 'charmander', 'squirtle']));
-  check('eevee_squad', hasAll(['eevee', 'vaporeon', 'jolteon', 'flareon']));
-  check('fossil_reviver', hasAll(['omanyte', 'kabuto', 'aerodactyl']));
-  check('kanto_birds', hasAll(['articuno', 'zapdos', 'moltres']));
-  check('mew_duet', hasAll(['mewtwo', 'mew']));
-  check('dragon_tamer', hasAll(['dratini', 'magikarp', 'aerodactyl']));
-
-  // 3. 3D Arena Combat
-  check('first_run', (meta?.totalRuns ?? 0) >= 1);
-  check('runs_10', (meta?.totalRuns ?? 0) >= 10);
-  check('kills_100', (meta?.totalKills ?? 0) >= 100);
-  check('kills_500', (meta?.totalKills ?? 0) >= 500);
-  check('kills_2000', (meta?.totalKills ?? 0) >= 2000);
-  check('boss_first', (meta?.totalBossesDefeated ?? 0) >= 1);
-  check('boss_10', (meta?.totalBossesDefeated ?? 0) >= 10);
-  check('biome_clear_1', (meta?.clearedBiomes?.length ?? 0) >= 1);
-  check('biome_clear_all', (meta?.clearedBiomes?.length ?? 0) >= 5);
-  check('diff_hard', Boolean(meta?.clearedDifficulties?.includes('hard')));
-  check('diff_nightmare', Boolean(meta?.clearedDifficulties?.includes('nightmare')));
-  check('skill_maxed_5', (meta?.maxedSkills?.length ?? 0) >= 5);
-
-  // 4. Collection & Economy
-  check('fashion_3', totalOwnedCosmetics >= 3);
-  check('fashion_10', totalOwnedCosmetics >= 10);
-  check('arcade_pro', save.miniGameWins >= 3);
-  check('arcade_10', save.miniGameWins >= 10);
-  check('rich_1000', bestCoins >= 1000);
-  check('rich_5000', bestCoins >= 5000);
-  check('box_20', save.pets.length >= 20);
-  check('multi_squad', (meta?.squadPresets?.length ?? 0) >= 4);
-
-  // 5. Hall of Fame & Legends
-  check('iv_s_rank', hasRankS);
-  check('iv_ss_rank', hasRankSS);
-  check('lab_10', totalLabLevels >= 10);
-  check('lab_30', totalLabLevels >= 30);
-  check('hero_all', (meta?.unlockedHeroes?.length ?? 0) >= 4);
-  check('gym_badges_all', (meta?.unlockedBadges?.length ?? 0) >= 6);
+  // Pass 1: all gameplay/collection achievements
+  for (const ach of ACHIEVEMENTS) {
+    if (!ach.isMeta) {
+      check(ach.id, ach.check(ctx));
+    }
+  }
+  // Pass 2: meta achievements (unlock 30 / 60 / 100 achievements)
+  ctx.unlockedCount = unlocked.size;
+  for (const ach of ACHIEVEMENTS) {
+    if (ach.isMeta) {
+      check(ach.id, ach.check(ctx));
+    }
+  }
 
   return {
     newlyUnlocked,
