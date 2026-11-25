@@ -846,7 +846,11 @@ export function App() {
     }
     if (lcdMode === 'party_detail') {
       sound.play('cancel');
-      setLcdMode('party');
+      setLcdMode(managerOpenedFromBattle || managerEntryMode === 'squad' ? 'squad' : 'party');
+      return;
+    }
+    if (lcdMode === 'squad' && managerOpenedFromBattle) {
+      handleClosePokemonManager();
       return;
     }
     if (lcdMode === 'pokedex_detail') {
@@ -872,7 +876,7 @@ export function App() {
     } else {
       handlePat();
     }
-  }, [lcdMode, handlePat, handleReleaseBallToRoom]);
+  }, [lcdMode, managerOpenedFromBattle, managerEntryMode, handleClosePokemonManager, handlePat, handleReleaseBallToRoom]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

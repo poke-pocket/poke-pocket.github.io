@@ -10884,7 +10884,7 @@ button.gba-status-box.is-clickable-card {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  width: 168px;
+  width: 196px;
   pointer-events: auto;
 }
 

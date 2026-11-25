@@ -1333,6 +1333,100 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     syncFollowersView();
   };
 
+  // Live-sync 3D combat followers whenever the user switches or edits their active Squad preset mid-battle!
+  const activeSquadIdsKey = activeSquadPreset.petIds.join(',');
+  useEffect(() => {
+    if (phase !== 'playing') return;
+    const sim = simRef.current;
+    if (!sim) return;
+
+    const desiredPets = effectiveSquadPets.slice(0, maxFollowers);
+    if (desiredPets.length === 0) return;
+
+    const desiredIds = desiredPets.map((p) => p.id);
+    const currentBoxFollowers = sim.followers.filter((f) => Boolean(f.sourcePetId));
+    const currentIds = currentBoxFollowers.map((f) => f.sourcePetId as string);
+    if (
+      currentIds.length === desiredIds.length &&
+      currentIds.every((id, i) => id === desiredIds[i])
+    ) {
+      return;
+    }
+
+    const desiredSet = new Set(desiredIds);
+    const reusedByPetId = new Map<string, ActiveFollower>();
+    const keptWild: ActiveFollower[] = [];
+    for (const f of sim.followers) {
+      if (f.sourcePetId) {
+        if (desiredSet.has(f.sourcePetId)) {
+          reusedByPetId.set(f.sourcePetId, f);
+        } else {
+          detachFollowerMeshes(f);
+        }
+      } else {
+        keptWild.push(f);
+      }
+    }
+
+    const nextFollowers: ActiveFollower[] = [];
+    desiredPets.forEach((boxPet, idx) => {
+      const existing = reusedByPetId.get(boxPet.id);
+      if (existing) {
+        existing.name = boxPet.name;
+        existing.level = Math.max(existing.level, boxPet.level);
+        nextFollowers.push(existing);
+      } else {
+        const spMeta = SPECIES_CATALOG[boxPet.species];
+        const stage = getGrowthStage(boxPet.level, boxPet.species);
+        const ang = (idx * Math.PI * 2) / Math.max(1, desiredPets.length);
+        const fx = sim.px + Math.cos(ang) * 2.8;
+        const fz = sim.pz + Math.sin(ang) * 2.8;
+        const fresh: ActiveFollower = {
+          id: `box_${boxPet.id}`,
+          sourcePetId: boxPet.id,
+          species: boxPet.species,
+          name: boxPet.name,
+          stage,
+          level: boxPet.level,
+          skills: getDefaultSkillsForElement(spMeta.element),
+          x: fx,
+          y: getTerrainHeight3D(fx, fz),
+          z: fz,
+          vx: 0,
+          vz: 0,
+          wanderX: Math.cos(ang) * 3.0,
+          wanderZ: Math.sin(ang) * 3.0,
+          wanderTimer: 0.8 + Math.random() * 1.4,
+          castAnim: 0,
+          animTime: Math.random() * 2,
+          damageDealt: 0,
+          kills: 0,
+          casts: 0,
+          cds: [0.25, 0.8, 1.35, 1.9],
+          orbitAngle: ang,
+          facingLeft: false,
+        };
+        attachFollowerMeshes(fresh);
+        nextFollowers.push(fresh);
+      }
+    });
+
+    // Keep wild-recruited followers only while within maxFollowers cap
+    for (const wf of keptWild) {
+      if (nextFollowers.length < maxFollowers) {
+        nextFollowers.push(wf);
+      } else {
+        detachFollowerMeshes(wf);
+      }
+    }
+
+    nextFollowers.forEach((f, i) => {
+      f.orbitAngle = (i * Math.PI * 2) / Math.max(1, nextFollowers.length);
+    });
+    sim.followers = nextFollowers;
+    syncFollowersView();
+  }, [phase, activeSquadIdx, activeSquadIdsKey, maxFollowers, save.pets]);
+
   // Dynamic BGM
   useEffect(() => {
     if (phase !== 'playing') {

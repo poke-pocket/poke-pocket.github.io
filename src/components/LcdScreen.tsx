@@ -309,7 +309,9 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [marketTab, setMarketTab] = useState<'gacha' | 'berries' | 'items' | 'skins'>('gacha');
   const [selectedPartyPetId, setSelectedPartyPetId] = useState<string>(focusedDetailPetId ?? pet.id);
   const [partyDetailTab, setPartyDetailTab] = useState<'stats' | 'profile' | 'gear' | 'train' | 'bond_mega'>('stats');
-  const [detailReturnMode, setDetailReturnMode] = useState<'party' | 'home'>('party');
+  const [detailReturnMode, setDetailReturnMode] = useState<'party' | 'home' | 'squad'>(
+    openedFromBattle || openedEntryMode === 'squad' ? 'squad' : 'party',
+  );
   const [partySearch, setPartySearch] = useState('');
   const [partyGradeFilter, setPartyGradeFilter] = useState<'all' | 'S' | 'A' | 'B'>('all');
   const [partySortBy, setPartySortBy] = useState<'default' | 'level' | 'grade'>('default');
@@ -341,8 +343,11 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
     if (focusedDetailPetId && save.pets.some((p) => p.id === focusedDetailPetId)) {
       setSelectedPartyPetId(focusedDetailPetId);
       setPartyDetailTab('stats');
+      if (mode === 'party_detail' && (openedFromBattle || openedEntryMode === 'party_detail')) {
+        setDetailReturnMode('squad');
+      }
     }
-  }, [focusedDetailPetId, mode, save.pets]);
+  }, [focusedDetailPetId, mode, openedFromBattle, openedEntryMode, save.pets]);
   const [dexTab, setDexTab] = useState<'overview' | 'pokemon' | 'skills' | 'items' | 'journey'>('overview');
   const [selectedDexSpecies, setSelectedDexSpecies] = useState<SpeciesId>('pikachu');
   const [dexDetailTab, setDexDetailTab] = useState<'evo' | 'owned'>('evo');
@@ -3389,7 +3394,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                           onClick={() => {
                             setSelectedPartyPetId(p.id);
                             setPartyDetailTab('stats');
-                            setDetailReturnMode('party');
+                            setDetailReturnMode('squad');
                             onNavigateMode('party_detail');
                           }}
                         >
@@ -3872,7 +3877,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                       onNavigateMode(detailReturnMode);
                     }}
                   >
-                    返回
+                    {detailReturnMode === 'squad' ? '返回队伍' : '返回'}
                   </button>
                 </div>
               </div>
