@@ -213,6 +213,84 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       12
     ]
   },
+  "19": {
+    "fw": 48,
+    "fh": 40,
+    "frames": 7,
+    "durs": [
+      6,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ]
+  },
+  "20": {
+    "fw": 40,
+    "fh": 48,
+    "frames": 6,
+    "durs": [
+      4,
+      6,
+      4,
+      4,
+      4,
+      4
+    ]
+  },
+  "21": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 5,
+    "durs": [
+      6,
+      4,
+      4,
+      4,
+      4
+    ]
+  },
+  "22": {
+    "fw": 40,
+    "fh": 64,
+    "frames": 6,
+    "durs": [
+      4,
+      5,
+      6,
+      4,
+      5,
+      6
+    ]
+  },
+  "23": {
+    "fw": 40,
+    "fh": 48,
+    "frames": 6,
+    "durs": [
+      6,
+      6,
+      6,
+      6,
+      6,
+      6
+    ]
+  },
+  "24": {
+    "fw": 40,
+    "fh": 56,
+    "frames": 6,
+    "durs": [
+      6,
+      6,
+      8,
+      6,
+      6,
+      6
+    ]
+  },
   "25": {
     "fw": 32,
     "fh": 40,
@@ -247,6 +325,42 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
     ]
   },
   "28": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "29": {
+    "fw": 40,
+    "fh": 48,
+    "frames": 7,
+    "durs": [
+      6,
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ]
+  },
+  "30": {
+    "fw": 24,
+    "fh": 32,
+    "frames": 4,
+    "durs": [
+      6,
+      8,
+      6,
+      8
+    ]
+  },
+  "31": {
     "fw": 32,
     "fh": 40,
     "frames": 4,
@@ -368,6 +482,36 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10
     ]
   },
+  "41": {
+    "fw": 32,
+    "fh": 56,
+    "frames": 8,
+    "durs": [
+      10,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      8
+    ]
+  },
+  "42": {
+    "fw": 40,
+    "fh": 64,
+    "frames": 8,
+    "durs": [
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6
+    ]
+  },
   "43": {
     "fw": 24,
     "fh": 40,
@@ -403,6 +547,59 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10,
       8,
       10
+    ]
+  },
+  "46": {
+    "fw": 32,
+    "fh": 24,
+    "frames": 4,
+    "durs": [
+      6,
+      8,
+      6,
+      8
+    ]
+  },
+  "47": {
+    "fw": 32,
+    "fh": 32,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "48": {
+    "fw": 32,
+    "fh": 48,
+    "frames": 5,
+    "durs": [
+      8,
+      6,
+      6,
+      6,
+      8
+    ]
+  },
+  "49": {
+    "fw": 40,
+    "fh": 48,
+    "frames": 12,
+    "durs": [
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8,
+      8
     ]
   },
   "50": {
@@ -467,6 +664,32 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       12,
       8,
       12
+    ]
+  },
+  "56": {
+    "fw": 32,
+    "fh": 56,
+    "frames": 8,
+    "durs": [
+      8,
+      4,
+      4,
+      4,
+      8,
+      4,
+      4,
+      4
+    ]
+  },
+  "57": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      6,
+      8,
+      6,
+      8
     ]
   },
   "58": {
@@ -595,6 +818,61 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10
     ]
   },
+  "69": {
+    "fw": 24,
+    "fh": 32,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "70": {
+    "fw": 32,
+    "fh": 32,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "71": {
+    "fw": 32,
+    "fh": 56,
+    "frames": 4,
+    "durs": [
+      6,
+      8,
+      6,
+      8
+    ]
+  },
+  "72": {
+    "fw": 24,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "73": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
   "74": {
     "fw": 32,
     "fh": 32,
@@ -700,6 +978,92 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       8
     ]
   },
+  "83": {
+    "fw": 24,
+    "fh": 32,
+    "frames": 4,
+    "durs": [
+      6,
+      12,
+      6,
+      12
+    ]
+  },
+  "84": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      12,
+      8,
+      12
+    ]
+  },
+  "85": {
+    "fw": 32,
+    "fh": 48,
+    "frames": 4,
+    "durs": [
+      8,
+      12,
+      8,
+      12
+    ]
+  },
+  "86": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 7,
+    "durs": [
+      8,
+      6,
+      8,
+      10,
+      6,
+      6,
+      6
+    ]
+  },
+  "87": {
+    "fw": 40,
+    "fh": 48,
+    "frames": 7,
+    "durs": [
+      8,
+      6,
+      6,
+      6,
+      10,
+      8,
+      8
+    ]
+  },
+  "88": {
+    "fw": 32,
+    "fh": 32,
+    "frames": 6,
+    "durs": [
+      8,
+      8,
+      8,
+      8,
+      8,
+      8
+    ]
+  },
+  "89": {
+    "fw": 48,
+    "fh": 40,
+    "frames": 5,
+    "durs": [
+      10,
+      8,
+      6,
+      10,
+      8
+    ]
+  },
   "90": {
     "fw": 24,
     "fh": 32,
@@ -784,6 +1148,101 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       14
     ]
   },
+  "96": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      12,
+      8,
+      12
+    ]
+  },
+  "97": {
+    "fw": 40,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "98": {
+    "fw": 32,
+    "fh": 32,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "99": {
+    "fw": 32,
+    "fh": 32,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "100": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 8,
+    "durs": [
+      6,
+      6,
+      10,
+      4,
+      4,
+      4,
+      6,
+      8
+    ]
+  },
+  "101": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 7,
+    "durs": [
+      4,
+      4,
+      6,
+      8,
+      6,
+      4,
+      10
+    ]
+  },
+  "102": {
+    "fw": 32,
+    "fh": 32,
+    "frames": 4,
+    "durs": [
+      6,
+      8,
+      6,
+      8
+    ]
+  },
+  "103": {
+    "fw": 40,
+    "fh": 48,
+    "frames": 4,
+    "durs": [
+      8,
+      12,
+      8,
+      12
+    ]
+  },
   "104": {
     "fw": 32,
     "fh": 32,
@@ -804,6 +1263,69 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10,
       8,
       10
+    ]
+  },
+  "106": {
+    "fw": 40,
+    "fh": 48,
+    "frames": 4,
+    "durs": [
+      10,
+      12,
+      10,
+      12
+    ]
+  },
+  "107": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "108": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      10,
+      14,
+      10,
+      14
+    ]
+  },
+  "109": {
+    "fw": 32,
+    "fh": 56,
+    "frames": 10,
+    "durs": [
+      6,
+      6,
+      6,
+      6,
+      8,
+      6,
+      6,
+      6,
+      6,
+      8
+    ]
+  },
+  "110": {
+    "fw": 32,
+    "fh": 56,
+    "frames": 6,
+    "durs": [
+      8,
+      8,
+      8,
+      8,
+      8,
+      8
     ]
   },
   "111": {
@@ -839,6 +1361,30 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10
     ]
   },
+  "114": {
+    "fw": 32,
+    "fh": 48,
+    "frames": 6,
+    "durs": [
+      8,
+      6,
+      6,
+      6,
+      6,
+      6
+    ]
+  },
+  "115": {
+    "fw": 40,
+    "fh": 56,
+    "frames": 4,
+    "durs": [
+      16,
+      10,
+      16,
+      10
+    ]
+  },
   "116": {
     "fw": 24,
     "fh": 48,
@@ -860,6 +1406,32 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10,
       8,
       10
+    ]
+  },
+  "118": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 8,
+    "durs": [
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10,
+      10
+    ]
+  },
+  "119": {
+    "fw": 32,
+    "fh": 48,
+    "frames": 4,
+    "durs": [
+      10,
+      8,
+      10,
+      8
     ]
   },
   "120": {
@@ -884,6 +1456,17 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10
     ]
   },
+  "122": {
+    "fw": 32,
+    "fh": 48,
+    "frames": 4,
+    "durs": [
+      8,
+      12,
+      8,
+      12
+    ]
+  },
   "123": {
     "fw": 40,
     "fh": 48,
@@ -893,6 +1476,17 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10,
       8,
       10
+    ]
+  },
+  "124": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      12,
+      8,
+      12
     ]
   },
   "125": {
@@ -915,6 +1509,31 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10,
       8,
       10
+    ]
+  },
+  "127": {
+    "fw": 32,
+    "fh": 48,
+    "frames": 4,
+    "durs": [
+      8,
+      12,
+      8,
+      12
+    ]
+  },
+  "128": {
+    "fw": 40,
+    "fh": 56,
+    "frames": 7,
+    "durs": [
+      8,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6
     ]
   },
   "129": {
@@ -953,6 +1572,18 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       12
     ]
   },
+  "132": {
+    "fw": 32,
+    "fh": 32,
+    "frames": 5,
+    "durs": [
+      10,
+      8,
+      10,
+      8,
+      8
+    ]
+  },
   "133": {
     "fw": 40,
     "fh": 48,
@@ -967,6 +1598,39 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       2
     ]
   },
+  "134": {
+    "fw": 32,
+    "fh": 48,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "135": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "136": {
+    "fw": 32,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      8,
+      8,
+      8
+    ]
+  },
   "137": {
     "fw": 32,
     "fh": 40,
@@ -976,6 +1640,54 @@ export const PMD_WALK_MANIFEST: Record<string, { fw: number; fh: number; frames:
       10,
       10,
       10
+    ]
+  },
+  "138": {
+    "fw": 32,
+    "fh": 32,
+    "frames": 4,
+    "durs": [
+      8,
+      8,
+      8,
+      8
+    ]
+  },
+  "139": {
+    "fw": 40,
+    "fh": 40,
+    "frames": 4,
+    "durs": [
+      8,
+      8,
+      8,
+      8
+    ]
+  },
+  "140": {
+    "fw": 24,
+    "fh": 24,
+    "frames": 4,
+    "durs": [
+      8,
+      10,
+      8,
+      10
+    ]
+  },
+  "141": {
+    "fw": 40,
+    "fh": 48,
+    "frames": 8,
+    "durs": [
+      6,
+      4,
+      8,
+      4,
+      6,
+      4,
+      8,
+      4
     ]
   },
   "142": {
