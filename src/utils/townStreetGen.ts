@@ -6,6 +6,9 @@ export interface TownStreetSeg {
   x2: number;
   z2: number;
   width: number;
+  /** Optional tapered start/end widths for smooth 8-lane -> 4-lane -> 2-lane transitions! */
+  widthStart?: number;
+  widthEnd?: number;
   kind: 'arterial' | 'street' | 'alley' | 'rail';
 }
 
@@ -98,105 +101,184 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const junctions: TownJunctionNode[] = [];
   const rail: TownStreetSeg[] = [];
 
-  // 1. Cities: Skylines Grand Metropolis Road Hierarchy (proportionally scaled to 8-Lane Boulevards!):
-  // - Main 8-Lane Grand Boulevards with Central Green Median & Wide Sidewalks (width = 24.0m)
-  // - Secondary 4-Lane Collector Avenues with Sidewalks & Tree Verges (width = 14.0m)
-  // - Cozy Pedestrian Cobblestone Alleys (width = 7.6m)
-  const addChain = (
-    sx: number,
-    sz: number,
-    angle: number,
-    steps: number,
-    segLen: number,
-    bendPerStep: number,
-    width: number,
+  // 1. Real-World Megacity Road Network Templates (each city reflects its iconic real urban plan + tapered lane transitions + branching Y-forks!):
+  // - Main 8-Lane Grand Boulevards with Wide Sidewalks & Tree Median (46m -> smoothly tapers to 22m at outer city gates!)
+  // - Secondary 4-Lane Collector Avenues & Ring Roads (26m -> tapers cleanly into 14m neighborhood roads!)
+  // - Cozy Cobblestone Pedestrian Alleys / Hutongs / Machiya Lanes (12.5m)
+  const addSeg = (
+    x1: number,
+    z1: number,
+    x2: number,
+    z2: number,
+    widthStart: number,
+    widthEnd: number,
     kind: TownStreetSeg['kind'],
-  ): { x: number; z: number; angle: number }[] => {
-    let x = sx;
-    let z = sz;
-    let a = angle;
-    const nodes: { x: number; z: number; angle: number }[] = [{ x, z, angle: a }];
-    for (let i = 0; i < steps; i++) {
-      const nx = x + Math.cos(a) * segLen;
-      const nz = z + Math.sin(a) * segLen;
-      // Keep every street strictly inside the city's expansive plateau (r <= 96m, well inside plazaRadius 112m!)
-      if (Math.hypot(nx - cx, nz - cz) > 96) break;
-      streets.push({ x1: x, z1: z, x2: nx, z2: nz, width, kind });
-      x = nx;
-      z = nz;
-      a += bendPerStep;
-      nodes.push({ x, z, angle: a });
-    }
-    return nodes;
+  ) => {
+    streets.push({
+      x1,
+      z1,
+      x2,
+      z2,
+      width: (widthStart + widthEnd) * 0.5,
+      widthStart,
+      widthEnd,
+      kind,
+    });
   };
 
-  // Straight 8-Lane Cardinal Boulevards radiating cleanly from the Grand Central Plaza edge (r = 22m -> 94m)!
-  const eastNodes = addChain(cx + 22, cz, 0, 2, 36, 0, 24.0, 'arterial');
-  const westNodes = addChain(cx - 22, cz, Math.PI, 2, 36, 0, 24.0, 'arterial');
-  const southNodes = addChain(cx, cz + 22, Math.PI * 0.5, 2, 36, 0, 24.0, 'arterial');
-  const northNodes = addChain(cx, cz - 22, -Math.PI * 0.5, 2, 36, 0, 24.0, 'arterial');
-
-  // 2. Branching Secondary 4-Lane Collector Avenues & Pedestrian Alleys (strictly orthogonal 90° T-junctions -> clean Skylines connections!)
-  const branchAnchors = [
-    { node: eastNodes[1], dir: 1 },
-    { node: eastNodes[1], dir: -1 },
-    { node: westNodes[1], dir: -1 },
-    { node: westNodes[1], dir: 1 },
-    { node: southNodes[1], dir: 1 },
-    { node: southNodes[1], dir: -1 },
-    { node: northNodes[1], dir: -1 },
-    { node: northNodes[1], dir: 1 },
-  ];
-
   const addedJunctionKeys = new Set<string>();
-  for (let bi = 0; bi < branchAnchors.length; bi++) {
-    const entry = branchAnchors[bi];
-    if (!entry.node) continue;
-    const { node, dir } = entry;
-    const turnAng = node.angle + dir * (Math.PI * 0.5);
-    const len = 30 + Math.round(rng() * 8);
-    const isAlley = bi % 3 === 2;
-    const roadW = isAlley ? 7.6 : 14.0;
-    // Start the side road right outside the 8-lane boulevard curb edge (12.0m) so the T-junction pad joins them with ZERO overlap!
-    const startOff = 12.0;
-    const sx = node.x + Math.cos(turnAng) * startOff;
-    const sz = node.z + Math.sin(turnAng) * startOff;
-    addChain(
-      sx,
-      sz,
-      turnAng,
-      1,
-      len,
-      0,
-      roadW,
-      isAlley ? 'alley' : 'street',
-    );
-    const jKey = `${Math.round(node.x)}_${Math.round(node.z)}`;
-    if (!addedJunctionKeys.has(jKey)) {
-      addedJunctionKeys.add(jKey);
-      junctions.push({
-        x: node.x,
-        z: node.z,
-        width: 24.4,
-        depth: 24.4,
-        rotY: -node.angle,
-        kind: 'tee',
-      });
+  const addJunction = (jx: number, jz: number, size: number, rotY = 0, kind: 'cross' | 'tee' = 'tee') => {
+    const key = `${Math.round(jx / 4)}_${Math.round(jz / 4)}`;
+    if (addedJunctionKeys.has(key)) return;
+    addedJunctionKeys.add(key);
+    junctions.push({ x: jx, z: jz, width: size, depth: size, rotY, kind });
+  };
+
+  // Core 8-Lane Cardinal Grand Boulevards radiating from Grand Civic Plaza (r = 32m -> 124m)
+  // PLUS Smooth 26m Tapered Transitions (46m -> 22m) from r = 124m -> 150m to meet Inter-City 4-Lane Expressways seamlessly!
+  const cardinals: { dx: number; dz: number; ang: number }[] = [
+    { dx: 1, dz: 0, ang: 0 },
+    { dx: -1, dz: 0, ang: Math.PI },
+    { dx: 0, dz: 1, ang: Math.PI * 0.5 },
+    { dx: 0, dz: -1, ang: -Math.PI * 0.5 },
+  ];
+  const midNodes: { x: number; z: number; ang: number }[] = [];
+  for (const c of cardinals) {
+    // Inner 8-lane boulevard (32 -> 80)
+    addSeg(cx + c.dx * 32, cz + c.dz * 32, cx + c.dx * 80, cz + c.dz * 80, 46, 46, 'arterial');
+    midNodes.push({ x: cx + c.dx * 80, z: cz + c.dz * 80, ang: c.ang });
+    // Outer 8-lane boulevard (80 -> 124)
+    addSeg(cx + c.dx * 80, cz + c.dz * 80, cx + c.dx * 124, cz + c.dz * 124, 46, 46, 'arterial');
+    // Smooth Tapered Gateway Transition (124 -> 150: smoothly narrows 46m 8-lane -> 22m 4-lane expressway!)
+    addSeg(cx + c.dx * 124, cz + c.dz * 124, cx + c.dx * 150, cz + c.dz * 150, 46, 22, 'street');
+    addJunction(cx + c.dx * 80, cz + c.dz * 80, 46.4, -c.ang, 'cross');
+  }
+
+  // 2. Real-World City-Specific Secondary Road Networks, Ring Roads & Angled Y-Forks!
+  const cityStyle = anchor.landmarkCityId ?? 'shanghai';
+  if (cityStyle === 'beijing' || cityStyle === 'kyoto') {
+    // 🏯 Beijing (Ring Road + Axial Grid) & ⛩️ Kyoto (Heian-kyo Grid): Clean Rectangular Ring Loop connecting all 4 avenues at r=80m!
+    const ringPts = [
+      { x: cx + 80, z: cz },
+      { x: cx + 80, z: cz + 80 },
+      { x: cx, z: cz + 80 },
+      { x: cx - 80, z: cz + 80 },
+      { x: cx - 80, z: cz },
+      { x: cx - 80, z: cz - 80 },
+      { x: cx, z: cz - 80 },
+      { x: cx + 80, z: cz - 80 },
+    ];
+    for (let i = 0; i < ringPts.length; i++) {
+      const a = ringPts[i];
+      const b = ringPts[(i + 1) % ringPts.length];
+      const vx = b.x - a.x;
+      const vz = b.z - a.z;
+      const len = Math.hypot(vx, vz);
+      // Trim 22m at cardinal boulevard intersections so ZERO overlapping curbs!
+      const trimA = i % 2 === 0 ? 22 : 12;
+      const trimB = i % 2 === 1 ? 22 : 12;
+      if (len > trimA + trimB + 4) {
+        addSeg(
+          a.x + (vx / len) * trimA,
+          a.z + (vz / len) * trimA,
+          b.x - (vx / len) * trimB,
+          b.z - (vz / len) * trimB,
+          26,
+          26,
+          'street',
+        );
+      }
+      if (i % 2 === 1) {
+        addJunction(a.x, a.z, 26.4, 0, 'tee');
+        // Branching Hutong / Machiya cobblestone fork off each ring corner!
+        const outAng = Math.atan2(a.z - cz, a.x - cx);
+        addSeg(
+          a.x + Math.cos(outAng) * 13,
+          a.z + Math.sin(outAng) * 13,
+          a.x + Math.cos(outAng) * 44,
+          a.z + Math.sin(outAng) * 44,
+          16,
+          12,
+          'alley',
+        );
+      }
+    }
+  } else {
+    // 🗼 Shanghai (Lujiazui Radial Ring + Diagonal Y-Forks), Tokyo (Yamanote Orbital Loop + Spokes), Guangzhou (Sweeping Waterfront Forks)!
+    // Octagonal Urban Ring Road connecting all 4 Boulevards at r=80m with smooth diagonal diagonals!
+    const octR = 80;
+    const diagR = cityStyle === 'tokyo' ? 84 : 88;
+    const loopNodes = [
+      { x: cx + octR, z: cz, isMain: true },
+      { x: cx + diagR * 0.707, z: cz + diagR * 0.707, isMain: false },
+      { x: cx, z: cz + octR, isMain: true },
+      { x: cx - diagR * 0.707, z: cz + diagR * 0.707, isMain: false },
+      { x: cx - octR, z: cz, isMain: true },
+      { x: cx - diagR * 0.707, z: cz - diagR * 0.707, isMain: false },
+      { x: cx, z: cz - octR, isMain: true },
+      { x: cx + diagR * 0.707, z: cz - diagR * 0.707, isMain: false },
+    ];
+    for (let i = 0; i < loopNodes.length; i++) {
+      const a = loopNodes[i];
+      const b = loopNodes[(i + 1) % loopNodes.length];
+      const vx = b.x - a.x;
+      const vz = b.z - a.z;
+      const len = Math.hypot(vx, vz);
+      const trimA = a.isMain ? 22 : 11;
+      const trimB = b.isMain ? 22 : 11;
+      if (len > trimA + trimB + 4) {
+        addSeg(
+          a.x + (vx / len) * trimA,
+          a.z + (vz / len) * trimA,
+          b.x - (vx / len) * trimB,
+          b.z - (vz / len) * trimB,
+          26,
+          26,
+          'street',
+        );
+      }
+      // At every diagonal ring node, create an organic Y-Fork (one radial 4-lane avenue + one tapered neighborhood alley!)
+      if (!a.isMain) {
+        const ang = Math.atan2(a.z - cz, a.x - cx);
+        addJunction(a.x, a.z, 26.4, -ang, 'tee');
+        // Fork Arm A: Tapered Collector Avenue (26m -> 18m)
+        const forkA = ang + (cityStyle === 'guangzhou' ? 0.34 : 0.28);
+        addSeg(
+          a.x + Math.cos(forkA) * 13,
+          a.z + Math.sin(forkA) * 13,
+          a.x + Math.cos(forkA) * (42 + Math.round(rng() * 8)),
+          a.z + Math.sin(forkA) * (42 + Math.round(rng() * 8)),
+          24,
+          16,
+          'street',
+        );
+        // Fork Arm B: Tapered Pedestrian / Neighborhood Alley (16m -> 12m)
+        const forkB = ang - 0.36;
+        addSeg(
+          a.x + Math.cos(forkB) * 13,
+          a.z + Math.sin(forkB) * 13,
+          a.x + Math.cos(forkB) * (36 + Math.round(rng() * 8)),
+          a.z + Math.sin(forkB) * (36 + Math.round(rng() * 8)),
+          16,
+          12,
+          'alley',
+        );
+      }
     }
   }
 
-  // 3. Gently Curved High-Speed Railway Corridor inside the northern district (z = cz - 72, span ±64m -> max r ≈ 96m < plazaRadius 112m!)
-  const railCenterZ = cz - 72;
-  let rx = cx - 64;
+  // 3. Gently Curved High-Speed Railway / Metro Corridor connecting seamlessly to Inter-City Rail (z = cz - 108 -> east/west gates!)
+  const railCenterZ = cz - 108;
+  let rx = cx - 108;
   let rz = railCenterZ;
-  let ra = -0.05;
+  let ra = -0.025;
   for (let i = 0; i < 6; i++) {
-    const nrx = rx + Math.cos(ra) * 21.5;
-    const nrz = rz + Math.sin(ra) * 21.5;
-    rail.push({ x1: rx, z1: rz, x2: nrx, z2: nrz, width: 5.5, kind: 'rail' });
+    const nrx = rx + Math.cos(ra) * 36;
+    const nrz = rz + Math.sin(ra) * 36;
+    rail.push({ x1: rx, z1: rz, x2: nrx, z2: nrz, width: 7.2, kind: 'rail' });
     rx = nrx;
     rz = nrz;
-    ra += 0.02;
+    ra += 0.01;
   }
 
   // Station sits neatly beside the middle of the rail line
@@ -205,11 +287,11 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const stationZ = (midRail.z1 + midRail.z2) * 0.5;
   const stationRotY = -Math.atan2(midRail.z2 - midRail.z1, midRail.x2 - midRail.x1);
 
-  // Bus/Tram stop along the West boulevard curb
-  const busSeg = westNodes[1];
-  const busX = busSeg.x;
-  const busZ = busSeg.z + 13.5;
-  const busRotY = -busSeg.angle;
+  // Bus/Tram stop along the West boulevard wide sidewalk!
+  const busNode = midNodes[1];
+  const busX = busNode.x;
+  const busZ = busNode.z + 24.5;
+  const busRotY = -busNode.ang;
 
   // 4. Automatic Curbside Lot Subdivision (walks both curbs of every street, rejects overlaps!)
   const lots: TownBuildingLot[] = [];
@@ -227,8 +309,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     for (const rl of rail) {
       if (distToSeg(lx, lz, rl.x1, rl.z1, rl.x2, rl.z2) < 6.5 + radius * 0.5) return true;
     }
-    // Reject if overlapping the Grand Central Civic Plaza (r = 23m)
-    if (Math.hypot(lx - cx, lz - cz) < 24.5 + radius * 0.5) return true;
+    // Reject if overlapping the Grand Central Civic Plaza (r = 33m)
+    if (Math.hypot(lx - cx, lz - cz) < 34.5 + radius * 0.5) return true;
     // Reject if overlapping any already placed building lot
     for (const ex of lots) {
       const exR = Math.hypot(ex.width * 0.5, ex.depth * 0.5) * 0.88;
@@ -270,17 +352,17 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       });
     }
 
-    const stepsAlong = Math.max(1, Math.floor(len / 15.5));
+    const stepsAlong = Math.max(1, Math.floor(len / 22.0));
     for (let k = 0; k < stepsAlong; k++) {
       const t = (k + 0.5) / stepsAlong;
       const mx = st.x1 + dx * t;
       const mz = st.z1 + dz * t;
       for (const side of [-1, 1]) {
-        const setback = st.width * 0.5 + 9.2;
+        const setback = st.width * 0.5 + 12.5;
         const lx = mx + nx * side * setback;
         const lz = mz + nz * side * setback;
-        const doorX = mx + nx * side * (st.width * 0.5 + 2.0);
-        const doorZ = mz + nz * side * (st.width * 0.5 + 2.0);
+        const doorX = mx + nx * side * (st.width * 0.5 + 2.4);
+        const doorZ = mz + nz * side * (st.width * 0.5 + 2.4);
         // Face toward the street! (Three.js +Z forward faces (-nx*side, -nz*side))
         const rotY = Math.atan2(-nx * side, -nz * side);
         candidates.push({
@@ -298,13 +380,13 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
 
   candidates.sort((a, b) => a.distFromCenter - b.distFromCenter);
 
-  // Assign Grand Human-Scale Civic Flagship Lots first (Pokémon Center, Poké Mart, Hotel, Restaurant, Iconic Landmark!)
+  // Assign Grand Metropolis-Scale Civic Flagship Lots first (matching 8-Lane Boulevards!)
   const civicQueue: { kind: TownLotKind; w: number; d: number; walkable?: boolean }[] = [
-    { kind: 'pokemon_center', w: 19.6, d: 16.0, walkable: true },
-    { kind: 'poke_mart', w: 18.2, d: 14.8, walkable: true },
-    { kind: 'hotel', w: 18.0, d: 14.6 },
-    { kind: 'restaurant', w: 16.6, d: 13.6 },
-    ...(anchor.landmarkCityId ? [{ kind: 'landmark' as TownLotKind, w: 13.0, d: 13.0 }] : []),
+    { kind: 'pokemon_center', w: 25.0, d: 20.5, walkable: true },
+    { kind: 'poke_mart', w: 23.0, d: 19.0, walkable: true },
+    { kind: 'hotel', w: 24.0, d: 19.5 },
+    { kind: 'restaurant', w: 21.5, d: 17.5 },
+    ...(anchor.landmarkCityId ? [{ kind: 'landmark' as TownLotKind, w: 16.0, d: 16.0 }] : []),
   ];
 
   let lotCounter = 0;
@@ -329,12 +411,12 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     }
   }
 
-  // Fill remaining organic street-side slots with spacious Residential Houses!
+  // Fill remaining organic street-side slots with spacious Metropolis Townhouses & Villas!
   let houseCount = 0;
   for (const cand of candidates) {
-    if (houseCount >= 12) break;
-    const hw = 13.8 + (houseCount % 3) * 1.1;
-    const hd = 11.8 + (houseCount % 2) * 0.9;
+    if (houseCount >= 14) break;
+    const hw = 17.5 + (houseCount % 3) * 1.4;
+    const hd = 14.8 + (houseCount % 2) * 1.1;
     if (isTooCloseToRoadOrLot(cand.x, cand.z, hw * 0.5, hd * 0.5)) continue;
     lots.push({
       id: `${anchor.id}_house_${houseCount}`,

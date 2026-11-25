@@ -11,6 +11,7 @@ import {
   getTerrainHeight3D,
   LAKE_BASINS_3D,
   WATER_LEVEL_3D,
+  WORLD_RAIL_SEGMENTS_3D,
   WORLD_ROAD_SEGMENTS_3D,
   WORLD_TOWNS_3D,
 } from '../data/survivorsTactics';
@@ -164,6 +165,27 @@ function paintRoadsAndTownsOnMap(
       ctx.stroke();
       ctx.setLineDash([]);
     }
+  }
+
+  // 1B. Inter-City High-Speed Rail & Metro Network (classic dashed railway line connecting all 5 world cities!)
+  for (const [ax, az, bx, bz] of WORLD_RAIL_SEGMENTS_3D) {
+    const a = toScreen(ax, az);
+    const b = toScreen(bx, bz);
+    ctx.strokeStyle = '#181a24';
+    ctx.lineWidth = Math.max(2.4, 4.4 / Math.max(0.1, unitsPerPx));
+    ctx.beginPath();
+    ctx.moveTo(a.sx, a.sy);
+    ctx.lineTo(b.sx, b.sy);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1.2, 2.0 / Math.max(0.1, unitsPerPx));
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(a.sx, a.sy);
+    ctx.lineTo(b.sx, b.sy);
+    ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // 2. Organic Procedural Street-Graph Towns (Real branching streets, alleys, railways & rotated building lots — ZERO circular disc!)

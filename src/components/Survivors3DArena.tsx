@@ -4997,6 +4997,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               for (const ft of town.animatedParts.fountains) {
                 ft.scale.y = 0.85 + Math.sin(windClock * 5.2) * 0.22;
               }
+              for (const bb of town.animatedParts.billboards) {
+                bb.rotation.set(bbTiltX, camYawNow, 0);
+              }
             }
             const distToTown = Math.hypot(sim.px - town.centerX, sim.pz - town.centerZ);
             if (distToTown < town.safeRadius) {

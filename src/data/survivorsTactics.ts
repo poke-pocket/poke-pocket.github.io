@@ -446,43 +446,64 @@ export interface WorldTownAnchor3D {
  * around each city so ZERO buildings, streets, or railway tracks ever dangle into lakes!
  */
 export const WORLD_TOWNS_3D: WorldTownAnchor3D[] = [
-  { id: 'city_shanghai', name: '上海市', x: 0, z: -148, seed: 101, plazaRadius: 112, plateauY: 1.95, landmarkCityId: 'shanghai' },
-  { id: 'city_beijing', name: '北京市', x: 0, z: -560, seed: 202, plazaRadius: 112, plateauY: 2.65, landmarkCityId: 'beijing' },
-  { id: 'city_guangzhou', name: '广州市', x: 0, z: 320, seed: 303, plazaRadius: 112, plateauY: 1.95, landmarkCityId: 'guangzhou' },
-  { id: 'city_tokyo', name: '东京市', x: 460, z: -148, seed: 404, plazaRadius: 112, plateauY: 2.15, landmarkCityId: 'tokyo' },
-  { id: 'city_kyoto', name: '京都市', x: -460, z: -148, seed: 505, plazaRadius: 112, plateauY: 2.25, landmarkCityId: 'kyoto' },
+  { id: 'city_shanghai', name: '上海市', x: 0, z: -210, seed: 101, plazaRadius: 162, plateauY: 1.95, landmarkCityId: 'shanghai' },
+  { id: 'city_beijing', name: '北京市', x: 0, z: -760, seed: 202, plazaRadius: 162, plateauY: 2.65, landmarkCityId: 'beijing' },
+  { id: 'city_guangzhou', name: '广州市', x: 0, z: 420, seed: 303, plazaRadius: 162, plateauY: 1.95, landmarkCityId: 'guangzhou' },
+  { id: 'city_tokyo', name: '东京市', x: 620, z: -210, seed: 404, plazaRadius: 162, plateauY: 2.15, landmarkCityId: 'tokyo' },
+  { id: 'city_kyoto', name: '京都市', x: -620, z: -210, seed: 505, plazaRadius: 162, plateauY: 2.25, landmarkCityId: 'kyoto' },
 ];
 
-/** Clean cardinal expressway network plugging directly into each city's outer 8-lane avenue gates (±92m) */
+/** Clean cardinal 4-lane expressways plugging directly into each city's tapered 8->4 lane outer portals (±150m) */
 export const WORLD_ROAD_SEGMENTS_3D: [number, number, number, number][] = [
-  [0, 14, 0, -56],            // 出发点南郊 -> 上海市南门大道
-  [0, -240, 0, -468],         // 上海市北门 <-> 北京市南门
-  [0, 14, 0, 228],            // 出发点南郊 <-> 广州市北门
-  [92, -148, 368, -148],      // 上海市东门 <-> 东京市西门
-  [-92, -148, -368, -148],    // 上海市西门 <-> 京都市东门
+  [0, 14, 0, -60],            // 出发点南郊 -> 上海市南门渐变衔接段
+  [0, -360, 0, -610],         // 上海市北门 <-> 北京市南门
+  [0, 14, 0, 270],            // 出发点南郊 <-> 广州市北门
+  [150, -210, 470, -210],     // 上海市东门 <-> 东京市西门
+  [-150, -210, -470, -210],   // 上海市西门 <-> 京都市东门
 ];
 
-/** Distance from point (px, pz) to segment (ax, az)-(bx, bz) */
-function distPointToSeg2D(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+/** Continuous Inter-City High-Speed Rail & Metro Network linking all 5 Major World Cities! */
+export const WORLD_RAIL_SEGMENTS_3D: [number, number, number, number][] = [
+  [-28, -320, -28, -640],     // 京沪高铁 (上海市 <-> 北京市)
+  [-28, -100, -28, 310],      // 沪广高铁 (上海市 <-> 广州市)
+  [110, -242, 510, -242],     // 沪东跨海地铁快线 (上海市 <-> 东京市)
+  [-110, -242, -510, -242],   // 沪京西快线 (上海市 <-> 京都市)
+];
+
+/** Nearest point + perpendicular distance from (px, pz) to segment (ax, az)-(bx, bz) */
+function nearestPointOnSeg2D(
+  px: number,
+  pz: number,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): { dist: number; qx: number; qz: number } {
   const vx = bx - ax;
   const vz = bz - az;
   const lenSq = vx * vx + vz * vz;
-  if (lenSq < 0.001) return Math.hypot(px - ax, pz - az);
+  if (lenSq < 0.001) return { dist: Math.hypot(px - ax, pz - az), qx: ax, qz: az };
   const t = Math.max(0, Math.min(1, ((px - ax) * vx + (pz - az) * vz) / lenSq));
-  return Math.hypot(px - (ax + t * vx), pz - (az + t * vz));
+  const qx = ax + t * vx;
+  const qz = az + t * vz;
+  return { dist: Math.hypot(px - qx, pz - qz), qx, qz };
 }
 
-export function getNearestRoadDist3D(wx: number, wz: number): number {
-  let best = 9999;
+function getNearestRoadProjection3D(wx: number, wz: number): { dist: number; qx: number; qz: number } {
+  let best = { dist: 9999, qx: wx, qz: wz };
   for (let i = 0; i < WORLD_ROAD_SEGMENTS_3D.length; i++) {
     const [ax, az, bx, bz] = WORLD_ROAD_SEGMENTS_3D[i];
-    const d = distPointToSeg2D(wx, wz, ax, az, bx, bz);
-    if (d < best) best = d;
+    const p = nearestPointOnSeg2D(wx, wz, ax, az, bx, bz);
+    if (p.dist < best.dist) best = p;
   }
   return best;
 }
 
-export function isOnInterTownRoad3D(wx: number, wz: number, halfWidth = 7.4): boolean {
+export function getNearestRoadDist3D(wx: number, wz: number): number {
+  return getNearestRoadProjection3D(wx, wz).dist;
+}
+
+export function isOnInterTownRoad3D(wx: number, wz: number, halfWidth = 12.2): boolean {
   return getNearestRoadDist3D(wx, wz) < halfWidth;
 }
 
@@ -528,17 +549,20 @@ export function getRawNaturalTerrainHeight3D(wx: number, wz: number): number {
   for (let i = 0; i < WORLD_TOWNS_3D.length; i++) {
     const t = WORLD_TOWNS_3D[i];
     const d = Math.hypot(wx - t.x, wz - t.z);
-    const outerR = t.plazaRadius + 20;
+    const outerR = t.plazaRadius + 24;
     if (d < outerR) {
-      const zoneMask = 1.0 - smoothstep(t.plazaRadius - 4, outerR, d);
-      // Keep the central civic square (r < 18m) gently level, while letting surrounding city streets
-      // roll naturally over hillsides & slopes (only lifting underwater basins safely onto dry ground!)
-      const plazaFlat = (1.0 - smoothstep(14, 24, d)) * 0.88;
-      const hillsideSmooth = zoneMask * 0.36;
+      const zoneMask = 1.0 - smoothstep(t.plazaRadius - 6, outerR, d);
+      // Natural gentle rolling hillside across cities (smooth low-frequency slope so 8-lane avenues sit flat & flush
+      // without sudden bumps or floating edges, while preserving authentic hillside elevation changes across districts!)
+      const gentleCitySlope =
+        t.plateauY +
+        Math.sin((wx - t.x) * 0.0085 + t.seed) * 0.85 +
+        Math.cos((wz - t.z) * 0.0085 - t.seed) * 0.85;
+      const plazaFlat = 1.0 - smoothstep(26, 46, d);
+      const cityTargetY = gentleCitySlope * (1.0 - plazaFlat) + t.plateauY * plazaFlat;
       const dryElev = Math.max(elev, WATER_LEVEL_3D + 0.95);
       const safeElev = elev * (1.0 - zoneMask) + dryElev * zoneMask;
-      const blend = Math.max(plazaFlat, hillsideSmooth);
-      elev = safeElev * (1.0 - blend) + t.plateauY * blend;
+      elev = safeElev * (1.0 - zoneMask * 0.88) + cityTargetY * (zoneMask * 0.88);
     }
   }
   return elev;
@@ -547,12 +571,23 @@ export function getRawNaturalTerrainHeight3D(wx: number, wz: number): number {
 export function getTerrainHeight3D(wx: number, wz: number): number {
   let elev = getRawNaturalTerrainHeight3D(wx, wz);
 
-  // When an inter-town highway cuts through a tall mountain (elev > 5.0), smoothly carve a walkable tunnel roadbed!
-  if (!sampleGeoTerrainHeight3D(wx, wz) && elev > MOUNTAIN_TUNNEL_FLOOR_Y + 0.35) {
-    const roadDist = getNearestRoadDist3D(wx, wz);
-    if (roadDist < 11.5) {
-      const cut = 1.0 - smoothstep(6.4, 11.5, roadDist);
-      elev = elev * (1.0 - cut) + Math.min(elev, MOUNTAIN_TUNNEL_FLOOR_Y) * cut;
+  if (!sampleGeoTerrainHeight3D(wx, wz)) {
+    const proj = getNearestRoadProjection3D(wx, wz);
+    // Civil-Engineering Roadbed Cut-and-Fill Grading:
+    // Keep highway cross-sections 100% level side-to-side (matching centerline height) with smooth sloped embankments,
+    // so roads climb/descend hills naturally WITHOUT ever tilting unevenly or floating over air!
+    if (proj.dist < 22.0) {
+      let centerElev = getRawNaturalTerrainHeight3D(proj.qx, proj.qz);
+      if (centerElev > MOUNTAIN_TUNNEL_FLOOR_Y + 0.35) {
+        centerElev = MOUNTAIN_TUNNEL_FLOOR_Y;
+      }
+      if (centerElev > WATER_LEVEL_3D + 0.15) {
+        const gradeBlend = 1.0 - smoothstep(11.6, 22.0, proj.dist);
+        elev = elev * (1.0 - gradeBlend) + centerElev * gradeBlend;
+      } else if (elev > MOUNTAIN_TUNNEL_FLOOR_Y + 0.35 && proj.dist < 16.5) {
+        const cut = 1.0 - smoothstep(10.5, 16.5, proj.dist);
+        elev = elev * (1.0 - cut) + MOUNTAIN_TUNNEL_FLOOR_Y * cut;
+      }
     }
   }
 
@@ -564,7 +599,7 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number): number {
   const ground = getTerrainHeight3D(wx, wz);
   if (!sampleGeoTerrainHeight3D(wx, wz)) {
     const roadDist = getNearestRoadDist3D(wx, wz);
-    if (roadDist < 7.2 && ground < BRIDGE_DECK_Y_3D) {
+    if (roadDist < 12.2 && ground < BRIDGE_DECK_Y_3D) {
       // Smooth approach ramp from shoreline right onto the elevated wooden bridge deck (always safely dry above WATER_LEVEL_3D!)
       if (ground <= WATER_LEVEL_3D + 0.25) {
         return BRIDGE_DECK_Y_3D;
