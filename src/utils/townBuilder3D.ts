@@ -60,20 +60,24 @@ function loadRawGlb(url: string): Promise<THREE.Group | null> {
             m.castShadow = true;
             m.receiveShadow = true;
             const mats = Array.isArray(m.material) ? m.material : [m.material];
-            for (const mat of mats) {
+            const brightMats = mats.map((mat) => {
               const std = mat as THREE.MeshStandardMaterial;
               if (std.map) {
                 std.map.magFilter = THREE.NearestFilter;
                 std.map.minFilter = THREE.NearestFilter;
+                std.map.colorSpace = THREE.SRGBColorSpace;
                 std.map.needsUpdate = true;
               }
-              if (typeof std.roughness === 'number') {
-                std.roughness = Math.max(0.75, std.roughness);
-              }
-              if (typeof std.metalness === 'number') {
-                std.metalness = Math.min(0.15, std.metalness);
-              }
-            }
+              // Convert PBR MeshStandardMaterial -> vibrant MeshLambertMaterial so colors pop brightly in sunlit toon lighting!
+              return new THREE.MeshLambertMaterial({
+                color: std.color ? std.color.clone() : new THREE.Color(0xffffff),
+                map: std.map ?? null,
+                side: std.side,
+                transparent: std.transparent,
+                opacity: std.opacity,
+              });
+            });
+            m.material = Array.isArray(m.material) ? brightMats : brightMats[0];
           }
         });
         resolve(root);
@@ -330,19 +334,19 @@ function createPlazaFountain(fountains: THREE.Object3D[]): THREE.Group {
 }
 
 const HOUSE_POOL = [
-  '/models/town/house-a.glb',
-  '/models/town/house-c.glb',
-  '/models/town/house-f.glb',
-  '/models/town/house-i.glb',
-  '/models/town/house-l.glb',
-  '/models/town/house-o.glb',
+  '/models/town/suburban/house-a.glb',
+  '/models/town/suburban/house-c.glb',
+  '/models/town/suburban/house-f.glb',
+  '/models/town/suburban/house-i.glb',
+  '/models/town/suburban/house-l.glb',
+  '/models/town/suburban/house-o.glb',
 ];
 
 const SHOP_POOL = [
-  '/models/town/mart-boutique.glb',
-  '/models/town/shop-a.glb',
-  '/models/town/shop-d.glb',
-  '/models/town/shop-g.glb',
+  '/models/town/commercial/mart-boutique.glb',
+  '/models/town/commercial/shop-a.glb',
+  '/models/town/commercial/shop-d.glb',
+  '/models/town/commercial/shop-g.glb',
 ];
 
 /**
@@ -411,7 +415,9 @@ export function buildProceduralTown3D(
   const pcX = -9.6 * mirrorX;
   const pcZ = -7.6;
   const pcWidth = isMajorCity ? 10.6 : 8.6;
-  const pcModelUrl = isMajorCity ? '/models/town/shop-k.glb' : '/models/town/center-grand.glb';
+  const pcModelUrl = isMajorCity
+    ? '/models/town/commercial/shop-k.glb'
+    : '/models/town/commercial/center-grand.glb';
   void mountGlbModel(group, pcModelUrl, {
     x: pcX,
     y: localGroundY(pcX, pcZ),
@@ -419,7 +425,7 @@ export function buildProceduralTown3D(
     rotY: mirrorX * 0.16,
     targetWidth: pcWidth,
     addInkEdges: true,
-    tintHex: 0xffc9c9,
+    tintHex: 0xffd6d6,
     onMounted: (wrapper, h) => {
       const beacon = createPokeballBeacon(isMajorCity ? 1.25 : 1.0);
       beacon.position.set(0, h + 1.15, 0);
@@ -446,7 +452,6 @@ export function buildProceduralTown3D(
     rotY: -mirrorX * 0.18,
     targetWidth: isMajorCity ? 9.0 : 7.8,
     addInkEdges: true,
-    tintHex: 0xd0ebff,
     onMounted: (wrapper, h) => {
       const signMesh = new THREE.Mesh(
         new THREE.BoxGeometry(3.2, 1.25, 0.3),
@@ -465,7 +470,7 @@ export function buildProceduralTown3D(
   group.add(martCarpet);
 
   // Outdoor Café Parasol beside the Mart
-  void mountGlbModel(group, '/models/town/parasol-a.glb', {
+  void mountGlbModel(group, '/models/town/commercial/parasol-a.glb', {
     x: martX + 4.4 * mirrorX,
     y: localGroundY(martX + 4.4 * mirrorX, martZ + 3.8),
     z: martZ + 3.8,
@@ -524,7 +529,7 @@ export function buildProceduralTown3D(
   // 5. REAL CC0 MODERN TRAM / BUS STOP & TAXI ALONG MAIN AVENUE!
   const busX = -15.6 * mirrorX;
   const busZ = 0.2;
-  void mountGlbModel(group, '/models/town/tram-modern.glb', {
+  void mountGlbModel(group, '/models/town/train/tram-modern.glb', {
     x: busX,
     y: localGroundY(busX, busZ),
     z: busZ,
@@ -545,7 +550,7 @@ export function buildProceduralTown3D(
   group.add(busPole, busBadge);
 
   // Cute CC0 city taxi parked on the opposite avenue curb!
-  void mountGlbModel(group, '/models/town/taxi.glb', {
+  void mountGlbModel(group, '/models/town/car/taxi.glb', {
     x: 15.2 * mirrorX,
     y: localGroundY(15.2 * mirrorX, 1.1),
     z: 1.1,
@@ -557,7 +562,7 @@ export function buildProceduralTown3D(
   // 6. REAL CC0 RAILWAY TRACKS + BULLET EXPRESS TRAIN ALONG NORTH EDGE!
   const railZ = -16.8;
   for (let rx = -18; rx <= 18; rx += 4) {
-    void mountGlbModel(group, '/models/town/rail-straight.glb', {
+    void mountGlbModel(group, '/models/town/train/rail-straight.glb', {
       x: rx,
       y: localGroundY(rx, railZ) + 0.02,
       z: railZ,
@@ -567,7 +572,7 @@ export function buildProceduralTown3D(
   }
   const trainGroup = new THREE.Group();
   trainGroup.position.set(-2, localGroundY(0, railZ) + 0.12, railZ);
-  void mountGlbModel(trainGroup, '/models/town/train-bullet-a.glb', {
+  void mountGlbModel(trainGroup, '/models/town/train/train-bullet-a.glb', {
     x: 3.4,
     y: 0,
     z: 0,
@@ -575,7 +580,7 @@ export function buildProceduralTown3D(
     targetWidth: 6.4,
     addInkEdges: true,
   });
-  void mountGlbModel(trainGroup, '/models/town/train-bullet-b.glb', {
+  void mountGlbModel(trainGroup, '/models/town/train/train-bullet-b.glb', {
     x: -3.2,
     y: 0,
     z: 0,
@@ -594,7 +599,7 @@ export function buildProceduralTown3D(
     [-6.2, 6.2, Math.PI],
     [6.2, 6.2, Math.PI],
   ] as const) {
-    void mountGlbModel(group, '/models/town/lamp-curved.glb', {
+    void mountGlbModel(group, '/models/town/roads/lamp-curved.glb', {
       x: lx,
       y: localGroundY(lx, lz),
       z: lz,
