@@ -344,31 +344,21 @@ interface FloatingTag2D {
 }
 
 interface LevelChoice {
-  kind: 'summon' | 'upgrade_follower' | 'passive';
+  kind: 'upgrade_follower' | 'passive' | 'item';
   id: string;
   title: string;
   desc: string;
   sprite: string;
   badge: string;
   color: string;
-  species?: SpeciesId;
   followerId?: string;
-  passiveId?: 'speed' | 'heal' | 'atk';
+  passiveId?: 'speed' | 'vitality' | 'atk' | 'haste' | 'greed';
+  itemId?: 'super_potion' | 'rare_candy_boost' | 'salvo_charge' | 'coin_pouch';
 }
 
 type ArenaScreenPhase = 'hub' | 'map_select' | 'world_map' | 'playing';
 
 const MAX_FOLLOWERS = 6;
-const RECRUIT_POOL: { species: SpeciesId; name: string; color: string }[] = [
-  { species: 'pikachu', name: '皮卡丘', color: '#f5b700' },
-  { species: 'charmander', name: '小火龙', color: '#ff5924' },
-  { species: 'bulbasaur', name: '妙蛙种子', color: '#40c057' },
-  { species: 'squirtle', name: '杰尼龟', color: '#339af0' },
-  { species: 'gastly', name: '鬼斯', color: '#ae3ec9' },
-  { species: 'eevee', name: '伊布', color: '#ff922b' },
-  { species: 'dratini', name: '迷你龙', color: '#5c7cfa' },
-  { species: 'jigglypuff', name: '胖丁', color: '#f06595' },
-];
 
 /** Builds a textured 3D Roadside Safe Zone (Pixel Cobblestone Plaza + Emerald Barrier + PokeCenter + PokeMart) */
 function createSafeZone3DMesh(zone: SafeZone3D, plazaTex: THREE.CanvasTexture): {
@@ -717,6 +707,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const [rerollsLeft, setRerollsLeft] = useState(0);
   const [banishMode, setBanishMode] = useState(false);
   const banishedIdsRef = useRef<Set<string>>(new Set());
+  const passiveLevelsRef = useRef<Record<string, number>>({});
   const rebuildChoicesRef = useRef<(() => LevelChoice[]) | null>(null);
 
   const trainerProfile: TrainerProfile = {
@@ -777,6 +768,52 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const vPadPointerRef = useRef<number | null>(null);
   const camDragPointerRef = useRef<number | null>(null);
   const lastTouchBtnMsRef = useRef<number>(0);
+
+  const resetVirtualPad = () => {
+    vPadPointerRef.current = null;
+    analogVecRef.current = { x: 0, y: 0 };
+    setVPad((prev) =>
+      prev.active || prev.x !== 0 || prev.y !== 0 ? { ...prev, x: 0, y: 0, active: false } : prev,
+    );
+  };
+
+  // Global mobile safety net: catch missed pointerup/pointercancel/edge-swipe/blur so joystick NEVER sticks!
+  useEffect(() => {
+    const onWinPointerEnd = (e: PointerEvent) => {
+      if (vPadPointerRef.current === e.pointerId) {
+        resetVirtualPad();
+      }
+      if (camDragPointerRef.current === e.pointerId) {
+        camDragPointerRef.current = null;
+        camDragRef.current.active = false;
+      }
+    };
+    const onWinTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        resetVirtualPad();
+        camDragPointerRef.current = null;
+        camDragRef.current.active = false;
+      }
+    };
+    const onWinBlur = () => {
+      resetVirtualPad();
+      camDragPointerRef.current = null;
+      camDragRef.current.active = false;
+    };
+    window.addEventListener('pointerup', onWinPointerEnd, { passive: true });
+    window.addEventListener('pointercancel', onWinPointerEnd, { passive: true });
+    window.addEventListener('touchend', onWinTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', onWinTouchEnd, { passive: true });
+    window.addEventListener('blur', onWinBlur);
+    return () => {
+      window.removeEventListener('pointerup', onWinPointerEnd);
+      window.removeEventListener('pointercancel', onWinPointerEnd);
+      window.removeEventListener('touchend', onWinTouchEnd);
+      window.removeEventListener('touchcancel', onWinTouchEnd);
+      window.removeEventListener('blur', onWinBlur);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Multi-touch safe button handler:
@@ -935,6 +972,24 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const [captureOffer, setCaptureOffer] = useState<{ species: SpeciesId; name: string; level: number } | null>(null);
   const [bannerMsg, setBannerMsg] = useState<string | null>(null);
   const [resultSummary, setResultSummary] = useState<RunResultSummary | null>(null);
+
+  // Prevent stuck joystick whenever a modal/level-up/capture/pause interrupts an active touch!
+  useEffect(() => {
+    if (
+      phase !== 'playing' ||
+      externalPaused ||
+      Boolean(levelChoices) ||
+      shopOpen ||
+      Boolean(resultSummary) ||
+      Boolean(captureOffer) ||
+      Boolean(captureCutscene)
+    ) {
+      resetVirtualPad();
+      camDragPointerRef.current = null;
+      camDragRef.current.active = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, externalPaused, levelChoices, shopOpen, resultSummary, captureOffer, captureCutscene]);
   const [runNonce, setRunNonce] = useState(0);
   const [launchFlashSeq, setLaunchFlashSeq] = useState(0);
   // Bidirectional exit animation flags so modals & overlays animate OUT cleanly before unmounting!
@@ -3732,53 +3787,130 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       const sim = simRef.current;
       if (!sim) return [];
       const pool: LevelChoice[] = [];
-      if (sim.followers.length < maxFollowersRef.current) {
-        const boxAvail = save.pets.filter(
-          (p) => !p.isSleeping && !sim.followers.some((f) => f.sourcePetId === p.id),
-        );
-        if (boxAvail.length > 0) {
-          const p = boxAvail[Math.floor(Math.random() * boxAvail.length)];
-          const stg = getGrowthStage(p.level, p.species);
-          pool.push({
-            kind: 'summon',
-            id: `sum_box_${p.id}`,
-            title: `召唤球盒伙伴·${p.name}`,
-            desc: '立刻加入 3D 跟随战队并自动施放属性招式！',
-            sprite: SPECIES_CATALOG[p.species].stageSprites[stg].static,
-            badge: '编队+',
-            color: '#40c057',
-            species: p.species,
-          });
-        }
-        const cand = RECRUIT_POOL[Math.floor(Math.random() * RECRUIT_POOL.length)];
-        pool.push({
-          kind: 'summon',
-          id: `sum_rec_${cand.species}`,
-          title: `招募新随从·${cand.name}`,
-          desc: '召唤新随从入阵，暂停时可自由更换其 2 个技能！',
-          sprite: SPECIES_CATALOG[cand.species].stageSprites.baby.static,
-          badge: '新随从!',
-          color: cand.color,
-          species: cand.species,
-        });
-      }
+      const pLv = passiveLevelsRef.current;
+
+      // 1. 升级当前出战精灵（绝不在奖励里凭空获取新精灵）
       for (const f of sim.followers) {
         pool.push({
           kind: 'upgrade_follower',
           id: `up_${f.id}`,
-          title: `${f.name} 强化 Lv.${f.level + 1}`,
-          desc: `4个招式威力与弹幕数量全面提升！`,
+          title: `${f.name} 升级 Lv.${f.level + 1}`,
+          desc: '4 个技能威力、范围与弹幕数量全面提升！',
           sprite: SPECIES_CATALOG[f.species].stageSprites[f.stage].static,
           badge: `Lv.${f.level}→${f.level + 1}`,
           color: SURVIVOR_SKILLS[f.skills[0]].color,
           followerId: f.id,
         });
       }
+
+      // 2. 获取 / 提升被动（首次为「新被动」，已有则逐级提升 Lv）
+      const passiveDefs: {
+        id: string;
+        passiveId: NonNullable<LevelChoice['passiveId']>;
+        title: string;
+        desc: string;
+        sprite: string;
+        color: string;
+      }[] = [
+        {
+          id: 'p_atk',
+          passiveId: 'atk',
+          title: '力量头带',
+          desc: '全体出战精灵伤害 +20%（可叠加升级）',
+          sprite: '/sprites/items/life-orb.png',
+          color: '#ff5924',
+        },
+        {
+          id: 'p_haste',
+          passiveId: 'haste',
+          title: '疾风护符',
+          desc: '全体精灵技能冷却 -12%（攻速更快）',
+          sprite: '/sprites/items/light-ball.png',
+          color: '#f59f00',
+        },
+        {
+          id: 'p_spd',
+          passiveId: 'speed',
+          title: '迅捷之靴',
+          desc: '主角移速 +14% · 战利品吸取范围 +30%',
+          sprite: '/sprites/items/choice-scarf.png',
+          color: '#22b8cf',
+        },
+        {
+          id: 'p_vit',
+          passiveId: 'vitality',
+          title: '元气护甲',
+          desc: '最大 HP +22% 并立刻回复 35% 生命值',
+          sprite: '/sprites/items/sitrus-berry.png',
+          color: '#51cf66',
+        },
+        {
+          id: 'p_greed',
+          passiveId: 'greed',
+          title: '护符招财',
+          desc: '本局金币收益 +28% · 拾取磁力 +25%',
+          sprite: '/sprites/items/amulet-coin.png',
+          color: '#fab005',
+        },
+      ];
+      for (const pd of passiveDefs) {
+        const cur = pLv[pd.passiveId] ?? 0;
+        pool.push({
+          kind: 'passive',
+          id: pd.id,
+          title: cur > 0 ? `${pd.title} Lv.${cur + 1}` : pd.title,
+          desc: pd.desc,
+          sprite: pd.sprite,
+          badge: cur > 0 ? `Lv.${cur}→${cur + 1}` : '新被动',
+          color: pd.color,
+          passiveId: pd.passiveId,
+        });
+      }
+
+      // 3. 获取实战道具补给
       pool.push(
-        { kind: 'passive', id: 'p_spd', title: '迅捷之靴', desc: '主角移速 +15% · 战利品吸取范围 +32%', sprite: '/sprites/items/choice-scarf.png', badge: '被动', color: '#22b8cf', passiveId: 'speed' },
-        { kind: 'passive', id: 'p_hp', title: '元气树果', desc: '最大 HP +22% 并立刻回复 45% 血量', sprite: '/sprites/items/sitrus-berry.png', badge: '恢复', color: '#51cf66', passiveId: 'heal' },
-        { kind: 'passive', id: 'p_atk', title: '力量头带', desc: '全体随从技能伤害 +22% · 冷却 -8%', sprite: '/sprites/items/life-orb.png', badge: '强攻', color: '#ff5924', passiveId: 'atk' },
+        {
+          kind: 'item',
+          id: 'it_potion',
+          title: '好伤药补给箱',
+          desc: '获得 +2 瓶实战好伤药，并立刻回复 30% HP！',
+          sprite: '/sprites/items/super-potion.png',
+          badge: '道具 +2',
+          color: '#20c997',
+          itemId: 'super_potion',
+        },
+        {
+          kind: 'item',
+          id: 'it_candy',
+          title: '能量糖果罐',
+          desc: '立刻触发 10 秒全队力量强化（攻击 +55%）并刷新冷却！',
+          sprite: '/sprites/items/rare-candy.png',
+          badge: '强化道具',
+          color: '#7950f2',
+          itemId: 'rare_candy_boost',
+        },
+        {
+          kind: 'item',
+          id: 'it_salvo',
+          title: '全队战术充能仪',
+          desc: '立刻重置「齐射」与「投球」冷却，随时爆发！',
+          sprite: '/sprites/items/vs-seeker.png',
+          badge: '战术道具',
+          color: '#339af0',
+          itemId: 'salvo_charge',
+        },
+        {
+          kind: 'item',
+          id: 'it_coins',
+          title: '宝可币锦囊',
+          desc: '立刻获得 +45 宝可币，并吸取全场掉落经验与金币！',
+          sprite: '/sprites/items/amulet-coin.png',
+          badge: '+45 币',
+          color: '#f08c00',
+          itemId: 'coin_pouch',
+        },
       );
+
       const filtered = pool.filter((item) => !banishedIdsRef.current.has(item.id));
       const finalPool = filtered.length >= 3 ? filtered : pool;
       return [...finalPool].sort(() => Math.random() - 0.5).slice(0, 3);
@@ -6117,6 +6249,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       setLiveOverlandCity(null);
       liveOverlandCityRef.current = null;
       overlandCityIdRef.current = null;
+      passiveLevelsRef.current = {};
     }
   }, [phase]);
 
@@ -6177,32 +6310,46 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const sim = simRef.current;
     if (!sim) return;
     sound.play('confirm');
-    if (choice.kind === 'summon' && choice.species) {
-      const boxMatch = save.pets.find(
-        (p) => p.species === choice.species && !sim.followers.some((f) => f.sourcePetId === p.id),
-      );
-      addFollowerToRun(
-        choice.species,
-        boxMatch?.name,
-        boxMatch ? getGrowthStage(boxMatch.level, boxMatch.species) : 'baby',
-        boxMatch?.id,
-      );
-    } else if (choice.kind === 'upgrade_follower' && choice.followerId) {
+    if (choice.kind === 'upgrade_follower' && choice.followerId) {
       const f = sim.followers.find((x) => x.id === choice.followerId);
       if (f) {
         f.level += 1;
         syncFollowersView();
       }
-    } else if (choice.kind === 'passive') {
+    } else if (choice.kind === 'passive' && choice.passiveId) {
+      passiveLevelsRef.current[choice.passiveId] = (passiveLevelsRef.current[choice.passiveId] ?? 0) + 1;
       if (choice.passiveId === 'speed') {
-        sim.speedMult += 0.15;
+        sim.speedMult += 0.14;
         sim.pickupRadius += 1.6;
-      } else if (choice.passiveId === 'heal') {
+      } else if (choice.passiveId === 'vitality') {
         sim.maxHp = Math.round(sim.maxHp * 1.22);
-        sim.hp = Math.min(sim.maxHp, sim.hp + Math.round(sim.maxHp * 0.45));
+        sim.hp = Math.min(sim.maxHp, sim.hp + Math.round(sim.maxHp * 0.35));
       } else if (choice.passiveId === 'atk') {
-        sim.atkMult += 0.22;
-        sim.cdMult = Math.max(0.45, sim.cdMult * 0.92);
+        sim.atkMult += 0.2;
+      } else if (choice.passiveId === 'haste') {
+        sim.cdMult = Math.max(0.42, sim.cdMult * 0.88);
+      } else if (choice.passiveId === 'greed') {
+        sim.greedMult += 0.28;
+        sim.pickupRadius += 1.4;
+      }
+    } else if (choice.kind === 'item' && choice.itemId) {
+      if (choice.itemId === 'super_potion') {
+        sim.healCharges += 2;
+        sim.hp = Math.min(sim.maxHp, sim.hp + Math.round(sim.maxHp * 0.3));
+      } else if (choice.itemId === 'rare_candy_boost') {
+        sim.boostTimer = Math.max(sim.boostTimer, 10);
+        sim.actionCds.boost = 0;
+      } else if (choice.itemId === 'salvo_charge') {
+        sim.actionCds.salvo = 0;
+        sim.actionCds.ball = 0;
+      } else if (choice.itemId === 'coin_pouch') {
+        sim.coins += 45;
+        for (const lt of sim.loots) {
+          if (lt.kind === 'xp' || lt.kind === 'coin') {
+            lt.x = sim.px;
+            lt.z = sim.pz;
+          }
+        }
       }
     }
     setClosingLevelUp(true);
@@ -6279,13 +6426,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     if (kind === 'potion') {
       sim.hp = Math.min(sim.maxHp, sim.hp + Math.round(sim.maxHp * 0.65));
     } else if (kind === 'summon') {
-      if (sim.followers.length < MAX_FOLLOWERS) {
-        const cand = RECRUIT_POOL[Math.floor(Math.random() * RECRUIT_POOL.length)];
-        addFollowerToRun(cand.species);
-      } else {
-        sim.followers.forEach((f) => (f.level += 1));
-        syncFollowersView();
-      }
+      // Strictly upgrade existing squad Pokémon instead of summoning new ones!
+      sim.followers.forEach((f) => (f.level += 1));
+      syncFollowersView();
     } else if (kind === 'tome') {
       sim.atkMult += 0.25;
       sim.cdMult = Math.max(0.45, sim.cdMult * 0.9);
@@ -7841,16 +7984,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   try {
                     e.currentTarget.releasePointerCapture(e.pointerId);
                   } catch {}
-                  vPadPointerRef.current = null;
-                  analogVecRef.current = { x: 0, y: 0 };
-                  setVPad((prev) => ({ ...prev, x: 0, y: 0, active: false }));
+                  resetVirtualPad();
                 }
               }}
               onPointerCancel={(e) => {
                 if (vPadPointerRef.current === e.pointerId) {
-                  vPadPointerRef.current = null;
-                  analogVecRef.current = { x: 0, y: 0 };
-                  setVPad((prev) => ({ ...prev, x: 0, y: 0, active: false }));
+                  resetVirtualPad();
+                }
+              }}
+              onLostPointerCapture={(e) => {
+                if (vPadPointerRef.current === e.pointerId) {
+                  resetVirtualPad();
                 }
               }}
             >
@@ -8048,7 +8192,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 <div className="surv-draft-grid">
                   {levelChoices.map((opt, idx) => {
                     const kindLabel =
-                      opt.kind === 'summon' ? '新伙伴' : opt.kind === 'upgrade_follower' ? '随从强化' : '战术被动';
+                      opt.kind === 'upgrade_follower'
+                        ? '精灵升级'
+                        : opt.kind === 'item'
+                          ? '实战道具'
+                          : opt.badge === '新被动'
+                            ? '获取被动'
+                            : '提升被动';
                     return (
                       <button
                         key={opt.id}
@@ -8219,10 +8369,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     <div className="surv-choice-icon"><PixelItemImg src="/sprites/items/great-ball.png" size={20} /></div>
                     <div className="surv-choice-info">
                       <div className="inline-icon-row">
-                        <strong>{followersView.length < maxFollowers ? '招募新宝可梦随从' : '全体随从 Lv+1'}</strong>
+                        <strong>全体出战精灵 Lv+1</strong>
                         <span className="surv-price-tag">35 金币</span>
                       </div>
-                      <small>立刻加入 3D 战队（当前 {followersView.length}/{maxFollowers}）</small>
+                      <small>立刻强化当前全队 {followersView.length} 只宝可梦的所有招式</small>
                     </div>
                   </button>
                   <button

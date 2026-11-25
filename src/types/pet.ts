@@ -82,7 +82,20 @@ export type SpeciesId =
   | 'jolteon'
   | 'flareon'
   | 'omanyte'
-  | 'kabuto';
+  | 'kabuto'
+  | 'hooh'
+  | 'spinda'
+  | 'chimchar'
+  | 'bronzor'
+  | 'tepig'
+  | 'mienfoo'
+  | 'pancham'
+  | 'drampa'
+  | 'kubfu'
+  | 'wochien'
+  | 'chienpao'
+  | 'tinglu'
+  | 'chiyu';
 
 export type PokemonElement =
   | 'electric'

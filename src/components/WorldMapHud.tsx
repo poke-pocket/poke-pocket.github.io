@@ -317,10 +317,47 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   const geoOrigin = getActiveGeoTerrainOrigin();
   const [zoom, setZoom] = useState(geoOrigin ? 0.25 : 1.0);
   const [pan, setPan] = useState({ x: 0, z: 0 });
+  const [isInteracting, setIsInteracting] = useState(false);
   const [, setIconTick] = useState(0);
   const [demTick, setDemTick] = useState(0);
 
-  useEffect(() => subscribeGeoDemLoaded(() => setDemTick((t) => t + 1)), []);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const panRef = useRef(pan);
+  panRef.current = pan;
+  const rafMoveRef = useRef<number | null>(null);
+  const settleTimerRef = useRef<number | null>(null);
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<{
+    dist: number;
+    zoom: number;
+    anchorWx: number;
+    anchorWz: number;
+  } | null>(null);
+
+  const scheduleCameraSync = (coarse = true) => {
+    if (coarse && !isInteracting) setIsInteracting(true);
+    if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = window.setTimeout(() => {
+      settleTimerRef.current = null;
+      setIsInteracting(false);
+    }, 140);
+    if (rafMoveRef.current !== null) return;
+    rafMoveRef.current = window.requestAnimationFrame(() => {
+      rafMoveRef.current = null;
+      setZoom(zoomRef.current);
+      setPan({ ...panRef.current });
+    });
+  };
+
+  useEffect(() => {
+    const unsub = subscribeGeoDemLoaded(() => setDemTick((t) => t + 1));
+    return () => {
+      unsub();
+      if (rafMoveRef.current !== null) window.cancelAnimationFrame(rafMoveRef.current);
+      if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current);
+    };
+  }, []);
   const dragRef = useRef({
     active: false,
     startX: 0,
@@ -374,7 +411,8 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
     const cx = snapshot.px + pan.x;
     const cz = snapshot.pz + pan.z;
 
-    paintTopographicMap(ctx, W, H, cx, cz, spanMin, biome, 3);
+    // Adaptive pixel step: fast 7px step while dragging/pinching on mobile (~5x faster!), crisp 4px when settled!
+    paintTopographicMap(ctx, W, H, cx, cz, spanMin, biome, isInteracting ? 7 : 4);
 
     // Subtle crisp square world-grid lines (every 30m world units, scaling naturally with zoom!)
     const gridWorldStep = zoom < 0.35 ? 100 : zoom < 0.85 ? 50 : zoom > 3 ? 10 : 25;
@@ -594,7 +632,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ctx.textBaseline = 'middle';
       ctx.fillText(`主角 ${distM}m`, ex, ey + 15);
     }
-  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick]);
+  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick, isInteracting]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragRef.current.dragged) return;
@@ -645,17 +683,65 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
           height={canvasSize.h}
           className="lcd-map-canvas"
           onPointerDown={(e) => {
-            e.currentTarget.setPointerCapture(e.pointerId);
-            dragRef.current = {
-              active: true,
-              startX: e.clientX,
-              startY: e.clientY,
-              lastX: e.clientX,
-              lastY: e.clientY,
-              dragged: false,
-            };
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            } catch {}
+            pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (pointersRef.current.size === 2) {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const pts = Array.from(pointersRef.current.values());
+              const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+              const minDim = Math.max(1, Math.min(rect.width, rect.height));
+              const unitsPerPx = (150 / zoomRef.current) / minDim;
+              const midSx = (pts[0].x + pts[1].x) / 2 - rect.left;
+              const midSy = (pts[0].y + pts[1].y) / 2 - rect.top;
+              pinchRef.current = {
+                dist: Math.max(12, dist),
+                zoom: zoomRef.current,
+                anchorWx: snapshot.px + panRef.current.x + (midSx - rect.width / 2) * unitsPerPx,
+                anchorWz: snapshot.pz + panRef.current.z + (midSy - rect.height / 2) * unitsPerPx,
+              };
+              dragRef.current.active = false;
+              dragRef.current.dragged = true;
+              setIsInteracting(true);
+              return;
+            }
+
+            if (pointersRef.current.size === 1) {
+              dragRef.current = {
+                active: true,
+                startX: e.clientX,
+                startY: e.clientY,
+                lastX: e.clientX,
+                lastY: e.clientY,
+                dragged: false,
+              };
+            }
           }}
           onPointerMove={(e) => {
+            if (!pointersRef.current.has(e.pointerId)) return;
+            pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+            if (pointersRef.current.size === 2 && pinchRef.current) {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const pts = Array.from(pointersRef.current.values());
+              const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+              const ratio = dist / Math.max(12, pinchRef.current.dist);
+              const nextZoom = Math.max(0.015, Math.min(8, Number((pinchRef.current.zoom * ratio).toFixed(4))));
+              const minDim = Math.max(1, Math.min(rect.width, rect.height));
+              const unitsPerPxNew = (150 / nextZoom) / minDim;
+              const midSx = (pts[0].x + pts[1].x) / 2 - rect.left;
+              const midSy = (pts[0].y + pts[1].y) / 2 - rect.top;
+              zoomRef.current = nextZoom;
+              panRef.current = {
+                x: pinchRef.current.anchorWx - snapshot.px - (midSx - rect.width / 2) * unitsPerPxNew,
+                z: pinchRef.current.anchorWz - snapshot.pz - (midSy - rect.height / 2) * unitsPerPxNew,
+              };
+              scheduleCameraSync(true);
+              return;
+            }
+
             if (!dragRef.current.active) return;
             const dx = e.clientX - dragRef.current.lastX;
             const dy = e.clientY - dragRef.current.lastY;
@@ -665,18 +751,45 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
               dragRef.current.dragged = true;
             }
             const rect = e.currentTarget.getBoundingClientRect();
-            const unitsPerPx = (150 / zoom) / Math.max(1, Math.min(rect.width, rect.height));
-            setPan((p) => ({
-              x: p.x - dx * unitsPerPx,
-              z: p.z - dy * unitsPerPx,
-            }));
+            const unitsPerPx = (150 / zoomRef.current) / Math.max(1, Math.min(rect.width, rect.height));
+            panRef.current = {
+              x: panRef.current.x - dx * unitsPerPx,
+              z: panRef.current.z - dy * unitsPerPx,
+            };
+            scheduleCameraSync(true);
           }}
           onPointerUp={(e) => {
-            dragRef.current.active = false;
+            pointersRef.current.delete(e.pointerId);
             try {
               e.currentTarget.releasePointerCapture(e.pointerId);
-            } catch {
-              // ignore
+            } catch {}
+            if (pointersRef.current.size === 1 && pinchRef.current) {
+              pinchRef.current = null;
+              const rem = Array.from(pointersRef.current.values())[0];
+              dragRef.current = {
+                active: true,
+                startX: rem.x,
+                startY: rem.y,
+                lastX: rem.x,
+                lastY: rem.y,
+                dragged: true,
+              };
+              return;
+            }
+            if (pointersRef.current.size < 2) {
+              pinchRef.current = null;
+            }
+            dragRef.current.active = false;
+            setIsInteracting(false);
+            setZoom(zoomRef.current);
+            setPan({ ...panRef.current });
+          }}
+          onPointerCancel={(e) => {
+            pointersRef.current.delete(e.pointerId);
+            if (pointersRef.current.size < 2) pinchRef.current = null;
+            if (pointersRef.current.size === 0) {
+              dragRef.current.active = false;
+              setIsInteracting(false);
             }
           }}
           onClick={handleCanvasClick}

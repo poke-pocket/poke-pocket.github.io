@@ -245,9 +245,28 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   const camRef = useRef(cam);
   camRef.current = cam;
 
-  // Multi-touch pinch + mouse drag refs
+  // Multi-touch pinch + mouse drag refs (zero React re-renders during drag/pinch for silky 60fps on mobile!)
   const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const pinchStartRef = useRef<{ dist: number; zoom: number; mx: number; my: number } | null>(null);
+  const pinchStartRef = useRef<{
+    dist: number;
+    zoom: number;
+    anchorMx: number;
+    anchorMy: number;
+  } | null>(null);
+  const hudSyncTimerRef = useRef<number | null>(null);
+  const syncCamHudThrottled = () => {
+    if (hudSyncTimerRef.current !== null) return;
+    hudSyncTimerRef.current = window.setTimeout(() => {
+      hudSyncTimerRef.current = null;
+      setCam({ ...camRef.current });
+    }, 120);
+  };
+  useEffect(
+    () => () => {
+      if (hudSyncTimerRef.current !== null) window.clearTimeout(hudSyncTimerRef.current);
+    },
+    [],
+  );
   const dragRef = useRef<{
     active: boolean;
     moved: boolean;
@@ -687,40 +706,65 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     );
   };
 
-  // Multi-touch Pinch + Pan Pointer Handlers
+  // 60FPS Zero-Jank Multi-Touch Pinch + Pan Pointer Handlers
   const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (pointersRef.current.size === 2) {
+      const rect = e.currentTarget.getBoundingClientRect();
       const pts = Array.from(pointersRef.current.values());
       const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-      pinchStartRef.current = { dist, zoom: camRef.current.zoom, mx: camRef.current.mx, my: camRef.current.my };
+      const midSx = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const midSy = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const wp = worldPxAt(camRef.current.zoom);
+      pinchStartRef.current = {
+        dist: Math.max(12, dist),
+        zoom: camRef.current.zoom,
+        anchorMx: camRef.current.mx + (midSx - stageSize.w / 2) / wp,
+        anchorMy: camRef.current.my + (midSy - stageSize.h / 2) / wp,
+      };
       dragRef.current.active = false;
       return;
     }
 
-    dragRef.current = {
-      active: true,
-      moved: false,
-      startX: e.clientX,
-      startY: e.clientY,
-      baseMx: camRef.current.mx,
-      baseMy: camRef.current.my,
-    };
+    if (pointersRef.current.size === 1) {
+      dragRef.current = {
+        active: true,
+        moved: false,
+        startX: e.clientX,
+        startY: e.clientY,
+        baseMx: camRef.current.mx,
+        baseMy: camRef.current.my,
+      };
+    }
   };
 
   const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (pointersRef.current.has(e.pointerId)) {
-      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    }
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (pointersRef.current.size === 2 && pinchStartRef.current) {
+      const rect = e.currentTarget.getBoundingClientRect();
       const pts = Array.from(pointersRef.current.values());
       const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-      const ratio = dist / Math.max(10, pinchStartRef.current.dist);
-      const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStartRef.current.zoom + Math.log2(ratio)));
-      setCam((prev) => ({ ...prev, zoom: Number(nextZoom.toFixed(3)) }));
+      const midSx = (pts[0].x + pts[1].x) / 2 - rect.left;
+      const midSy = (pts[0].y + pts[1].y) / 2 - rect.top;
+      const ratio = dist / Math.max(12, pinchStartRef.current.dist);
+      const nextZoom = Math.max(
+        MIN_ZOOM,
+        Math.min(MAX_ZOOM, pinchStartRef.current.zoom + Math.log2(Math.max(0.05, ratio))),
+      );
+      const wpNew = worldPxAt(nextZoom);
+      const nextMx = (((pinchStartRef.current.anchorMx - (midSx - stageSize.w / 2) / wpNew) % 1) + 1) % 1;
+      const nextMy = Math.max(
+        0.02,
+        Math.min(0.98, pinchStartRef.current.anchorMy - (midSy - stageSize.h / 2) / wpNew),
+      );
+      camRef.current = { mx: nextMx, my: nextMy, zoom: Number(nextZoom.toFixed(3)) };
+      syncCamHudThrottled();
       return;
     }
 
@@ -730,24 +774,43 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     const dy = e.clientY - d.startY;
     if (Math.hypot(dx, dy) > 5) d.moved = true;
     const wp = worldPxAt(camRef.current.zoom);
-    setCam((prev) => ({
-      ...prev,
+    camRef.current = {
+      ...camRef.current,
       mx: (((d.baseMx - dx / wp) % 1) + 1) % 1,
       my: Math.max(0.02, Math.min(0.98, d.baseMy - dy / wp)),
-    }));
+    };
+    syncCamHudThrottled();
   };
 
   const handleCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     pointersRef.current.delete(e.pointerId);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+
+    // Smoothly hand off from 2-finger pinch back to 1-finger pan without any camera jump!
+    if (pointersRef.current.size === 1 && pinchStartRef.current) {
+      pinchStartRef.current = null;
+      const rem = Array.from(pointersRef.current.values())[0];
+      dragRef.current = {
+        active: true,
+        moved: true,
+        startX: rem.x,
+        startY: rem.y,
+        baseMx: camRef.current.mx,
+        baseMy: camRef.current.my,
+      };
+      setCam({ ...camRef.current });
+      return;
+    }
+
     if (pointersRef.current.size < 2) {
       pinchStartRef.current = null;
     }
     const d = dragRef.current;
     const wasTap = d.active && !d.moved;
     d.active = false;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {}
+    setCam({ ...camRef.current });
     if (!wasTap || flightAnim) return;
 
     const rect = e.currentTarget.getBoundingClientRect();

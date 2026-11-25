@@ -580,6 +580,84 @@ const SPECIES_MOVES: Record<SpeciesId, BattleMove[]> = {
     { id: 'swords_kb', name: '太古镰舞', element: 'water', power: 0, maxPp: 8, kind: 'buff_atk', description: '磨砺双镰战意飙升' },
     { id: 'stone_aqua_kb', name: '太古水镰风暴', element: 'water', power: 92, maxPp: 4, kind: 'damage', description: '掀起怒涛与岩刃的终极斩击' },
   ],
+  hooh: [
+    { id: 'sacred_fire', name: '神圣之火', element: 'fire', power: 76, maxPp: 10, kind: 'damage', description: '降下七彩圣炎净化敌阵' },
+    { id: 'sky_phoenix', name: '虹翼掠空', element: 'fire', power: 60, maxPp: 15, kind: 'damage', description: '挥动七彩羽翼高速俯冲' },
+    { id: 'recover_hooh', name: '凤凰涅槃', element: 'fire', power: 0, maxPp: 5, kind: 'heal', description: '沐浴七彩圣光回复大量 HP' },
+    { id: 'phoenix_nova', name: '七彩凤凰天翔', element: 'fire', power: 102, maxPp: 4, kind: 'damage', description: '传说神鸟展翼释放炽热虹焰风暴' },
+  ],
+  spinda: [
+    { id: 'dizzy_punch', name: '迷昏醉拳', element: 'normal', power: 54, maxPp: 15, kind: 'damage', description: '摇摇晃晃打出出其不意的醉拳' },
+    { id: 'teeter_step', name: '晃晃步法', element: 'normal', power: 44, maxPp: 20, kind: 'damage', description: '令人眼花缭乱的连续拍击' },
+    { id: 'calm_spin', name: '转圈蓄力', element: 'normal', power: 0, maxPp: 8, kind: 'buff_atk', description: '越转越精神，攻击力提升' },
+    { id: 'panda_whirl', name: '醉影旋风踢', element: 'normal', power: 78, maxPp: 5, kind: 'damage', description: '化作高速旋风连续撞击' },
+  ],
+  chimchar: [
+    { id: 'flame_wheel_ch', name: '火焰轮', element: 'fire', power: 64, maxPp: 12, kind: 'damage', description: '化作金色火轮高速滚冲' },
+    { id: 'mach_punch_ch', name: '音速猴拳', element: 'normal', power: 52, maxPp: 18, kind: 'damage', description: '快如闪电的先制连环拳' },
+    { id: 'monkey_dance', name: '大圣斗志', element: 'fire', power: 0, maxPp: 8, kind: 'buff_atk', description: '头顶金焰暴涨，大幅提升攻击' },
+    { id: 'flare_monkey', name: '齐天闪焰冲锋', element: 'fire', power: 94, maxPp: 4, kind: 'damage', description: '身披烈火金箍轰出毁天灭地的一击' },
+  ],
+  bronzor: [
+    { id: 'extrasensory_br', name: '神通念波', element: 'psychic', power: 64, maxPp: 12, kind: 'damage', description: '古镜折射出强力超能光波' },
+    { id: 'gyro_bell', name: '青铜回旋', element: 'normal', power: 54, maxPp: 16, kind: 'damage', description: '厚重青铜机身旋转撞击' },
+    { id: 'iron_bell_def', name: '编钟护体', element: 'psychic', power: 0, maxPp: 8, kind: 'buff_def', description: '鸣响古钟大幅强化防御' },
+    { id: 'ancient_chime', name: '太古编钟镇魂', element: 'psychic', power: 90, maxPp: 4, kind: 'damage', description: '悠远钟声引动时空念力重压' },
+  ],
+  tepig: [
+    { id: 'heat_crash_tp', name: '高温重压', element: 'fire', power: 66, maxPp: 12, kind: 'damage', description: '炽热战甲跃起全力泰山压顶' },
+    { id: 'arm_thrust_tp', name: '猛推铁掌', element: 'normal', power: 52, maxPp: 18, kind: 'damage', description: '威猛双掌连续击退敌人' },
+    { id: 'warrior_roar', name: '炎武战吼', element: 'fire', power: 0, maxPp: 8, kind: 'buff_atk', description: '燃起胡须烈焰，攻击大幅提升' },
+    { id: 'blast_emboar', name: '霸王炎武爆', element: 'fire', power: 94, maxPp: 4, kind: 'damage', description: '双拳燃爆赤红火浪横扫千军' },
+  ],
+  mienfoo: [
+    { id: 'aura_palm', name: '波导流水掌', element: 'normal', power: 64, maxPp: 12, kind: 'damage', description: '行云流水般挥出劲气掌风' },
+    { id: 'sleeve_whip', name: '长袖连打', element: 'normal', power: 52, maxPp: 18, kind: 'damage', description: '飘逸水袖如长鞭连环抽击' },
+    { id: 'meditate_mf', name: '吐纳调息', element: 'normal', power: 0, maxPp: 6, kind: 'heal', description: '运功调息回复自身体力' },
+    { id: 'high_jump_mf', name: '飞燕回旋踢', element: 'normal', power: 92, maxPp: 4, kind: 'damage', description: '腾空施展凌厉宗师级绝杀踢' },
+  ],
+  pancham: [
+    { id: 'bamboo_chop', name: '竹影手刀', element: 'normal', power: 64, maxPp: 12, kind: 'damage', description: '嘴叼竹叶劈出刚猛功夫手刀' },
+    { id: 'panda_throw', name: '熊猫过肩摔', element: 'normal', power: 54, maxPp: 16, kind: 'damage', description: '沉稳下盘发力震飞对手' },
+    { id: 'bamboo_stance', name: '扎马蓄劲', element: 'normal', power: 0, maxPp: 8, kind: 'buff_atk', description: '摆出功夫架势大幅提升攻击' },
+    { id: 'pangoro_hammer', name: '霸道重臂锤', element: 'normal', power: 94, maxPp: 4, kind: 'damage', description: '雷霆万钧的宗师级双拳轰击' },
+  ],
+  drampa: [
+    { id: 'dragon_breath_dp', name: '祥云龙息', element: 'dragon', power: 68, maxPp: 12, kind: 'damage', description: '喷吐碧翠祥云龙息横扫前方' },
+    { id: 'cloud_pulse', name: '云海波动', element: 'normal', power: 54, maxPp: 16, kind: 'damage', description: '长须轻拂掀起柔和却强力的气浪' },
+    { id: 'elder_calm', name: '古龙护佑', element: 'dragon', power: 0, maxPp: 6, kind: 'heal', description: '以仁慈古龙之力回复体力' },
+    { id: 'draco_elder', name: '东方青龙怒', element: 'dragon', power: 96, maxPp: 4, kind: 'damage', description: '守护伙伴之怒唤醒震天龙星群' },
+  ],
+  kubfu: [
+    { id: 'wicked_strike', name: '暗冥破空拳', element: 'normal', power: 72, maxPp: 10, kind: 'damage', description: '双拳塔秘传一击必杀重拳' },
+    { id: 'surging_combo', name: '水流连打', element: 'water', power: 62, maxPp: 14, kind: 'damage', description: '如疾风骤雨般的连击流拳法' },
+    { id: 'master_focus', name: '宗师聚气', element: 'normal', power: 0, maxPp: 8, kind: 'buff_atk', description: '凝神聚气进入无我宗师境' },
+    { id: 'urshifu_finisher', name: '双拳塔终极奥义', element: 'normal', power: 100, maxPp: 4, kind: 'damage', description: '融合刚柔两派绝学的传奇终结技' },
+  ],
+  wochien: [
+    { id: 'ruin_vine', name: '古简藤蔓', element: 'grass', power: 72, maxPp: 10, kind: 'damage', description: '竹简绽放墨绿古藤缠绕重击' },
+    { id: 'tablet_drain', name: '吸取古韵', element: 'grass', power: 56, maxPp: 14, kind: 'damage', description: '汲取大地草木灵气冲击对手' },
+    { id: 'tablet_ruin', name: '灾祸之简', element: 'grass', power: 0, maxPp: 6, kind: 'heal', description: '以千年竹简灵力自我修复' },
+    { id: 'ruination_wc', name: '大灾难·古简破', element: 'grass', power: 98, maxPp: 4, kind: 'damage', description: '释放尘封千年的东方灾兽草系秘力' },
+  ],
+  chienpao: [
+    { id: 'icicle_sword', name: '古剑冰柱坠', element: 'water', power: 74, maxPp: 10, kind: 'damage', description: '以青铜断剑化作霜刃瞬间斩击' },
+    { id: 'snow_slash', name: '雪豹疾袭', element: 'water', power: 58, maxPp: 15, kind: 'damage', description: '如暴雪幻影般极速穿梭劈砍' },
+    { id: 'sword_of_ruin', name: '灾祸之剑', element: 'water', power: 0, maxPp: 8, kind: 'buff_atk', description: '双剑寒芒大盛，攻击力飙升' },
+    { id: 'ruination_cp', name: '大灾难·断剑冰暴', element: 'water', power: 100, maxPp: 4, kind: 'damage', description: '卷起百米霜剑暴雪席卷全场' },
+  ],
+  tinglu: [
+    { id: 'vessel_quake', name: '古鼎裂地', element: 'normal', power: 74, maxPp: 10, kind: 'damage', description: '以商周青铜鼎之重震撼大地' },
+    { id: 'bronze_ram', name: '青铜重撞', element: 'normal', power: 58, maxPp: 15, kind: 'damage', description: '低头挥动巨鼎角猛力冲撞' },
+    { id: 'vessel_of_ruin', name: '灾祸之鼎', element: 'normal', power: 0, maxPp: 8, kind: 'buff_def', description: '青铜巨鼎镇守，防御坚不可摧' },
+    { id: 'ruination_tl', name: '大灾难·山河震鼎', element: 'normal', power: 100, maxPp: 4, kind: 'damage', description: '引发裂谷级大地冲击波震碎防线' },
+  ],
+  chiyu: [
+    { id: 'jade_flames', name: '古玉幽炎', element: 'fire', power: 76, maxPp: 10, kind: 'damage', description: '勾玉燃起三千度赤金流火灼烧' },
+    { id: 'ember_swim', name: '火鱼游焰', element: 'fire', power: 58, maxPp: 15, kind: 'damage', description: '灵巧游弋洒出漫天火花弹幕' },
+    { id: 'beads_of_ruin', name: '灾祸之玉', element: 'fire', power: 0, maxPp: 8, kind: 'buff_atk', description: '四枚古玉共鸣，火系特攻暴涨' },
+    { id: 'ruination_cy', name: '大灾难·焚玉熔海', element: 'fire', power: 102, maxPp: 4, kind: 'damage', description: '化身耀眼火玉锦鲤引爆炽热熔岩海' },
+  ],
 };
 
 export function getSpeciesMoves(species: SpeciesId): BattleMove[] {
@@ -734,6 +812,14 @@ const WILD_POOL: SpeciesId[] = [
   'flareon',
   'omanyte',
   'kabuto',
+  'spinda',
+  'chimchar',
+  'bronzor',
+  'tepig',
+  'mienfoo',
+  'pancham',
+  'drampa',
+  'kubfu',
 ];
 
 export function generateWildOpponent(

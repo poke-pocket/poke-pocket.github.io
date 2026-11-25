@@ -16114,6 +16114,16 @@ body,
   height: 100%;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.lcd-map-stage,
+.lcd-map-canvas {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .wt-map-tools {
