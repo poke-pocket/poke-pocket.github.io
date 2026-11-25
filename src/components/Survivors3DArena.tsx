@@ -5012,6 +5012,27 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             posAttr.needsUpdate = true;
             weatherPoints.position.set(sim.px, sim.py, sim.pz);
           }
+          // Live Real-World Weather Lighting Adaptation (sunny gold / silver overcast / cool rain / winter snow!)
+          const targetSunInt =
+            curWeatherKind === 'storm'
+              ? 0.72
+              : curWeatherKind === 'rain'
+                ? 0.84
+                : curWeatherKind === 'cloudy'
+                  ? 1.02
+                  : curWeatherKind === 'snow'
+                    ? 1.16
+                    : 1.28;
+          const targetHemiInt =
+            curWeatherKind === 'storm'
+              ? 0.96
+              : curWeatherKind === 'rain'
+                ? 1.08
+                : curWeatherKind === 'snow'
+                  ? 1.32
+                  : 1.18;
+          sun.intensity += (targetSunInt - sun.intensity) * Math.min(1, dt * 2.0);
+          hemi.intensity += (targetHemiInt - hemi.intensity) * Math.min(1, dt * 2.0);
 
           // Periodically save player world coordinates so re-entering resumes at last exit spot!
           if (!getActiveGeoTerrainOrigin() && now - lastPosPersistAt > 2000) {
@@ -5339,6 +5360,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const walkTiltZ = mLen > 0.08 && !isAirborne ? Math.sin(sim.walkDist * 2.8) * 0.042 : 0;
           playerSprite.position.set(sim.px, sim.py + walkBob + 0.02, sim.pz);
           playerSprite.rotation.set(bbTiltX, camYawNow, walkTiltZ);
+          // Crisp pixel footstep dust puffs on avenues/meadows & water ripple splashes when surfing/wading!
+          if (mLen > 0.12 && !isAirborne) {
+            const prevStepIdx = Math.floor((sim.walkDist - mLen) * 0.42);
+            const curStepIdx = Math.floor(sim.walkDist * 0.42);
+            if (curStepIdx > prevStepIdx) {
+              const terrainBelow = getTerrainHeight3D(sim.px, sim.pz);
+              if (terrainBelow < WATER_LEVEL_3D + 0.06 && sim.py <= WATER_LEVEL_3D + 0.6) {
+                spawnPixelParticles(sim.px, sim.py - 0.55, sim.pz, vfxAtlas.waterDrop, 3, 2.2, 0.42, 1.8, 9.5);
+                spawnGroundDecalWave(sim.px, Math.max(WATER_LEVEL_3D + 0.04, sim.py), sim.pz, vfxAtlas.waterWaveDecal, 2.1, 0.34);
+              } else {
+                spawnPixelParticles(sim.px, sim.py - 0.62, sim.pz, vfxAtlas.koPuff, 2, 1.35, 0.36, 0.9, 4.2);
+              }
+            }
+          }
           // Keep real-time sun shadow frustum smoothly centered on the player (snapped to 2m texel grid to prevent shadow swimming!)
           if (sun.castShadow) {
             const sSnapX = Math.round(sim.px * 0.5) * 2;

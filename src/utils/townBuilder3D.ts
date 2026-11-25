@@ -1130,11 +1130,11 @@ export function buildWorldLandmark3D(cityId: string): THREE.Group | null {
 
   if (cityId === 'kyoto') {
     // ⛩️ 京都五重樱花古塔 (Five-Story Pagoda)
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0xfff4e6 });
-    const vermilion = new THREE.MeshLambertMaterial({ color: 0xc92a2a });
-    const slateRoof = new THREE.MeshLambertMaterial({ color: 0x3b4252 });
+    const wallMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xfff4e6 }));
+    const vermilion = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xc92a2a }));
+    const slateRoof = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x3b4252 }));
     const goldMat = new THREE.MeshLambertMaterial({ color: 0xfcc419 });
-    addPiece(new THREE.BoxGeometry(8.2, 1.4, 8.2), new THREE.MeshLambertMaterial({ color: 0xced4da }), 0, 0.7, 0);
+    addPiece(new THREE.BoxGeometry(8.2, 1.4, 8.2), applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xced4da })), 0, 0.7, 0);
     for (let tier = 0; tier < 5; tier++) {
       const y = 1.4 + tier * 3.6;
       const w = 5.6 - tier * 0.65;
@@ -1144,6 +1144,157 @@ export function buildWorldLandmark3D(cityId: string): THREE.Group | null {
       addPiece(roofGeo, slateRoof, 0, y + 2.9, 0);
     }
     addPiece(new THREE.CylinderGeometry(0.14, 0.28, 4.2, 8), goldMat, 0, 21.8, 0);
+    return g;
+  }
+
+  if (cityId === 'hangzhou') {
+    // 🏯 杭州西湖雷峰塔 (Leifeng Pagoda - 5-tier octagonal bronze-gold pagoda!)
+    const stoneBase = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xadb5bd }));
+    const crimsonWall = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xa61e22 }));
+    const bronzeEave = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xd99b26 }));
+    const goldSpire = new THREE.MeshLambertMaterial({ color: 0xffd43b, emissive: 0x5c4300 });
+    addPiece(new THREE.CylinderGeometry(7.2, 8.0, 2.4, 8), stoneBase, 0, 1.2, 0);
+    for (let tier = 0; tier < 5; tier++) {
+      const y = 2.4 + tier * 3.6;
+      const r = 5.2 - tier * 0.58;
+      addPiece(new THREE.CylinderGeometry(r * 0.92, r, 2.3, 8), crimsonWall, 0, y + 1.15, 0);
+      addPiece(new THREE.CylinderGeometry(r * 0.78, r * 1.38, 1.35, 8), bronzeEave, 0, y + 2.85, 0);
+    }
+    addPiece(new THREE.ConeGeometry(2.6, 2.4, 8), bronzeEave, 0, 21.4, 0);
+    addPiece(new THREE.CylinderGeometry(0.14, 0.34, 4.4, 8), goldSpire, 0, 24.4, 0);
+    return g;
+  }
+
+  if (cityId === 'shenzhen') {
+    // 🏢 深圳平安金融中心 (Ping An Finance Centre - tapered steel-glass supertall spire!)
+    const glassBlue = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x4dabf7 }));
+    const steelTrim = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xdbe4ef }));
+    const cyanGlow = new THREE.MeshBasicMaterial({ color: 0x66d9e8 });
+    addPiece(new THREE.BoxGeometry(8.8, 3.0, 8.8), steelTrim, 0, 1.5, 0);
+    addPiece(new THREE.CylinderGeometry(3.4, 5.4, 28, 4), glassBlue, 0, 17.0, 0, 0, Math.PI / 4, 0);
+    // 4 tapered corner steel ribs
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      addPiece(new THREE.BoxGeometry(0.9, 30, 0.9), steelTrim, Math.cos(a) * 3.6, 17.5, Math.sin(a) * 3.6);
+    }
+    addPiece(new THREE.ConeGeometry(3.3, 8.5, 4), glassBlue, 0, 35.2, 0, 0, Math.PI / 4, 0);
+    addPiece(new THREE.SphereGeometry(0.65, 8, 8), cyanGlow, 0, 39.8, 0);
+    return g;
+  }
+
+  if (cityId === 'chengdu') {
+    // 🏮 成都天府蜀韵高阁 (Sichuan Jade-and-Crimson Pavilion Tower!)
+    const stone = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xdee2e6 }));
+    const vermilion = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xc92a2a }));
+    const jadeRoof = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x2b8a3e }));
+    const goldMat = new THREE.MeshLambertMaterial({ color: 0xfcc419 });
+    addPiece(new THREE.BoxGeometry(9.2, 2.2, 9.2), stone, 0, 1.1, 0);
+    for (let t = 0; t < 3; t++) {
+      const y = 2.2 + t * 5.2;
+      const w = 6.8 - t * 1.1;
+      addPiece(new THREE.BoxGeometry(w, 3.4, w), vermilion, 0, y + 1.7, 0);
+      const roof = new THREE.ConeGeometry(w * 0.98, 2.2, 4);
+      roof.rotateY(Math.PI / 4);
+      addPiece(roof, jadeRoof, 0, y + 4.3, 0);
+    }
+    addPiece(new THREE.SphereGeometry(0.95, 10, 8), goldMat, 0, 19.6, 0);
+    return g;
+  }
+
+  if (cityId === 'harbin') {
+    // ⛪ 哈尔滨圣索菲亚大教堂 (Saint Sophia Cathedral - red brick & iconic emerald onion domes!)
+    const redBrick = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xb03a2e }));
+    const creamTrim = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xf8f1e5 }));
+    const emeraldDome = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x2b8a3e }));
+    const goldMat = new THREE.MeshLambertMaterial({ color: 0xffd43b });
+    addPiece(new THREE.BoxGeometry(10.5, 7.6, 10.5), redBrick, 0, 3.8, 0);
+    addPiece(new THREE.CylinderGeometry(3.4, 3.6, 5.2, 12), creamTrim, 0, 10.2, 0);
+    addPiece(new THREE.SphereGeometry(3.6, 14, 10), emeraldDome, 0, 14.2, 0);
+    addPiece(new THREE.ConeGeometry(1.5, 3.4, 10), emeraldDome, 0, 18.2, 0);
+    addPiece(new THREE.CylinderGeometry(0.12, 0.2, 2.8, 6), goldMat, 0, 20.8, 0);
+    // 4 corner tent-roof satellite domes
+    for (const [sx, sz] of [[-4.0, -4.0], [4.0, -4.0], [-4.0, 4.0], [4.0, 4.0]]) {
+      addPiece(new THREE.CylinderGeometry(1.3, 1.4, 3.2, 8), creamTrim, sx, 9.2, sz);
+      addPiece(new THREE.SphereGeometry(1.45, 10, 8), emeraldDome, sx, 11.4, sz);
+      addPiece(new THREE.ConeGeometry(0.65, 1.8, 8), goldMat, sx, 13.4, sz);
+    }
+    return g;
+  }
+
+  if (cityId === 'hongkong') {
+    // 🏙️ 香港中银大厦 (Bank of China Tower - iconic 4-quadrant triangular crystal prism skyscraper!)
+    const crystalGlass = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x74c0fc }));
+    const silverFrame = new THREE.MeshLambertMaterial({ color: 0xf1f5f9 });
+    const quadSpecs: [number, number, number][] = [
+      [-1.9, -1.9, 16],
+      [1.9, -1.9, 24],
+      [-1.9, 1.9, 31],
+      [1.9, 1.9, 38],
+    ];
+    for (const [qx, qz, qh] of quadSpecs) {
+      addPiece(new THREE.BoxGeometry(3.7, qh, 3.7), crystalGlass, qx, qh * 0.5, qz);
+      addPiece(new THREE.ConeGeometry(2.6, 4.2, 4), silverFrame, qx, qh + 2.1, qz, 0, Math.PI / 4, 0);
+    }
+    addPiece(new THREE.CylinderGeometry(0.12, 0.24, 9.0, 6), silverFrame, 1.9, 44.5, 1.9);
+    addPiece(new THREE.CylinderGeometry(0.12, 0.24, 7.5, 6), silverFrame, -1.9, 37.0, 1.9);
+    return g;
+  }
+
+  if (cityId === 'osaka') {
+    // 🏯 大阪城天守阁 (Osaka Castle Keep - stone rampart + white walls + emerald roofs & gold crests!)
+    const stoneWall = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x868e96 }));
+    const whitePlaster = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xf8f9fa }));
+    const emeraldRoof = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x208b63 }));
+    const goldMat = new THREE.MeshLambertMaterial({ color: 0xffd43b });
+    addPiece(new THREE.CylinderGeometry(7.0, 8.8, 4.6, 4), stoneWall, 0, 2.3, 0, 0, Math.PI / 4, 0);
+    for (let t = 0; t < 4; t++) {
+      const y = 4.6 + t * 3.8;
+      const w = 7.4 - t * 1.15;
+      addPiece(new THREE.BoxGeometry(w, 2.4, w), whitePlaster, 0, y + 1.2, 0);
+      const roof = new THREE.ConeGeometry(w * 0.96, 1.7, 4);
+      roof.rotateY(Math.PI / 4);
+      addPiece(roof, emeraldRoof, 0, y + 3.1, 0);
+    }
+    addPiece(new THREE.BoxGeometry(2.8, 0.65, 0.7), goldMat, 0, 20.6, 0);
+    return g;
+  }
+
+  if (cityId === 'sapporo') {
+    // 🗼 札幌电视塔 (Sapporo TV Tower - red steel lattice tower with bright green digital clock!)
+    const redSteel = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xe03131 }));
+    const deckMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xdee2e6 }));
+    const clockMat = new THREE.MeshBasicMaterial({ color: 0x51cf66 });
+    addPiece(new THREE.BoxGeometry(8.2, 3.2, 8.2), deckMat, 0, 1.6, 0);
+    addPiece(new THREE.CylinderGeometry(2.4, 4.8, 16, 4), redSteel, 0, 11.2, 0, 0, Math.PI / 4, 0);
+    addPiece(new THREE.BoxGeometry(5.6, 3.2, 5.6), deckMat, 0, 20.4, 0);
+    addPiece(new THREE.BoxGeometry(3.6, 1.5, 5.85), clockMat, 0, 17.5, 0);
+    addPiece(new THREE.BoxGeometry(5.85, 1.5, 3.6), clockMat, 0, 17.5, 0);
+    addPiece(new THREE.CylinderGeometry(0.18, 1.6, 12, 4), redSteel, 0, 28.0, 0, 0, Math.PI / 4, 0);
+    return g;
+  }
+
+  if (cityId === 'fukuoka') {
+    // 🗼 福冈海滨镜面塔 (Fukuoka Tower - triangular sapphire mirror prism!)
+    const mirrorGlass = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x339af0 }));
+    const silverTrim = new THREE.MeshLambertMaterial({ color: 0xe9ecef });
+    addPiece(new THREE.CylinderGeometry(1.1, 5.6, 32, 3), mirrorGlass, 0, 16.0, 0);
+    addPiece(new THREE.CylinderGeometry(2.8, 3.4, 2.2, 3), silverTrim, 0, 22.0, 0);
+    addPiece(new THREE.CylinderGeometry(0.14, 0.55, 7.5, 6), silverTrim, 0, 35.5, 0);
+    return g;
+  }
+
+  if (cityId === 'okinawa') {
+    // 🏯 冲绳首里城朱红正殿 (Shuri Castle Seiden - vermilion Ryukyu palace on coral limestone terrace!)
+    const coralStone = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xe9e2d0 }));
+    const vermilion = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xd92626 }));
+    const terraRoof = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xb8442a }));
+    const goldMat = new THREE.MeshLambertMaterial({ color: 0xffd43b });
+    addPiece(new THREE.BoxGeometry(12.2, 2.4, 8.6), coralStone, 0, 1.2, 0);
+    addPiece(new THREE.BoxGeometry(10.0, 4.4, 6.4), vermilion, 0, 4.6, 0);
+    addPiece(new THREE.BoxGeometry(11.4, 1.5, 7.6), terraRoof, 0, 7.5, 0);
+    addPiece(new THREE.BoxGeometry(7.6, 3.4, 4.8), vermilion, 0, 9.9, 0);
+    addPiece(new THREE.BoxGeometry(9.2, 1.6, 6.2), terraRoof, 0, 12.4, 0);
+    addPiece(new THREE.BoxGeometry(7.8, 0.7, 0.65), goldMat, 0, 13.5, 0);
     return g;
   }
 
