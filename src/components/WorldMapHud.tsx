@@ -1,4 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  GEO_UNITS_PER_KM,
+  getActiveGeoTerrainOrigin,
+  getProjectedGeoCities,
+  sampleGeoTerrainHeight3D,
+  subscribeGeoDemLoaded,
+  worldToGeo,
+} from '../data/geoTerrain3D';
 import { getTerrainHeight3D, LAKE_BASINS_3D, WATER_LEVEL_3D } from '../data/survivorsTactics';
 import { BIOME_PALETTES, type BiomeId } from '../data/worldTextures3D';
 import { sound } from '../utils/sound';
@@ -119,13 +127,18 @@ function paintTopographicMap(
   const sampleStep = Math.max(1.2, unitsPerPx * stepPx * 0.9);
   const halfW = w / 2;
   const halfH = h / 2;
+  // When zoomed far out in Real-Earth Geo mode (e.g. viewing 250km+ region), sample the Z5 Macro DEM
+  // directly so zooming way out renders crisp continuous seas/plains/mountains with ZERO tile eviction!
+  const useGeoMacro = Boolean(getActiveGeoTerrainOrigin()) && unitsPerPx > 2.2;
+  const sampleElev = (wx: number, wz: number) =>
+    useGeoMacro ? (sampleGeoTerrainHeight3D(wx, wz, true) ?? 1.35) : getTerrainHeight3D(wx, wz);
   for (let py = 0; py < h; py += stepPx) {
     const wz = centerZ + (py - halfH) * unitsPerPx;
     for (let px = 0; px < w; px += stepPx) {
       const wx = centerX + (px - halfW) * unitsPerPx;
-      const elev = getTerrainHeight3D(wx, wz);
-      const ex = getTerrainHeight3D(wx + sampleStep, wz);
-      const ez = getTerrainHeight3D(wx, wz + sampleStep);
+      const elev = sampleElev(wx, wz);
+      const ex = sampleElev(wx + sampleStep, wz);
+      const ez = sampleElev(wx, wz + sampleStep);
       const slope = Math.hypot(ex - elev, ez - elev) / sampleStep;
 
       let col: string;
@@ -141,8 +154,8 @@ function paintTopographicMap(
         elev < WATER_LEVEL_3D + 0.48 &&
         (ex < WATER_LEVEL_3D ||
           ez < WATER_LEVEL_3D ||
-          getTerrainHeight3D(wx - sampleStep, wz) < WATER_LEVEL_3D ||
-          getTerrainHeight3D(wx, wz - sampleStep) < WATER_LEVEL_3D)
+          sampleElev(wx - sampleStep, wz) < WATER_LEVEL_3D ||
+          sampleElev(wx, wz - sampleStep) < WATER_LEVEL_3D)
       ) {
         col = '#e9d8a6';
       } else if (slope > 0.36) {
@@ -172,6 +185,9 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
 }) => {
   const miniCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const pois = useMemo(() => generateRegionalPois(), []);
+  const [demTick, setDemTick] = useState(0);
+
+  useEffect(() => subscribeGeoDemLoaded(() => setDemTick((t) => t + 1)), []);
 
   useEffect(() => {
     const canvas = miniCanvasRef.current;
@@ -180,7 +196,8 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
     if (!ctx) return;
     const W = canvas.width;
     const H = canvas.height;
-    const span = 84;
+    const geoOrigin = getActiveGeoTerrainOrigin();
+    const span = geoOrigin ? 180 : 84;
 
     paintTopographicMap(ctx, W, H, snapshot.px, snapshot.pz, span, biome, 4);
 
@@ -188,6 +205,17 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
       sx: ((wx - snapshot.px) / span + 0.5) * W,
       sy: ((wz - snapshot.pz) / span + 0.5) * H,
     });
+
+    if (geoOrigin) {
+      for (const gc of getProjectedGeoCities()) {
+        const { sx, sy } = toScreen(gc.x, gc.z);
+        if (sx < 4 || sx > W - 4 || sy < 4 || sy > H - 4) continue;
+        ctx.fillStyle = '#161420';
+        ctx.fillRect(Math.round(sx - 4), Math.round(sy - 4), 8, 8);
+        ctx.fillStyle = gc.city.accentColor;
+        ctx.fillRect(Math.round(sx - 3), Math.round(sy - 3), 6, 6);
+      }
+    }
 
     for (const poi of pois) {
       if (poi.type === 'lake') continue;
@@ -246,7 +274,7 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
     ctx.closePath();
     ctx.fill();
     ctx.restore();
-  }, [biome, snapshot, pois]);
+  }, [biome, snapshot, pois, demTick]);
 
   return (
     <button
@@ -286,9 +314,13 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   const [focusedPoiId, setFocusedPoiId] = useState<string | null>(null);
   const [poiCycleIdx, setPoiCycleIdx] = useState<Record<string, number>>({});
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [zoom, setZoom] = useState(1.0);
+  const geoOrigin = getActiveGeoTerrainOrigin();
+  const [zoom, setZoom] = useState(geoOrigin ? 0.25 : 1.0);
   const [pan, setPan] = useState({ x: 0, z: 0 });
   const [, setIconTick] = useState(0);
+  const [demTick, setDemTick] = useState(0);
+
+  useEffect(() => subscribeGeoDemLoaded(() => setDemTick((t) => t + 1)), []);
   const dragRef = useRef({
     active: false,
     startX: 0,
@@ -323,7 +355,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       e.stopPropagation();
       const clampedDelta = Math.max(-180, Math.min(180, e.deltaY));
       const factor = Math.exp(-clampedDelta * 0.0022);
-      setZoom((z) => Math.max(0.05, Number((z * factor).toFixed(4))));
+      setZoom((z) => Math.max(0.015, Number((z * factor).toFixed(4))));
     };
     cv.addEventListener('wheel', onWheelNative, { passive: false });
     return () => cv.removeEventListener('wheel', onWheelNative);
@@ -456,6 +488,38 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       }
     }
 
+    // Real-World Neighbor Cities Overlay (when in World Tour Geo-DEM mode, e.g. Shenzhen <-> Hong Kong!)
+    const activeGeo = getActiveGeoTerrainOrigin();
+    if (activeGeo) {
+      const geoCities = getProjectedGeoCities();
+      for (const gc of geoCities) {
+        const { sx, sy } = toScreen(gc.x, gc.z);
+        if (sx < -40 || sx > W + 40 || sy < -30 || sy > H + 30) continue;
+        const distKm = Math.round(Math.hypot(gc.x - snapshot.px, gc.z - snapshot.pz) / GEO_UNITS_PER_KM);
+        const cxPin = Math.round(sx);
+        const cyPin = Math.round(sy);
+        ctx.fillStyle = '#161420';
+        ctx.fillRect(cxPin - 6, cyPin - 6, 12, 12);
+        ctx.fillStyle = gc.city.accentColor;
+        ctx.fillRect(cxPin - 4, cyPin - 4, 8, 8);
+        ctx.fillStyle = '#fffdf5';
+        ctx.fillRect(cxPin - 1, cyPin - 1, 2, 2);
+
+        const cityTag = distKm <= 2 ? `📍${gc.city.name}` : `${gc.city.name} ${distKm}km`;
+        ctx.font = 'bold 9px monospace';
+        const tw = ctx.measureText(cityTag).width + 8;
+        ctx.fillStyle = 'rgba(22, 20, 32, 0.9)';
+        ctx.fillRect(Math.round(cxPin - tw / 2), cyPin - 20, tw, 13);
+        ctx.strokeStyle = '#ffe066';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(Math.round(cxPin - tw / 2), cyPin - 20, tw, 13);
+        ctx.fillStyle = '#ffe066';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(cityTag, cxPin, cyPin - 13);
+      }
+    }
+
     // High-Visibility Hero Marker (clean directional arrow icon only, fixed screen size!)
     const pPos = toScreen(snapshot.px, snapshot.pz);
     const heroOnScreen = pPos.sx >= 12 && pPos.sx <= W - 12 && pPos.sy >= 12 && pPos.sy <= H - 12;
@@ -530,7 +594,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ctx.textBaseline = 'middle';
       ctx.fillText(`主角 ${distM}m`, ex, ey + 15);
     }
-  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize]);
+  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragRef.current.dragged) return;
@@ -622,7 +686,21 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
         <div className="lcd-map-float-tl">
           <PixelItemImg src="/sprites/items/poke-radar.png" size={14} />
           <strong>{regionName}</strong>
-          <span>({Math.round(snapshot.px)}, {Math.round(snapshot.pz)})</span>
+          {(() => {
+            const g = worldToGeo(snapshot.px, snapshot.pz);
+            if (g) {
+              return (
+                <span>
+                  {Math.abs(g.lat).toFixed(2)}°{g.lat >= 0 ? 'N' : 'S'}, {Math.abs(g.lng).toFixed(2)}°{g.lng >= 0 ? 'E' : 'W'}
+                </span>
+              );
+            }
+            return (
+              <span>
+                ({Math.round(snapshot.px)}, {Math.round(snapshot.pz)})
+              </span>
+            );
+          })()}
         </div>
 
         {/* Top-Right Floating Drawer Toggle & Close Controls */}
@@ -679,7 +757,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
             title="缩小地图"
             onClick={() => {
               sound.play('cursor');
-              setZoom((z) => Math.max(0.05, Number((z / 1.35).toFixed(4))));
+              setZoom((z) => Math.max(0.015, Number((z / 1.35).toFixed(4))));
             }}
           >
             −
@@ -713,6 +791,44 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
         {/* Collapsible Floating POI Navigation Overlay Drawer (Default HIDDEN — never squeezes map layout!) */}
         {drawerOpen && (
           <aside className="lcd-map-drawer scroll-y">
+            {geoOrigin && (
+              <>
+                <div className="lcd-map-side-head">周边真实城市 (可徒步跨城)</div>
+                <div className="lcd-map-poi-list">
+                  {getProjectedGeoCities()
+                    .sort(
+                      (a, b) =>
+                        Math.hypot(a.x - snapshot.px, a.z - snapshot.pz) -
+                        Math.hypot(b.x - snapshot.px, b.z - snapshot.pz),
+                    )
+                    .slice(0, 5)
+                    .map((gc) => {
+                      const dKm = Math.round(
+                        Math.hypot(gc.x - snapshot.px, gc.z - snapshot.pz) / GEO_UNITS_PER_KM,
+                      );
+                      return (
+                        <button
+                          key={gc.city.id}
+                          type="button"
+                          className="lcd-map-poi-btn"
+                          onClick={() => {
+                            sound.play('confirm');
+                            setPan({ x: gc.x - snapshot.px, z: gc.z - snapshot.pz });
+                            setZoom((z) => Math.min(z, 0.18));
+                          }}
+                        >
+                          <span className="lcd-map-poi-ico" style={{ borderColor: gc.city.accentColor }}>
+                            <PixelItemImg src="/sprites/items/town-map.png" size={13} />
+                          </span>
+                          <span className="lcd-map-poi-lbl">{gc.city.name}</span>
+                          <em>{dKm}km</em>
+                        </button>
+                      );
+                    })}
+                </div>
+              </>
+            )}
+
             <div className="lcd-map-side-head">地点导航 (点击定位)</div>
             <div className="lcd-map-poi-list">
               {poiTypes.map((it) => {

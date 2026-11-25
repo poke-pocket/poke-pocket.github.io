@@ -5171,23 +5171,58 @@ button:disabled {
   max-height: 220px;
 }
 
-/* Virtual 360° Omnidirectional Thumbpad inside Widescreen 3D Battle */
+/* Mobile-Only Floating Dynamic Left-Area 360° Virtual Joystick (Hidden on Desktop & Hidden when idle!) */
+.vpad-touch-zone {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 96px;
+  bottom: 0;
+  width: 48vw;
+  max-width: 380px;
+  z-index: 6;
+  touch-action: none;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (hover: none), (pointer: coarse), (max-width: 960px), (max-height: 560px) {
+  .vpad-touch-zone {
+    display: block;
+  }
+}
+
 .vpad-360 {
   position: absolute;
   left: 22px;
   bottom: 24px;
   z-index: 10;
-  width: 104px;
-  height: 104px;
+  width: 96px;
+  height: 96px;
   border-radius: 50%;
-  background: radial-gradient(circle at 38% 32%, rgba(74, 79, 96, 0.82) 0%, rgba(30, 34, 46, 0.86) 100%);
+  background: radial-gradient(circle at 38% 32%, rgba(74, 79, 96, 0.72) 0%, rgba(30, 34, 46, 0.78) 100%);
   border: 3px solid #161420;
-  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45);
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.42);
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
+  pointer-events: none;
   touch-action: none;
+}
+
+.vpad-360.is-floating {
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.surv-moba-wheel,
+.moba-btn,
+.surv-interact-pill,
+.ko-btn {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .surv-jump-btn.is-wide {
@@ -14445,7 +14480,7 @@ body,
     display: none !important;
   }
 
-  .vpad-360 {
+  .vpad-360:not(.is-floating) {
     left: max(10px, env(safe-area-inset-left));
     bottom: max(14px, env(safe-area-inset-bottom));
     width: 88px;
@@ -15346,7 +15381,7 @@ body,
     display: none !important;
   }
 
-  .vpad-360 {
+  .vpad-360:not(.is-floating) {
     left: max(14px, env(safe-area-inset-left));
     bottom: 10px;
     width: 82px;

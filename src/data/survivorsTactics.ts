@@ -1,4 +1,5 @@
 import type { PokemonElement, SpeciesId } from '../types/pet';
+import { sampleGeoTerrainHeight3D } from './geoTerrain3D';
 import type { BiomeId } from './worldTextures3D';
 
 export type SurvivorSkillId =
@@ -310,6 +311,12 @@ function ridgedFbm2D(x: number, z: number, octaves: number): number {
 }
 
 export function getTerrainHeight3D(wx: number, wz: number): number {
+  // Real-Earth DEM heightfield when exploring in World Tour mode!
+  const geoElev = sampleGeoTerrainHeight3D(wx, wz);
+  if (geoElev !== null) {
+    return geoElev;
+  }
+
   // 1. Inigo Quilez organic domain warping so shorelines, valleys & ridges curve naturally!
   const qx = fbm2D(wx * 0.011 + 3.1, wz * 0.011 - 2.4, 3) * 26.0;
   const qz = fbm2D(wx * 0.011 - 7.8, wz * 0.011 + 5.2, 3) * 26.0;

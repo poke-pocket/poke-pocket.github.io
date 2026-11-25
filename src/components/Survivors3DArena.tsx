@@ -55,7 +55,13 @@ import {
   type Pmd8DirSheet3D,
 } from '../data/pmdSprites3D';
 import type { FacingDir } from '../data/overworldTiles';
-import { DEFAULT_WORLD_TOUR_STATE } from '../data/worldTour';
+import {
+  GEO_UNITS_PER_KM,
+  detectOverlandCityAt,
+  setActiveGeoTerrainOrigin,
+  subscribeGeoDemLoaded,
+} from '../data/geoTerrain3D';
+import { DEFAULT_WORLD_TOUR_STATE, type WorldCityDef } from '../data/worldTour';
 import { WorldMapOverlay, type WorldLaunchPayload } from './WorldMapOverlay';
 import {
   DEFAULT_GAME_PREFS,
@@ -733,6 +739,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   // Multi-Layer Flow: Main Hub -> Map Select / World Map Tour -> Live 3D Playing
   const [phase, setPhase] = useState<ArenaScreenPhase>('hub');
   const [activeWorldRun, setActiveWorldRun] = useState<WorldLaunchPayload | null>(null);
+  const [liveOverlandCity, setLiveOverlandCity] = useState<WorldCityDef | null>(null);
+  const liveOverlandCityRef = useRef<WorldCityDef | null>(null);
+  const overlandCityIdRef = useRef<string | null>(null);
   const [selectedBiome, setSelectedBiome] = useState<BiomeId>('verdant_forest');
   const [gameMode, setGameMode] = useState<SurvivorsGameMode>('story');
   const [difficultyId, setDifficultyId] = useState<DifficultyId>('normal');
@@ -762,10 +771,35 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     camPresetRef.current = camPreset;
   }, [camPreset]);
 
-  // Virtual on-screen 360° Joystick state (so mouse/touch users have diagonal analog control even in widescreen!)
-  const [vPad, setVPad] = useState({ x: 0, y: 0, active: false });
-  const vPadRef = useRef<HTMLDivElement | null>(null);
+  // Floating Dynamic 360° Mobile Joystick (appears where touched on left zone; hidden when idle & hidden on desktop!)
+  const [vPad, setVPad] = useState({ originX: 0, originY: 0, x: 0, y: 0, active: false });
+  const vPadOriginRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const vPadPointerRef = useRef<number | null>(null);
+  const camDragPointerRef = useRef<number | null>(null);
+  const lastTouchBtnMsRef = useRef<number>(0);
+
+  /**
+   * Multi-touch safe button handler:
+   * - On touch/pen: fires IMMEDIATELY on pointerdown even while Finger #1 is dragging the left joystick!
+   * - On mouse/keyboard: fires cleanly via onClick with dedupe so nothing ever double-triggers.
+   */
+  const bindMultiTouchAction = (action: () => void, isDisabled = false) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      if (isDisabled) return;
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+        e.preventDefault();
+        lastTouchBtnMsRef.current = performance.now();
+        action();
+      }
+    },
+    onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      if (isDisabled) return;
+      if (performance.now() - lastTouchBtnMsRef.current < 420) return;
+      action();
+    },
+  });
 
   // Live Tactical Configuration (Editable anytime during Pause!)
   const [tactics, setTactics] = useState<TacticalConfig>({ ...DEFAULT_TACTICAL_CONFIG });
@@ -1066,10 +1100,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const regionMeta = activeWorldRun
     ? {
         ...baseRegionMeta,
-        name: activeWorldRun.isGymChallenge && activeWorldRun.gymName
-          ? `${activeWorldRun.cityName} · ${activeWorldRun.gymName}`
-          : `${activeWorldRun.cityName}`,
-        wildPool: activeWorldRun.wildPool,
+        name: liveOverlandCity
+          ? `${liveOverlandCity.name}`
+          : activeWorldRun.isGymChallenge && activeWorldRun.gymName
+            ? `${activeWorldRun.cityName} · ${activeWorldRun.gymName}`
+            : `${activeWorldRun.cityName}`,
+        wildPool: liveOverlandCity?.wildPool ?? activeWorldRun.wildPool,
         bossSpecies: activeWorldRun.bossSpecies ?? baseRegionMeta.bossSpecies,
         bossName: activeWorldRun.bossName ?? baseRegionMeta.bossName,
         bossTrainerKey: activeWorldRun.bossTrainerKey ?? baseRegionMeta.bossTrainerKey,
@@ -2716,6 +2752,30 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
     syncFollowersView();
     updateWorldAround(0, 0);
+
+    // When real-Earth NASA/SRTM DEM elevation tiles finish streaming in World Tour mode,
+    // rebuild the live 3D terrain mesh & flora so real coastlines, seas, plains & mountains snap in seamlessly!
+    const unsubGeoDem = subscribeGeoDemLoaded(() => {
+      lastChunkX = NaN;
+      lastChunkZ = NaN;
+      for (const [, entry] of placedFloraCells) {
+        for (const obj of entry.objs) floraGroup.remove(obj);
+        for (const bb of entry.bbs) floraBillboards.delete(bb);
+        for (const nid of entry.nodeIds) worldInteractNodes.delete(nid);
+        if (entry.lilies) {
+          for (const lp of entry.lilies) floatingLilyPads.delete(lp);
+        }
+      }
+      placedFloraCells.clear();
+      const curSim = simRef.current;
+      if (curSim) {
+        updateWorldAround(curSim.px, curSim.pz);
+        const newFloor = getTerrainHeight3D(curSim.px, curSim.pz);
+        curSim.py = Math.max(WATER_LEVEL_3D - 0.15, newFloor);
+      } else {
+        updateWorldAround(0, 0);
+      }
+    });
     syncSafeZones3D(0, 0);
 
     const spawnLoot3D = (x: number, z: number, kind: Loot3D['kind'], value: number) => {
@@ -4432,9 +4492,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               const gSpawn = getTerrainHeight3D(ex, ez);
               const inWater = gSpawn < WATER_LEVEL_3D - 0.1;
               const waterPool: SpeciesId[] = ['squirtle', 'psyduck'];
+              const activeWildPool = liveOverlandCityRef.current?.wildPool ?? regionMeta.wildPool;
               const sp = inWater
                 ? waterPool[Math.floor(Math.random() * waterPool.length)]
-                : regionMeta.wildPool[Math.floor(Math.random() * regionMeta.wildPool.length)];
+                : activeWildPool[Math.floor(Math.random() * activeWildPool.length)];
               const hpScale = (1 + sim.elapsed / 32) * regionMult * diffMeta.enemyHpMult;
               spawnEnemy3D(
                 ex,
@@ -5710,10 +5771,42 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   })),
               ],
             };
+            // Seamless Real-World Overland Cross-City Detection (e.g. walking from Shenzhen -> Hong Kong!)
+            if (activeWorldRun) {
+              const overland = detectOverlandCityAt(sim.px, sim.pz);
+              if (
+                overland &&
+                overland.distKm <= 16 &&
+                overland.city.id !== overlandCityIdRef.current
+              ) {
+                overlandCityIdRef.current = overland.city.id;
+                liveOverlandCityRef.current = overland.city;
+                setLiveOverlandCity(overland.city);
+                sound.play('levelup');
+                showBanner(
+                  `🧭 徒步跨城：已抵达【${overland.city.name}】！当地生态与野生精灵已无缝切换！`,
+                  4600,
+                );
+                onUpdateMeta?.((prev) => {
+                  const prevTour = prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+                  const visited = prevTour.visitedCities.includes(overland.city.id)
+                    ? prevTour.visitedCities
+                    : [...prevTour.visitedCities, overland.city.id];
+                  return {
+                    ...prev,
+                    worldTour: {
+                      ...prevTour,
+                      visitedCities: visited,
+                    },
+                  };
+                });
+              }
+            }
+
             setMapSnapshot(nextMapSnap);
             onSyncWorldMapData?.({
-              biome: selectedBiome,
-              regionName: regionMeta.name,
+              biome: liveOverlandCityRef.current?.biome ?? selectedBiome,
+              regionName: liveOverlandCityRef.current?.name ?? regionMeta.name,
               snapshot: nextMapSnap,
             });
 
@@ -6009,6 +6102,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
     rafId = window.requestAnimationFrame(animate);
     return () => {
+      unsubGeoDem();
       window.removeEventListener('resize', onResize);
       window.cancelAnimationFrame(rafId);
       renderer.dispose();
@@ -6016,9 +6110,23 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, selectedBiome, gameMode, difficultyId, runNonce]);
 
+  // Clear real-Earth geo projection when returning to Hub or non-playing screens
+  useEffect(() => {
+    if (phase !== 'playing') {
+      setActiveGeoTerrainOrigin(null);
+      setLiveOverlandCity(null);
+      liveOverlandCityRef.current = null;
+      overlandCityIdRef.current = null;
+    }
+  }, [phase]);
+
   const handleLaunchRun = () => {
     sound.play('confirm');
+    setActiveGeoTerrainOrigin(null);
     setActiveWorldRun(null);
+    setLiveOverlandCity(null);
+    liveOverlandCityRef.current = null;
+    overlandCityIdRef.current = null;
     pausedRef.current = false;
     endedRef.current = false;
     setLaunchFlashSeq((s) => s + 1);
@@ -6033,7 +6141,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   const handleLaunchWorldRun = (payload: WorldLaunchPayload) => {
     sound.play('confirm');
+    setActiveGeoTerrainOrigin({
+      originLat: payload.originLat,
+      originLng: payload.originLng,
+      startCityId: payload.cityId,
+      startCityName: payload.cityName,
+      unitsPerKm: GEO_UNITS_PER_KM,
+    });
     setActiveWorldRun(payload);
+    setLiveOverlandCity(null);
+    liveOverlandCityRef.current = null;
+    overlandCityIdRef.current = payload.cityId;
     setSelectedBiome(payload.biome);
     setGameMode(payload.isGymChallenge ? 'story' : 'endless');
     pausedRef.current = false;
@@ -6043,15 +6161,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     setPhase('playing');
     const buffNote =
       payload.hotelTier === 'grand'
-        ? ' · 五星酒店增益生效！'
+        ? ' · 五星增益生效'
         : payload.isHomeTurf
-          ? ' · GPS主场共鸣生效！'
+          ? ' · 主场共鸣生效'
           : '';
     showBanner(
       payload.isGymChallenge
         ? `✈ ${payload.cityName} · 挑战「${payload.gymName}」：击败 ${payload.bossName} 赢取 ${payload.gymBadgeName}！${buffNote}`
-        : `🌿 ${payload.cityName} 地区探索：高概率出没当地专属野生宝可梦！${buffNote}`,
-      3800,
+        : `🌍 ${payload.cityName} 真实地形已加载：可沿海岸与平原探索，甚至徒步跨越邻城！${buffNote}`,
+      4200,
     );
   };
 
@@ -6190,28 +6308,36 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
   };
 
-  // Virtual 360° Joystick handler for mouse/touch diagonal steering in widescreen 3D
+  // Floating Dynamic 360° Mobile Joystick handler (spawns right where the player touches on left side!)
+  const startVirtualPad = (clientX: number, clientY: number, zoneRect: DOMRect) => {
+    const padHalf = 46;
+    const localX = Math.max(padHalf, Math.min(zoneRect.width - padHalf, clientX - zoneRect.left));
+    const localY = Math.max(padHalf, Math.min(zoneRect.height - padHalf, clientY - zoneRect.top));
+    vPadOriginRef.current = { x: zoneRect.left + localX, y: zoneRect.top + localY };
+    analogVecRef.current = { x: 0, y: 0 };
+    setVPad({ originX: localX, originY: localY, x: 0, y: 0, active: true });
+  };
+
   const updateVirtualPad = (clientX: number, clientY: number) => {
-    const el = vPadRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const dx = clientX - (rect.left + rect.width / 2);
-    const dy = clientY - (rect.top + rect.height / 2);
+    const origin = vPadOriginRef.current;
+    const dx = clientX - origin.x;
+    const dy = clientY - origin.y;
     const d = Math.hypot(dx, dy);
     if (d < 5) {
       analogVecRef.current = { x: 0, y: 0 };
-      setVPad({ x: 0, y: 0, active: true });
+      setVPad((prev) => ({ ...prev, x: 0, y: 0, active: true }));
       return;
     }
     const nx = dx / d;
     const ny = dy / d;
-    const mag = Math.min(1, d / (rect.width * 0.42));
+    const mag = Math.min(1, d / 44);
     analogVecRef.current = { x: nx * mag, y: ny * mag };
-    setVPad({
-      x: Math.round(nx * Math.min(20, d * 0.45)),
-      y: Math.round(ny * Math.min(20, d * 0.45)),
+    setVPad((prev) => ({
+      ...prev,
+      x: Math.round(nx * Math.min(26, d * 0.55)),
+      y: Math.round(ny * Math.min(26, d * 0.55)),
       active: true,
-    });
+    }));
   };
 
   const activeRoom = ROOM_CATALOG.find((r) => r.id === pet.ballRoom) ?? ROOM_CATALOG[0];
@@ -6288,7 +6414,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         onPointerDown={(e) => {
           if (phase !== 'playing' || pausedRef.current) return;
           if (document.pointerLockElement === canvasRef.current) return;
+          // Never steal pointer while left-hand joystick owns this pointerId or camera drag is already active
+          if (vPadPointerRef.current === e.pointerId || camDragPointerRef.current !== null) return;
           if (e.button === 2) e.preventDefault();
+          camDragPointerRef.current = e.pointerId;
           try {
             e.currentTarget.setPointerCapture(e.pointerId);
           } catch {
@@ -6306,7 +6435,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         onPointerMove={(e) => {
           if (phase !== 'playing' || pausedRef.current) return;
           if (document.pointerLockElement === canvasRef.current) return;
-          if (!camDragRef.current.active) return;
+          if (!camDragRef.current.active || camDragPointerRef.current !== e.pointerId) return;
           const dx = e.clientX - camDragRef.current.lastX;
           const dy = e.clientY - camDragRef.current.lastY;
           camDragRef.current.lastX = e.clientX;
@@ -6326,6 +6455,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           );
         }}
         onPointerUp={(e) => {
+          if (camDragPointerRef.current !== e.pointerId) return;
+          camDragPointerRef.current = null;
           const wasClick = camDragRef.current.active && !camDragRef.current.dragged;
           if (camDragRef.current.active) {
             camDragRef.current.active = false;
@@ -6336,8 +6467,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
           }
           pointerSteerRef.current.active = false;
-          // Standard PC 3D Free-Look: crisp left-click on canvas locks cursor for 360° mouse look!
+          // Standard PC 3D Free-Look ONLY (Desktop mouse): never enter pointer-lock focus mode on touch/mobile!
+          const isDesktopMouse =
+            e.pointerType === 'mouse' &&
+            !window.matchMedia?.('(pointer: coarse)').matches &&
+            window.innerWidth > 960 &&
+            window.innerHeight > 560;
           if (
+            isDesktopMouse &&
             wasClick &&
             e.button === 0 &&
             phase === 'playing' &&
@@ -7667,7 +7804,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             <button
               type="button"
               className="surv-interact-pill"
-              onClick={() => triggerInteractRef.current?.()}
+              {...bindMultiTouchAction(() => triggerInteractRef.current?.())}
             >
               <PixelItemImg src={nearbyInteract.icon} size={20} />
               <span>
@@ -7678,49 +7815,67 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             </button>
           )}
 
-          {/* Bottom-Left 360° Omnidirectional Virtual Thumbpad */}
+          {/* Mobile-Only Floating Dynamic Left-Area 360° Joystick (Hidden when idle & hidden on Desktop!) */}
           {!externalPaused && !levelChoices && !shopOpen && !resultModal && !captureOffer && (
             <div
-              ref={vPadRef}
-              className={`vpad-360 ${vPad.active ? 'is-active' : ''}`}
-              aria-label="方向键"
-              title="360° 全向摇杆：支持点击或拖拽任意方向含斜向移动！"
+              className="vpad-touch-zone"
+              aria-label="左侧触控移动区域"
               onPointerDown={(e) => {
-                e.currentTarget.setPointerCapture(e.pointerId);
+                e.stopPropagation();
+                if (vPadPointerRef.current !== null) return;
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {}
                 vPadPointerRef.current = e.pointerId;
-                updateVirtualPad(e.clientX, e.clientY);
+                startVirtualPad(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
               }}
               onPointerMove={(e) => {
                 if (vPadPointerRef.current === e.pointerId) {
+                  e.stopPropagation();
                   updateVirtualPad(e.clientX, e.clientY);
                 }
               }}
               onPointerUp={(e) => {
                 if (vPadPointerRef.current === e.pointerId) {
-                  e.currentTarget.releasePointerCapture(e.pointerId);
+                  e.stopPropagation();
+                  try {
+                    e.currentTarget.releasePointerCapture(e.pointerId);
+                  } catch {}
                   vPadPointerRef.current = null;
                   analogVecRef.current = { x: 0, y: 0 };
-                  setVPad({ x: 0, y: 0, active: false });
+                  setVPad((prev) => ({ ...prev, x: 0, y: 0, active: false }));
                 }
               }}
-              onPointerCancel={() => {
-                vPadPointerRef.current = null;
-                analogVecRef.current = { x: 0, y: 0 };
-                setVPad({ x: 0, y: 0, active: false });
+              onPointerCancel={(e) => {
+                if (vPadPointerRef.current === e.pointerId) {
+                  vPadPointerRef.current = null;
+                  analogVecRef.current = { x: 0, y: 0 };
+                  setVPad((prev) => ({ ...prev, x: 0, y: 0, active: false }));
+                }
               }}
             >
-              <span className="omni-cross-v" aria-hidden="true" />
-              <span className="omni-cross-h" aria-hidden="true" />
-              <span className="omni-diag omni-ul" aria-hidden="true" />
-              <span className="omni-diag omni-ur" aria-hidden="true" />
-              <span className="omni-diag omni-dl" aria-hidden="true" />
-              <span className="omni-diag omni-dr" aria-hidden="true" />
-              <div
-                className="omni-puck"
-                style={{ transform: `translate(${vPad.x}px, ${vPad.y}px)` }}
-              >
-                <span className="omni-puck-dimple" />
-              </div>
+              {vPad.active && (
+                <div
+                  className="vpad-360 is-active is-floating"
+                  style={{
+                    left: `${vPad.originX}px`,
+                    top: `${vPad.originY}px`,
+                  }}
+                >
+                  <span className="omni-cross-v" aria-hidden="true" />
+                  <span className="omni-cross-h" aria-hidden="true" />
+                  <span className="omni-diag omni-ul" aria-hidden="true" />
+                  <span className="omni-diag omni-ur" aria-hidden="true" />
+                  <span className="omni-diag omni-dl" aria-hidden="true" />
+                  <span className="omni-diag omni-dr" aria-hidden="true" />
+                  <div
+                    className="omni-puck"
+                    style={{ transform: `translate(${vPad.x}px, ${vPad.y}px)` }}
+                  >
+                    <span className="omni-puck-dimple" />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -7754,7 +7909,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 <button
                   type="button"
                   className="ko-btn is-catch"
-                  onClick={() => triggerBattleActionRef.current?.('capture_ko', nearbyKoTarget.enemyId)}
+                  {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('capture_ko', nearbyKoTarget.enemyId))}
                 >
                   <PixelItemImg
                     src={nearbyKoTarget.isBoss ? '/sprites/items/master-ball.png' : '/sprites/items/ultra-ball.png'}
@@ -7766,7 +7921,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 <button
                   type="button"
                   className="ko-btn is-pass"
-                  onClick={() => triggerBattleActionRef.current?.('dismiss_ko', nearbyKoTarget.enemyId)}
+                  {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('dismiss_ko', nearbyKoTarget.enemyId))}
                 >
                   <PixelIcon name="paw" size={12} />
                   <span>放走</span>
@@ -7775,7 +7930,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             </div>
           )}
 
-          {/* Bottom-Right MOBA-Style Radial Action Wheel (Primary = Jump, Arc Satellites = Throw Ball / Heal / Boost / Salvo!) */}
+          {/* Bottom-Right MOBA-Style Radial Action Wheel (True Multi-Touch: Works simultaneously with Left Joystick!) */}
           {!externalPaused && !levelChoices && !shopOpen && !resultModal && !captureOffer && (
             <div className="surv-moba-wheel">
               {/* Outer Left Satellite (58x58): Full-MP Team Salvo */}
@@ -7783,7 +7938,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 type="button"
                 className={`moba-btn is-aux-jump is-salvo ${hud.actionCds.salvo > 0 ? 'is-cd' : ''}`}
                 disabled={hud.actionCds.salvo > 0}
-                onClick={() => triggerBattleActionRef.current?.('salvo')}
+                {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('salvo'), hud.actionCds.salvo > 0)}
                 title="全队瞬间满蓝，同步齐射招牌绝招！"
               >
                 <PixelItemImg src="/sprites/items/vs-seeker.png" size={26} />
@@ -7798,7 +7953,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 type="button"
                 className={`moba-btn is-sat is-sat-0 is-ball ${hud.actionCds.ball > 0 ? 'is-cd' : ''} ${nearbyKoTarget ? 'is-pulse' : ''}`}
                 disabled={hud.actionCds.ball > 0}
-                onClick={() => triggerBattleActionRef.current?.('ball')}
+                {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('ball'), hud.actionCds.ball > 0)}
                 title="向附近倒地/残血/异色野生宝可梦投掷精灵球收服！"
               >
                 <PixelItemImg src="/sprites/items/poke-ball.png" size={26} />
@@ -7813,7 +7968,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 type="button"
                 className={`moba-btn is-sat is-sat-45 is-heal ${hud.actionCds.heal > 0 || hud.healCharges <= 0 ? 'is-cd' : ''}`}
                 disabled={hud.actionCds.heal > 0 || hud.healCharges <= 0}
-                onClick={() => triggerBattleActionRef.current?.('heal')}
+                {...bindMultiTouchAction(
+                  () => triggerBattleActionRef.current?.('heal'),
+                  hud.actionCds.heal > 0 || hud.healCharges <= 0,
+                )}
                 title="使用好伤药立即回复全队 45% 生命值"
               >
                 <PixelItemImg src="/sprites/items/super-potion.png" size={26} />
@@ -7828,7 +7986,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 type="button"
                 className={`moba-btn is-sat is-sat-90 is-boost ${hud.actionCds.boost > 0 ? 'is-cd' : ''} ${hud.boostLeft > 0 ? 'is-active' : ''}`}
                 disabled={hud.actionCds.boost > 0}
-                onClick={() => triggerBattleActionRef.current?.('boost')}
+                {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('boost'), hud.actionCds.boost > 0)}
                 title="激活 8 秒力量强化：全队攻击 +55%、技能充能大幅加速"
               >
                 <PixelItemImg src="/sprites/items/rare-candy.png" size={26} />
@@ -7844,9 +8002,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               <button
                 type="button"
                 className="moba-btn is-primary is-jump-main"
-                onClick={() => {
+                {...bindMultiTouchAction(() => {
                   jumpQueuedRef.current = true;
-                }}
+                })}
                 title="3D 跳跃：翻越阶梯崖壁或躲避弹幕"
               >
                 <PixelIcon name="arrow_up" size={28} />

@@ -25,6 +25,8 @@ import { PixelIcon, PixelItemImg } from './PixelSprite';
 export interface WorldLaunchPayload {
   cityId: string | null;
   cityName: string;
+  originLat: number;
+  originLng: number;
   biome: BiomeId;
   wildPool: SpeciesId[];
   isGymChallenge: boolean;
@@ -953,6 +955,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       onLaunchWorldRun({
         cityId: targetHere.id,
         cityName: targetHere.name,
+        originLat: targetHere.lat,
+        originLng: targetHere.lng,
         biome: targetHere.biome,
         wildPool: targetHere.wildPool,
         isGymChallenge: isGym,
@@ -974,6 +978,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     onLaunchWorldRun({
       cityId: null,
       cityName: effectiveHome.label,
+      originLat: lat,
+      originLng: lng,
       biome: eco.biome,
       wildPool: eco.wildPool,
       isGymChallenge: false,
