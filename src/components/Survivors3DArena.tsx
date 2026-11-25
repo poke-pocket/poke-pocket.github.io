@@ -749,6 +749,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const camPresetRef = useRef<'wide' | 'close'>('wide');
   // Standard PC 3D Third-Person Camera (Click-to-Pointer-Lock Mouse Look + Left/Right-Drag Orbit Fallback + Wheel Zoom + Terrain Clamp!)
   const [pointerLocked, setPointerLocked] = useState(false);
+  const restorePointerLockRef = useRef(false);
   const camOrbitRef = useRef({ yaw: 0, pitch: 0.24, zoom: 1.0 });
   const camPivotRef = useRef(new THREE.Vector3(0, 1.55, 0));
   const camSmoothZoomRef = useRef(1.0);
@@ -1094,10 +1095,48 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     }, 175);
   };
 
+  const tryRestorePointerLock = () => {
+    if (!restorePointerLockRef.current) return;
+    if (phase !== 'playing') {
+      restorePointerLockRef.current = false;
+      return;
+    }
+    const isDesktopMouse =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(pointer: fine)').matches &&
+      window.innerWidth > 768 &&
+      window.innerHeight > 560;
+    if (!isDesktopMouse || !canvasRef.current) {
+      restorePointerLockRef.current = false;
+      return;
+    }
+    if (document.pointerLockElement === canvasRef.current) {
+      restorePointerLockRef.current = false;
+      return;
+    }
+    try {
+      const maybePromise = canvasRef.current.requestPointerLock?.() as unknown as Promise<void> | undefined;
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise
+          .then(() => {
+            restorePointerLockRef.current = false;
+          })
+          .catch(() => {
+            // Keep restorePointerLockRef armed so next movement key or click restores lock seamlessly
+          });
+      } else {
+        restorePointerLockRef.current = false;
+      }
+    } catch {
+      // Keep armed for next gesture
+    }
+  };
+
   const closeShopModal = () => {
     if (!shopOpen || closingShop) return;
     sound.play('cancel');
     setClosingShop(true);
+    if (!levelChoices) tryRestorePointerLock();
     window.setTimeout(() => {
       setClosingShop(false);
       setShopOpen(false);
@@ -1133,21 +1172,43 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   }, []);
 
   useEffect(() => {
-    const shouldUnlock =
-      phase !== 'playing' ||
+    const isTerminalEnd = phase !== 'playing' || Boolean(resultSummary);
+    const isTempInterrupt =
       externalPaused ||
-      Boolean(levelChoices) ||
-      shopOpen ||
-      Boolean(resultSummary) ||
-      Boolean(captureOffer);
+      Boolean(levelChoices && !closingLevelUp) ||
+      (shopOpen && !closingShop) ||
+      Boolean(captureOffer && !closingCapture);
+    const shouldUnlock = isTerminalEnd || isTempInterrupt;
+
+    if (isTerminalEnd) {
+      restorePointerLockRef.current = false;
+    }
+
     if (shouldUnlock && document.pointerLockElement === canvasRef.current) {
+      if (isTempInterrupt && !isTerminalEnd) {
+        restorePointerLockRef.current = true;
+      }
       try {
         document.exitPointerLock?.();
       } catch {
         // ignore
       }
+    } else if (!shouldUnlock && restorePointerLockRef.current) {
+      // Attempt restoration when temporary modal/handheld closes
+      tryRestorePointerLock();
     }
-  }, [phase, externalPaused, levelChoices, shopOpen, resultSummary, captureOffer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    phase,
+    externalPaused,
+    levelChoices,
+    closingLevelUp,
+    shopOpen,
+    closingShop,
+    resultSummary,
+    captureOffer,
+    closingCapture,
+  ]);
 
   const pausedRef = useRef(true);
   const endedRef = useRef(false);
@@ -1726,6 +1787,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           sound.play('coin');
           if (simRef.current) simRef.current.coins += 15;
           setClosingLevelUp(true);
+          tryRestorePointerLock();
           window.setTimeout(() => {
             setClosingLevelUp(false);
             setLevelChoices(null);
@@ -1841,6 +1903,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       ) {
         e.preventDefault();
         keysRef.current.add(k);
+        if (restorePointerLockRef.current && !pausedRef.current && !externalPausedRef.current) {
+          tryRestorePointerLock();
+        }
       }
     };
     const up = (e: KeyboardEvent) => {
@@ -6492,6 +6557,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       }
     }
     setClosingLevelUp(true);
+    tryRestorePointerLock();
     window.setTimeout(() => {
       setClosingLevelUp(false);
       setLevelChoices(null);
@@ -8413,6 +8479,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                       sound.play('coin');
                       if (simRef.current) simRef.current.coins += 15;
                       setClosingLevelUp(true);
+                      tryRestorePointerLock();
                       window.setTimeout(() => {
                         setClosingLevelUp(false);
                         setLevelChoices(null);
