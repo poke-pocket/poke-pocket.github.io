@@ -436,20 +436,49 @@ export interface WorldTownAnchor3D {
   seed: number;
   plazaRadius: number;
   plateauY: number;
+  landmarkCityId?: string;
 }
 
 /**
- * Natural dry-land towns anchored across the infinite seamless 3D world.
+ * Natural dry-land villages & towns anchored across the infinite seamless 3D world.
  * getTerrainHeight3D smoothly levels a terraced dry highland plateau around each town
  * so ZERO buildings ever spawn in water or float off sloped terrain!
  */
 export const WORLD_TOWNS_3D: WorldTownAnchor3D[] = [
-  { id: 'town_pallet', name: '真新小镇', x: 0, z: -50, seed: 101, plazaRadius: 38, plateauY: 1.85 },
-  { id: 'town_viridian', name: '常磐市集', x: 112, z: 28, seed: 202, plazaRadius: 34, plateauY: 2.35 },
-  { id: 'town_cerulean', name: '华蓝水岸', x: -108, z: -32, seed: 303, plazaRadius: 36, plateauY: 1.95 },
-  { id: 'town_celadon', name: '玉虹花都', x: 32, z: 116, seed: 404, plazaRadius: 36, plateauY: 2.65 },
-  { id: 'town_vermilion', name: '枯叶港镇', x: -102, z: 108, seed: 505, plazaRadius: 34, plateauY: 2.05 },
+  { id: 'town_pallet', name: '真新村镇', x: 0, z: -72, seed: 101, plazaRadius: 56, plateauY: 1.85, landmarkCityId: 'shanghai' },
+  { id: 'town_viridian', name: '常磐商业镇', x: 148, z: 18, seed: 202, plazaRadius: 52, plateauY: 2.35, landmarkCityId: 'tokyo' },
+  { id: 'town_cerulean', name: '华蓝水岸城', x: -146, z: -22, seed: 303, plazaRadius: 54, plateauY: 1.95, landmarkCityId: 'guangzhou' },
+  { id: 'town_celadon', name: '玉虹古都', x: 38, z: 156, seed: 404, plazaRadius: 54, plateauY: 2.65, landmarkCityId: 'beijing' },
+  { id: 'town_vermilion', name: '枯叶樱花镇', x: -124, z: 148, seed: 505, plazaRadius: 52, plateauY: 2.05, landmarkCityId: 'kyoto' },
 ];
+
+/** Road segments connecting Spawn Gate and all 5 Villages/Towns into a continuous highway network! */
+export const WORLD_ROAD_SEGMENTS_3D: [number, number, number, number][] = [
+  [0, 6, 0, -72],            // Spawn meadow -> 真新村镇
+  [0, -72, 148, 18],         // 真新村镇 <-> 常磐商业镇
+  [0, -72, -146, -22],       // 真新村镇 <-> 华蓝水岸城
+  [148, 18, 38, 156],        // 常磐商业镇 <-> 玉虹古都
+  [-146, -22, -124, 148],    // 华蓝水岸城 <-> 枯叶樱花镇
+  [38, 156, -124, 148],      // 玉虹古都 <-> 枯叶樱花镇
+];
+
+/** Distance from point (px, pz) to segment (ax, az)-(bx, bz) */
+function distPointToSeg2D(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
+  const vx = bx - ax;
+  const vz = bz - az;
+  const lenSq = vx * vx + vz * vz;
+  if (lenSq < 0.001) return Math.hypot(px - ax, pz - az);
+  const t = Math.max(0, Math.min(1, ((px - ax) * vx + (pz - az) * vz) / lenSq));
+  return Math.hypot(px - (ax + t * vx), pz - (az + t * vz));
+}
+
+export function isOnInterTownRoad3D(wx: number, wz: number, halfWidth = 5.4): boolean {
+  for (let i = 0; i < WORLD_ROAD_SEGMENTS_3D.length; i++) {
+    const [ax, az, bx, bz] = WORLD_ROAD_SEGMENTS_3D[i];
+    if (distPointToSeg2D(wx, wz, ax, az, bx, bz) < halfWidth) return true;
+  }
+  return false;
+}
 
 export function getTerrainHeight3D(wx: number, wz: number): number {
   // Real-Earth DEM heightfield when exploring in World Tour mode!

@@ -379,7 +379,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmReleaseId, setConfirmReleaseId] = useState<string | null>(null);
   const [petActionMenuOpen, setPetActionMenuOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'audio' | 'hud' | 'perf' | 'style' | 'keys'>('audio');
+  const [settingsTab, setSettingsTab] = useState<'world' | 'audio' | 'hud' | 'perf' | 'style' | 'keys'>('world');
   const [keysSubTab, setKeysSubTab] = useState<'keyboard' | 'gamepad'>('keyboard');
   const [connectedGamepadName, setConnectedGamepadName] = useState<string | null>(() => {
     if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
@@ -1216,6 +1216,17 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                 <div className="lcd-subtabs is-settings-tabs">
                   <button
                     type="button"
+                    className={`lcd-subtab inline-icon-btn ${settingsTab === 'world' ? 'active' : ''}`}
+                    onClick={() => {
+                      setRebindingAction(null);
+                      setSettingsTab('world');
+                    }}
+                  >
+                    <PixelIcon name="house" size={11} />
+                    <span>世界</span>
+                  </button>
+                  <button
+                    type="button"
                     className={`lcd-subtab inline-icon-btn ${settingsTab === 'audio' ? 'active' : ''}`}
                     onClick={() => {
                       setRebindingAction(null);
@@ -1818,6 +1829,124 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                           </button>
                         );
                       })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {settingsTab === 'world' && (
+                <div className="settings-stack scroll-y">
+                  <div className="settings-card">
+                    <div className="settings-card-head is-stacked">
+                      <div>
+                        <strong>世界难度</strong>
+                        <small>类似《我的世界》实时调整野外敌人强度与收益倍率</small>
+                      </div>
+                      <div className="inline-icon-row">
+                        {(
+                          [
+                            ['normal', '普通 · ×1'],
+                            ['hard', '困难 · ×1.75'],
+                            ['nightmare', '噩梦 · ×2.5'],
+                          ] as const
+                        ).map(([id, lbl]) => (
+                          <button
+                            key={id}
+                            type="button"
+                            className={`lcd-subtab ${(prefs.worldDifficulty ?? 'normal') === id ? 'active' : ''}`}
+                            onClick={() => {
+                              sound.play('cursor');
+                              setPref({ worldDifficulty: id });
+                            }}
+                          >
+                            {lbl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-card">
+                    <div className="settings-card-head is-stacked">
+                      <div>
+                        <strong>默认冒险模式</strong>
+                        <small>剧情生存（城镇和平休整 + 倒下自动回出生点）或无尽讨伐（野外无限波次）</small>
+                      </div>
+                      <div className="inline-icon-row">
+                        <button
+                          type="button"
+                          className={`lcd-subtab ${(prefs.worldGameMode ?? 'story') === 'story' ? 'active' : ''}`}
+                          onClick={() => {
+                            sound.play('cursor');
+                            setPref({ worldGameMode: 'story' });
+                          }}
+                        >
+                          剧情生存（推荐）
+                        </button>
+                        <button
+                          type="button"
+                          className={`lcd-subtab ${prefs.worldGameMode === 'endless' ? 'active' : ''}`}
+                          onClick={() => {
+                            sound.play('cursor');
+                            setPref({ worldGameMode: 'endless' });
+                          }}
+                        >
+                          无尽讨伐
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-card">
+                    <div className="settings-card-head is-stacked">
+                      <div>
+                        <strong>世界天气与属性加成</strong>
+                        <small>默认按 GPS/巡礼城市同步实时气象，也可手动切换体验各类天气加成</small>
+                      </div>
+                      <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                        {(
+                          [
+                            ['auto', '自动实时'],
+                            ['clear', '☀️ 晴朗'],
+                            ['cloudy', '☁️ 阴天'],
+                            ['rain', '🌧️ 下雨'],
+                            ['storm', '⛈️ 雷雨'],
+                            ['snow', '❄️ 下雪'],
+                            ['windy', '💨 强风'],
+                          ] as const
+                        ).map(([wId, wLbl]) => (
+                          <button
+                            key={wId}
+                            type="button"
+                            className={`lcd-subtab ${(prefs.worldWeatherMode ?? 'auto') === wId ? 'active' : ''}`}
+                            onClick={() => {
+                              sound.play('cursor');
+                              setPref({ worldWeatherMode: wId });
+                            }}
+                          >
+                            {wLbl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-card">
+                    <div className="settings-card-head">
+                      <div>
+                        <strong>城镇和平与随从收纳</strong>
+                        <small>进入村庄/城镇自动收起多余随从仅留领队同行，并全面停火</small>
+                      </div>
+                      <button
+                        type="button"
+                        className={`px-switch ${(prefs.townPeaceMode ?? true) ? 'on' : ''}`}
+                        onClick={() => {
+                          sound.play('cursor');
+                          setPref({ townPeaceMode: !(prefs.townPeaceMode ?? true) });
+                        }}
+                      >
+                        <span className="px-switch-knob" />
+                      </button>
                     </div>
                   </div>
                 </div>

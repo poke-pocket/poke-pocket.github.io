@@ -374,6 +374,11 @@ export interface GamePrefs {
   enemyDisplayMode: EnemyDisplayMode;
   reduceFlashes: boolean;
   showFps: boolean;
+  // Minecraft-style World Settings (Difficulty, Mode, Weather Override, Peaceful Towns)
+  worldDifficulty?: 'normal' | 'hard' | 'nightmare';
+  worldGameMode?: 'story' | 'endless';
+  worldWeatherMode?: 'auto' | 'clear' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'windy';
+  townPeaceMode?: boolean;
 }
 
 export const DEFAULT_GAME_PREFS: GamePrefs = {
@@ -402,6 +407,10 @@ export const DEFAULT_GAME_PREFS: GamePrefs = {
   enemyDisplayMode: 'all',
   reduceFlashes: false,
   showFps: false,
+  worldDifficulty: 'normal',
+  worldGameMode: 'story',
+  worldWeatherMode: 'auto',
+  townPeaceMode: true,
 };
 
 export interface TrainerProfile {

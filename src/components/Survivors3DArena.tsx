@@ -26,6 +26,7 @@ import {
   getDefaultSkillsForElement,
   getTerrainHeight3D,
   getUnlockedSkillSlotCount,
+  isOnInterTownRoad3D,
   type DifficultyId,
   type LiveRunTacticsBridge,
   type SafeZone3D,
@@ -61,6 +62,7 @@ import type { FacingDir } from '../data/overworldTiles';
 import {
   GEO_UNITS_PER_KM,
   detectOverlandCityAt,
+  getActiveGeoTerrainOrigin,
   setActiveGeoTerrainOrigin,
   subscribeGeoDemLoaded,
 } from '../data/geoTerrain3D';
@@ -108,12 +110,21 @@ import { WorldMapHud, type LiveMapSnapshot, type WorldMapData } from './WorldMap
 import type { GachaOutcome, GachaTenOutcome, SurvivorsResultPayload } from '../utils/petEngine';
 import type { AccessoryId, FoodId, GachaBoxId, RoomThemeId } from '../types/pet';
 import { sound } from '../utils/sound';
-import { buildProceduralTown3D, type ProceduralTownInstance, type TownInteractPoint } from '../utils/townBuilder3D';
+import {
+  buildInterTownRoadNetwork3D,
+  buildProceduralTown3D,
+  resolveTownWallCollisions,
+  setBuildingExteriorOpacity,
+  type ProceduralTownInstance,
+  type TownInteractPoint,
+} from '../utils/townBuilder3D';
 import {
   buildFallbackWeather,
+  buildWeatherInfo,
   fetchLiveWeatherAt,
   getWeatherCombatBonus,
   type LiveWeatherInfo,
+  type WeatherKind,
 } from '../utils/weatherSystem';
 import { PixelIcon, PixelItemImg } from './PixelSprite';
 import { TrimmedSpriteImg } from './TrimmedSpriteImg';
@@ -1065,7 +1076,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   });
   const [nearbyInteract, setNearbyInteract] = useState<{
     id: string;
-    kind: 'mushroom' | 'berry_tree' | 'ore_rock' | 'signpost' | 'pokemon_center' | 'poke_mart' | 'transit_station';
+    kind:
+      | 'mushroom'
+      | 'berry_tree'
+      | 'ore_rock'
+      | 'signpost'
+      | 'pokemon_center'
+      | 'poke_mart'
+      | 'transit_station'
+      | 'npc_chat'
+      | 'hotel_rest'
+      | 'restaurant';
     label: string;
     hp: number;
     maxHp: number;
@@ -1997,9 +2018,41 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     return () => ro.disconnect();
   }, [phase]);
 
-  // Live Real-Time Weather Sync (uses GPS Home or current World Tour city via Open-Meteo!)
+  // Sync Difficulty, Mode & Weather Override cleanly with Minecraft-style World Settings!
+  useEffect(() => {
+    const prefDiff = save.prefs?.worldDifficulty;
+    if (prefDiff && prefDiff !== difficultyId) setDifficultyId(prefDiff);
+  }, [save.prefs?.worldDifficulty, difficultyId]);
+
+  useEffect(() => {
+    const prefMode = save.prefs?.worldGameMode;
+    if (prefMode && phase === 'hub' && prefMode !== gameMode) setGameMode(prefMode);
+  }, [save.prefs?.worldGameMode, phase, gameMode]);
+
+  // Live Real-Time Weather Sync (uses GPS Home / active World Tour city via Open-Meteo, or manual World Settings override!)
   useEffect(() => {
     let cancelled = false;
+    const override = save.prefs?.worldWeatherMode;
+    if (override && override !== 'auto') {
+      const tempByKind: Record<WeatherKind, number> = {
+        clear: 25,
+        cloudy: 19,
+        rain: 17,
+        storm: 16,
+        snow: -2,
+        windy: 18,
+      };
+      setLiveWeather(
+        buildWeatherInfo(
+          override,
+          tempByKind[override],
+          override === 'windy' ? 34 : 12,
+          'fallback',
+          '世界设置指定',
+        ),
+      );
+      return;
+    }
     const tour = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
     const curCity = tour.currentCityId ? WORLD_CITIES.find((c) => c.id === tour.currentCityId) : null;
     const defHome = getDefaultHomeByLanguage(lang);
@@ -2012,7 +2065,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [meta.worldTour?.currentCityId, meta.worldTour?.homeCoords?.lat, meta.worldTour?.homeCoords?.lng, lang]);
+  }, [
+    save.prefs?.worldWeatherMode,
+    meta.worldTour?.currentCityId,
+    meta.worldTour?.homeCoords?.lat,
+    meta.worldTour?.homeCoords?.lng,
+    lang,
+  ]);
 
   // Mobile Back / Swipe-Back coordination with App.tsx
   const arenaHasCloseableLayer =
@@ -2201,9 +2260,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const floraGroup = new THREE.Group();
     scene.add(floraGroup);
 
-    // 2B. Terrain-Matched Procedural 3D Towns (Real CC0 GLB Architecture on Flattened Dry Plateaus!)
+    // 2B. Terrain-Matched 15-Building Procedural 3D Towns + Inter-Town Highway Road Network + Iconic Landmarks!
     const townsGroup = new THREE.Group();
     scene.add(townsGroup);
+    if (!getActiveGeoTerrainOrigin()) {
+      const roadNetGroup = buildInterTownRoadNetwork3D((x, z) => getTerrainHeight3D(x, z));
+      townsGroup.add(roadNetGroup);
+    }
     const proceduralTowns: ProceduralTownInstance[] = WORLD_TOWNS_3D.map((spec) => {
       const t = buildProceduralTown3D(
         spec.id,
@@ -2213,10 +2276,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         (x, z) => getTerrainHeight3D(x, z),
         spec.name,
         spec.plazaRadius,
+        spec.landmarkCityId,
       );
       townsGroup.add(t.group);
       return t;
     });
+    const activeTownIdRef = { current: null as string | null };
+    let lastPosPersistAt = 0;
     const isInsideAnyTownPlaza = (wx: number, wz: number, pad = 2.5) =>
       proceduralTowns.some((t) => Math.hypot(wx - t.centerX, wz - t.centerZ) < t.safeRadius + pad);
 
@@ -2389,7 +2455,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
           const wx = gx * TERRACE_CELL;
           const wz = gz * TERRACE_CELL;
-          if (Math.hypot(wx, wz) < 5.5 || isInsideAnyTownPlaza(wx, wz, 2.5)) {
+          if (Math.hypot(wx, wz) < 5.5 || isInsideAnyTownPlaza(wx, wz, 2.5) || isOnInterTownRoad3D(wx, wz, 5.4)) {
             if (!existing) placedFloraCells.set(key, { gx, gz, tier: wantTier, objs: [], bbs: [], nodeIds: [] });
             else existing.tier = wantTier;
             continue;
@@ -3052,10 +3118,35 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       attachFollowerMeshes(f);
     });
 
+    // Restore last saved world position so re-entering resumes right where the player left off!
+    let startPx = 0;
+    let startPz = 0;
+    if (phase === 'playing' && !getActiveGeoTerrainOrigin()) {
+      try {
+        const rawPos = window.localStorage.getItem('pocket_paw_last_world_pos_v1');
+        if (rawPos) {
+          const parsed = JSON.parse(rawPos) as { x?: number; z?: number };
+          if (typeof parsed.x === 'number' && typeof parsed.z === 'number' && Number.isFinite(parsed.x) && Number.isFinite(parsed.z)) {
+            startPx = Math.max(-420, Math.min(420, parsed.x));
+            startPz = Math.max(-420, Math.min(420, parsed.z));
+          }
+        }
+      } catch {
+        // ignore storage errors
+      }
+    }
+    const startPy = getTerrainHeight3D(startPx, startPz);
+    initialFollowers.forEach((f, idx) => {
+      const ang = (idx * Math.PI * 2) / Math.max(1, initialFollowers.length) + 0.6;
+      f.x = startPx + Math.cos(ang) * 2.4;
+      f.z = startPz + Math.sin(ang) * 2.4;
+      f.y = getTerrainHeight3D(f.x, f.z);
+    });
+
     simRef.current = {
-      px: 0,
-      py: 0,
-      pz: 0,
+      px: startPx,
+      py: startPy,
+      pz: startPz,
       vy: 0,
       facingAngle: 0,
       walkDist: 0,
@@ -4857,8 +4948,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             weatherPoints.position.set(sim.px, sim.py, sim.pz);
           }
 
+          // Periodically save player world coordinates so re-entering resumes at last exit spot!
+          if (!getActiveGeoTerrainOrigin() && now - lastPosPersistAt > 2000) {
+            lastPosPersistAt = now;
+            try {
+              window.localStorage.setItem(
+                'pocket_paw_last_world_pos_v1',
+                JSON.stringify({ x: Number(sim.px.toFixed(1)), z: Number(sim.pz.toFixed(1)) }),
+              );
+            } catch {
+              // ignore
+            }
+          }
+
           let closestTownPoint: TownInteractPoint | null = null;
           let closestTownDist = 999;
+          let activeTownNow: ProceduralTownInstance | null = null;
           for (const town of proceduralTowns) {
             if (town.trainGroup && town.trainBaseX !== undefined) {
               town.trainGroup.position.x = town.trainBaseX + Math.sin(windClock * 0.28) * 6.5;
@@ -4871,35 +4976,47 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 ft.scale.y = 0.85 + Math.sin(windClock * 5.2) * 0.22;
               }
             }
-            if (Math.hypot(sim.px - town.centerX, sim.pz - town.centerZ) < town.safeRadius + 6) {
-              // Gentle AABB collision against town buildings
-              for (const box of town.colliders) {
-                const pad = 0.75;
-                if (
-                  sim.px > box.minX - pad &&
-                  sim.px < box.maxX + pad &&
-                  sim.pz > box.minZ - pad &&
-                  sim.pz < box.maxZ + pad
-                ) {
-                  const dxL = Math.abs(sim.px - (box.minX - pad));
-                  const dxR = Math.abs(box.maxX + pad - sim.px);
-                  const dzT = Math.abs(sim.pz - (box.minZ - pad));
-                  const dzB = Math.abs(box.maxZ + pad - sim.pz);
-                  const m = Math.min(dxL, dxR, dzT, dzB);
-                  if (m === dxL) sim.px = box.minX - pad;
-                  else if (m === dxR) sim.px = box.maxX + pad;
-                  else if (m === dzT) sim.pz = box.minZ - pad;
-                  else sim.pz = box.maxZ + pad;
+            const distToTown = Math.hypot(sim.px - town.centerX, sim.pz - town.centerZ);
+            if (distToTown < town.safeRadius) {
+              activeTownNow = town;
+            }
+            if (distToTown < town.safeRadius + 10) {
+              // Player wall collision (walkable U-shaped doorways stay open!)
+              const pPos = { x: sim.px, z: sim.pz };
+              resolveTownWallCollisions(pPos, 0.85, town.colliders);
+              sim.px = pPos.x;
+              sim.pz = pPos.z;
+
+              // Walkable Building Interiors: Smooth cutaway transparent roof when player steps inside!
+              for (const bInt of town.interiors) {
+                const inside =
+                  sim.px >= bInt.bounds.minX &&
+                  sim.px <= bInt.bounds.maxX &&
+                  sim.pz >= bInt.bounds.minZ &&
+                  sim.pz <= bInt.bounds.maxZ;
+                const targetAlpha = inside ? 0.14 : 1.0;
+                if (Math.abs(bInt.cutawayAlpha - targetAlpha) > 0.015) {
+                  bInt.cutawayAlpha += (targetAlpha - bInt.cutawayAlpha) * Math.min(1, dt * 10);
+                  if (Math.abs(bInt.cutawayAlpha - targetAlpha) <= 0.02) bInt.cutawayAlpha = targetAlpha;
+                  setBuildingExteriorOpacity(bInt.exteriorGroup, bInt.cutawayAlpha);
+                }
+                bInt.interiorGroup.visible = bInt.cutawayAlpha < 0.95;
+                if (bInt.interiorGroup.visible) {
+                  for (const npc of bInt.npcSprites) {
+                    npc.rotation.set(bbTiltX, camYawNow, 0);
+                  }
                 }
               }
-              // Keep wild enemies politely outside town streets
+
+              // Wild Pokémon inside/near town stay completely peaceful & never clip through walls!
               for (const en of sim.enemies) {
-                if (en.hp <= 0 || en.isBoss) continue;
-                const ed = Math.hypot(en.x - town.centerX, en.z - town.centerZ);
-                if (ed < town.safeRadius && ed > 0.1) {
-                  const push = (town.safeRadius + 0.5) / ed;
-                  en.x = town.centerX + (en.x - town.centerX) * push;
-                  en.z = town.centerZ + (en.z - town.centerZ) * push;
+                if (en.hp <= 0) continue;
+                const ePos = { x: en.x, z: en.z };
+                resolveTownWallCollisions(ePos, en.radius + 0.5, town.colliders);
+                en.x = ePos.x;
+                en.z = ePos.z;
+                if (!en.isBoss && Math.hypot(en.x - town.centerX, en.z - town.centerZ) < town.safeRadius + 2) {
+                  en.aggroed = false;
                 }
               }
               for (const pt of town.interactPoints) {
@@ -4909,6 +5026,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   closestTownPoint = pt;
                 }
               }
+            }
+          }
+
+          const inTownPeaceZone = Boolean(activeTownNow && (prefsRef.current.townPeaceMode ?? true));
+          if ((activeTownNow?.id ?? null) !== activeTownIdRef.current) {
+            const prevTown = activeTownIdRef.current;
+            activeTownIdRef.current = activeTownNow?.id ?? null;
+            if (activeTownNow && (prefsRef.current.townPeaceMode ?? true)) {
+              showBanner(
+                `🏘️ 进入「${activeTownNow.name}」和平区 · 随从已暂收球中，仅领队同行（全员停火）`,
+                3000,
+              );
+            } else if (prevTown && !activeTownNow) {
+              showBanner('🌿 已离开城镇 · 全队随从展开出战阵型！', 2200);
             }
           }
 
@@ -4963,6 +5094,26 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   }
                   sound.play('confirm');
                   setPhase('world_map');
+                  return;
+                }
+                if (tp.kind === 'hotel_rest') {
+                  sim.hp = sim.maxHp;
+                  sim.boostTimer = Math.max(sim.boostTimer, 24);
+                  onHealParty();
+                  sound.play('levelup');
+                  showBanner(`🏨 已在「${tp.townName}」驿站酒店休整！全队满血并获 24 秒斗志强化！`, 3200);
+                  return;
+                }
+                if (tp.kind === 'restaurant') {
+                  sim.hp = Math.min(sim.maxHp, sim.hp + Math.round(sim.maxHp * 0.45));
+                  sim.boostTimer = Math.max(sim.boostTimer, 28);
+                  sound.play('happy');
+                  showBanner(`🍜 享用了「${tp.townName}」招牌树果料理！全队士气大振（强化 28 秒）！`, 3000);
+                  return;
+                }
+                if (tp.kind === 'npc_chat') {
+                  sound.play('cursor');
+                  showBanner(tp.dialogText ?? `💬 欢迎来到「${tp.townName}」！`, 4200);
                   return;
                 }
               }
@@ -5104,7 +5255,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             sim.hp = Math.min(sim.maxHp, sim.hp + healAmt);
             spawnGroundDecalWave(sim.px, sim.py, sim.pz, vfxAtlas.healCircleDecal, 3.6, 0.5);
           }
-          if (cb.mistyTideLv > 0 && Math.floor(sim.elapsed / (cb.mistyTideLv >= 5 ? 4.2 : 6.0)) > Math.floor((sim.elapsed - dt) / (cb.mistyTideLv >= 5 ? 4.2 : 6.0))) {
+          if (!inTownPeaceZone && cb.mistyTideLv > 0 && Math.floor(sim.elapsed / (cb.mistyTideLv >= 5 ? 4.2 : 6.0)) > Math.floor((sim.elapsed - dt) / (cb.mistyTideLv >= 5 ? 4.2 : 6.0))) {
             const rad = cb.mistyTideLv >= 5 ? 8.2 : 5.2;
             const dmg = Math.round((40 + cb.mistyTideLv * 18) * sim.atkMult);
             spawnGroundDecalWave(sim.px, sim.py, sim.pz, vfxAtlas.waterWaveDecal, rad * 1.4, 0.45);
@@ -5115,7 +5266,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
           }
-          if (cb.redBallLv > 0 && sim.enemies.length > 0 && Math.floor(sim.elapsed / 5.0) > Math.floor((sim.elapsed - dt) / 5.0)) {
+          if (!inTownPeaceZone && cb.redBallLv > 0 && sim.enemies.length > 0 && Math.floor(sim.elapsed / 5.0) > Math.floor((sim.elapsed - dt) / 5.0)) {
             const shots = cb.redBallLv >= 5 ? 3 : 1;
             const near = [...sim.enemies].filter((e) => e.hp > 0).sort((a, b) => Math.hypot(a.x - sim.px, a.z - sim.pz) - Math.hypot(b.x - sim.px, b.z - sim.pz));
             for (let si = 0; si < Math.min(shots, near.length); si++) {
@@ -5180,7 +5331,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               const dist = 16 + Math.random() * 8;
               const ex = sim.px + Math.cos(ang) * dist;
               const ez = sim.pz + Math.sin(ang) * dist;
-              if (nearbyZones.some((z) => Math.hypot(ex - z.x, ez - z.z) < z.radius + 1.5)) continue;
+              if (
+                nearbyZones.some((z) => Math.hypot(ex - z.x, ez - z.z) < z.radius + 1.5) ||
+                isInsideAnyTownPlaza(ex, ez, 4)
+              ) {
+                continue;
+              }
               const gSpawn = getTerrainHeight3D(ex, ez);
               const inWater = gSpawn < WATER_LEVEL_3D - 0.1;
               const waterPool: SpeciesId[] = ['squirtle', 'psyduck'];
@@ -5313,6 +5469,23 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             f.animTime += dt;
             if (f.castAnim > 0) f.castAnim = Math.max(0, f.castAnim - dt);
 
+            // Peaceful Town Mode: recall extra followers (i > 0) cleanly into Pokéballs, keeping ONLY lead partner!
+            if (inTownPeaceZone && i > 0) {
+              if (f.sprite) f.sprite.visible = false;
+              if (f.shadow) f.shadow.visible = false;
+              if (f.leafMeshes) {
+                for (const bm of f.leafMeshes) bm.visible = false;
+              }
+              f.x = sim.px;
+              f.z = sim.pz;
+              continue;
+            }
+            if (f.sprite) f.sprite.visible = true;
+            if (f.shadow) f.shadow.visible = true;
+            if (f.leafMeshes) {
+              for (const bm of f.leafMeshes) bm.visible = !inTownPeaceZone;
+            }
+
             const hasCloseSkill = f.skills.some((s) => s === 'razor_leaf' || s === 'water_pulse');
 
             // Authentic Natural AI + Physical Contact Charge/Tackle Attacks (No nervous pacing around Hero!)
@@ -5329,11 +5502,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             const engageRadius = tac.formation === 'hunt' ? 16.5 : tac.formation === 'vanguard' ? 13.0 : 12.0;
             const distToRed = Math.hypot(f.x - sim.px, f.z - sim.pz);
 
-            // Pick nearest / priority enemy inside engagement range around Hero
-            const candidates = pickTargetForFollower(f, sim.enemies, tac.targetPriority);
-            const engageTarget = candidates.find(
-              (en) => Math.hypot(en.x - sim.px, en.z - sim.pz) < engageRadius,
-            );
+            // Pick nearest / priority enemy inside engagement range around Hero (NEVER engages inside peaceful towns!)
+            const candidates = inTownPeaceZone ? [] : pickTargetForFollower(f, sim.enemies, tac.targetPriority);
+            const engageTarget = inTownPeaceZone
+              ? undefined
+              : candidates.find((en) => Math.hypot(en.x - sim.px, en.z - sim.pz) < engageRadius);
 
             // Trigger real physical Contact Charge / Body Slam lunge for melee/bruiser Pokémon!
             if (
@@ -5380,6 +5553,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 const wadeMult = !isWaterOrFly && (inWaterNow || candInWater) ? 0.56 : 1.0;
                 f.x += f.vx * dt * wadeMult;
                 f.z += f.vz * dt * wadeMult;
+              }
+              // Keep followers from clipping through town walls & buildings!
+              if (activeTownNow) {
+                const fPos = { x: f.x, z: f.z };
+                resolveTownWallCollisions(fPos, 0.75, activeTownNow.colliders);
+                f.x = fPos.x;
+                f.z = fPos.z;
               }
               const rawFy = getTerrainHeight3D(f.x, f.z);
               f.y =
@@ -5513,6 +5693,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 f.x += f.vx * dt * wadeMult;
                 f.z += f.vz * dt * wadeMult;
               }
+              // Keep followers from clipping through town walls & buildings!
+              if (activeTownNow) {
+                const fPos = { x: f.x, z: f.z };
+                resolveTownWallCollisions(fPos, 0.75, activeTownNow.colliders);
+                f.x = fPos.x;
+                f.z = fPos.z;
+              }
               const rawFy = getTerrainHeight3D(f.x, f.z);
               f.y =
                 rawFy < WATER_LEVEL_3D - 0.05
@@ -5626,7 +5813,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
 
             const activeSlotCount = Math.min(f.skills.length, getUnlockedSkillSlotCount(f.level));
-            if (tac.castMode === 'salvo') {
+            if (inTownPeaceZone) {
+              // Complete ceasefire inside peaceful towns!
+            } else if (tac.castMode === 'salvo') {
               if (triggerSalvo) {
                 const fired = new Set<SurvivorSkillId>();
                 for (let sIdx = 0; sIdx < activeSlotCount; sIdx++) {
@@ -5708,7 +5897,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               continue;
             }
             if (p.fromEnemy) {
-              if (nearbyZones.some((z) => Math.hypot(p.x - z.x, p.z - z.z) < z.radius)) {
+              if (inTownPeaceZone || nearbyZones.some((z) => Math.hypot(p.x - z.x, p.z - z.z) < z.radius)) {
                 removeProj();
                 continue;
               }
@@ -5735,6 +5924,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                       }
                     }
                     showBanner(`⚡ 气势披带发动！原地复活（剩余 ${sim.revivesLeft} 次）！`, 3400);
+                  } else if (gameMode === 'story') {
+                    // Open-World Survival Respawn: automatically escort back to Home Spawn with full HP!
+                    sim.px = 0;
+                    sim.pz = 0;
+                    sim.py = getTerrainHeight3D(0, 0);
+                    sim.hp = sim.maxHp;
+                    sim.invuln = 3.0;
+                    onHealParty();
+                    sound.play('levelup');
+                    try { window.localStorage.setItem('pocket_paw_last_world_pos_v1', JSON.stringify({ x: 0, z: 0 })); } catch {}
+                    showBanner('🏥 体力与血量耗尽！已紧急护送回出生点休整，全队恢复满血！', 3800);
                   } else {
                     endedRef.current = true;
                     pausedRef.current = true;
@@ -5829,8 +6029,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 : en.temperament === 'territorial'
                   ? 11.5
                   : 26.0;
-            if (!en.aggroed && dist < aggroRange) {
+            if (!en.aggroed && !inTownPeaceZone && dist < aggroRange) {
               en.aggroed = true;
+            }
+            if (inTownPeaceZone && !en.isBoss) {
+              en.aggroed = false;
             }
             if (en.isAquatic) {
               // Amphibious Water Pokémon (Squirtle/Blastoise, Psyduck) thrive BOTH in lakes AND freely walk on dry land!
@@ -5984,7 +6187,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
 
-            if ((en.isTrainer || en.isBoss) && !activeZone) {
+            if ((en.isTrainer || en.isBoss) && !activeZone && !inTownPeaceZone) {
               en.shootCd -= dt;
               if (en.shootCd <= 0 && dist < 22) {
                 const baseAng = Math.atan2(sim.pz - en.z, sim.px - en.x);
@@ -6062,7 +6265,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
 
-            if (!activeZone && dist < en.radius + 0.65 && sim.py - groundY < 1.15 && sim.invuln <= 0) {
+            if (!activeZone && !inTownPeaceZone && dist < en.radius + 0.65 && sim.py - groundY < 1.15 && sim.invuln <= 0) {
               const takenDmg = Math.max(1, Math.round(en.dmg * (1 - metaBonusesRef.current.dmgReduction)));
               sim.hp = Math.max(0, sim.hp - takenDmg);
               sim.invuln = 0.55;
@@ -6087,6 +6290,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     }
                   }
                   showBanner(`⚡ 气势披带发动！原地复活（剩余 ${sim.revivesLeft} 次）！`, 3400);
+                } else if (gameMode === 'story') {
+                  sim.px = 0;
+                  sim.pz = 0;
+                  sim.py = getTerrainHeight3D(0, 0);
+                  sim.hp = sim.maxHp;
+                  sim.invuln = 3.0;
+                  onHealParty();
+                  sound.play('levelup');
+                  try { window.localStorage.setItem('pocket_paw_last_world_pos_v1', JSON.stringify({ x: 0, z: 0 })); } catch {}
+                  showBanner('🏥 体力与血量耗尽！已紧急护送回出生点休整，全队恢复满血！', 3800);
+                  break;
                 } else {
                   endedRef.current = true;
                   pausedRef.current = true;
@@ -7498,9 +7712,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   type="button"
                   className="pkb-hero-cta is-story"
                   onClick={() => {
-                    sound.play('confirm');
-                    setGameMode('story');
-                    setPhase('map_select');
+                    const nextMode = save.prefs?.worldGameMode ?? 'story';
+                    const nextDiff = save.prefs?.worldDifficulty ?? 'normal';
+                    setGameMode(nextMode);
+                    setDifficultyId(nextDiff);
+                    handleLaunchRun();
                   }}
                 >
                   <div className="pkb-unskew-inner">

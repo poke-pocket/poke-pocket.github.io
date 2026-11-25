@@ -7,7 +7,14 @@ import {
   subscribeGeoDemLoaded,
   worldToGeo,
 } from '../data/geoTerrain3D';
-import { getTerrainHeight3D, LAKE_BASINS_3D, WATER_LEVEL_3D } from '../data/survivorsTactics';
+import {
+  getTerrainHeight3D,
+  LAKE_BASINS_3D,
+  WATER_LEVEL_3D,
+  WORLD_ROAD_SEGMENTS_3D,
+  WORLD_TOWNS_3D,
+} from '../data/survivorsTactics';
+import { generateTownLayout } from '../utils/townStreetGen';
 import { BIOME_PALETTES, type BiomeId } from '../data/worldTextures3D';
 import { sound } from '../utils/sound';
 import { PixelItemImg } from './PixelSprite';
@@ -23,7 +30,7 @@ export interface WorldPoi {
   id: string;
   x: number;
   z: number;
-  type: 'altar' | 'shrine' | 'berry' | 'boulder' | 'chest' | 'lake';
+  type: 'town' | 'altar' | 'shrine' | 'berry' | 'boulder' | 'chest' | 'lake';
   label: string;
   color: string;
 }
@@ -56,6 +63,7 @@ interface WorldMapHudProps {
 }
 
 const POI_META: Record<WorldPoi['type'], { label: string; color: string; sprite: string }> = {
+  town: { label: '村庄城镇', color: '#f08c00', sprite: '/sprites/items/poke-ball.png' },
   altar: { label: '守护者祭坛', color: '#e03131', sprite: '/sprites/items/master-ball.png' },
   shrine: { label: '祝福图腾', color: '#22b8cf', sprite: '/sprites/items/kings-rock.png' },
   berry: { label: '野生树果林', color: '#40c057', sprite: '/sprites/items/oran-berry.png' },
@@ -78,7 +86,15 @@ function getCachedMapIcon(url: string, onLoad?: () => void): HTMLImageElement | 
 }
 
 export function generateRegionalPois(): WorldPoi[] {
-  const specs: { type: Exclude<WorldPoi['type'], 'lake'>; angle: number; dist: number }[] = [
+  const townPois: WorldPoi[] = WORLD_TOWNS_3D.map((t) => ({
+    id: t.id,
+    x: t.x,
+    z: t.z,
+    type: 'town',
+    label: t.name,
+    color: '#f08c00',
+  }));
+  const specs: { type: Exclude<WorldPoi['type'], 'lake' | 'town'>; angle: number; dist: number }[] = [
     { type: 'altar', angle: 0.72, dist: 46 },
     { type: 'shrine', angle: 2.35, dist: 34 },
     { type: 'shrine', angle: -1.15, dist: 52 },
@@ -104,7 +120,144 @@ export function generateRegionalPois(): WorldPoi[] {
     label: POI_META.lake.label,
     color: POI_META.lake.color,
   }));
-  return [...basePois, ...lakePois];
+  return [...townPois, ...basePois, ...lakePois];
+}
+
+/** Paints Inter-Town Highways, Village/Town Plazas, Cross-Streets, Railways & Town Name Labels onto any 2D Map Canvas! */
+function paintRoadsAndTownsOnMap(
+  ctx: CanvasRenderingContext2D,
+  toScreen: (wx: number, wz: number) => { sx: number; sy: number },
+  unitsPerPx: number,
+  detailed: boolean,
+) {
+  if (getActiveGeoTerrainOrigin()) return;
+
+  ctx.save();
+  // 1. Inter-Town Highways (Dark curb casing + warm asphalt + dashed center line)
+  const hwyPx = Math.max(detailed ? 4 : 2.5, Math.min(18, 7.4 / Math.max(0.1, unitsPerPx)));
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const [ax, az, bx, bz] of WORLD_ROAD_SEGMENTS_3D) {
+    const a = toScreen(ax, az);
+    const b = toScreen(bx, bz);
+    ctx.strokeStyle = '#3c424f';
+    ctx.lineWidth = hwyPx + 2;
+    ctx.beginPath();
+    ctx.moveTo(a.sx, a.sy);
+    ctx.lineTo(b.sx, b.sy);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#d9cfb8';
+    ctx.lineWidth = hwyPx;
+    ctx.beginPath();
+    ctx.moveTo(a.sx, a.sy);
+    ctx.lineTo(b.sx, b.sy);
+    ctx.stroke();
+
+    if (detailed) {
+      ctx.strokeStyle = '#8b8372';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // 2. Organic Procedural Street-Graph Towns (Real branching streets, alleys, railways & rotated building lots — ZERO circular disc!)
+  for (const t of WORLD_TOWNS_3D) {
+    const layout = generateTownLayout(t);
+    const c = toScreen(t.x, t.z);
+
+    // 2A. Town Streets & Side Alleys
+    for (const st of layout.streets) {
+      const a = toScreen(st.x1, st.z1);
+      const b = toScreen(st.x2, st.z2);
+      const wPx = Math.max(detailed ? 2.2 : 1.4, st.width / Math.max(0.1, unitsPerPx));
+      ctx.strokeStyle = '#3b4252';
+      ctx.lineWidth = wPx + (detailed ? 1.8 : 0.8);
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.stroke();
+
+      ctx.strokeStyle = st.kind === 'arterial' ? '#d8ceb7' : st.kind === 'street' ? '#c8bea6' : '#b7ad96';
+      ctx.lineWidth = wPx;
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.stroke();
+    }
+
+    // 2B. Curved Railway Corridor (classic black & white rail dashes!)
+    for (const rl of layout.rail) {
+      const a = toScreen(rl.x1, rl.z1);
+      const b = toScreen(rl.x2, rl.z2);
+      ctx.strokeStyle = '#181a24';
+      ctx.lineWidth = Math.max(2.2, 3.6 / Math.max(0.1, unitsPerPx));
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = Math.max(1.0, 1.8 / Math.max(0.1, unitsPerPx));
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(a.sx, a.sy);
+      ctx.lineTo(b.sx, b.sy);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // 2C. Actual Street-Aligned Building Footprints (Rotated rectangles color-coded by facility!)
+    for (const lot of layout.lots) {
+      const lp = toScreen(lot.x, lot.z);
+      const bw = Math.max(detailed ? 4 : 2.5, lot.width / Math.max(0.1, unitsPerPx));
+      const bd = Math.max(detailed ? 3.5 : 2.2, lot.depth / Math.max(0.1, unitsPerPx));
+      ctx.save();
+      ctx.translate(lp.sx, lp.sy);
+      ctx.rotate(-lot.rotY);
+      ctx.fillStyle =
+        lot.kind === 'pokemon_center'
+          ? '#fa5252'
+          : lot.kind === 'poke_mart'
+            ? '#228be6'
+            : lot.kind === 'hotel'
+              ? '#f08c00'
+              : lot.kind === 'restaurant'
+                ? '#fd7e14'
+                : lot.kind === 'landmark'
+                  ? '#ae3ec9'
+                  : '#c98a5b';
+      ctx.strokeStyle = '#181a24';
+      ctx.lineWidth = detailed ? 1.2 : 0.7;
+      ctx.fillRect(-bw / 2, -bd / 2, bw, bd);
+      ctx.strokeRect(-bw / 2, -bd / 2, bw, bd);
+      ctx.restore();
+    }
+
+    // 2D. Crisp Town Name Banner above town center
+    if (detailed) {
+      ctx.font = 'bold 11px monospace';
+      const label = `🏘 ${t.name}`;
+      const tw = ctx.measureText(label).width + 10;
+      const lx = Math.round(c.sx - tw / 2);
+      const ly = Math.round(c.sy - 26);
+      ctx.fillStyle = 'rgba(20, 22, 34, 0.9)';
+      ctx.fillRect(lx, ly, tw, 16);
+      ctx.strokeStyle = '#ffd43b';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(lx, ly, tw, 16);
+      ctx.fillStyle = '#fff9db';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, c.sx, ly + 8.5);
+    }
+  }
+  ctx.restore();
 }
 
 /** Sample a crisp 1:1 isotropic pixel-shaded topographic heightmap tile (zero aspect distortion!) */
@@ -205,6 +358,8 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
       sx: ((wx - snapshot.px) / span + 0.5) * W,
       sy: ((wz - snapshot.pz) / span + 0.5) * H,
     });
+
+    paintRoadsAndTownsOnMap(ctx, toScreen, span / Math.max(1, W), false);
 
     if (geoOrigin) {
       for (const gc of getProjectedGeoCities()) {
@@ -441,6 +596,8 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       sx: (wx - cx) / unitsPerPx + W / 2,
       sy: (wz - cz) / unitsPerPx + H / 2,
     });
+
+    paintRoadsAndTownsOnMap(ctx, toScreen, unitsPerPx, true);
 
     ctx.imageSmoothingEnabled = false;
     const onIconReady = () => setIconTick((t) => t + 1);
