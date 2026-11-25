@@ -37,6 +37,8 @@ import {
   MAP_REGIONS,
   SURVIVOR_SKILLS,
   TARGET_PRIORITY_OPTIONS,
+  getRequiredLevelForSkillSlot,
+  getUnlockedSkillSlotCount,
   type CastCadenceMode,
   type FollowerFormation,
   type LiveRunTacticsBridge,
@@ -207,6 +209,7 @@ interface LcdScreenProps {
   onReleasePet: (petId: string) => boolean;
   onReleasePetsBatch?: (petIds: string[]) => { ok: boolean; count: number; coins: number; xp: number; message: string };
   onDepositPet?: (petId: string) => boolean;
+  onDepositPetsBatch?: (petIds: string[]) => { ok: boolean; count: number; message: string };
   onWithdrawPet?: (petId: string) => boolean;
   onSwitchPet: (petId: string) => void;
   onUpdatePetConfig?: (
@@ -286,6 +289,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   onReleasePet,
   onReleasePetsBatch,
   onDepositPet,
+  onDepositPetsBatch,
   onWithdrawPet,
   onSwitchPet,
   onUpdatePetConfig,
@@ -328,6 +332,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [partyBoxTab, setPartyBoxTab] = useState<'active' | 'storage'>('active');
   const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
   const [confirmBatchRelease, setConfirmBatchRelease] = useState(false);
+  const [confirmBatchDeposit, setConfirmBatchDeposit] = useState(false);
   const [batchFeedback, setBatchFeedback] = useState<string | null>(null);
   const [squadPickerSlot, setSquadPickerSlot] = useState<number | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
@@ -739,6 +744,9 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                       <div className="equipped-slots-row is-four">
                         {[0, 1, 2, 3].map((slot) => {
                           const sk = SURVIVOR_SKILLS[fourIds[slot]];
+                          const unlockedSlots = getUnlockedSkillSlotCount(curF.level);
+                          const isLockedSlot = slot >= unlockedSlots;
+                          const reqLv = getRequiredLevelForSkillSlot(slot);
                           const estDmg = Math.round(
                             tacticsBridge.baseAtk *
                               tacticsBridge.atkMult *
@@ -751,7 +759,11 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                               key={slot}
                               type="button"
                               className={`eq-slot-box is-visual is-compact ${isTargetSlot ? 'is-inspected' : ''}`}
-                              style={{ borderLeftWidth: 4, borderLeftColor: sk.color }}
+                              style={{
+                                borderLeftWidth: 4,
+                                borderLeftColor: isLockedSlot ? '#868e96' : sk.color,
+                                opacity: isLockedSlot ? 0.62 : 1,
+                              }}
                               onClick={() => {
                                 sound.play('cursor');
                                 setSelectedSkillSlot(slot);
@@ -762,7 +774,9 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                                 <PixelItemImg src={sk.sprite} size={20} />
                               </div>
                               <div className="eq-slot-meta">
-                                <small>招式 {slot + 1} · 伤{estDmg}</small>
+                                <small>
+                                  {isLockedSlot ? `🔒 Lv.${reqLv} 激活` : `招式 ${slot + 1} · 伤${estDmg}`}
+                                </small>
                                 <strong>{sk.name}</strong>
                               </div>
                             </button>
@@ -1380,7 +1394,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                       <div className="settings-card-head">
                         <div>
                           <strong>战斗技能音效</strong>
-                          <small className="audio-track-hint">落雷 / 火球 / 击中音</small>
+                          <small className="audio-track-hint">释放 / 击中 / 击败音效</small>
                         </div>
                         <button
                           type="button"
@@ -1389,142 +1403,6 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                         >
                           {combatSfxOn ? '开' : '关'}
                         </button>
-                      </div>
-                    </div>
-
-                    <div className="settings-card is-span-2">
-                      <div className="settings-card-head">
-                        <div>
-                          <strong>🎧 全图鉴叫声质感（175 只宝可梦全局生效）</strong>
-                          <small className="audio-track-hint">Switch 暖音滤镜自动削弱 2.5–5kHz 刺耳高频并柔化压限，彻底不扎耳</small>
-                        </div>
-                        <div className="inline-icon-row">
-                          {(
-                            [
-                              ['warm', 'Switch 暖音护耳'],
-                              ['cute', '萌系柔和轻鸣'],
-                              ['raw', '原版直出'],
-                            ] as const
-                          ).map(([modeId, lbl]) => (
-                            <button
-                              key={modeId}
-                              type="button"
-                              className={`lcd-subtab ${(prefs.cryToneMode ?? 'warm') === modeId ? 'active' : ''}`}
-                              onClick={() => {
-                                setPref({ cryToneMode: modeId });
-                                sound.setCryToneMode(modeId);
-                                sound.previewCry(getPokemonCryId(pet.species, pet.level), modeId);
-                              }}
-                            >
-                              {lbl}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="settings-row" style={{ marginTop: 6 }}>
-                        <div>
-                          <strong style={{ fontSize: 10.5 }}>皮卡丘 & 伊布 · Let's Go 官方人声配音</strong>
-                          <small className="audio-track-hint">开启后皮卡丘与伊布优先使用官方可爱配音</small>
-                        </div>
-                        <button
-                          type="button"
-                          className={`px-switch ${(prefs.letsGoVoices ?? true) ? 'is-on' : ''}`}
-                          onClick={() => {
-                            const nextVal = !(prefs.letsGoVoices ?? true);
-                            setPref({ letsGoVoices: nextVal });
-                            sound.setLetsGoVoices(nextVal);
-                            sound.previewCry(25);
-                          }}
-                        >
-                          {(prefs.letsGoVoices ?? true) ? '开' : '关'}
-                        </button>
-                      </div>
-
-                      <div className="pika-cry-picker-grid" style={{ marginTop: 6 }}>
-                        {(
-                          [
-                            [25, '皮卡丘'],
-                            [133, '伊布'],
-                            [1, '妙蛙种子'],
-                            [4, '小火龙'],
-                            [7, '杰尼龟'],
-                          ] as const
-                        ).map(([dexId, spLabel]) => (
-                          <div key={dexId} className="pika-cry-opt">
-                            <div className="pika-cry-info">
-                              <strong>{spLabel}</strong>
-                              <small>对比试听</small>
-                            </div>
-                            <div className="pika-cry-actions">
-                              <button
-                                type="button"
-                                className="lcd-subtab"
-                                onClick={() => sound.previewCry(dexId, 'warm')}
-                              >
-                                ▶ 暖音
-                              </button>
-                              <button
-                                type="button"
-                                className="lcd-subtab"
-                                onClick={() => sound.previewCry(dexId, 'raw')}
-                              >
-                                ▶ 原版
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="settings-card is-span-2">
-                      <div className="settings-card-head">
-                        <div>
-                          <strong>⚡ 皮卡丘专属叫声挑选</strong>
-                          <small className="audio-track-hint">若关闭上方 Let's Go 人声或想换口味，可任选 5 款皮卡丘音色</small>
-                        </div>
-                      </div>
-                      <div className="pika-cry-picker-grid">
-                        {(
-                          [
-                            ['letsgo', "Let's Go 配音", '官方可爱人声版'],
-                            ['soft_voice', '柔化暖音版', '降噪减刺耳 EQ 版'],
-                            ['classic_gba', '经典 GBA 版', '复古掌机柔化电音'],
-                            ['pichu_cute', '软萌皮丘版', '轻柔幼年短叫声'],
-                            ['original_raw', '原版未处理', '原始高频对照'],
-                          ] as const
-                        ).map(([id, title, sub]) => {
-                          const active = (prefs.pikachuCryVariant ?? 'soft_voice') === id;
-                          return (
-                            <div key={id} className={`pika-cry-opt ${active ? 'is-active' : ''}`}>
-                              <div className="pika-cry-info">
-                                <strong>{title}</strong>
-                                <small>{sub}</small>
-                              </div>
-                              <div className="pika-cry-actions">
-                                <button
-                                  type="button"
-                                  className="lcd-subtab"
-                                  onClick={() => sound.previewPikachuCry(id)}
-                                >
-                                  ▶ 试听
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`lcd-subtab ${active ? 'active' : ''}`}
-                                  onClick={() => {
-                                    setPref({ pikachuCryVariant: id, letsGoVoices: id === 'letsgo' ? true : false });
-                                    sound.setLetsGoVoices(id === 'letsgo');
-                                    sound.setPikachuCryVariant(id);
-                                    sound.previewPikachuCry(id);
-                                  }}
-                                >
-                                  {active ? '✓ 使用中' : '选用'}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
                       </div>
                     </div>
                   </div>
@@ -1673,39 +1551,23 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
                 {settingsTab === 'perf' && (
                   <div className="settings-grid-2">
-                    <div className="settings-card is-span-2">
-                      <div className="settings-card-head">
-                        <div>
-                          <strong>全屏 / 显示模式</strong>
-                          <small className="audio-track-hint">支持一键切换浏览器全屏及掌机全屏界面</small>
-                        </div>
-                        <div className="inline-icon-row">
-                          {onToggleFullscreen && (
-                            <button
-                              type="button"
-                              className={`lcd-subtab ${isFullscreen ? 'active' : ''}`}
-                              onClick={onToggleFullscreen}
-                            >
-                              {isFullscreen ? '✓ 浏览器全屏' : '开启全屏'}
-                            </button>
-                          )}
+                    {onToggleFullscreen && (
+                      <div className="settings-card">
+                        <div className="settings-card-head">
+                          <div>
+                            <strong>全屏模式</strong>
+                            <small className="audio-track-hint">切换网站浏览器全屏</small>
+                          </div>
                           <button
                             type="button"
-                            className={`lcd-subtab ${save.showShell ? 'active' : ''}`}
-                            onClick={() => onUpdateSettings({ showShell: true })}
+                            className={`px-switch ${isFullscreen ? 'is-on' : ''}`}
+                            onClick={onToggleFullscreen}
                           >
-                            掌机外壳
-                          </button>
-                          <button
-                            type="button"
-                            className={`lcd-subtab ${!save.showShell ? 'active' : ''}`}
-                            onClick={() => onUpdateSettings({ showShell: false })}
-                          >
-                            全屏掌机
+                            {isFullscreen ? '开' : '关'}
                           </button>
                         </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="settings-card">
                       <div className="settings-card-head">
@@ -1742,7 +1604,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     </div>
 
                     <div className="settings-card is-span-2">
-                      <div className="settings-card-head">
+                      <div className="settings-card-head is-stacked">
                         <strong>帧率上限</strong>
                         <div className="inline-icon-row">
                           {([0, 30, 60, 90, 120] as const).map((cap) => (
@@ -1833,7 +1695,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     </div>
 
                     <div className="settings-card is-span-2">
-                      <div className="settings-card-head">
+                      <div className="settings-card-head is-stacked">
                         <strong>显示的敌人</strong>
                         <div className="inline-icon-row">
                           {(
@@ -4029,32 +3891,76 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                       <span className="party-batch-count">已选 {selectedSet.size} 只</span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className={`party-batch-release-btn ${confirmBatchRelease ? 'is-confirm' : ''}`}
-                    disabled={selectedSet.size === 0}
-                    onClick={() => {
-                      if (selectedSet.size === 0) return;
-                      if (!confirmBatchRelease) {
-                        sound.play('cursor');
-                        setConfirmBatchRelease(true);
-                        return;
-                      }
-                      const res = onReleasePetsBatch?.(Array.from(selectedSet));
-                      setConfirmBatchRelease(false);
-                      setBatchSelectedIds([]);
-                      if (res?.ok) {
-                        setBatchFeedback(res.message);
-                        window.setTimeout(() => setBatchFeedback(null), 2600);
-                      }
-                    }}
-                  >
-                    {confirmBatchRelease
-                      ? `确认放生 ${selectedSet.size} 只 (+${previewCoins}G)?`
-                      : selectedSet.size > 0
-                        ? `批量放生 (${selectedSet.size} · +${previewCoins}G)`
-                        : '批量放生'}
-                  </button>
+                  <div className="party-batch-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {onDepositPetsBatch && (
+                      <button
+                        type="button"
+                        className={`party-batch-deposit-btn inline-icon-btn ${confirmBatchDeposit ? 'is-confirm' : ''}`}
+                        disabled={selectedSet.size === 0 || Boolean(openedFromBattle)}
+                        title={
+                          openedFromBattle
+                            ? '战斗进行中无法寄存，请结束本局后再寄存'
+                            : '批量寄存至大木博士寄放箱'
+                        }
+                        aria-label="批量寄存"
+                        onClick={() => {
+                          if (selectedSet.size === 0 || openedFromBattle) return;
+                          if (!confirmBatchDeposit) {
+                            sound.play('cursor');
+                            setConfirmBatchRelease(false);
+                            setConfirmBatchDeposit(true);
+                            return;
+                          }
+                          const res = onDepositPetsBatch(Array.from(selectedSet));
+                          setConfirmBatchDeposit(false);
+                          setBatchSelectedIds([]);
+                          if (res?.ok) {
+                            setBatchFeedback(res.message);
+                            window.setTimeout(() => setBatchFeedback(null), 2600);
+                          }
+                        }}
+                      >
+                        <PixelItemImg src="/sprites/items/poke-ball.png" size={14} />
+                        {confirmBatchDeposit ? (
+                          <span>确认寄存 {selectedSet.size} 只?</span>
+                        ) : (
+                          <span>{selectedSet.size > 0 ? selectedSet.size : '0'}</span>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={`party-batch-release-btn inline-icon-btn ${confirmBatchRelease ? 'is-confirm' : ''}`}
+                      disabled={selectedSet.size === 0}
+                      title="批量放生并返还金币"
+                      aria-label="批量放生"
+                      onClick={() => {
+                        if (selectedSet.size === 0) return;
+                        if (!confirmBatchRelease) {
+                          sound.play('cursor');
+                          setConfirmBatchDeposit(false);
+                          setConfirmBatchRelease(true);
+                          return;
+                        }
+                        const res = onReleasePetsBatch?.(Array.from(selectedSet));
+                        setConfirmBatchRelease(false);
+                        setBatchSelectedIds([]);
+                        if (res?.ok) {
+                          setBatchFeedback(res.message);
+                          window.setTimeout(() => setBatchFeedback(null), 2600);
+                        }
+                      }}
+                    >
+                      <PixelIcon name="paw" size={12} />
+                      {confirmBatchRelease ? (
+                        <span>确认放生 {selectedSet.size} 只 (+{previewCoins}G)?</span>
+                      ) : (
+                        <span>
+                          {selectedSet.size > 0 ? `${selectedSet.size} · +${previewCoins}G` : '0'}
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
 

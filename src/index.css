@@ -17197,12 +17197,31 @@ body,
    SINGLE-ROW HUB DOCK + LOWER HUB ANCHOR, SQUARE GUARDIAN TILES & PORTRAIT DIFFICULTY
    ========================================================================= */
 
-/* 1. Fix Settings card title + subtitle overlap */
-.settings-card-head > div {
+/* 1. Fix Settings card title + subtitle overlap (ONLY stack label containers, never button rows!) */
+.settings-card-head > div:not(.inline-icon-row) {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+.settings-card-head .inline-icon-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.settings-card-head.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.settings-card-head.is-stacked .inline-icon-row {
+  flex-wrap: wrap;
 }
 
 .audio-track-hint {
@@ -17521,4 +17540,28 @@ body,
 .party-storage-card small {
   font-size: 9px;
   color: #495057;
+}
+
+.party-batch-deposit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #fffdf5;
+  background: #1971c2;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
+}
+
+.party-batch-deposit-btn.is-confirm {
+  background: #2b8a3e;
+}
+
+.party-batch-deposit-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  box-shadow: none;
 }

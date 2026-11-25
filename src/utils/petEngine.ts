@@ -2146,6 +2146,46 @@ export function depositPetToStorage(save: GameSave, petId: string, now = Date.no
   };
 }
 
+/** Batch deposit multiple Pokémon into Professor Oak's PC Storage (keeps at least 1 active pet!) */
+export function depositPetsBatch(
+  save: GameSave,
+  petIds: string[],
+  now = Date.now(),
+): ActionOutcome & { depositedCount?: number } {
+  const idSet = new Set(petIds.filter((id) => id !== save.activePetId));
+  const targets = save.pets.filter((p) => idSet.has(p.id));
+  if (targets.length === 0) {
+    return { ok: false, save, message: '请选择要寄存的非出战伙伴' };
+  }
+  const maxCanDeposit = Math.max(0, save.pets.length - 1);
+  const actual = targets.slice(0, maxCanDeposit);
+  if (actual.length === 0) {
+    return { ok: false, save, message: '随身球盒至少需保留 1 只同行宝可梦！' };
+  }
+  const actualIds = new Set(actual.map((p) => p.id));
+  const nextPets = save.pets.filter((p) => !actualIds.has(p.id));
+  const nextStored = [...(save.storedPets ?? []), ...actual];
+  const lead = nextPets[0] ?? actual[0];
+  const diary = addDiary(
+    save,
+    lead,
+    'pokeball',
+    `批量将 ${actual.length} 只宝可梦寄存到了大木博士寄放箱。`,
+    now,
+  );
+  return {
+    ok: true,
+    depositedCount: actual.length,
+    save: {
+      ...save,
+      pets: nextPets,
+      storedPets: nextStored,
+      diary,
+    },
+    message: `📦 已将 ${actual.length} 只宝可梦寄存到大木博士处！`,
+  };
+}
+
 /** Withdraw a Pokémon from Professor Oak's PC Storage back into the active Pokéball Box */
 export function withdrawPetFromStorage(save: GameSave, petId: string): ActionOutcome {
   if (save.pets.length >= MAX_PET_SLOTS) {

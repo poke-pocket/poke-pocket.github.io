@@ -88,6 +88,7 @@ interface HandheldConsoleProps {
   onReleasePet: (petId: string) => boolean;
   onReleasePetsBatch?: (petIds: string[]) => { ok: boolean; count: number; coins: number; xp: number; message: string };
   onDepositPet?: (petId: string) => boolean;
+  onDepositPetsBatch?: (petIds: string[]) => { ok: boolean; count: number; message: string };
   onWithdrawPet?: (petId: string) => boolean;
   onSwitchPet: (petId: string) => void;
   onUpdatePetConfig?: (
@@ -161,6 +162,7 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   onReleasePet,
   onReleasePetsBatch,
   onDepositPet,
+  onDepositPetsBatch,
   onWithdrawPet,
   onSwitchPet,
   onUpdatePetConfig,
@@ -329,6 +331,7 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
       onReleasePet={onReleasePet}
       onReleasePetsBatch={onReleasePetsBatch}
       onDepositPet={onDepositPet}
+      onDepositPetsBatch={onDepositPetsBatch}
       onWithdrawPet={onWithdrawPet}
       onSwitchPet={onSwitchPet}
       onUpdatePetConfig={onUpdatePetConfig}

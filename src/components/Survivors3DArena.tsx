@@ -24,6 +24,7 @@ import {
   WORLD_SECTOR_SIZE,
   getDefaultSkillsForElement,
   getTerrainHeight3D,
+  getUnlockedSkillSlotCount,
   type DifficultyId,
   type LiveRunTacticsBridge,
   type SafeZone3D,
@@ -2929,7 +2930,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         species: p.species,
         name: p.name,
         stage,
-        level: 1 + Math.floor((p.enhanceLevel ?? 0) / 3),
+        level: 1,
         skin: p.skin,
         skills: fourSkills,
         x: fx,
@@ -3307,6 +3308,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         srcFollower.damageDealt += actualDmg;
       }
       en.hitFlash = 0.14;
+      sound.play('impact');
       if (prefsRef.current.showDamageNumbers) {
         sim.dmgPops.push({
           id: sim.nextId++,
@@ -3574,6 +3576,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             skillId: 'shadow_star',
           });
         }
+        sound.play('water');
       } else if (skillId === 'earthquake') {
         const rad = (6.0 + f.level * 0.9) * (tac.castMode === 'charged' ? 1.25 : 1.0);
         spawnGroundDecalWave(f.x, f.y, f.z, vfxAtlas.waterWaveDecal, rad, 0.5);
@@ -5411,18 +5414,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
 
+            const activeSlotCount = Math.min(f.skills.length, getUnlockedSkillSlotCount(f.level));
             if (tac.castMode === 'salvo') {
               if (triggerSalvo) {
                 const fired = new Set<SurvivorSkillId>();
-                for (const sk of f.skills) {
-                  if (!fired.has(sk)) {
+                for (let sIdx = 0; sIdx < activeSlotCount; sIdx++) {
+                  const sk = f.skills[sIdx];
+                  if (sk && !fired.has(sk)) {
                     fired.add(sk);
                     fireSkill(f, sk, true);
                   }
                 }
               }
             } else {
-              for (let sIdx = 0; sIdx < f.skills.length; sIdx++) {
+              for (let sIdx = 0; sIdx < activeSlotCount; sIdx++) {
                 const sid = f.skills[sIdx];
                 f.cds[sIdx] = (f.cds[sIdx] ?? 0.5) - dt;
                 if (f.cds[sIdx] <= 0) {
@@ -6696,7 +6701,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     if (choice.kind === 'upgrade_follower' && choice.followerId) {
       const f = sim.followers.find((x) => x.id === choice.followerId);
       if (f) {
+        const prevSlots = getUnlockedSkillSlotCount(f.level);
         f.level += 1;
+        const nextSlots = getUnlockedSkillSlotCount(f.level);
+        if (nextSlots > prevSlots) {
+          const unlockedSkill = SURVIVOR_SKILLS[f.skills[nextSlots - 1]];
+          if (unlockedSkill) {
+            showBanner(`✨ ${f.name} 升至 Lv.${f.level}，激活第 ${nextSlots} 招式槽【${unlockedSkill.name}】！`, 3400);
+          }
+        }
         syncFollowersView();
       }
     } else if (choice.kind === 'passive' && choice.passiveId) {

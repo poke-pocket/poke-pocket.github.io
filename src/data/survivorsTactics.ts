@@ -213,6 +213,27 @@ export const SURVIVOR_SKILLS: Record<SurvivorSkillId, SurvivorSkillMeta> = {
 
 export const ALL_SURVIVOR_SKILL_IDS = Object.keys(SURVIVOR_SKILLS) as SurvivorSkillId[];
 
+/**
+ * Progressive skill-slot unlock curve per follower level during a 3D run:
+ * Lv.1 -> 1 active skill (balanced early game!)
+ * Lv.2 -> 2 active skills
+ * Lv.4 -> 3 active skills
+ * Lv.6+ -> 4 active skills (full build!)
+ */
+export function getUnlockedSkillSlotCount(followerRunLevel: number): number {
+  if (followerRunLevel >= 6) return 4;
+  if (followerRunLevel >= 4) return 3;
+  if (followerRunLevel >= 2) return 2;
+  return 1;
+}
+
+export function getRequiredLevelForSkillSlot(slotIdx: number): number {
+  if (slotIdx <= 0) return 1;
+  if (slotIdx === 1) return 2;
+  if (slotIdx === 2) return 4;
+  return 6;
+}
+
 export function getDefaultSkillsForElement(
   element: PokemonElement,
 ): [SurvivorSkillId, SurvivorSkillId, SurvivorSkillId, SurvivorSkillId] {

@@ -15,6 +15,7 @@ export type SfxKind =
   | 'fireball'
   | 'water'
   | 'hit'
+  | 'impact'
   | 'ko'
   | 'pokeball'
   | 'jump';
@@ -205,8 +206,6 @@ class RetroSoundEngine {
   private cryCache = new Map<string, HTMLAudioElement>();
   private cryBufferCache = new Map<string, AudioBuffer>();
   private cryToneMode: 'warm' | 'cute' | 'raw' = 'warm';
-  private letsGoVoices = true;
-  private pikachuCryVariant: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw' = 'soft_voice';
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -248,26 +247,7 @@ class RetroSoundEngine {
     this.cryToneMode = mode;
   }
 
-  setLetsGoVoices(enabled: boolean) {
-    this.letsGoVoices = enabled;
-  }
-
-  setPikachuCryVariant(
-    variant: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw',
-  ) {
-    this.pikachuCryVariant = variant;
-  }
-
-  /** Audition a specific Pikachu cry audio file directly (bypasses cryEnabled check if previewing in settings) */
-  previewPikachuCry(
-    variant: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw',
-  ) {
-    if (typeof window === 'undefined') return;
-    const forceRaw = variant === 'original_raw';
-    this.playAudioUrl(`/cries/pikachu/${variant}.mp3`, true, forceRaw ? 'raw' : this.cryToneMode);
-  }
-
-  /** Audition any species cry with an optional tone mode override (great for A/B comparison in Settings!) */
+  /** Audition any species cry with an optional tone mode override */
   previewCry(dexId: number, modeOverride?: 'warm' | 'cute' | 'raw') {
     const mode = modeOverride ?? this.cryToneMode;
     if (mode === 'cute') {
@@ -278,16 +258,9 @@ class RetroSoundEngine {
     this.playAudioUrl(url, true, mode);
   }
 
+  private lastImpactTs = 0;
+
   private resolveCryUrl(dexId: number): string {
-    if (dexId === 25) {
-      if (this.letsGoVoices && this.pikachuCryVariant === 'soft_voice') {
-        return '/cries/pikachu/letsgo.mp3';
-      }
-      return `/cries/pikachu/${this.pikachuCryVariant}.mp3`;
-    }
-    if (dexId === 133 && this.letsGoVoices) {
-      return '/cries/eevee/letsgo.mp3';
-    }
     return `/cries/${dexId}.mp3`;
   }
 
@@ -638,25 +611,16 @@ class RetroSoundEngine {
     }
   }
 
-  /** Play authentic official Pokémon cry respecting Switch warm-EQ filter, cute chirp mode, or raw mode */
+  /** Play authentic official Pokémon cry unified with gentle Switch-style warm de-harshing EQ */
   playCry(dexId: number) {
-    if (this.cryToneMode === 'cute') {
-      // Even in cute chirp mode, Pikachu & Eevee can keep their adorable Let's Go voices if enabled!
-      if (this.letsGoVoices && (dexId === 25 || dexId === 133)) {
-        this.playAudioUrl(this.resolveCryUrl(dexId), false, 'warm');
-        return;
-      }
-      this.playCuteChirp(dexId, false);
-      return;
-    }
-    this.playAudioUrl(this.resolveCryUrl(dexId), false, this.cryToneMode);
+    this.playAudioUrl(this.resolveCryUrl(dexId), false, 'warm');
   }
 
   play(kind: SfxKind) {
     if (this.muted || this.sfxVolume <= 0) return;
     if (
       !this.combatSfxEnabled &&
-      (kind === 'thunder' || kind === 'fireball' || kind === 'water' || kind === 'hit' || kind === 'ko' || kind === 'jump')
+      (kind === 'thunder' || kind === 'fireball' || kind === 'water' || kind === 'hit' || kind === 'impact' || kind === 'ko' || kind === 'jump')
     ) {
       return;
     }
@@ -726,6 +690,15 @@ class RetroSoundEngine {
         this.noise(0.055, 0, 0.065, 500);
         this.tone(180, 0.06, 0, 'square', 0.06, false, 70);
         break;
+      case 'impact': {
+        // Throttled crisp enemy-hit impact pop (avoids harsh clipping on multi-hits!)
+        const nowTs = performance.now();
+        if (nowTs - this.lastImpactTs < 85) return;
+        this.lastImpactTs = nowTs;
+        this.tone(320, 0.045, 0, 'triangle', 0.05, false, 140);
+        this.noise(0.03, 0, 0.025, 1100);
+        break;
+      }
       case 'ko':
         this.tone(480, 0.07, 0, 'square', 0.055, false, 180);
         this.tone(240, 0.12, 0.06, 'sawtooth', 0.05, false, 85);

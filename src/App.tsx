@@ -34,6 +34,7 @@ import {
   cleanPoop,
   createInitialSave,
   depositPetToStorage,
+  depositPetsBatch,
   equipAccessory,
   feedPet,
   getActivePet,
@@ -148,9 +149,6 @@ export function App() {
     sound.setBgm(save.bgmEnabled, save.bgmVolume);
     sound.setMuted(save.muted);
     sound.setCry(save.cryEnabled ?? true, save.cryVolume ?? 80);
-    sound.setCryToneMode(save.prefs?.cryToneMode ?? 'warm');
-    sound.setLetsGoVoices(save.prefs?.letsGoVoices ?? true);
-    sound.setPikachuCryVariant(save.prefs?.pikachuCryVariant ?? 'soft_voice');
     sound.setCombatSfx(save.combatSfxEnabled ?? true);
     persistSave(save);
   }, [save]);
@@ -703,6 +701,23 @@ export function App() {
     [save, managerFromBattle, applyOutcome, showSpeech],
   );
 
+  const handleDepositPetsBatch = useCallback(
+    (petIds: string[]) => {
+      if (managerFromBattle) {
+        sound.play('error');
+        return { ok: false, count: 0, message: '战斗进行中无法寄存，请结束本局后再寄存！' };
+      }
+      const outcome = depositPetsBatch(save, petIds);
+      const ok = applyOutcome(outcome, 'confirm', true);
+      return {
+        ok,
+        count: outcome.depositedCount ?? 0,
+        message: outcome.message ?? '',
+      };
+    },
+    [save, managerFromBattle, applyOutcome],
+  );
+
   const handleWithdrawPet = useCallback(
     (petId: string): boolean => {
       if (managerFromBattle) {
@@ -792,9 +807,6 @@ export function App() {
       sound.setBgm(next.bgmEnabled, next.bgmVolume);
       sound.setMuted(next.muted);
       sound.setCry(next.cryEnabled ?? true, next.cryVolume ?? 80);
-      sound.setCryToneMode(nextPrefs?.cryToneMode ?? 'warm');
-      sound.setLetsGoVoices(nextPrefs?.letsGoVoices ?? true);
-      sound.setPikachuCryVariant(nextPrefs?.pikachuCryVariant ?? 'soft_voice');
       sound.setCombatSfx(next.combatSfxEnabled ?? true);
       return next;
     });
@@ -1218,6 +1230,7 @@ export function App() {
               onReleasePet={handleReleasePet}
               onReleasePetsBatch={handleReleasePetsBatch}
               onDepositPet={handleDepositPet}
+              onDepositPetsBatch={handleDepositPetsBatch}
               onWithdrawPet={handleWithdrawPet}
               onUpdateSettings={handleUpdateSettings}
               onUpdateMeta={handleUpdateMeta}
