@@ -144,6 +144,7 @@ export interface WorldCityDef {
   wildPool: SpeciesId[];
   signatureSpecies: SpeciesId[];
   rewardCoins: number;
+  settleCost: number;
 }
 
 export const WORLD_CITIES: WorldCityDef[] = [
@@ -174,6 +175,7 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['geodude', 'onix', 'rhyhorn', 'sandshrew', 'diglett', 'cubone', 'machop', 'growlithe', 'pidgey'],
     signatureSpecies: ['onix', 'rhyhorn', 'growlithe'],
     rewardCoins: 160,
+    settleCost: 1500,
   },
   {
     id: 'shanghai',
@@ -202,6 +204,7 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['pikachu', 'magnemite', 'voltorb', 'electabuzz', 'porygon', 'jolteon', 'meowth', 'psyduck', 'abra'],
     signatureSpecies: ['pikachu', 'electabuzz', 'porygon'],
     rewardCoins: 180,
+    settleCost: 1800,
   },
   {
     id: 'hangzhou',
@@ -230,6 +233,7 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['squirtle', 'poliwag', 'psyduck', 'staryu', 'magikarp', 'goldeen', 'vaporeon', 'jigglypuff', 'clefairy'],
     signatureSpecies: ['staryu', 'magikarp', 'vaporeon'],
     rewardCoins: 170,
+    settleCost: 1200,
   },
   {
     id: 'guangzhou',
@@ -258,6 +262,7 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['charmander', 'vulpix', 'growlithe', 'ponyta', 'magmar', 'flareon', 'machop', 'hitmonlee', 'hitmonchan'],
     signatureSpecies: ['growlithe', 'flareon', 'hitmonchan'],
     rewardCoins: 190,
+    settleCost: 1500,
   },
   {
     id: 'shenzhen',
@@ -286,6 +291,7 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['porygon', 'abra', 'magnemite', 'pikachu', 'voltorb', 'jolteon', 'staryu', 'horsea', 'eevee'],
     signatureSpecies: ['porygon', 'abra', 'magnemite'],
     rewardCoins: 200,
+    settleCost: 1600,
   },
   {
     id: 'chengdu',
@@ -314,6 +320,7 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['bulbasaur', 'caterpie', 'oddish', 'bellsprout', 'scyther', 'pinsir', 'munchlax', 'eevee', 'farfetchd'],
     signatureSpecies: ['munchlax', 'scyther', 'bulbasaur'],
     rewardCoins: 170,
+    settleCost: 1200,
   },
   {
     id: 'harbin',
@@ -342,6 +349,7 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['seel', 'shellder', 'lapras', 'jynx', 'slowpoke', 'vulpix', 'clefairy', 'articuno', 'dratini'],
     signatureSpecies: ['lapras', 'jynx', 'articuno'],
     rewardCoins: 240,
+    settleCost: 1400,
   },
   {
     id: 'hongkong',
@@ -370,6 +378,7 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['aerodactyl', 'omanyte', 'kabuto', 'horsea', 'magikarp', 'pidgey', 'electabuzz', 'zapdos', 'krabby'],
     signatureSpecies: ['aerodactyl', 'zapdos', 'kabuto'],
     rewardCoins: 240,
+    settleCost: 1800,
   },
   {
     id: 'tokyo',
@@ -398,6 +407,7 @@ export const WORLD_CITIES: WorldCityDef[] = [
     wildPool: ['pikachu', 'charmander', 'bulbasaur', 'squirtle', 'gastly', 'abra', 'dratini', 'moltres', 'mewtwo', 'mew'],
     signatureSpecies: ['mewtwo', 'mew', 'dratini'],
     rewardCoins: 360,
+    settleCost: 2200,
   },
 ];
 
@@ -415,6 +425,7 @@ export interface WorldTourState {
   stayUntilTs: number | null;
   clearedCityGyms: string[];
   visitedCities: string[];
+  settledCityIds?: string[];
 }
 
 export const DEFAULT_WORLD_TOUR_STATE: WorldTourState = {
@@ -424,6 +435,7 @@ export const DEFAULT_WORLD_TOUR_STATE: WorldTourState = {
   stayUntilTs: null,
   clearedCityGyms: [],
   visitedCities: [],
+  settledCityIds: [],
 };
 
 /**

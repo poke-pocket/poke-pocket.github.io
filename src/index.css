@@ -1331,16 +1331,8 @@ button:disabled {
   background: #161420;
 }
 
-.lcd-news-list.scroll-y > *,
-.lcd-news-detail.scroll-y > *,
-.pkb-prof-body.scroll-y > *,
-.bond-mega-wrap.scroll-y > *,
-.settings-stack.scroll-y > *,
-.train-tab-wrap.scroll-y > *,
-.dex-overview-wrap.scroll-y > *,
-.dex-items-wrap.scroll-y > *,
-.dex-journey-wrap.scroll-y > *,
-.info-modal-body.scroll-y > * {
+/* Prevent flex-column children inside ANY .scroll-y container from shrinking & clipping instead of scrolling! */
+.scroll-y > * {
   flex-shrink: 0;
 }
 
@@ -16166,27 +16158,51 @@ body,
 .wt-drawer {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  min-height: 0;
+  overflow: hidden;
+  gap: 8px;
+  padding: 10px 12px 12px;
   background: #f5f0e2;
   color: var(--ink);
   border-left: 3px solid #161420;
 }
 
 .wt-city-chips {
+  flex-shrink: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 1px 2px 6px 0;
+  scrollbar-width: thin;
+  scrollbar-color: #495057 #e7e1d1;
+}
+
+.wt-city-chips::-webkit-scrollbar {
+  height: 5px;
+}
+
+.wt-city-chips::-webkit-scrollbar-track {
+  background: #e7e1d1;
+}
+
+.wt-city-chips::-webkit-scrollbar-thumb {
+  background: #495057;
 }
 
 .wt-chip {
-  padding: 4px 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 4px 9px;
   font-size: 11px;
   font-weight: 800;
   color: #161420;
   background: #fffdf4;
   border: 2px solid #161420;
   box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
 }
 
 .wt-chip.active {
@@ -16197,18 +16213,23 @@ body,
   border-color: #228be6;
 }
 
+.wt-chip.is-settled {
+  border-color: #2b8a3e;
+}
+
 .wt-card {
+  flex: 1 1 0%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
   background: #fffdf4;
   border: 2.5px solid #161420;
   box-shadow: 4px 4px 0 #161420;
-  padding-bottom: 12px;
   overflow: hidden;
 }
 
 .wt-card-head {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -16217,6 +16238,25 @@ body,
   color: #fffdf5;
   border-bottom: 2.5px solid #161420;
   font-size: 13px;
+}
+
+.wt-card-body {
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.wt-card-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 12px 10px;
+  background: #f5f0e2;
+  border-top: 2px solid #161420;
 }
 
 .wt-card-head.is-locked {
@@ -16231,14 +16271,14 @@ body,
 }
 
 .wt-desc {
-  margin: 0 12px;
+  margin: 0;
   font-size: 11px;
   line-height: 1.45;
   color: var(--ink-soft);
 }
 
 .wt-hometurf-pill {
-  margin: 0 12px;
+  margin: 0;
   padding: 6px 8px;
   font-size: 11px;
   font-weight: 800;
@@ -16248,7 +16288,7 @@ body,
 }
 
 .wt-stay-box {
-  margin: 0 12px;
+  margin: 0;
   padding: 7px 9px;
   display: flex;
   align-items: center;
@@ -16256,6 +16296,11 @@ body,
   gap: 8px;
   background: #fff9db;
   border: 2px solid #161420;
+}
+
+.wt-stay-box.is-settled {
+  background: #d3f9d8;
+  border-color: #2b8a3e;
 }
 
 .wt-stay-box.is-expired {
@@ -16282,7 +16327,7 @@ body,
 }
 
 .wt-gym-banner {
-  margin: 0 12px;
+  margin: 0;
   padding: 8px;
   display: flex;
   align-items: center;
@@ -16322,14 +16367,14 @@ body,
 }
 
 .wt-sec-lbl {
-  margin: 0 12px -4px;
+  margin: 0 0 -4px;
   font-size: 11px;
   font-weight: 800;
   color: #161420;
 }
 
 .wt-poke-strip {
-  margin: 0 12px;
+  margin: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
@@ -16353,7 +16398,7 @@ body,
 }
 
 .wt-hotel-list {
-  margin: 0 12px;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -16386,7 +16431,7 @@ body,
 }
 
 .wt-ticket-summary {
-  margin: 0 12px;
+  margin: 0;
   padding: 6px 10px;
   display: flex;
   align-items: center;
@@ -16397,7 +16442,7 @@ body,
 }
 
 .wt-action-stack {
-  margin: 0 12px;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -16410,9 +16455,9 @@ body,
 }
 
 .wt-primary-btn {
-  margin: 0 12px;
-  padding: 10px 12px;
-  font-size: 13px;
+  margin: 0;
+  padding: 9px 12px;
+  font-size: 12.5px;
   font-weight: 800;
   color: #fffdf5;
   background: linear-gradient(135deg, #2fb344 0%, #208a3c 100%);
@@ -16421,8 +16466,9 @@ body,
   cursor: pointer;
 }
 
-.wt-action-stack .wt-primary-btn {
-  margin: 0;
+.wt-primary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .wt-primary-btn.is-gym {
@@ -16444,8 +16490,19 @@ body,
   cursor: pointer;
 }
 
+.wt-secondary-btn.is-settle {
+  background: #fff3bf;
+  border-color: #d9480f;
+  color: #7c2d12;
+}
+
+.wt-secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .wt-locked-note {
-  margin: 0 12px;
+  margin: 0;
   padding: 10px;
   font-size: 11px;
   text-align: center;

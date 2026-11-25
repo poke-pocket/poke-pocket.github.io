@@ -194,6 +194,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   onClose,
 }) => {
   const tour: WorldTourState = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+  const settledIds = tour.settledCityIds ?? [];
   const defaultHome = useMemo(() => getDefaultHomeByLanguage(lang), [lang]);
   const effectiveHome = tour.homeCoords ?? defaultHome;
   const nowMs = Date.now();
@@ -204,14 +205,18 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     () => WORLD_CITIES.find((c) => c.id === tour.currentCityId) ?? null,
     [tour.currentCityId],
   );
+  const homeMatchedCity = useMemo(() => {
+    const eco = getLocalHomeEcology(effectiveHome.lat, effectiveHome.lng);
+    return eco.nearestDistKm <= 80 ? eco.nearestCity : null;
+  }, [effectiveHome.lat, effectiveHome.lng]);
+  const activeHereCity = currentCity ?? homeMatchedCity;
+  const isAtHomeCity = !currentCity && Boolean(homeMatchedCity);
 
   const [selectedCityId, setSelectedCityId] = useState<string | null>(
     tour.currentCityId ?? defaultHome.defaultCityId,
   );
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selectedHotel, setSelectedHotel] = useState<HotelTierId>('inn');
-  const [pickHomeMode, setPickHomeMode] = useState(false);
-  const [pixelStyle, setPixelStyle] = useState<'pixel' | 'crisp'>('pixel');
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -301,17 +306,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     return [dmx * wp + stageSize.w / 2, (my - c.my) * wp + stageSize.h / 2];
   };
 
-  const screenToMerc = (
-    sx: number,
-    sy: number,
-    c = camRef.current,
-  ): [number, number] => {
-    const wp = worldPxAt(c.zoom);
-    const mx = (((c.mx + (sx - stageSize.w / 2) / wp) % 1) + 1) % 1;
-    const my = Math.max(0.01, Math.min(0.99, c.my + (sy - stageSize.h / 2) / wp));
-    return [mx, my];
-  };
-
   // Cursor-centered zoom helper
   const zoomAroundScreenPoint = (sx: number, sy: number, deltaZoom: number) => {
     setCam((prev) => {
@@ -336,19 +330,21 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       setFlightAnim(null);
       if (target && tier) {
         const tierMeta = HOTEL_TIERS.find((t) => t.id === tier) ?? HOTEL_TIERS[0];
-        const stayUntilTs = Date.now() + tierMeta.days * 24 * 3600_000;
+        const isSettledTarget = (tour.settledCityIds ?? []).includes(target.id);
+        const stayUntilTs = isSettledTarget ? null : Date.now() + tierMeta.days * 24 * 3600_000;
         onUpdateMeta((prev) => {
           const prevTour = prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
           const visited = prevTour.visitedCities.includes(target.id)
             ? prevTour.visitedCities
             : [...prevTour.visitedCities, target.id];
+          const settledHere = (prevTour.settledCityIds ?? []).includes(target.id);
           return {
             ...prev,
             worldTour: {
               ...prevTour,
               currentCityId: target.id,
-              stayHotelTier: tier,
-              stayUntilTs,
+              stayHotelTier: settledHere ? 'grand' : tier,
+              stayUntilTs: settledHere ? null : stayUntilTs,
               visitedCities: visited,
             },
           };
@@ -362,7 +358,11 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           zoom: 9.5,
         });
         sound.play('levelup');
-        showToast(`✈ 已抵达${target.name}，顺利入住「${target.hotelNames[tier]}」(${tierMeta.days}天)！`);
+        showToast(
+          isSettledTarget
+            ? `🏡 已飞抵你的定居城市「${target.name}」，永久免费入住自有房产！`
+            : `✈ 已抵达${target.name}，顺利入住「${target.hotelNames[tier]}」(${tierMeta.days}天)！`,
+        );
       } else {
         onUpdateMeta((prev) => ({
           ...prev,
@@ -444,8 +444,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           const key = `${activeLayer}/${tileZ}/${tx}/${ty}`;
           const hit = TILE_CACHE.get(key);
           if (hit) {
-            ctx.imageSmoothingEnabled = pixelStyle === 'crisp';
-            ctx.drawImage(pixelStyle === 'pixel' ? hit.pixelImg : hit.rawImg, dx, dy, dw, dh);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(hit.pixelImg, dx, dy, dw, dh);
           } else {
             // Queue tile fetch & immediately paint closest cached parent tile so zooming is 100% flicker-free!
             requestTile(activeLayer, tileZ, tx, ty);
@@ -456,13 +456,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               const pty = ty >> shift;
               const pHit = TILE_CACHE.get(`${activeLayer}/${pz}/${ptx}/${pty}`);
               if (pHit) {
-                const imgSrc = pixelStyle === 'pixel' ? pHit.pixelImg : pHit.rawImg;
+                const imgSrc = pHit.pixelImg;
                 const subCount = 1 << shift;
                 const subX = tx & (subCount - 1);
                 const subY = ty & (subCount - 1);
                 const sw = imgSrc.width / subCount;
                 const sh = imgSrc.height / subCount;
-                ctx.imageSmoothingEnabled = pixelStyle === 'crisp';
+                ctx.imageSmoothingEnabled = false;
                 ctx.drawImage(imgSrc, subX * sw, subY * sh, sw, sh, dx, dy, dw, dh);
                 drawnFallback = true;
               }
@@ -473,7 +473,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       ctx.imageSmoothingEnabled = false;
 
       // Subtle retro pixel scanline / grid tint when zoomed out for cohesive GBA Atlas feel
-      if (pixelStyle === 'pixel' && c.zoom < 10) {
+      if (c.zoom < 10) {
         ctx.fillStyle = 'rgba(18, 28, 48, 0.08)';
         ctx.fillRect(0, 0, stageSize.w, stageSize.h);
       }
@@ -510,7 +510,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       }
 
       // 5. Dashed Flight Preview Arc
-      if (selectedCity && selectedCity.id !== tour.currentCityId && !flightAnim) {
+      if (selectedCity && selectedCity.id !== activeHereCity?.id && !flightAnim) {
         const [sx1, sy1] = mercToScreen(lngToMercX(originPoint.lng), latToMercY(originPoint.lat), c);
         const [sx2, sy2] = mercToScreen(lngToMercX(selectedCity.lng), latToMercY(selectedCity.lat), c);
         const midX = (sx1 + sx2) / 2;
@@ -556,7 +556,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       for (const city of WORLD_CITIES) {
         const [sx, sy] = mercToScreen(lngToMercX(city.lng), latToMercY(city.lat), c);
         if (sx < -60 || sx > stageSize.w + 60 || sy < -60 || sy > stageSize.h + 60) continue;
-        const isCurrent = tour.currentCityId === city.id;
+        const isCurrent = activeHereCity?.id === city.id;
         const isSelected = selectedCityId === city.id;
         const isCleared = tour.clearedCityGyms.includes(city.id);
 
@@ -645,12 +645,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     };
     rafId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(rafId);
-  }, [stageSize, selectedCity, selectedCityId, tour, originPoint, flightAnim, pixelStyle]);
+  }, [stageSize, selectedCity, selectedCityId, tour, originPoint, flightAnim, activeHereCity]);
 
   // Real Browser GPS Geolocation Handler (zooms smoothly right into user's real neighborhood!)
   const handleLocateGps = () => {
     if (!('geolocation' in navigator)) {
-      setGpsStatus('当前浏览器不支持 GPS，请点击「📌 点选老家」');
+      setGpsStatus('当前浏览器不支持 GPS，将按语言使用默认出生点，也可花钱在任意城市定居');
       return;
     }
     setGpsStatus('正在获取真实 GPS 坐标...');
@@ -678,7 +678,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         showToast(`📍 GPS 重生点已锚定：${label}（可继续滚轮放大至街道级！）`);
       },
       () => {
-        setGpsStatus('未授予 GPS 定位权限，可点击「📌 点选老家」在地图上自选重生点');
+        setGpsStatus('未授予 GPS 定位权限，将按当前语言使用默认出生点，也可花钱在其他城市定居');
         sound.play('error');
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
@@ -752,28 +752,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
 
-    if (pickHomeMode) {
-      const [mx, my] = screenToMerc(sx, sy);
-      const lat = mercYToLat(my);
-      const lng = mercXToLng(mx);
-      const eco = getLocalHomeEcology(lat, lng);
-      const label =
-        eco.nearestDistKm <= 100
-          ? `${eco.nearestCity.name} · 自选老家`
-          : `自选老家 (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`;
-      onUpdateMeta((prev) => ({
-        ...prev,
-        worldTour: {
-          ...(prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE),
-          homeCoords: { lat, lng, label, isRealGps: false },
-        },
-      }));
-      setPickHomeMode(false);
-      sound.play('confirm');
-      showToast(`🏠 已将重生点设为：${label}`);
-      return;
-    }
-
     // Hit-test unlocked cities
     let hitCity: WorldCityDef | null = null;
     let bestD = 26;
@@ -824,9 +802,10 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       tour.homeCoords?.isRealGps &&
         calcGeoDistanceKm(tour.homeCoords.lat, tour.homeCoords.lng, target.lat, target.lng) <= 80,
     );
+    const isSettled = settledIds.includes(target.id);
     const ticketCost = calcFlightTicketCost(distKm, isRealHomeTurf);
     const tierMeta = HOTEL_TIERS.find((t) => t.id === selectedHotel) ?? HOTEL_TIERS[0];
-    const hotelCost = isRealHomeTurf ? 0 : tierMeta.pricePerStay;
+    const hotelCost = isRealHomeTurf || isSettled ? 0 : tierMeta.pricePerStay;
     const totalCost = ticketCost + hotelCost;
 
     if (coins < totalCost) {
@@ -853,10 +832,60 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       toLng: target.lng,
       toLat: target.lat,
       targetCity: target,
-      hotelTier: selectedHotel,
+      hotelTier: isSettled ? 'grand' : selectedHotel,
       startedAt: Date.now(),
       durationMs: 1850,
     });
+  };
+
+  const handleSettleInCity = (city: WorldCityDef) => {
+    const alreadySettled = settledIds.includes(city.id);
+    if (!alreadySettled && coins < city.settleCost) {
+      sound.play('error');
+      showToast(`金币不足！在${city.name}买房定居需要 ${city.settleCost} 宝可币（当前 ${coins}）`);
+      return;
+    }
+    onUpdateMeta(
+      (prev) => {
+        const prevTour = prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+        const prevSettled = prevTour.settledCityIds ?? [];
+        const nextSettled = prevSettled.includes(city.id) ? prevSettled : [...prevSettled, city.id];
+        const nextVisited = prevTour.visitedCities.includes(city.id)
+          ? prevTour.visitedCities
+          : [...prevTour.visitedCities, city.id];
+        return {
+          ...prev,
+          worldTour: {
+            ...prevTour,
+            homeCoords: {
+              lat: city.lat,
+              lng: city.lng,
+              label: `定居 · ${city.name}`,
+              isRealGps: false,
+            },
+            currentCityId: city.id,
+            stayHotelTier: 'grand',
+            stayUntilTs: null,
+            visitedCities: nextVisited,
+            settledCityIds: nextSettled,
+          },
+        };
+      },
+      alreadySettled ? 0 : -city.settleCost,
+    );
+    setSelectedCityId(city.id);
+    setSelectedZoneId(null);
+    setCam({
+      mx: lngToMercX(city.lng),
+      my: latToMercY(city.lat),
+      zoom: Math.max(camRef.current.zoom, 10.5),
+    });
+    sound.play('levelup');
+    showToast(
+      alreadySettled
+        ? `🏡 已将常驻定居点切换至「${city.name}」，永久免费停留！`
+        : `🏡 恭喜在${city.name}购置定居房产！从此永久免费停留并享五星全队增益！`,
+    );
   };
 
   const handleExtendStay = (city: WorldCityDef, tier: HotelTierId) => {
@@ -906,30 +935,35 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   };
 
   const handleLaunchFromCurrent = (isGym: boolean) => {
-    if (currentCity && isStayExpired) {
+    const targetHere = activeHereCity;
+    const isSettledHere = Boolean(targetHere && settledIds.includes(targetHere.id));
+    if (currentCity && !isSettledHere && isStayExpired) {
       sound.play('error');
       showToast('酒店住宿已到期，请先续住或免费返回家乡！');
       return;
     }
-    if (currentCity) {
-      const isHomeTurf = Boolean(
-        tour.homeCoords?.isRealGps &&
-          calcGeoDistanceKm(tour.homeCoords.lat, tour.homeCoords.lng, currentCity.lat, currentCity.lng) <= 80,
-      );
+    if (targetHere) {
+      const isHomeTurf =
+        isAtHomeCity ||
+        isSettledHere ||
+        Boolean(
+          tour.homeCoords?.isRealGps &&
+            calcGeoDistanceKm(tour.homeCoords.lat, tour.homeCoords.lng, targetHere.lat, targetHere.lng) <= 80,
+        );
       onLaunchWorldRun({
-        cityId: currentCity.id,
-        cityName: currentCity.name,
-        biome: currentCity.biome,
-        wildPool: currentCity.wildPool,
+        cityId: targetHere.id,
+        cityName: targetHere.name,
+        biome: targetHere.biome,
+        wildPool: targetHere.wildPool,
         isGymChallenge: isGym,
-        gymName: currentCity.gymName,
-        gymBadgeName: currentCity.gymBadgeName,
-        bossSpecies: currentCity.gymBossSpecies,
-        bossName: currentCity.gymBossTitle,
-        bossTrainerKey: currentCity.gymTrainerKey,
-        bossTrainerName: currentCity.gymLeaderName,
-        rewardCoins: currentCity.rewardCoins,
-        hotelTier: tour.stayHotelTier,
+        gymName: targetHere.gymName,
+        gymBadgeName: targetHere.gymBadgeName,
+        bossSpecies: targetHere.gymBossSpecies,
+        bossName: targetHere.gymBossTitle,
+        bossTrainerKey: targetHere.gymTrainerKey,
+        bossTrainerName: targetHere.gymLeaderName,
+        rewardCoins: targetHere.rewardCoins,
+        hotelTier: isSettledHere ? 'grand' : tour.stayHotelTier,
         isHomeTurf,
       });
       return;
@@ -949,7 +983,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     });
   };
 
-  const isViewingCurrentCity = Boolean(selectedCity && currentCity && selectedCity.id === currentCity.id);
+  const isViewingCurrentCity = Boolean(selectedCity && activeHereCity && selectedCity.id === activeHereCity.id);
   const isViewingHome = !selectedCity && !selectedZone;
   const centerLat = mercYToLat(cam.my);
   const centerLng = mercXToLng(cam.mx);
@@ -965,26 +999,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           <span>返回大厅</span>
         </button>
 
-        <div className="wt-status-pill">
-          <PixelItemImg src="/sprites/items/town-map.png" size={16} />
-          {currentCity ? (
-            <span>
-              <strong>{currentCity.name}</strong>
-              {' · '}
-              {tour.stayHotelTier ? currentCity.hotelNames[tour.stayHotelTier] : '临时停留'}
-              {' · '}
-              <em className={isStayExpired ? 'is-expired' : ''}>
-                {formatRemainingStay(tour.stayUntilTs, nowMs)}
-              </em>
-            </span>
-          ) : (
-            <span>
-              <strong>{effectiveHome.label}</strong>
-              {' · 永久免费停留'}
-            </span>
-          )}
-        </div>
-
         <div className="wt-header-right">
           <button
             type="button"
@@ -994,17 +1008,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           >
             <span>📍 GPS老家</span>
           </button>
-          <button
-            type="button"
-            className={`wt-gps-btn ${pickHomeMode ? 'is-armed' : ''}`}
-            onClick={() => {
-              sound.play('cursor');
-              setPickHomeMode((v) => !v);
-            }}
-            title="在地图上手动点击任意地点设为家乡重生点"
-          >
-            <span>{pickHomeMode ? '点击地图设点…' : '📌 点选老家'}</span>
-          </button>
           <div className="wt-coin-pill">
             <PixelItemImg src="/sprites/items/amulet-coin.png" size={15} />
             <strong>{coins}</strong>
@@ -1013,7 +1016,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       </header>
 
       <div className="wt-body">
-        <div ref={stageRef} className={`wt-map-stage ${pickHomeMode ? 'is-picking' : ''}`}>
+        <div ref={stageRef} className="wt-map-stage">
           <canvas
             ref={canvasRef}
             className="wt-map-canvas"
@@ -1062,14 +1065,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             >
               全球
             </button>
-            <button
-              type="button"
-              className={pixelStyle === 'pixel' ? 'is-on' : ''}
-              onClick={() => setPixelStyle((s) => (s === 'pixel' ? 'crisp' : 'pixel'))}
-              title="切换复古 GBA 像素化渲染 / 高清原图渲染"
-            >
-              {pixelStyle === 'pixel' ? '像素风' : '高清图'}
-            </button>
           </div>
 
           <div className="wt-map-legend">
@@ -1099,7 +1094,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           )}
         </div>
 
-        <aside className="wt-drawer scroll-y">
+        <aside className="wt-drawer">
           <div className="wt-city-chips">
             <button
               type="button"
@@ -1119,12 +1114,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             </button>
             {WORLD_CITIES.map((c) => {
               const cleared = tour.clearedCityGyms.includes(c.id);
-              const isHere = tour.currentCityId === c.id;
+              const isHere = activeHereCity?.id === c.id;
+              const isSettled = settledIds.includes(c.id);
               return (
                 <button
                   key={c.id}
                   type="button"
-                  className={`wt-chip ${selectedCityId === c.id ? 'active' : ''} ${isHere ? 'is-here' : ''}`}
+                  className={`wt-chip ${selectedCityId === c.id ? 'active' : ''} ${isHere ? 'is-here' : ''} ${isSettled ? 'is-settled' : ''}`}
                   onClick={() => {
                     sound.play('cursor');
                     setSelectedCityId(c.id);
@@ -1136,7 +1132,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     }));
                   }}
                 >
-                  {isHere ? '📍' : cleared ? '👑' : ''}
+                  {isSettled ? '🏡' : isHere ? '📍' : cleared ? '👑' : ''}
                   {c.name}
                 </button>
               );
@@ -1149,18 +1145,20 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 <strong>🔒 {selectedZone.name}</strong>
                 <span>{selectedZone.seasonTag}</span>
               </div>
-              <p className="wt-desc">{selectedZone.teaserText}</p>
-              <div className="wt-sec-lbl">预计栖息代表宝可梦</div>
-              <div className="wt-poke-strip">
-                {selectedZone.teaserSpecies.map((sp) => (
-                  <div key={sp} className="wt-poke-chip">
-                    <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
-                    <span>{SPECIES_CATALOG[sp].defaultName}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="wt-locked-note">
-                该赛区航线尚未开放，敬请期待后续赛季陆续解封！
+              <div className="wt-card-body scroll-y">
+                <p className="wt-desc">{selectedZone.teaserText}</p>
+                <div className="wt-sec-lbl">预计栖息代表宝可梦</div>
+                <div className="wt-poke-strip">
+                  {selectedZone.teaserSpecies.map((sp) => (
+                    <div key={sp} className="wt-poke-chip">
+                      <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
+                      <span>{SPECIES_CATALOG[sp].defaultName}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="wt-locked-note">
+                  该赛区航线尚未开放，敬请期待后续赛季陆续解封！
+                </div>
               </div>
             </div>
           )}
@@ -1175,85 +1173,109 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   <strong>🏠 {effectiveHome.label}</strong>
                   <span>永久免费</span>
                 </div>
-                <p className="wt-desc">
-                  当前匹配生态：<strong>{eco.regionLabel}</strong>（{lat.toFixed(3)}°, {lng.toFixed(3)}°）。
-                  {!tour.homeCoords && '未开启 GPS 时自动按界面语言定位（中文默认上海 / 日语默认东京）。'}
-                  滚轮或双指放大可一直下钻到你的真实街区！
-                </p>
-                {!tour.homeCoords && (
-                  <button type="button" className="wt-secondary-btn" onClick={handleLocateGps}>
-                    📍 点击获取真实 GPS 坐标设为老家
-                  </button>
-                )}
-                <div className="wt-sec-lbl">家乡周边野生宝可梦</div>
-                <div className="wt-poke-strip">
-                  {eco.wildPool.slice(0, 8).map((sp) => (
-                    <div key={sp} className="wt-poke-chip">
-                      <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
-                      <span>{SPECIES_CATALOG[sp].defaultName}</span>
-                    </div>
-                  ))}
+                <div className="wt-card-body scroll-y">
+                  <p className="wt-desc">
+                    当前匹配生态：<strong>{eco.regionLabel}</strong>（{lat.toFixed(3)}°, {lng.toFixed(3)}°）。
+                    {!tour.homeCoords && '未开启 GPS 时自动按界面语言定位（中文默认上海 / 日语默认东京），也可花钱在任意城市置业定居！'}
+                  </p>
+                  {!tour.homeCoords?.isRealGps && (
+                    <button type="button" className="wt-secondary-btn" onClick={handleLocateGps}>
+                      📍 获取真实 GPS 坐标设为家乡
+                    </button>
+                  )}
+                  <div className="wt-sec-lbl">家乡周边野生宝可梦</div>
+                  <div className="wt-poke-strip">
+                    {eco.wildPool.slice(0, 8).map((sp) => (
+                      <div key={sp} className="wt-poke-chip">
+                        <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
+                        <span>{SPECIES_CATALOG[sp].defaultName}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                {currentCity ? (
-                  <button type="button" className="wt-primary-btn" onClick={handleFlyHome}>
-                    ✈ 免费乘机返回家乡
-                  </button>
-                ) : (
-                  <button type="button" className="wt-primary-btn" onClick={() => handleLaunchFromCurrent(false)}>
-                    🌿 在家乡原野自由探索 (3D)
-                  </button>
-                )}
+                <div className="wt-card-footer">
+                  {currentCity ? (
+                    <button type="button" className="wt-primary-btn" onClick={handleFlyHome}>
+                      ✈ 免费乘机返回家乡
+                    </button>
+                  ) : (
+                    <button type="button" className="wt-primary-btn" onClick={() => handleLaunchFromCurrent(false)}>
+                      🌿 在家乡原野自由探索 (3D)
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })()}
 
           {selectedCity && isViewingCurrentCity && (() => {
             const cleared = tour.clearedCityGyms.includes(selectedCity.id);
+            const isSettled = settledIds.includes(selectedCity.id);
+            const isFreeHomeStay = isSettled || isAtHomeCity;
             const curTierMeta = HOTEL_TIERS.find((t) => t.id === tour.stayHotelTier) ?? HOTEL_TIERS[0];
             return (
               <div className="wt-card">
                 <div className="wt-card-head" style={{ backgroundColor: selectedCity.accentColor }}>
-                  <strong>📍 {selectedCity.name} · 城市据点</strong>
+                  <strong>
+                    {isSettled ? '🏡' : '📍'} {selectedCity.name} ·{' '}
+                    {isSettled ? '定居据点' : isAtHomeCity ? '当前所在' : '城市据点'}
+                  </strong>
                   <span>{selectedCity.country}</span>
                 </div>
 
-                <div className={`wt-stay-box ${isStayExpired ? 'is-expired' : ''}`}>
-                  <div>
-                    <strong>🏨 {selectedCity.hotelNames[curTierMeta.id]}</strong>
-                    <small>{curTierMeta.perkLabel}</small>
-                  </div>
-                  <em>{formatRemainingStay(tour.stayUntilTs, nowMs)}</em>
-                </div>
-
-                <p className="wt-desc">{selectedCity.fieldEffect}</p>
-
-                <div className="wt-gym-banner">
-                  <img
-                    src={SPECIES_CATALOG[selectedCity.gymBossSpecies].stageSprites.adult.static}
-                    alt={selectedCity.gymBossTitle}
-                  />
-                  <div>
-                    <strong>{selectedCity.gymName} {cleared ? '👑 已征服' : ''}</strong>
-                    <small>{selectedCity.gymLeaderName} · 王牌：{selectedCity.gymBossTitle}</small>
-                    <em>徽章：{selectedCity.gymBadgeName}</em>
-                  </div>
-                </div>
-
-                <div className="wt-sec-lbl">本地区专属野生精灵</div>
-                <div className="wt-poke-strip">
-                  {selectedCity.wildPool.map((sp) => (
-                    <div key={sp} className="wt-poke-chip">
-                      <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
-                      <span>{SPECIES_CATALOG[sp].defaultName}</span>
+                <div className="wt-card-body scroll-y">
+                  <div className={`wt-stay-box ${isFreeHomeStay ? 'is-settled' : isStayExpired ? 'is-expired' : ''}`}>
+                    <div>
+                      <strong>
+                        {isSettled
+                          ? `🏡 ${selectedCity.name}自有定居房产`
+                          : isAtHomeCity
+                            ? `🏠 ${selectedCity.name} · 本城常驻据点`
+                            : `🏨 ${selectedCity.hotelNames[curTierMeta.id]}`}
+                      </strong>
+                      <small>
+                        {isSettled
+                          ? '永久免住宿费 · 异色概率 UP · 全队攻击 +12%'
+                          : isAtHomeCity
+                            ? '当前身处本城，免机票免房费，可直接挑战道馆或出城探索'
+                            : curTierMeta.perkLabel}
+                      </small>
                     </div>
-                  ))}
+                    <em>
+                      {isSettled ? '永久定居' : isAtHomeCity ? '本城常驻' : formatRemainingStay(tour.stayUntilTs, nowMs)}
+                    </em>
+                  </div>
+
+                  <p className="wt-desc">{selectedCity.fieldEffect}</p>
+
+                  <div className="wt-gym-banner">
+                    <img
+                      src={SPECIES_CATALOG[selectedCity.gymBossSpecies].stageSprites.adult.static}
+                      alt={selectedCity.gymBossTitle}
+                    />
+                    <div>
+                      <strong>{selectedCity.gymName} {cleared ? '👑 已征服' : ''}</strong>
+                      <small>{selectedCity.gymLeaderName} · 王牌：{selectedCity.gymBossTitle}</small>
+                      <em>徽章：{selectedCity.gymBadgeName}</em>
+                    </div>
+                  </div>
+
+                  <div className="wt-sec-lbl">本地区专属野生精灵</div>
+                  <div className="wt-poke-strip">
+                    {selectedCity.wildPool.map((sp) => (
+                      <div key={sp} className="wt-poke-chip">
+                        <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
+                        <span>{SPECIES_CATALOG[sp].defaultName}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="wt-action-stack">
+                <div className="wt-card-footer">
                   <button
                     type="button"
                     className="wt-primary-btn is-gym"
-                    disabled={isStayExpired}
+                    disabled={!isFreeHomeStay && isStayExpired}
                     onClick={() => handleLaunchFromCurrent(true)}
                   >
                     ⚔ 挑战「{selectedCity.gymName}」(3D)
@@ -1261,23 +1283,45 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   <button
                     type="button"
                     className="wt-primary-btn"
-                    disabled={isStayExpired}
+                    disabled={!isFreeHomeStay && isStayExpired}
                     onClick={() => handleLaunchFromCurrent(false)}
                   >
                     🌿 出城探索 {selectedCity.name} 野外 (3D)
                   </button>
-                  <div className="wt-sub-ops">
-                    <button
-                      type="button"
-                      className="wt-secondary-btn"
-                      onClick={() => handleExtendStay(selectedCity, curTierMeta.id)}
-                    >
-                      🔄 续住 +{curTierMeta.days}天 ({curTierMeta.pricePerStay}币)
-                    </button>
+                  {isAtHomeCity ? (
+                    !isSettled && (
+                      <button
+                        type="button"
+                        className="wt-secondary-btn is-settle"
+                        disabled={coins < selectedCity.settleCost}
+                        onClick={() => handleSettleInCity(selectedCity)}
+                      >
+                        🏡 在{selectedCity.name}购置定居房产 ({selectedCity.settleCost} 币 · 异色UP+全队攻+12%)
+                      </button>
+                    )
+                  ) : !isSettled ? (
+                    <div className="wt-sub-ops">
+                      <button
+                        type="button"
+                        className="wt-secondary-btn is-settle"
+                        disabled={coins < selectedCity.settleCost}
+                        onClick={() => handleSettleInCity(selectedCity)}
+                      >
+                        🏡 定居此城 ({selectedCity.settleCost}币)
+                      </button>
+                      <button
+                        type="button"
+                        className="wt-secondary-btn"
+                        onClick={() => handleExtendStay(selectedCity, curTierMeta.id)}
+                      >
+                        🔄 续住 +{curTierMeta.days}天 ({curTierMeta.pricePerStay}币)
+                      </button>
+                    </div>
+                  ) : (
                     <button type="button" className="wt-secondary-btn" onClick={handleFlyHome}>
-                      ✈ 返乡回家
+                      🏠 返回老家 / GPS 原野
                     </button>
-                  </div>
+                  )}
                 </div>
               </div>
             );
@@ -1289,87 +1333,119 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               tour.homeCoords?.isRealGps &&
                 calcGeoDistanceKm(tour.homeCoords.lat, tour.homeCoords.lng, selectedCity.lat, selectedCity.lng) <= 80,
             );
+            const isSettled = settledIds.includes(selectedCity.id);
             const ticketCost = calcFlightTicketCost(distKm, isRealHomeTurf);
             const tierMeta = HOTEL_TIERS.find((t) => t.id === selectedHotel) ?? HOTEL_TIERS[0];
-            const hotelCost = isRealHomeTurf ? 0 : tierMeta.pricePerStay;
+            const hotelCost = isRealHomeTurf || isSettled ? 0 : tierMeta.pricePerStay;
             const totalCost = ticketCost + hotelCost;
             const cleared = tour.clearedCityGyms.includes(selectedCity.id);
 
             return (
               <div className="wt-card">
                 <div className="wt-card-head" style={{ backgroundColor: selectedCity.accentColor }}>
-                  <strong>✈ 飞往 {selectedCity.name}</strong>
+                  <strong>{isSettled ? '🏡' : '✈'} 飞往 {selectedCity.name}</strong>
                   <span>{distKm.toLocaleString()} km</span>
                 </div>
 
-                <p className="wt-desc">{selectedCity.description}</p>
+                <div className="wt-card-body scroll-y">
+                  <p className="wt-desc">{selectedCity.description}</p>
 
-                {isRealHomeTurf && (
-                  <div className="wt-hometurf-pill">
-                    🏠 真实 GPS 主场共鸣！免机票免住宿费 + 本地闪光 UP！
-                  </div>
-                )}
-
-                <div className="wt-gym-banner">
-                  <img
-                    src={SPECIES_CATALOG[selectedCity.gymBossSpecies].stageSprites.adult.static}
-                    alt={selectedCity.gymBossTitle}
-                  />
-                  <div>
-                    <strong>{selectedCity.gymName} {cleared ? '👑' : ''}</strong>
-                    <small>{selectedCity.gymTypeLabel} · {selectedCity.gymLeaderName}</small>
-                    <em>奖励：{selectedCity.gymBadgeName} + {selectedCity.rewardCoins} 币</em>
-                  </div>
-                </div>
-
-                <div className="wt-sec-lbl">当地可捕获特色精灵</div>
-                <div className="wt-poke-strip">
-                  {selectedCity.wildPool.map((sp) => (
-                    <div key={sp} className="wt-poke-chip">
-                      <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
-                      <span>{SPECIES_CATALOG[sp].defaultName}</span>
+                  {isSettled && (
+                    <div className="wt-hometurf-pill">
+                      🏡 已在{selectedCity.name}定居！免全部住宿费，飞抵即永久免费入住！
                     </div>
-                  ))}
-                </div>
+                  )}
 
-                <div className="wt-sec-lbl">选择入住酒店与停留天数</div>
-                <div className="wt-hotel-list">
-                  {HOTEL_TIERS.map((tier) => (
-                    <button
-                      key={tier.id}
-                      type="button"
-                      className={`wt-hotel-opt ${selectedHotel === tier.id ? 'active' : ''}`}
-                      onClick={() => {
-                        sound.play('cursor');
-                        setSelectedHotel(tier.id);
-                      }}
-                    >
-                      <div className="wt-hotel-top">
-                        <strong>{selectedCity.hotelNames[tier.id]}</strong>
-                        <span>{isRealHomeTurf ? '免费' : `${tier.pricePerStay} 币`}</span>
+                  {isRealHomeTurf && !isSettled && (
+                    <div className="wt-hometurf-pill">
+                      🏠 真实 GPS 主场共鸣！免机票免住宿费 + 本地闪光 UP！
+                    </div>
+                  )}
+
+                  <div className="wt-gym-banner">
+                    <img
+                      src={SPECIES_CATALOG[selectedCity.gymBossSpecies].stageSprites.adult.static}
+                      alt={selectedCity.gymBossTitle}
+                    />
+                    <div>
+                      <strong>{selectedCity.gymName} {cleared ? '👑' : ''}</strong>
+                      <small>{selectedCity.gymTypeLabel} · {selectedCity.gymLeaderName}</small>
+                      <em>奖励：{selectedCity.gymBadgeName} + {selectedCity.rewardCoins} 币</em>
+                    </div>
+                  </div>
+
+                  <div className="wt-sec-lbl">当地可捕获特色精灵</div>
+                  <div className="wt-poke-strip">
+                    {selectedCity.wildPool.map((sp) => (
+                      <div key={sp} className="wt-poke-chip">
+                        <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
+                        <span>{SPECIES_CATALOG[sp].defaultName}</span>
                       </div>
-                      <small>{tier.perkLabel}</small>
+                    ))}
+                  </div>
+
+                  {!isSettled && (
+                    <>
+                      <div className="wt-sec-lbl">选择入住酒店与停留天数</div>
+                      <div className="wt-hotel-list">
+                        {HOTEL_TIERS.map((tier) => (
+                          <button
+                            key={tier.id}
+                            type="button"
+                            className={`wt-hotel-opt ${selectedHotel === tier.id ? 'active' : ''}`}
+                            onClick={() => {
+                              sound.play('cursor');
+                              setSelectedHotel(tier.id);
+                            }}
+                          >
+                            <div className="wt-hotel-top">
+                              <strong>{selectedCity.hotelNames[tier.id]}</strong>
+                              <span>{isRealHomeTurf ? '免费' : `${tier.pricePerStay} 币`}</span>
+                            </div>
+                            <small>{tier.perkLabel}</small>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="wt-card-footer">
+                  <div className="wt-ticket-summary">
+                    <span>
+                      机票 {ticketCost} 币 + {isSettled ? '自有居所 0 币' : `住宿 ${hotelCost} 币`}
+                    </span>
+                    <strong>合计 {totalCost} 币</strong>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="wt-primary-btn is-fly"
+                    disabled={Boolean(flightAnim) || coins < totalCost}
+                    onClick={() => handleBookFlightAndStay(selectedCity)}
+                  >
+                    {flightAnim
+                      ? '✈ 正在飞行中...'
+                      : coins < totalCost
+                        ? `宝可币不足（还差 ${totalCost - coins} 币）`
+                        : isSettled
+                          ? `✈ 飞回定居点 · 永久免费 (${totalCost} 币)`
+                          : `✈ 购票起飞 · 入住 ${tierMeta.days} 天 (${totalCost} 币)`}
+                  </button>
+
+                  {!isSettled && (
+                    <button
+                      type="button"
+                      className="wt-secondary-btn is-settle"
+                      disabled={Boolean(flightAnim) || coins < selectedCity.settleCost}
+                      onClick={() => handleSettleInCity(selectedCity)}
+                    >
+                      {coins < selectedCity.settleCost
+                        ? `🏡 在${selectedCity.name}定居置业 (${selectedCity.settleCost} 币 · 余额不足)`
+                        : `🏡 花钱在${selectedCity.name}定居置业 (${selectedCity.settleCost} 币 · 永久免房费)`}
                     </button>
-                  ))}
+                  )}
                 </div>
-
-                <div className="wt-ticket-summary">
-                  <span>机票 {ticketCost} 币 + 住宿 {hotelCost} 币</span>
-                  <strong>合计 {totalCost} 币</strong>
-                </div>
-
-                <button
-                  type="button"
-                  className="wt-primary-btn is-fly"
-                  disabled={Boolean(flightAnim) || coins < totalCost}
-                  onClick={() => handleBookFlightAndStay(selectedCity)}
-                >
-                  {flightAnim
-                    ? '✈ 正在飞行中...'
-                    : coins < totalCost
-                      ? `宝可币不足（还差 ${totalCost - coins} 币）`
-                      : `✈ 购票起飞 · 入住 ${tierMeta.days} 天 (${totalCost} 币)`}
-                </button>
               </div>
             );
           })()}
