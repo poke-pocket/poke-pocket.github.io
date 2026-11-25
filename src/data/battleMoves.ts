@@ -160,6 +160,78 @@ const SPECIES_MOVES: Record<SpeciesId, BattleMove[]> = {
     { id: 'recover', name: '自我再生', element: 'psychic', power: 0, maxPp: 5, kind: 'heal', description: '释放幻之光回复大量 HP' },
     { id: 'genesis', name: '起源超新星', element: 'psychic', power: 95, maxPp: 4, kind: 'damage', description: '幻之宝可梦的究极星光' },
   ],
+  caterpie: [
+    { id: 'bug_bite', name: '虫咬', element: 'grass', power: 54, maxPp: 14, kind: 'damage', description: '敏捷啃咬并汲取活力' },
+    { id: 'string_shot', name: '吐丝', element: 'normal', power: 38, maxPp: 20, kind: 'damage', description: '喷射黏丝束缚对手' },
+    { id: 'quiver_dance', name: '蝶舞', element: 'grass', power: 0, maxPp: 8, kind: 'buff_atk', description: '轻盈起舞全面提升威力' },
+    { id: 'bug_buzz', name: '虫鸣风暴', element: 'grass', power: 80, maxPp: 5, kind: 'damage', description: '振翅发出强力声波冲击' },
+  ],
+  pidgey: [
+    { id: 'gust', name: '起风', element: 'normal', power: 56, maxPp: 14, kind: 'damage', description: '扇动双翼卷起锐利旋风' },
+    { id: 'quick_wing', name: '电光疾冲', element: 'normal', power: 44, maxPp: 20, kind: 'damage', description: '高速俯冲精准打击' },
+    { id: 'feather_dance', name: '羽毛舞', element: 'normal', power: 0, maxPp: 8, kind: 'buff_def', description: '漫天羽翼守护自身防御' },
+    { id: 'hurricane', name: '暴风俯冲', element: 'normal', power: 86, maxPp: 4, kind: 'damage', description: '召唤烈风从高空猛烈俯冲' },
+  ],
+  vulpix: [
+    { id: 'ember_fox', name: '狐火连弹', element: 'fire', power: 60, maxPp: 12, kind: 'damage', description: '优雅释放鬼魅狐火灼烧对手' },
+    { id: 'quick_fox', name: '电光一闪', element: 'normal', power: 42, maxPp: 20, kind: 'damage', description: '灵巧身姿疾速突击' },
+    { id: 'nasty_plot', name: '灵狐冥想', element: 'fire', power: 0, maxPp: 8, kind: 'buff_atk', description: '凝聚九尾灵力大幅提攻' },
+    { id: 'inferno_fox', name: '炼狱九焰', element: 'fire', power: 86, maxPp: 4, kind: 'damage', description: '九条尾焰化作烈火风暴' },
+  ],
+  diglett: [
+    { id: 'mud_slap', name: '掷泥突袭', element: 'normal', power: 56, maxPp: 14, kind: 'damage', description: '潜入地底掀翻泥土攻击' },
+    { id: 'dig_strike', name: '挖洞突刺', element: 'normal', power: 48, maxPp: 16, kind: 'damage', description: '从脚下猛然钻出突袭' },
+    { id: 'sand_guard', name: '流沙护体', element: 'normal', power: 0, maxPp: 8, kind: 'buff_def', description: '卷起沙尘提升自身防御' },
+    { id: 'earthquake_dig', name: '大地裂震', element: 'normal', power: 86, maxPp: 4, kind: 'damage', description: '引发剧烈地动震裂全场' },
+  ],
+  growlithe: [
+    { id: 'flame_wheel', name: '火焰轮', element: 'fire', power: 62, maxPp: 12, kind: 'damage', description: '浑身燃火高速滚撞对手' },
+    { id: 'bite_dog', name: '咬碎', element: 'normal', power: 48, maxPp: 18, kind: 'damage', description: '强力咬合撕裂敌阵' },
+    { id: 'howl_fire', name: '长嚎鼓舞', element: 'fire', power: 0, maxPp: 8, kind: 'buff_atk', description: '激昂嚎叫唤醒烈焰战意' },
+    { id: 'flare_blitz', name: '闪焰冲锋', element: 'fire', power: 90, maxPp: 4, kind: 'damage', description: '化作烈日流星全力冲锋' },
+  ],
+  abra: [
+    { id: 'psybeam', name: '幻象光线', element: 'psychic', power: 64, maxPp: 12, kind: 'damage', description: '射出七彩念力光束贯通对手' },
+    { id: 'confusion_abra', name: '念力波', element: 'psychic', power: 46, maxPp: 18, kind: 'damage', description: '凝神释放精准念波' },
+    { id: 'calm_mind', name: '冥想', element: 'psychic', power: 0, maxPp: 8, kind: 'buff_atk', description: '静心冥想极大增强超能' },
+    { id: 'future_sight', name: '预知未来', element: 'psychic', power: 90, maxPp: 4, kind: 'damage', description: '扭曲时空降下毁灭念击' },
+  ],
+  machop: [
+    { id: 'karate_chop', name: '空手劈', element: 'normal', power: 62, maxPp: 12, kind: 'damage', description: '凌厉手刀精准击中要害' },
+    { id: 'low_kick', name: '踢倒', element: 'normal', power: 46, maxPp: 18, kind: 'damage', description: '沉稳下盘横扫击退对手' },
+    { id: 'bulk_up', name: '健美', element: 'normal', power: 0, maxPp: 8, kind: 'buff_atk', description: '紧绷肌肉大幅强化攻防' },
+    { id: 'dynamic_punch', name: '爆裂拳', element: 'normal', power: 90, maxPp: 4, kind: 'damage', description: '四臂齐出轰出震天重拳' },
+  ],
+  geodude: [
+    { id: 'rock_throw', name: '落岩', element: 'normal', power: 60, maxPp: 12, kind: 'damage', description: '投掷巨石猛砸对手' },
+    { id: 'rollout', name: '滚动撞击', element: 'normal', power: 48, maxPp: 18, kind: 'damage', description: '化作岩石炮弹高速碾压' },
+    { id: 'iron_defense', name: '变圆硬化', element: 'normal', power: 0, maxPp: 8, kind: 'buff_def', description: '岩石外壳硬化大幅增防' },
+    { id: 'stone_edge', name: '尖石攻击', element: 'normal', power: 88, maxPp: 4, kind: 'damage', description: '从地底刺出锋利岩峰' },
+  ],
+  scyther: [
+    { id: 'x_scissor', name: '十字剪', element: 'grass', power: 66, maxPp: 10, kind: 'damage', description: '双镰交叉高速斩裂对手' },
+    { id: 'air_slash', name: '空气斩', element: 'normal', power: 50, maxPp: 16, kind: 'damage', description: '挥出真空风刃远程切击' },
+    { id: 'swords_dance', name: '剑舞', element: 'grass', power: 0, maxPp: 8, kind: 'buff_atk', description: '极速剑舞大幅提升斩击力' },
+    { id: 'fury_cutter', name: '疾风连斩', element: 'grass', power: 88, maxPp: 4, kind: 'damage', description: '化作翠绿残影连续斩击' },
+  ],
+  magikarp: [
+    { id: 'aqua_fang', name: '水流裂破', element: 'water', power: 64, maxPp: 12, kind: 'damage', description: '跃出激流撕咬冲击对手' },
+    { id: 'splash_tackle', name: '跃起撞击', element: 'normal', power: 42, maxPp: 20, kind: 'damage', description: '奋力弹跳扑向对手' },
+    { id: 'dragon_rage_buf', name: '龙威鼓舞', element: 'dragon', power: 0, maxPp: 8, kind: 'buff_atk', description: '觉醒暴鲤龙之怒大幅提攻' },
+    { id: 'hydro_tail', name: '怒海狂涛', element: 'water', power: 92, maxPp: 4, kind: 'damage', description: '掀起滔天巨浪席卷战场' },
+  ],
+  lapras: [
+    { id: 'ice_beam', name: '冰冻光束', element: 'water', power: 66, maxPp: 10, kind: 'damage', description: '发射极寒冰线冻结对手' },
+    { id: 'surf_wave', name: '乘浪冲击', element: 'water', power: 52, maxPp: 16, kind: 'damage', description: '驾驭海潮稳健席卷前方' },
+    { id: 'sing_heal', name: '海之咏叹', element: 'water', power: 0, maxPp: 5, kind: 'heal', description: '温柔海歌抚慰伤痛回复 HP' },
+    { id: 'blizzard_sea', name: '极地暴风雪', element: 'water', power: 90, maxPp: 4, kind: 'damage', description: '召唤凛冽暴雪冰封全域' },
+  ],
+  mewtwo: [
+    { id: 'psystrike', name: '精神击破', element: 'psychic', power: 74, maxPp: 10, kind: 'damage', description: '将念力实体化粉碎对手防线' },
+    { id: 'shadow_nova', name: '暗影冲击', element: 'ghost', power: 58, maxPp: 15, kind: 'damage', description: '释放深邃暗影能量轰击' },
+    { id: 'recover_mt', name: '超能再生', element: 'psychic', power: 0, maxPp: 5, kind: 'heal', description: '瞬间重构细胞回复大量 HP' },
+    { id: 'psystrike_ex', name: '究极念力风暴', element: 'psychic', power: 98, maxPp: 4, kind: 'damage', description: '传说级最强超能力毁灭打击' },
+  ],
 };
 
 export function getSpeciesMoves(species: SpeciesId): BattleMove[] {

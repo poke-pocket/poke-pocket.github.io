@@ -12,7 +12,19 @@ export type SpeciesId =
   | 'gastly'
   | 'munchlax'
   | 'dratini'
-  | 'mew';
+  | 'mew'
+  | 'caterpie'
+  | 'pidgey'
+  | 'vulpix'
+  | 'diglett'
+  | 'growlithe'
+  | 'abra'
+  | 'machop'
+  | 'geodude'
+  | 'scyther'
+  | 'magikarp'
+  | 'lapras'
+  | 'mewtwo';
 
 export type PokemonElement =
   | 'electric'
