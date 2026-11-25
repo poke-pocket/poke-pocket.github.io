@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { computeBattleStats } from '../data/battleMoves';
 import {
+  ACHIEVEMENTS,
   POKEDEX_ORDER,
   ROOM_CATALOG,
   SPECIES_CATALOG,
@@ -6300,9 +6301,46 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
          ===================================================================== */}
       {phase === 'hub' && (
         <div className="pkb-hub-overlay">
-          {/* Top Status Ribbon: Left Clean Squad Entry Pill + Right Trainer Pill & Settings */}
+          {/* Top Status Ribbon: Wide Desktop shows full 6-avatar squad strip; Mobile/Compact converges into Squad entry pill! */}
           <header className="pkb-topbar">
-            <div className="pkb-top-squad">
+            <div className="pkb-top-squad" title={`当前出战队伍：${activeSquadPreset.name} · 点击管理当前队伍`}>
+              {/* Wide-screen full squad avatar strip */}
+              <div className="pkb-top-squad-wide">
+                {effectiveSquadPets.slice(0, 6).map((p) => {
+                  const stg = getGrowthStage(p.level, p.species);
+                  const spMeta = SPECIES_CATALOG[p.species];
+                  const isLead = p.id === pet.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`pkb-top-avatar-btn ${isLead ? 'is-lead' : ''}`}
+                      onClick={() => onOpenPokemonManager('squad', false)}
+                      title={`${p.name} (${spMeta.typeLabel}) · Lv.${p.level} · 点击管理当前队伍`}
+                    >
+                      <TrimmedSpriteImg
+                        src={spMeta.stageSprites[stg].animated}
+                        alt={p.name}
+                        size={36}
+                        fillRatio={0.86}
+                      />
+                      <em>{p.level}</em>
+                    </button>
+                  );
+                })}
+                {save.pets.length < 6 && (
+                  <button
+                    type="button"
+                    className="pkb-top-avatar-btn is-add"
+                    onClick={() => onOpenPokemonManager('market', false)}
+                    title="抽取或招募更多宝可梦伙伴"
+                  >
+                    <span>+</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Compact / mobile converged Squad entry pill */}
               <button
                 type="button"
                 className="pkb-squad-entry-btn"
@@ -6536,7 +6574,90 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 </div>
               </div>
 
-              {/* Compact Bottom Action Bar: Announcement Ticker + Clean "More" Drawer Button */}
+              {/* Wide-Screen Full 7-Tile Management Dock (Shown when viewport has room; collapses into "More" on mobile/compact!) */}
+              <div className="pkb-dock-row is-7 pkb-dock-wide-only">
+                <button
+                  type="button"
+                  className="pkb-dock-tile"
+                  onClick={() => onOpenPokemonManager('party', false)}
+                  title={`精灵球盒 · 共 ${save.pets.length} 只伙伴`}
+                >
+                  <em className="pkb-dock-badge">{save.pets.length}</em>
+                  <PixelItemImg src="/sprites/items/great-ball.png" size={40} />
+                  <strong>{tr(lang, 'dockBox')}</strong>
+                </button>
+                <button
+                  type="button"
+                  className="pkb-dock-tile"
+                  onClick={() => onOpenPokemonManager('pokedex', false)}
+                  title={`宝可梦图鉴+ · 已收录 ${save.discoveredSpecies.length}/${POKEDEX_ORDER.length}`}
+                >
+                  <em className="pkb-dock-badge is-blue">
+                    {save.discoveredSpecies.length}/{POKEDEX_ORDER.length}
+                  </em>
+                  <PixelItemImg src="/sprites/items/town-map.png" size={40} />
+                  <strong>{tr(lang, 'dockDex')}</strong>
+                </button>
+                <button
+                  type="button"
+                  className="pkb-dock-tile"
+                  onClick={() => {
+                    sound.play('confirm');
+                    setHubModal('lab');
+                  }}
+                  title={`研究所 · 星星沙子 ${meta.stardust} · 永久强化与切换主角 (${activeHeroDef.name})`}
+                >
+                  <em className="pkb-dock-badge is-purple">{meta.stardust}</em>
+                  <PixelItemImg src="/sprites/items/bright-powder.png" size={40} />
+                  <strong>{tr(lang, 'dockLab')}</strong>
+                </button>
+                <button
+                  type="button"
+                  className="pkb-dock-tile"
+                  onClick={() => {
+                    sound.play('confirm');
+                    setHubModal('bounties');
+                  }}
+                  title="每日 & 每周任务委托 · 赚取星星沙子"
+                >
+                  {claimableBountyCount > 0 && (
+                    <em className="pkb-dock-badge">{claimableBountyCount}</em>
+                  )}
+                  <PixelItemImg src="/sprites/items/vs-seeker.png" size={40} />
+                  <strong>{tr(lang, 'dockBounties')}</strong>
+                </button>
+                <button
+                  type="button"
+                  className="pkb-dock-tile"
+                  onClick={() => onOpenPokemonManager('market', false)}
+                  title="盲盒商店 · 抽卡与补给"
+                >
+                  <em className="pkb-dock-badge is-gold">盲盒</em>
+                  <PixelItemImg src="/sprites/items/amulet-coin.png" size={40} />
+                  <strong>{tr(lang, 'dockShop')}</strong>
+                </button>
+                <button
+                  type="button"
+                  className="pkb-dock-tile"
+                  onClick={() => onOpenPokemonManager('achievements', false)}
+                  title={`成就徽章 · 已解锁 ${save.unlockedAchievements.length}/${ACHIEVEMENTS.length} 枚`}
+                >
+                  <em className="pkb-dock-badge is-green">{save.unlockedAchievements.length}</em>
+                  <PixelItemImg src="/sprites/items/kings-rock.png" size={40} />
+                  <strong>{tr(lang, 'dockAchieve')}</strong>
+                </button>
+                <button
+                  type="button"
+                  className="pkb-dock-tile"
+                  onClick={() => onOpenPokemonManager('diary', false)}
+                  title="冒险日记 · 成长与战绩"
+                >
+                  <PixelItemImg src="/sprites/items/poke-radar.png" size={40} />
+                  <strong>{tr(lang, 'dockDiary')}</strong>
+                </button>
+              </div>
+
+              {/* Bottom Action Bar: Announcement Ticker + Compact-Only "More" Drawer Button */}
               <div className="pkb-hub-bar">
                 <button
                   type="button"
@@ -6569,8 +6690,26 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             </div>
           </div>
 
-          {/* Minimal Corner Footer (Only Install PWA if available + Language toggle) */}
+          {/* Corner Footer (Desktop shows Guide/Feedback/PWA/Lang; Mobile folds Guide/Feedback into More!) */}
           <footer className="pkb-hub-footer">
+            <button
+              type="button"
+              className="pkb-util-btn pkb-wide-footer-item"
+              onClick={() => onOpenPokemonManager('guide', false)}
+              title={tr(lang, 'guideBtn')}
+            >
+              <PixelItemImg src="/sprites/items/light-ball.png" size={15} />
+              <span>{tr(lang, 'guideBtn')}</span>
+            </button>
+            <button
+              type="button"
+              className="pkb-util-btn pkb-wide-footer-item"
+              onClick={() => onOpenPokemonManager('feedback', false)}
+              title={tr(lang, 'feedbackBtn')}
+            >
+              <PixelItemImg src="/sprites/items/potion.png" size={15} />
+              <span>{tr(lang, 'feedbackBtn')}</span>
+            </button>
             {pwaInstallPrompt && (
               <button
                 type="button"
