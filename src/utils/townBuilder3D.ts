@@ -687,13 +687,50 @@ function getGroundTex(): TownGroundTex {
       ctx.fillRect(0, 18, 128, 2);
       ctx.fillRect(0, 108, 128, 2);
 
-      // 8-Lane Asphalt Roadbed (y=20..108)
+      // 8-Lane Asphalt Roadbed (y=20..108) with subtle tire-wear darkening, storm-drain grates, manholes & pixel lane arrows!
       ctx.fillStyle = '#4a5260';
       ctx.fillRect(0, 20, 128, 88);
+      // Curb drop-shadow right along both gutters
+      ctx.fillStyle = '#363d48';
+      ctx.fillRect(0, 20, 128, 2);
+      ctx.fillRect(0, 106, 128, 2);
+      // Subtle tire-wear track shading in active lanes
+      ctx.fillStyle = 'rgba(28, 32, 42, 0.16)';
+      ctx.fillRect(0, 24, 128, 3);
+      ctx.fillRect(0, 33, 128, 3);
+      ctx.fillRect(0, 83, 128, 3);
+      ctx.fillRect(0, 92, 128, 3);
       ctx.fillStyle = '#424956';
       for (let i = 0; i < 85; i++) {
-        ctx.fillRect((i * 23) % 125, 21 + ((i * 17) % 85), 2, 1);
+        ctx.fillRect((i * 23) % 125, 22 + ((i * 17) % 83), 2, 1);
       }
+      // Crisp pixel storm-drain grates along curbs & iron manhole cover!
+      ctx.fillStyle = '#252a33';
+      ctx.fillRect(18, 21, 7, 3);
+      ctx.fillRect(86, 104, 7, 3);
+      ctx.fillStyle = '#6c757d';
+      ctx.fillRect(20, 21, 1, 3);
+      ctx.fillRect(22, 21, 1, 3);
+      ctx.fillRect(88, 104, 1, 3);
+      ctx.fillRect(90, 104, 1, 3);
+      // Round-pixel iron utility manhole cover
+      ctx.fillStyle = '#2c323d';
+      ctx.fillRect(62, 41, 6, 6);
+      ctx.fillStyle = '#5c6473';
+      ctx.fillRect(63, 42, 4, 4);
+      ctx.fillStyle = '#2c323d';
+      ctx.fillRect(64, 43, 2, 2);
+
+      // Crisp white pixel lane-direction arrows (left/right bound)
+      ctx.fillStyle = 'rgba(241, 243, 245, 0.72)';
+      // Westbound arrow in upper carriageway
+      ctx.fillRect(102, 33, 8, 2);
+      ctx.fillRect(100, 32, 2, 4);
+      ctx.fillRect(98, 33, 2, 2);
+      // Eastbound arrow in lower carriageway
+      ctx.fillRect(22, 92, 8, 2);
+      ctx.fillRect(30, 91, 2, 4);
+      ctx.fillRect(32, 92, 2, 2);
 
       // 4 Lanes each direction (dashed white dividers)
       ctx.fillStyle = '#f1f3f5';
@@ -745,9 +782,19 @@ function getGroundTex(): TownGroundTex {
       ctx.fillStyle = '#8b93a1';
       ctx.fillRect(0, 14, 64, 1);
       ctx.fillRect(0, 49, 64, 1);
-      // 4-Lane Asphalt (y=15..49)
+      // 4-Lane Asphalt (y=15..49) with gutter shadows, asphalt speckle & roadside drain grate
       ctx.fillStyle = '#505866';
       ctx.fillRect(0, 15, 64, 34);
+      ctx.fillStyle = '#3a414d';
+      ctx.fillRect(0, 15, 64, 1);
+      ctx.fillRect(0, 48, 64, 1);
+      ctx.fillStyle = '#474f5c';
+      for (let i = 0; i < 28; i++) {
+        ctx.fillRect((i * 17) % 62, 16 + ((i * 11) % 31), 2, 1);
+      }
+      ctx.fillStyle = '#252a33';
+      ctx.fillRect(28, 16, 5, 2);
+      ctx.fillRect(12, 46, 5, 2);
       // Dashed white lane dividers (2 lanes each side)
       ctx.fillStyle = '#f1f3f5';
       for (let x = 4; x < 64; x += 22) {
@@ -1473,18 +1520,28 @@ function buildPokemonCenterInterior(
   );
   rug.rotation.x = -Math.PI / 2;
   rug.position.set(0, 0.15, 0.8);
-  g.add(rug);
+  const rugBand = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.0, 0.42),
+    new THREE.MeshBasicMaterial({ color: 0x1e222e }),
+  );
+  rugBand.rotation.x = -Math.PI / 2;
+  rugBand.position.set(0, 0.155, 0.8);
+  const rugCenter = new THREE.Mesh(
+    new THREE.CircleGeometry(0.62, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffffff }),
+  );
+  rugCenter.rotation.x = -Math.PI / 2;
+  rugCenter.position.set(0, 0.16, 0.8);
+  g.add(rug, rugBand, rugCenter);
 
-  const counter = new THREE.Mesh(
-    new THREE.BoxGeometry(w * 0.56, 1.35, 1.45),
-    new THREE.MeshLambertMaterial({ color: 0xf8f9fa }),
-  );
+  const counterGeo = new THREE.BoxGeometry(w * 0.56, 1.35, 1.45);
+  const counter = new THREE.Mesh(counterGeo, applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xf8f9fa })));
   counter.position.set(0, 0.72, -d * 0.24);
-  const counterTop = new THREE.Mesh(
-    new THREE.BoxGeometry(w * 0.59, 0.22, 1.65),
-    new THREE.MeshLambertMaterial({ color: 0xfa5252 }),
-  );
+  counter.add(new THREE.LineSegments(new THREE.EdgesGeometry(counterGeo, 30), INK_LINE_MAT));
+  const counterTopGeo = new THREE.BoxGeometry(w * 0.59, 0.22, 1.65);
+  const counterTop = new THREE.Mesh(counterTopGeo, applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xfa5252 })));
   counterTop.position.set(0, 1.45, -d * 0.24);
+  counterTop.add(new THREE.LineSegments(new THREE.EdgesGeometry(counterTopGeo, 30), INK_LINE_MAT));
   g.add(counter, counterTop);
 
   const machine = new THREE.Mesh(

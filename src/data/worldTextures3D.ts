@@ -3058,10 +3058,10 @@ export function createSculptedTerrainMaterial(
       uFogColor: { value: new THREE.Color(pal.fogHex) },
       uGrassLipColor: { value: new THREE.Color(pal.groundColors[2]) },
       uBaseClimate: { value: new THREE.Vector2(baseT, baseM) },
-      uFogNear: { value: 64.0 },
-      uFogFar: { value: 156.0 },
+      uFogNear: { value: 86.0 },
+      uFogFar: { value: 215.0 },
       uSectorSize: { value: sectorSize },
-      uSunDir: { value: new THREE.Vector3(0.54, 0.78, 0.36).normalize() },
+      uSunDir: { value: new THREE.Vector3(0.54, 0.78, 0.44).normalize() },
     },
     vertexShader: /* glsl */ `
       varying vec3 vWorldPos;
@@ -3191,10 +3191,27 @@ export function createSculptedTerrainMaterial(
         vec3 lipCol = mix(uGrassLipColor, grassCol, smoothstep(18.0, 44.0, distSpawn));
         albedo = mix(albedo, lipCol * 1.05, rimLip * 0.62);
 
-        // Bright sunny stylized daylight shading + soft hill elevation lift (+ self-lit volcano magma)
+        // Pixel-Art Stone Riverbank / Seawall Embankment & Wet Coastal Sand right along water level (-0.35m)!
+        vec2 pxWorld = floor(vWorldPos.xz * 7.5);
+        float bayer2 = mod(pxWorld.x + pxWorld.y, 2.0) * 0.032 - 0.016;
+        float shoreBand = 1.0 - smoothstep(-0.22, 0.48, vWorldPos.y);
+        float wetStoneMask = shoreBand * (1.0 - smoothstep(0.55, 0.88, n.y));
+        float bankSandMask = shoreBand * smoothstep(0.55, 0.88, n.y);
+        // Pixel stone masonry courses on steep river embankments
+        float bankRow = step(2.5, mod(floor(vWorldPos.y * 6.5), 3.0));
+        float bankCol = step(5.4, mod(pxWorld.x + pxWorld.y + floor(vWorldPos.y * 2.2) * 3.0, 6.0));
+        vec3 seawallCol = vec3(0.56, 0.59, 0.63) * (1.0 - max(bankRow, bankCol) * 0.14);
+        vec3 sandyBankCol = vec3(0.86, 0.79, 0.58) * (0.94 + bayer2 * 2.0);
+        albedo = mix(albedo, seawallCol, wetStoneMask * 0.86);
+        albedo = mix(albedo, sandyBankCol, bankSandMask * 0.68);
+        albedo *= (1.0 + bayer2);
+
+        // Bright HD-2D sunlit shading with warm sunlight / cool-slate hillshade contrast + cel micro-steps!
         float ndl = max(dot(n, uSunDir), 0.0);
-        float elevLift = mix(0.88, 1.10, clamp((vWorldPos.y + 4.0) / 16.0, 0.0, 1.0));
-        vec3 lit = albedo * (0.76 + 0.34 * ndl) * elevLift;
+        float qNdl = mix(ndl, floor(ndl * 6.0 + 0.5) / 6.0, 0.35);
+        float elevLift = mix(0.88, 1.12, clamp((vWorldPos.y + 4.0) / 16.0, 0.0, 1.0));
+        vec3 sunTint = mix(vec3(0.91, 0.96, 1.06), vec3(1.05, 1.02, 0.94), qNdl);
+        vec3 lit = albedo * (0.74 + 0.38 * qNdl) * elevLift * sunTint;
         lit += vec3(0.32, 0.09, 0.01) * lavaCrack * wVolcano;
 
         float fogFactor = smoothstep(uFogNear, uFogFar, vFogDepth);
@@ -3315,9 +3332,19 @@ export function createHorizonBackdropMesh(biome: BiomeId): THREE.Group {
         vec3 d = normalize(vDir);
         float elev = clamp(d.y, 0.0, 1.0);
 
-        // Smooth sunlit anime sky gradient (NO noisy horizon checkerboard!)
+        // Smooth sunlit anime sky gradient + warm pixel-art Sun Disc & Corona Halo!
         vec3 col = mix(uHorizon, uMid, smoothstep(0.0, 0.34, elev));
         col = mix(col, uZenith, smoothstep(0.28, 0.85, elev));
+
+        vec3 sunDirSky = normalize(vec3(0.54, 0.62, 0.44));
+        float sunDot = dot(d, sunDirSky);
+        if (sunDot > 0.85) {
+          float halo = smoothstep(0.85, 0.992, sunDot);
+          col = mix(col, vec3(1.0, 0.96, 0.82), halo * 0.48);
+          if (sunDot > 0.9965) {
+            col = vec3(1.0, 0.99, 0.90);
+          }
+        }
 
         // Real planar overhead projection: CRISP sharp-edged cel-shaded anime cumulus clouds drifting linearly West -> East!
         if (d.y > 0.03) {

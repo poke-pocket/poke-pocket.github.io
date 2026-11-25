@@ -1052,40 +1052,54 @@ function paintTopographicMap(
     useGeoMacro ? (sampleGeoTerrainHeight3D(wx, wz, true) ?? 1.35) : getTerrainHeight3D(wx, wz);
   for (let py = 0; py < h; py += stepPx) {
     const wz = centerZ + (py - halfH) * unitsPerPx;
+    const cellY = Math.floor(py / stepPx);
     for (let px = 0; px < w; px += stepPx) {
       const wx = centerX + (px - halfW) * unitsPerPx;
+      const cellX = Math.floor(px / stepPx);
       const elev = sampleElev(wx, wz);
       const ex = sampleElev(wx + sampleStep, wz);
       const ez = sampleElev(wx, wz + sampleStep);
       const slope = Math.hypot(ex - elev, ez - elev) / sampleStep;
+      // Classic NW-sunlight cartographic hillshade relief (makes China/Japan mountain chains pop in 3D pixel relief!)
+      const hillShade = (elev - ex) * 0.8 + (elev - ez) * 0.8;
+      const dither = (cellX + cellY) % 2 === 0;
 
       let col: string;
       if (elev < WATER_LEVEL_3D) {
-        if (elev < WATER_LEVEL_3D - 0.95) {
-          col = '#1971c2';
-        } else if (elev < WATER_LEVEL_3D - 0.35) {
-          col = '#339af0';
+        const nearLand =
+          ex >= WATER_LEVEL_3D ||
+          ez >= WATER_LEVEL_3D ||
+          sampleElev(wx - sampleStep, wz) >= WATER_LEVEL_3D ||
+          sampleElev(wx, wz - sampleStep) >= WATER_LEVEL_3D;
+        if (nearLand) {
+          col = dither ? '#d0ebff' : '#99d6ff';
+        } else if (elev < WATER_LEVEL_3D - 1.25) {
+          col = dither ? '#1864ab' : '#1971c2';
+        } else if (elev < WATER_LEVEL_3D - 0.55) {
+          col = '#228be6';
         } else {
-          col = ((px + py) / stepPx) % 3 === 0 ? '#a5d8ff' : '#74c0fc';
+          col = (cellX + cellY) % 3 === 0 ? '#74c0fc' : '#4dabf7';
         }
       } else if (
-        elev < WATER_LEVEL_3D + 0.48 &&
+        elev < WATER_LEVEL_3D + 0.45 &&
         (ex < WATER_LEVEL_3D ||
           ez < WATER_LEVEL_3D ||
           sampleElev(wx - sampleStep, wz) < WATER_LEVEL_3D ||
           sampleElev(wx, wz - sampleStep) < WATER_LEVEL_3D)
       ) {
-        col = '#e9d8a6';
-      } else if (slope > 0.36) {
-        col = ex < elev ? pal.cliffColors[3] : pal.cliffColors[0];
-      } else if (elev > 7.2) {
-        col = pal.groundColors[2];
+        col = dither ? '#efe0b1' : '#e4cf94';
+      } else if (elev > 9.4) {
+        // Snow-capped alpine peaks (Mount Fuji, Japanese Alps, Qinghai/Western peaks!)
+        col = hillShade < -0.15 ? '#c5dceb' : '#f1f7fc';
+      } else if (slope > 0.28 || elev > 6.8) {
+        // Directional sunlit / shadowed rocky mountain ridges
+        col = hillShade > 0.14 ? pal.cliffColors[0] : hillShade < -0.14 ? pal.cliffColors[3] : pal.cliffColors[1];
       } else if (elev > 4.2) {
-        col = pal.groundColors[0];
-      } else if (elev > 1.9) {
-        col = pal.groundColors[1];
+        col = hillShade > 0.1 ? '#70c457' : hillShade < -0.1 ? '#368d3a' : pal.groundColors[0];
+      } else if (elev > 1.85) {
+        col = hillShade > 0.08 ? '#58b849' : hillShade < -0.08 ? '#2f8236' : pal.groundColors[1];
       } else {
-        col = pal.groundColors[3];
+        col = dither ? pal.groundColors[3] : '#358f3b';
       }
       ctx.fillStyle = col;
       ctx.fillRect(px, py, stepPx, stepPx);
@@ -1122,7 +1136,7 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
       sy: ((wz - snapshot.pz) / span + 0.5) * H,
     });
 
-    paintTopographicMap(ctx, W, H, snapshot.px, snapshot.pz, span, biome, 4);
+    paintTopographicMap(ctx, W, H, snapshot.px, snapshot.pz, span, biome, 3);
     paintRoadsAndTownsOnMap(ctx, toScreen, span / Math.max(1, W), false, false);
 
     if (geoOrigin) {
