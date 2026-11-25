@@ -45,19 +45,32 @@ interface WorldMapOverlayProps {
   onClose: () => void;
 }
 
-const MAP_W = 360;
-const MAP_H = 180;
+// =========================================================================
+// CONTINUOUS WEB MERCATOR PROJECTION (Supports z = 1.2 -> 18.5 street level!)
+// =========================================================================
+const MIN_ZOOM = 1.3;
+const MAX_ZOOM = 18.5;
+const TILE_PX = 256;
 
-function lngLatToPixel(lng: number, lat: number): [number, number] {
-  const x = ((lng + 180) / 360) * MAP_W;
-  const y = ((90 - lat) / 180) * MAP_H;
-  return [x, y];
+function lngToMercX(lng: number): number {
+  return (lng + 180) / 360;
 }
 
-function pixelToLngLat(px: number, py: number): { lng: number; lat: number } {
-  const lng = Math.max(-180, Math.min(180, (px / MAP_W) * 360 - 180));
-  const lat = Math.max(-82, Math.min(82, 90 - (py / MAP_H) * 180));
-  return { lng: Number(lng.toFixed(2)), lat: Number(lat.toFixed(2)) };
+function latToMercY(lat: number): number {
+  const clamped = Math.max(-85.0511, Math.min(85.0511, lat));
+  const rad = (clamped * Math.PI) / 180;
+  return 0.5 - Math.log(Math.tan(Math.PI / 4 + rad / 2)) / (2 * Math.PI);
+}
+
+function mercXToLng(mx: number): number {
+  const wrapped = ((mx % 1) + 1) % 1;
+  return Number((wrapped * 360 - 180).toFixed(4));
+}
+
+function mercYToLat(my: number): number {
+  const clamped = Math.max(0.001, Math.min(0.999, my));
+  const n = Math.PI - 2 * Math.PI * clamped;
+  return Number(((180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))).toFixed(4));
 }
 
 function formatRemainingStay(stayUntilTs: number | null, nowMs: number): string {
@@ -71,107 +84,102 @@ function formatRemainingStay(stayUntilTs: number | null, nowMs: number): string 
   return `剩余 ${hrs}小时`;
 }
 
-/** Build the crisp 360×180 GBA/DS pixelated Earth raster once offscreen */
-function buildPixelEarthCanvas(): HTMLCanvasElement {
-  const off = document.createElement('canvas');
-  off.width = MAP_W;
-  off.height = MAP_H;
-  const ctx = off.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-
-  // 1. Deep & mid ocean latitude gradient (banded pixel palette)
-  for (let y = 0; y < MAP_H; y++) {
-    const absLat = Math.abs(90 - (y / MAP_H) * 180);
-    let col = '#1d4f82';
-    if (absLat < 24) col = '#23629c';
-    else if (absLat > 66) col = '#265378';
-    ctx.fillStyle = col;
-    ctx.fillRect(0, y, MAP_W, 1);
-  }
-
-  // Subtle retro pixel lat/lng graticule (every 30 deg)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-  for (let lng = -150; lng <= 150; lng += 30) {
-    const [x] = lngLatToPixel(lng, 0);
-    ctx.fillRect(Math.round(x), 0, 1, MAP_H);
-  }
-  for (let lat = -60; lat <= 60; lat += 30) {
-    const [, y] = lngLatToPixel(0, lat);
-    ctx.fillRect(0, Math.round(y), MAP_W, 1);
-  }
-
-  // 2. Rasterize landmass mask into offscreen binary buffer
-  const maskC = document.createElement('canvas');
-  maskC.width = MAP_W;
-  maskC.height = MAP_H;
-  const mctx = maskC.getContext('2d')!;
-  mctx.fillStyle = '#ffffff';
-  for (const poly of WORLD_LAND_POLYGONS) {
-    mctx.beginPath();
-    poly.forEach(([lng, lat], idx) => {
-      const [px, py] = lngLatToPixel(lng, lat);
-      if (idx === 0) mctx.moveTo(px, py);
-      else mctx.lineTo(px, py);
-    });
-    mctx.closePath();
-    mctx.fill();
-  }
-  const maskData = mctx.getImageData(0, 0, MAP_W, MAP_H).data;
-  const isLand = (x: number, y: number) => {
-    if (x < 0 || x >= MAP_W || y < 0 || y >= MAP_H) return false;
-    return maskData[(y * MAP_W + x) * 4 + 3] > 90;
-  };
-
-  // 3. Draw shallow turquoise coastal waters + crisp 1px dark coastline + biome-tinted pixel terrain!
-  for (let y = 0; y < MAP_H; y++) {
-    const lat = 90 - (y / MAP_H) * 180;
-    const absLat = Math.abs(lat);
-    for (let x = 0; x < MAP_W; x++) {
-      const lng = (x / MAP_W) * 360 - 180;
-      if (isLand(x, y)) {
-        const edge =
-          !isLand(x - 1, y) || !isLand(x + 1, y) || !isLand(x, y - 1) || !isLand(x, y + 1);
-        if (edge) {
-          ctx.fillStyle = '#182430';
-        } else {
-          // Subtle checkerboard & biome tinting by real geography
-          const checker = (x + y) % 2 === 0;
-          if (absLat > 65) {
-            ctx.fillStyle = checker ? '#edf2f7' : '#dbe7f0'; // polar snow
-          } else if (
-            (lat > 14 && lat < 33 && lng > -16 && lng < 60) || // Sahara + Arabia
-            (lat > -31 && lat < -17 && lng > 116 && lng < 144) || // Australia outback
-            (lat > 35 && lat < 46 && lng > 75 && lng < 108) // Gobi / NW desert
-          ) {
-            ctx.fillStyle = checker ? '#d9b56c' : '#cca45a';
-          } else if (absLat > 47) {
-            ctx.fillStyle = checker ? '#4b8f55' : '#407e4a'; // boreal taiga
-          } else if (absLat < 16) {
-            ctx.fillStyle = checker ? '#3ea047' : '#358d3e'; // tropical jungle
-          } else {
-            ctx.fillStyle = checker ? '#62b856' : '#55a64b'; // temperate lush green
-          }
-        }
-        ctx.fillRect(x, y, 1, 1);
-      } else {
-        // 2px shallow reef water glow near coasts
-        const near1 =
-          isLand(x - 1, y) || isLand(x + 1, y) || isLand(x, y - 1) || isLand(x, y + 1);
-        const near2 =
-          !near1 &&
-          (isLand(x - 2, y) || isLand(x + 2, y) || isLand(x, y - 2) || isLand(x, y + 2));
-        if (near1) {
-          ctx.fillStyle = '#53bce0';
-          ctx.fillRect(x, y, 1, 1);
-        } else if (near2) {
-          ctx.fillStyle = '#3384b8';
-          ctx.fillRect(x, y, 1, 1);
-        }
-      }
+function formatScaleBar(lat: number, zoom: number): { label: string; widthPx: number } {
+  const metersPerPx = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom);
+  const targetMeters = metersPerPx * 84;
+  const steps = [
+    5000000, 2000000, 1000000, 500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000, 500, 200, 100, 50, 20,
+  ];
+  let chosen = steps[steps.length - 1];
+  for (const s of steps) {
+    if (s <= targetMeters * 1.35) {
+      chosen = s;
+      break;
     }
   }
+  const widthPx = Math.max(36, Math.min(110, Math.round(chosen / Math.max(0.01, metersPerPx))));
+  const label = chosen >= 1000 ? `${chosen / 1000} km` : `${chosen} m`;
+  return { label, widthPx };
+}
 
-  return off;
+// =========================================================================
+// GBA/DS PIXELATED TILE CACHE (Seamless Esri Real-Earth Imagery Z1 -> Z18!)
+// =========================================================================
+type TileLayerKind = 'earth';
+
+interface CachedTile {
+  pixelImg: HTMLCanvasElement;
+  rawImg: HTMLImageElement;
+}
+
+const TILE_CACHE = new Map<string, CachedTile>();
+const TILE_INFLIGHT = new Set<string>();
+const MAX_TILE_CACHE = 420;
+
+function tileUrlFor(_layer: TileLayerKind, z: number, x: number, y: number): string {
+  // Esri World Imagery: authentic global terrain, mountain relief, rivers, coastlines & street blocks from Z1 to Z18!
+  // Zero API key, full global coverage (including China/East Asia), CORS-enabled (`Access-Control-Allow-Origin: *`).
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+}
+
+/** Downsample + GBA RGB555 vibrant pixel-art quantize a real map tile ONCE on load */
+function pixelizeTileImage(img: HTMLImageElement, z: number): HTMLCanvasElement {
+  // 84x84 at continental scale (~3px GBA chunks), 96x96 at city/street scale for crisp roads & roofs!
+  const sz = z <= 7 ? 84 : 96;
+  const c = document.createElement('canvas');
+  c.width = sz;
+  c.height = sz;
+  const ctx = c.getContext('2d')!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(img, 0, 0, sz, sz);
+  try {
+    const id = ctx.getImageData(0, 0, sz, sz);
+    const d = id.data;
+    const satBoost = z <= 7 ? 1.32 : 1.2;
+    const brightLift = z <= 7 ? 1.08 : 1.05;
+    const step = z <= 7 ? 20 : 18;
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i] * brightLift;
+      let g = d[i + 1] * brightLift;
+      let b = d[i + 2] * brightLift;
+      // Retro vibrant GBA palette lift
+      const avg = (r + g + b) / 3;
+      r = Math.max(0, Math.min(255, avg + (r - avg) * satBoost));
+      g = Math.max(0, Math.min(255, avg + (g - avg) * satBoost));
+      b = Math.max(0, Math.min(255, avg + (b - avg) * satBoost));
+      // Crisp GBA-style color quantization
+      d[i] = Math.min(255, Math.round(r / step) * step);
+      d[i + 1] = Math.min(255, Math.round(g / step) * step);
+      d[i + 2] = Math.min(255, Math.round(b / step) * step);
+    }
+    ctx.putImageData(id, 0, 0);
+  } catch {
+    // Fallback if canvas tainted
+  }
+  return c;
+}
+
+function requestTile(layer: TileLayerKind, z: number, x: number, y: number) {
+  const key = `${layer}/${z}/${x}/${y}`;
+  if (TILE_CACHE.has(key) || TILE_INFLIGHT.has(key)) return;
+  TILE_INFLIGHT.add(key);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    TILE_INFLIGHT.delete(key);
+    if (TILE_CACHE.size >= MAX_TILE_CACHE) {
+      const oldest = TILE_CACHE.keys().next().value;
+      if (oldest) TILE_CACHE.delete(oldest);
+    }
+    TILE_CACHE.set(key, {
+      pixelImg: pixelizeTileImage(img, z),
+      rawImg: img,
+    });
+  };
+  img.onerror = () => {
+    TILE_INFLIGHT.delete(key);
+  };
+  img.src = tileUrlFor(layer, z, x, y);
 }
 
 export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
@@ -191,47 +199,50 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     [tour.currentCityId],
   );
 
-  // Selected target on map (city OR locked zone OR 'home')
   const [selectedCityId, setSelectedCityId] = useState<string | null>(
     tour.currentCityId ?? 'shanghai',
   );
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selectedHotel, setSelectedHotel] = useState<HotelTierId>('inn');
   const [pickHomeMode, setPickHomeMode] = useState(false);
+  const [pixelStyle, setPixelStyle] = useState<'pixel' | 'crisp'>('pixel');
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // Flight animation state (2s curved geodesic arc flight!)
   const [flightAnim, setFlightAnim] = useState<{
     fromLng: number;
     fromLat: number;
     toLng: number;
     toLat: number;
-    targetCity: WorldCityDef | null; // null = flying back home!
+    targetCity: WorldCityDef | null;
     hotelTier: HotelTierId | null;
     startedAt: number;
     durationMs: number;
   } | null>(null);
 
-  // Interactive camera (pan + zoom over 360×180 pixel Earth; starts focused nicely on East Asia!)
-  const [cam, setCam] = useState<{ cx: number; cy: number; zoom: number }>(() => {
+  // Continuous Web Mercator Camera: (mx, my) in [0..1] + zoom in [1.3 .. 18.5]
+  const [cam, setCam] = useState<{ mx: number; my: number; zoom: number }>(() => {
     const focusLng = currentCity?.lng ?? tour.homeCoords?.lng ?? 118.5;
     const focusLat = currentCity?.lat ?? tour.homeCoords?.lat ?? 33.5;
-    const [px, py] = lngLatToPixel(focusLng, focusLat);
-    return { cx: px, cy: py, zoom: 3.1 };
+    return { mx: lngToMercX(focusLng), my: latToMercY(focusLat), zoom: 4.3 };
   });
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const earthCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const camRef = useRef(cam);
+  camRef.current = cam;
+
+  // Multi-touch pinch + mouse drag refs
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStartRef = useRef<{ dist: number; zoom: number; mx: number; my: number } | null>(null);
   const dragRef = useRef<{
     active: boolean;
     moved: boolean;
     startX: number;
     startY: number;
-    baseCx: number;
-    baseCy: number;
-  }>({ active: false, moved: false, startX: 0, startY: 0, baseCx: 0, baseCy: 0 });
+    baseMx: number;
+    baseMy: number;
+  }>({ active: false, moved: false, startX: 0, startY: 0, baseMx: 0, baseMy: 0 });
   const [stageSize, setStageSize] = useState({ w: 680, h: 420 });
 
   const showToast = (msg: string) => {
@@ -239,7 +250,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     window.setTimeout(() => setToastMsg((cur) => (cur === msg ? null : cur)), 2800);
   };
 
-  // Current origin coordinates (Current city -> Home GPS -> default Shanghai)
   const originPoint = useMemo(() => {
     if (currentCity) return { lat: currentCity.lat, lng: currentCity.lng, label: currentCity.name };
     if (tour.homeCoords) return { lat: tour.homeCoords.lat, lng: tour.homeCoords.lng, label: tour.homeCoords.label };
@@ -255,7 +265,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     [selectedZoneId],
   );
 
-  // Measure map stage container cleanly with ResizeObserver
+  // Measure map stage
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
@@ -271,25 +281,45 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     return () => ro.disconnect();
   }, []);
 
-  // Build crisp pixel Earth bitmap once
-  useEffect(() => {
-    earthCanvasRef.current = buildPixelEarthCanvas();
-  }, []);
+  const worldPxAt = (z: number) => TILE_PX * Math.pow(2, z);
 
-  // Coordinate transforms between map pixel space (360×180) and screen canvas space
-  const getScale = () => {
-    const fitScale = Math.max(stageSize.w / MAP_W, stageSize.h / MAP_H);
-    return fitScale * cam.zoom;
+  const mercToScreen = (
+    mx: number,
+    my: number,
+    c = camRef.current,
+  ): [number, number] => {
+    const wp = worldPxAt(c.zoom);
+    // Shortest wrapped horizontal delta so trans-Pacific panning works smoothly!
+    let dmx = mx - c.mx;
+    if (dmx > 0.5) dmx -= 1;
+    if (dmx < -0.5) dmx += 1;
+    return [dmx * wp + stageSize.w / 2, (my - c.my) * wp + stageSize.h / 2];
   };
 
-  const mapToScreen = (mx: number, my: number): [number, number] => {
-    const s = getScale();
-    return [(mx - cam.cx) * s + stageSize.w / 2, (my - cam.cy) * s + stageSize.h / 2];
+  const screenToMerc = (
+    sx: number,
+    sy: number,
+    c = camRef.current,
+  ): [number, number] => {
+    const wp = worldPxAt(c.zoom);
+    const mx = (((c.mx + (sx - stageSize.w / 2) / wp) % 1) + 1) % 1;
+    const my = Math.max(0.01, Math.min(0.99, c.my + (sy - stageSize.h / 2) / wp));
+    return [mx, my];
   };
 
-  const screenToMap = (sx: number, sy: number): [number, number] => {
-    const s = getScale();
-    return [(sx - stageSize.w / 2) / s + cam.cx, (sy - stageSize.h / 2) / s + cam.cy];
+  // Cursor-centered zoom helper
+  const zoomAroundScreenPoint = (sx: number, sy: number, deltaZoom: number) => {
+    setCam((prev) => {
+      const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev.zoom + deltaZoom));
+      if (nextZoom === prev.zoom) return prev;
+      const wpOld = worldPxAt(prev.zoom);
+      const wpNew = worldPxAt(nextZoom);
+      const anchorMx = prev.mx + (sx - stageSize.w / 2) / wpOld;
+      const anchorMy = prev.my + (sy - stageSize.h / 2) / wpOld;
+      const nextMx = (((anchorMx - (sx - stageSize.w / 2) / wpNew) % 1) + 1) % 1;
+      const nextMy = Math.max(0.02, Math.min(0.98, anchorMy - (sy - stageSize.h / 2) / wpNew));
+      return { mx: nextMx, my: nextMy, zoom: Number(nextZoom.toFixed(3)) };
+    });
   };
 
   // Complete flight animation cleanly
@@ -320,10 +350,15 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         });
         setSelectedCityId(target.id);
         setSelectedZoneId(null);
+        // Smoothly zoom in slightly on landing so the user sees the city's terrain!
+        setCam({
+          mx: lngToMercX(target.lng),
+          my: latToMercY(target.lat),
+          zoom: 9.5,
+        });
         sound.play('levelup');
         showToast(`✈ 已抵达${target.name}，顺利入住「${target.hotelNames[tier]}」(${tierMeta.days}天)！`);
       } else {
-        // Returned home
         onUpdateMeta((prev) => ({
           ...prev,
           worldTour: {
@@ -342,13 +377,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     return () => window.clearTimeout(timer);
   }, [flightAnim, onUpdateMeta]);
 
-  // Real-time Pixel World Map Canvas Renderer (60fps during flight, gentle cloud/wave animation otherwise)
+  // Real-Time Multi-Resolution Pixelated World Map Renderer
   useEffect(() => {
     let rafId = 0;
+
     const render = (ts: number) => {
       const cvs = canvasRef.current;
-      const earth = earthCanvasRef.current;
-      if (!cvs || !earth) {
+      if (!cvs) {
         rafId = requestAnimationFrame(render);
         return;
       }
@@ -359,54 +394,128 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       const ctx = cvs.getContext('2d')!;
       ctx.imageSmoothingEnabled = false;
 
-      // Deep pixel ocean backdrop
-      ctx.fillStyle = '#153a61';
+      const c = camRef.current;
+      const wp = worldPxAt(c.zoom);
+
+      // 1. Deep ocean background
+      ctx.fillStyle = '#184470';
       ctx.fillRect(0, 0, stageSize.w, stageSize.h);
 
-      const s = getScale();
-      const [ox, oy] = mapToScreen(0, 0);
-      ctx.drawImage(earth, Math.round(ox), Math.round(oy), Math.round(MAP_W * s), Math.round(MAP_H * s));
-
-      // Locked Global Regions: animated pixel fog clusters + lock badges
-      for (const zone of WORLD_ZONES) {
-        if (zone.unlocked) continue;
-        const [zx, zy] = lngLatToPixel(zone.centerLng, zone.centerLat);
-        const [sx, sy] = mapToScreen(zx, zy);
-        const drift = Math.sin(ts * 0.001 + zx) * 4;
-
-        // Soft pixel fog cloud blocks
-        ctx.fillStyle = 'rgba(235, 241, 250, 0.72)';
-        const cw = Math.max(46, Math.round(18 * s));
-        const ch = Math.max(22, Math.round(8 * s));
-        ctx.fillRect(Math.round(sx - cw / 2 + drift), Math.round(sy - ch / 2), cw, ch);
-        ctx.fillRect(Math.round(sx - cw * 0.35 + drift), Math.round(sy - ch * 0.85), Math.round(cw * 0.7), Math.round(ch * 0.6));
-
-        // Pixel border tag
-        ctx.fillStyle = 'rgba(22, 20, 32, 0.86)';
-        ctx.fillRect(Math.round(sx - 44), Math.round(sy - 10), 88, 20);
-        ctx.strokeStyle = '#adb5bd';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(Math.round(sx - 44), Math.round(sy - 10), 88, 20);
-        ctx.fillStyle = '#f8f9fa';
-        ctx.font = 'bold 10px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(`🔒 ${zone.name.split('·')[0].trim()}`, Math.round(sx), Math.round(sy + 4));
+      // 2. Instant offline/underlay vector continents (zero white flicker while tiles load!)
+      ctx.fillStyle = '#4e9e4c';
+      ctx.strokeStyle = '#192a38';
+      ctx.lineWidth = 1.5;
+      for (const poly of WORLD_LAND_POLYGONS) {
+        ctx.beginPath();
+        poly.forEach(([lng, lat], idx) => {
+          const [sx, sy] = mercToScreen(lngToMercX(lng), latToMercY(lat), c);
+          if (idx === 0) ctx.moveTo(sx, sy);
+          else ctx.lineTo(sx, sy);
+        });
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
       }
 
-      // Draw dashed flight preview arc from origin -> selectedCity
+      // 3. Seamless Real-World Web Mercator Tile Pyramid (Esri World Imagery Z1 -> Z18!)
+      const activeLayer: TileLayerKind = 'earth';
+      const tileZ = Math.max(1, Math.min(18, Math.round(c.zoom)));
+      const nTiles = 1 << tileZ;
+      const tileScreenSz = wp / nTiles;
+
+      const minTx = Math.floor((c.mx - stageSize.w / (2 * wp)) * nTiles);
+      const maxTx = Math.floor((c.mx + stageSize.w / (2 * wp)) * nTiles);
+      const minTy = Math.max(0, Math.floor((c.my - stageSize.h / (2 * wp)) * nTiles));
+      const maxTy = Math.min(nTiles - 1, Math.floor((c.my + stageSize.h / (2 * wp)) * nTiles));
+
+      for (let ty = minTy; ty <= maxTy; ty++) {
+        for (let rawTx = minTx; rawTx <= maxTx; rawTx++) {
+          const tx = ((rawTx % nTiles) + nTiles) % nTiles;
+          const dx = Math.floor((rawTx / nTiles - c.mx) * wp + stageSize.w / 2);
+          const dy = Math.floor((ty / nTiles - c.my) * wp + stageSize.h / 2);
+          const dw = Math.ceil(tileScreenSz) + 1;
+          const dh = Math.ceil(tileScreenSz) + 1;
+
+          const key = `${activeLayer}/${tileZ}/${tx}/${ty}`;
+          const hit = TILE_CACHE.get(key);
+          if (hit) {
+            ctx.imageSmoothingEnabled = pixelStyle === 'crisp';
+            ctx.drawImage(pixelStyle === 'pixel' ? hit.pixelImg : hit.rawImg, dx, dy, dw, dh);
+          } else {
+            // Queue tile fetch & immediately paint closest cached parent tile so zooming is 100% flicker-free!
+            requestTile(activeLayer, tileZ, tx, ty);
+            let drawnFallback = false;
+            for (let pz = tileZ - 1; pz >= 1 && !drawnFallback; pz--) {
+              const shift = tileZ - pz;
+              const ptx = tx >> shift;
+              const pty = ty >> shift;
+              const pHit = TILE_CACHE.get(`${activeLayer}/${pz}/${ptx}/${pty}`);
+              if (pHit) {
+                const imgSrc = pixelStyle === 'pixel' ? pHit.pixelImg : pHit.rawImg;
+                const subCount = 1 << shift;
+                const subX = tx & (subCount - 1);
+                const subY = ty & (subCount - 1);
+                const sw = imgSrc.width / subCount;
+                const sh = imgSrc.height / subCount;
+                ctx.imageSmoothingEnabled = pixelStyle === 'crisp';
+                ctx.drawImage(imgSrc, subX * sw, subY * sh, sw, sh, dx, dy, dw, dh);
+                drawnFallback = true;
+              }
+            }
+          }
+        }
+      }
+      ctx.imageSmoothingEnabled = false;
+
+      // Subtle retro pixel scanline / grid tint when zoomed out for cohesive GBA Atlas feel
+      if (pixelStyle === 'pixel' && c.zoom < 10) {
+        ctx.fillStyle = 'rgba(18, 28, 48, 0.08)';
+        ctx.fillRect(0, 0, stageSize.w, stageSize.h);
+      }
+
+      // 4. Locked Global Regions (shown clearly at regional/global zoom z <= 6.2)
+      if (c.zoom <= 6.2) {
+        for (const zone of WORLD_ZONES) {
+          if (zone.unlocked) continue;
+          const [sx, sy] = mercToScreen(lngToMercX(zone.centerLng), latToMercY(zone.centerLat), c);
+          if (sx < -120 || sx > stageSize.w + 120 || sy < -80 || sy > stageSize.h + 80) continue;
+          const drift = Math.sin(ts * 0.001 + zone.centerLng) * 4;
+          const cw = Math.round(76 + c.zoom * 8);
+          const ch = Math.round(28 + c.zoom * 3);
+
+          ctx.fillStyle = 'rgba(235, 241, 250, 0.72)';
+          ctx.fillRect(Math.round(sx - cw / 2 + drift), Math.round(sy - ch / 2), cw, ch);
+          ctx.fillRect(
+            Math.round(sx - cw * 0.35 + drift),
+            Math.round(sy - ch * 0.85),
+            Math.round(cw * 0.7),
+            Math.round(ch * 0.55),
+          );
+
+          ctx.fillStyle = 'rgba(22, 20, 32, 0.88)';
+          ctx.fillRect(Math.round(sx - 46), Math.round(sy - 10), 92, 20);
+          ctx.strokeStyle = '#ced4da';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(Math.round(sx - 46), Math.round(sy - 10), 92, 20);
+          ctx.fillStyle = '#fffdf5';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(`🔒 ${zone.name.split('·')[0].trim()}`, Math.round(sx), Math.round(sy + 4));
+        }
+      }
+
+      // 5. Dashed Flight Preview Arc
       if (selectedCity && selectedCity.id !== tour.currentCityId && !flightAnim) {
-        const [fx, fy] = lngLatToPixel(originPoint.lng, originPoint.lat);
-        const [tx, ty] = lngLatToPixel(selectedCity.lng, selectedCity.lat);
-        const [sx1, sy1] = mapToScreen(fx, fy);
-        const [sx2, sy2] = mapToScreen(tx, ty);
+        const [sx1, sy1] = mercToScreen(lngToMercX(originPoint.lng), latToMercY(originPoint.lat), c);
+        const [sx2, sy2] = mercToScreen(lngToMercX(selectedCity.lng), latToMercY(selectedCity.lat), c);
         const midX = (sx1 + sx2) / 2;
-        const midY = (sy1 + sy2) / 2 - Math.min(80, Math.hypot(sx2 - sx1, sy2 - sy1) * 0.28);
+        const midY = (sy1 + sy2) / 2 - Math.min(90, Math.hypot(sx2 - sx1, sy2 - sy1) * 0.25);
 
         ctx.save();
         ctx.strokeStyle = '#ffe066';
-        ctx.lineWidth = 2.5;
-        ctx.setLineDash([6, 5]);
-        ctx.lineDashOffset = -(ts * 0.025);
+        ctx.lineWidth = 3;
+        ctx.setLineDash([7, 5]);
+        ctx.lineDashOffset = -(ts * 0.03);
         ctx.beginPath();
         ctx.moveTo(sx1, sy1);
         ctx.quadraticCurveTo(midX, midY, sx2, sy2);
@@ -414,13 +523,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx.restore();
       }
 
-      // Draw Blue GPS Home Beacon
+      // 6. Blue GPS Home Beacon
       if (tour.homeCoords) {
-        const [hx, hy] = lngLatToPixel(tour.homeCoords.lng, tour.homeCoords.lat);
-        const [sx, sy] = mapToScreen(hx, hy);
-        const pulse = 8 + Math.sin(ts * 0.005) * 3;
-        ctx.strokeStyle = 'rgba(77, 171, 247, 0.85)';
-        ctx.lineWidth = 2;
+        const [sx, sy] = mercToScreen(lngToMercX(tour.homeCoords.lng), latToMercY(tour.homeCoords.lat), c);
+        const pulse = 9 + Math.sin(ts * 0.005) * 3.5;
+        ctx.strokeStyle = 'rgba(77, 171, 247, 0.92)';
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.arc(sx, sy, pulse, 0, Math.PI * 2);
         ctx.stroke();
@@ -431,24 +539,24 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx.lineWidth = 2;
         ctx.strokeRect(Math.round(sx - 6), Math.round(sy - 6), 12, 12);
 
-        ctx.fillStyle = 'rgba(18, 24, 38, 0.9)';
-        ctx.fillRect(Math.round(sx - 24), Math.round(sy + 9), 48, 15);
+        ctx.fillStyle = 'rgba(18, 24, 38, 0.92)';
+        ctx.fillRect(Math.round(sx - 26), Math.round(sy + 9), 52, 16);
         ctx.fillStyle = '#74c0fc';
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('🏠 老家', Math.round(sx), Math.round(sy + 20));
+        ctx.fillText('🏠 老家', Math.round(sx), Math.round(sy + 21));
       }
 
-      // Draw Unlocked Season-1 City Gym Pins
+      // 7. Season-1 City Gym Pins
       for (const city of WORLD_CITIES) {
-        const [cx, cy] = lngLatToPixel(city.lng, city.lat);
-        const [sx, sy] = mapToScreen(cx, cy);
+        const [sx, sy] = mercToScreen(lngToMercX(city.lng), latToMercY(city.lat), c);
+        if (sx < -60 || sx > stageSize.w + 60 || sy < -60 || sy > stageSize.h + 60) continue;
         const isCurrent = tour.currentCityId === city.id;
         const isSelected = selectedCityId === city.id;
         const isCleared = tour.clearedCityGyms.includes(city.id);
 
         if (isCurrent) {
-          const r = 10 + Math.sin(ts * 0.006) * 3;
+          const r = 11 + Math.sin(ts * 0.006) * 3;
           ctx.strokeStyle = '#ffe066';
           ctx.lineWidth = 2.5;
           ctx.beginPath();
@@ -456,7 +564,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           ctx.stroke();
         }
 
-        // Pixel square pin
         const sz = isSelected ? 14 : 11;
         ctx.fillStyle = isCleared ? '#ffd43b' : city.accentColor;
         ctx.fillRect(Math.round(sx - sz / 2), Math.round(sy - sz / 2), sz, sz);
@@ -464,7 +571,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx.lineWidth = isSelected ? 2.5 : 2;
         ctx.strokeRect(Math.round(sx - sz / 2), Math.round(sy - sz / 2), sz, sz);
 
-        // Golden victory flag pole if cleared!
         if (isCleared) {
           ctx.fillStyle = '#ffd43b';
           ctx.fillRect(Math.round(sx + sz / 2 - 1), Math.round(sy - sz / 2 - 9), 8, 6);
@@ -472,13 +578,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           ctx.fillRect(Math.round(sx + sz / 2 - 2), Math.round(sy - sz / 2 - 10), 2, 11);
         }
 
-        // Crisp City Label Pill
         const lbl = isCurrent ? `📍${city.name}` : city.name;
         ctx.font = 'bold 11px monospace';
         const tw = ctx.measureText(lbl).width + 10;
         const lx = Math.round(sx - tw / 2);
         const ly = Math.round(sy - sz / 2 - 21);
-        ctx.fillStyle = isSelected ? '#ffe066' : 'rgba(18, 22, 34, 0.88)';
+        ctx.fillStyle = isSelected ? '#ffe066' : 'rgba(18, 22, 34, 0.9)';
         ctx.fillRect(lx, ly, tw, 16);
         ctx.strokeStyle = '#161420';
         ctx.lineWidth = 1.5;
@@ -488,43 +593,35 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx.fillText(lbl, Math.round(sx), ly + 12);
       }
 
-      // Active Animated Pixel Plane Flight!
+      // 8. Animated Pixel Airplane Flight along Geodesic Arc
       if (flightAnim) {
         const elapsed = Date.now() - flightAnim.startedAt;
         const t = Math.max(0, Math.min(1, elapsed / flightAnim.durationMs));
         const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-        const [fx, fy] = lngLatToPixel(flightAnim.fromLng, flightAnim.fromLat);
-        const [tx, ty] = lngLatToPixel(flightAnim.toLng, flightAnim.toLat);
-        const [sx1, sy1] = mapToScreen(fx, fy);
-        const [sx2, sy2] = mapToScreen(tx, ty);
+        const [sx1, sy1] = mercToScreen(lngToMercX(flightAnim.fromLng), latToMercY(flightAnim.fromLat), c);
+        const [sx2, sy2] = mercToScreen(lngToMercX(flightAnim.toLng), latToMercY(flightAnim.toLat), c);
         const midX = (sx1 + sx2) / 2;
-        const midY = (sy1 + sy2) / 2 - Math.min(95, Math.hypot(sx2 - sx1, sy2 - sy1) * 0.32);
+        const midY = (sy1 + sy2) / 2 - Math.min(100, Math.hypot(sx2 - sx1, sy2 - sy1) * 0.3);
 
-        // Full golden arc
-        ctx.strokeStyle = 'rgba(255, 224, 102, 0.45)';
+        ctx.strokeStyle = 'rgba(255, 224, 102, 0.58)';
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(sx1, sy1);
         ctx.quadraticCurveTo(midX, midY, sx2, sy2);
         ctx.stroke();
 
-        // Current plane position along quadratic Bezier
         const u = 1 - ease;
         const px = u * u * sx1 + 2 * u * ease * midX + ease * ease * sx2;
         const py = u * u * sy1 + 2 * u * ease * midY + ease * ease * sy2;
-        // Tangent angle
         const dx = 2 * u * (midX - sx1) + 2 * ease * (sx2 - midX);
         const dy = 2 * u * (midY - sy1) + 2 * ease * (sy2 - midY);
         const ang = Math.atan2(dy, dx);
 
-        // Glowing contrail dot
-        ctx.fillStyle = '#fff9db';
         ctx.beginPath();
-        ctx.arc(px, py, 11, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(255, 224, 102, 0.32)';
+        ctx.arc(px, py, 12, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 224, 102, 0.34)';
         ctx.fill();
 
-        // Crisp pixel airplane sprite rotated toward destination
         ctx.save();
         ctx.translate(px, py);
         ctx.rotate(ang);
@@ -543,24 +640,24 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     };
     rafId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(rafId);
-  }, [cam, stageSize, selectedCity, selectedCityId, tour, originPoint, flightAnim]);
+  }, [stageSize, selectedCity, selectedCityId, tour, originPoint, flightAnim, pixelStyle]);
 
-  // Real Browser GPS Geolocation Handler
+  // Real Browser GPS Geolocation Handler (zooms smoothly right into user's real neighborhood!)
   const handleLocateGps = () => {
     if (!('geolocation' in navigator)) {
-      setGpsStatus('当前浏览器不支持 GPS，请点击「地图选点设老家」');
+      setGpsStatus('当前浏览器不支持 GPS，请点击「📌 点选老家」');
       return;
     }
     setGpsStatus('正在获取真实 GPS 坐标...');
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const lat = Number(pos.coords.latitude.toFixed(4));
-        const lng = Number(pos.coords.longitude.toFixed(4));
+        const lat = Number(pos.coords.latitude.toFixed(5));
+        const lng = Number(pos.coords.longitude.toFixed(5));
         const eco = getLocalHomeEcology(lat, lng);
         const label =
           eco.nearestDistKm <= 80
             ? `${eco.nearestCity.name} · GPS老家`
-            : `GPS (${lat.toFixed(1)}°, ${lng.toFixed(1)}°)`;
+            : `GPS (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`;
         onUpdateMeta((prev) => ({
           ...prev,
           worldTour: {
@@ -568,67 +665,97 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             homeCoords: { lat, lng, label, isRealGps: true },
           },
         }));
-        const [px, py] = lngLatToPixel(lng, lat);
-        setCam({ cx: px, cy: py, zoom: 3.4 });
+        setCam({ mx: lngToMercX(lng), my: latToMercY(lat), zoom: 13.5 });
+        setSelectedCityId(null);
+        setSelectedZoneId(null);
         setGpsStatus(null);
         sound.play('levelup');
-        showToast(`📍 GPS 重生点已锚定：${label}（${eco.regionLabel}）`);
+        showToast(`📍 GPS 重生点已锚定：${label}（可继续滚轮放大至街道级！）`);
       },
       () => {
-        setGpsStatus('未授予 GPS 定位权限，可点击「点选老家」在地图上自选重生点');
+        setGpsStatus('未授予 GPS 定位权限，可点击「📌 点选老家」在地图上自选重生点');
         sound.play('error');
       },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
     );
   };
 
+  // Multi-touch Pinch + Pan Pointer Handlers
   const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointersRef.current.size === 2) {
+      const pts = Array.from(pointersRef.current.values());
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      pinchStartRef.current = { dist, zoom: camRef.current.zoom, mx: camRef.current.mx, my: camRef.current.my };
+      dragRef.current.active = false;
+      return;
+    }
+
     dragRef.current = {
       active: true,
       moved: false,
       startX: e.clientX,
       startY: e.clientY,
-      baseCx: cam.cx,
-      baseCy: cam.cy,
+      baseMx: camRef.current.mx,
+      baseMy: camRef.current.my,
     };
   };
 
   const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+
+    if (pointersRef.current.size === 2 && pinchStartRef.current) {
+      const pts = Array.from(pointersRef.current.values());
+      const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      const ratio = dist / Math.max(10, pinchStartRef.current.dist);
+      const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStartRef.current.zoom + Math.log2(ratio)));
+      setCam((prev) => ({ ...prev, zoom: Number(nextZoom.toFixed(3)) }));
+      return;
+    }
+
     const d = dragRef.current;
     if (!d.active) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
     if (Math.hypot(dx, dy) > 5) d.moved = true;
-    const s = getScale();
+    const wp = worldPxAt(camRef.current.zoom);
     setCam((prev) => ({
       ...prev,
-      cx: Math.max(20, Math.min(MAP_W - 20, d.baseCx - dx / s)),
-      cy: Math.max(15, Math.min(MAP_H - 15, d.baseCy - dy / s)),
+      mx: (((d.baseMx - dx / wp) % 1) + 1) % 1,
+      my: Math.max(0.02, Math.min(0.98, d.baseMy - dy / wp)),
     }));
   };
 
   const handleCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size < 2) {
+      pinchStartRef.current = null;
+    }
     const d = dragRef.current;
+    const wasTap = d.active && !d.moved;
     d.active = false;
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {}
-    if (d.moved || flightAnim) return;
+    if (!wasTap || flightAnim) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
 
-    // Pick-Home-on-Map Mode
     if (pickHomeMode) {
-      const [mx, my] = screenToMap(sx, sy);
-      const { lat, lng } = pixelToLngLat(mx, my);
+      const [mx, my] = screenToMerc(sx, sy);
+      const lat = mercYToLat(my);
+      const lng = mercXToLng(mx);
       const eco = getLocalHomeEcology(lat, lng);
       const label =
         eco.nearestDistKm <= 100
           ? `${eco.nearestCity.name} · 自选老家`
-          : `自选老家 (${lat.toFixed(1)}°, ${lng.toFixed(1)}°)`;
+          : `自选老家 (${lat.toFixed(2)}°, ${lng.toFixed(2)}°)`;
       onUpdateMeta((prev) => ({
         ...prev,
         worldTour: {
@@ -642,12 +769,11 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       return;
     }
 
-    // Hit-test unlocked cities first
+    // Hit-test unlocked cities
     let hitCity: WorldCityDef | null = null;
     let bestD = 26;
     for (const c of WORLD_CITIES) {
-      const [cx, cy] = lngLatToPixel(c.lng, c.lat);
-      const [px, py] = mapToScreen(cx, cy);
+      const [px, py] = mercToScreen(lngToMercX(c.lng), latToMercY(c.lat));
       const dist = Math.hypot(sx - px, sy - py);
       if (dist < bestD) {
         bestD = dist;
@@ -663,8 +789,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
     // Hit-test Home Beacon
     if (tour.homeCoords) {
-      const [hx, hy] = lngLatToPixel(tour.homeCoords.lng, tour.homeCoords.lat);
-      const [px, py] = mapToScreen(hx, hy);
+      const [px, py] = mercToScreen(lngToMercX(tour.homeCoords.lng), latToMercY(tour.homeCoords.lat));
       if (Math.hypot(sx - px, sy - py) < 24) {
         sound.play('cursor');
         setSelectedCityId(null);
@@ -674,20 +799,20 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     }
 
     // Hit-test Locked Global Zones
-    for (const z of WORLD_ZONES) {
-      if (z.unlocked) continue;
-      const [zx, zy] = lngLatToPixel(z.centerLng, z.centerLat);
-      const [px, py] = mapToScreen(zx, zy);
-      if (Math.hypot(sx - px, sy - py) < 52) {
-        sound.play('cursor');
-        setSelectedCityId(null);
-        setSelectedZoneId(z.id);
-        return;
+    if (camRef.current.zoom <= 6.2) {
+      for (const z of WORLD_ZONES) {
+        if (z.unlocked) continue;
+        const [px, py] = mercToScreen(lngToMercX(z.centerLng), latToMercY(z.centerLat));
+        if (Math.hypot(sx - px, sy - py) < 52) {
+          sound.play('cursor');
+          setSelectedCityId(null);
+          setSelectedZoneId(z.id);
+          return;
+        }
       }
     }
   };
 
-  // Book flight + hotel stay and launch animated pixel plane!
   const handleBookFlightAndStay = (target: WorldCityDef) => {
     const distKm = calcGeoDistanceKm(originPoint.lat, originPoint.lng, target.lat, target.lng);
     const isRealHomeTurf = Boolean(
@@ -704,20 +829,19 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       showToast(`金币不足！需要 ${totalCost} 宝可币（当前 ${coins}）`);
       return;
     }
-
     if (totalCost > 0) {
       onUpdateMeta((prev) => prev, -totalCost);
     }
     sound.play('confirm');
 
-    // Zoom camera nicely to frame both departure and destination!
-    const [fx, fy] = lngLatToPixel(originPoint.lng, originPoint.lat);
-    const [tx, ty] = lngLatToPixel(target.lng, target.lat);
-    setCam({
-      cx: (fx + tx) / 2,
-      cy: (fy + ty) / 2,
-      zoom: Math.max(1.8, Math.min(3.4, 180 / Math.max(40, Math.hypot(tx - fx, ty - fy) * 1.4))),
-    });
+    const mx1 = lngToMercX(originPoint.lng);
+    const my1 = latToMercY(originPoint.lat);
+    const mx2 = lngToMercX(target.lng);
+    const my2 = latToMercY(target.lat);
+    const span = Math.max(0.015, Math.hypot(mx2 - mx1, my2 - my1));
+    const fitZoom = Math.max(2.5, Math.min(6.2, Math.log2(0.45 / span)));
+    setCam({ mx: (mx1 + mx2) / 2, my: (my1 + my2) / 2, zoom: Number(fitZoom.toFixed(2)) });
+
     setFlightAnim({
       fromLng: originPoint.lng,
       fromLat: originPoint.lat,
@@ -730,7 +854,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     });
   };
 
-  // Extend stay in current city
   const handleExtendStay = (city: WorldCityDef, tier: HotelTierId) => {
     const tierMeta = HOTEL_TIERS.find((t) => t.id === tier) ?? HOTEL_TIERS[0];
     if (coins < tierMeta.pricePerStay) {
@@ -755,12 +878,16 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     showToast(`🏨 已续住「${city.hotelNames[tier]}」+${tierMeta.days} 天！`);
   };
 
-  // Free return flight back to GPS Home
   const handleFlyHome = () => {
     if (!currentCity) return;
     const homeLat = tour.homeCoords?.lat ?? 31.23;
     const homeLng = tour.homeCoords?.lng ?? 121.47;
     sound.play('confirm');
+    setCam({
+      mx: (lngToMercX(currentCity.lng) + lngToMercX(homeLng)) / 2,
+      my: (latToMercY(currentCity.lat) + latToMercY(homeLat)) / 2,
+      zoom: 4.5,
+    });
     setFlightAnim({
       fromLng: currentCity.lng,
       fromLat: currentCity.lat,
@@ -773,7 +900,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     });
   };
 
-  // Launch 3D exploration or Gym Battle from current city or Home GPS!
   const handleLaunchFromCurrent = (isGym: boolean) => {
     if (currentCity && isStayExpired) {
       sound.play('error');
@@ -803,8 +929,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       });
       return;
     }
-
-    // Launching from GPS Home Spawn!
     const lat = tour.homeCoords?.lat ?? 31.23;
     const lng = tour.homeCoords?.lng ?? 121.47;
     const eco = getLocalHomeEcology(lat, lng);
@@ -820,13 +944,16 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     });
   };
 
-  // Render right panel content
   const isViewingCurrentCity = Boolean(selectedCity && currentCity && selectedCity.id === currentCity.id);
   const isViewingHome = !selectedCity && !selectedZone;
+  const centerLat = mercYToLat(cam.my);
+  const centerLng = mercXToLng(cam.mx);
+  const scaleInfo = formatScaleBar(centerLat, cam.zoom);
+  const layerBadge =
+    cam.zoom < 6 ? '全球地貌' : cam.zoom < 11 ? '区域地形' : cam.zoom < 15 ? '城市区块' : '街道实景';
 
   return (
     <div className="wt-overlay">
-      {/* Top World Navigation Ribbon */}
       <header className="wt-header">
         <button type="button" className="pkb-esc-btn" onClick={onClose}>
           <PixelIcon name="arrow_left" size={13} />
@@ -869,7 +996,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               sound.play('cursor');
               setPickHomeMode((v) => !v);
             }}
-            title="在像素世界地图上手动点击任意地点设为家乡重生点"
+            title="在地图上手动点击任意地点设为家乡重生点"
           >
             <span>{pickHomeMode ? '点击地图设点…' : '📌 点选老家'}</span>
           </button>
@@ -880,82 +1007,94 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         </div>
       </header>
 
-      {/* Main Split: Pixelated Real World Map + City Hub / Boarding Pass Drawer */}
       <div className="wt-body">
-        <div
-          ref={stageRef}
-          className={`wt-map-stage ${pickHomeMode ? 'is-picking' : ''}`}
-        >
+        <div ref={stageRef} className={`wt-map-stage ${pickHomeMode ? 'is-picking' : ''}`}>
           <canvas
             ref={canvasRef}
             className="wt-map-canvas"
             onPointerDown={handleCanvasPointerDown}
             onPointerMove={handleCanvasPointerMove}
             onPointerUp={handleCanvasPointerUp}
+            onPointerCancel={handleCanvasPointerUp}
+            onDoubleClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              zoomAroundScreenPoint(e.clientX - rect.left, e.clientY - rect.top, 1.5);
+            }}
             onWheel={(e) => {
               e.preventDefault();
-              setCam((prev) => ({
-                ...prev,
-                zoom: Math.max(1.0, Math.min(5.5, Number((prev.zoom - e.deltaY * 0.002).toFixed(2)))),
-              }));
+              const rect = e.currentTarget.getBoundingClientRect();
+              const delta = -Math.sign(e.deltaY) * Math.min(1.1, Math.max(0.35, Math.abs(e.deltaY) * 0.006));
+              zoomAroundScreenPoint(e.clientX - rect.left, e.clientY - rect.top, delta);
             }}
           />
 
-          {/* Floating Map Zoom & Region Focus Controls */}
           <div className="wt-map-tools">
             <button
               type="button"
-              onClick={() => setCam((c) => ({ ...c, zoom: Math.min(5.5, Number((c.zoom + 0.6).toFixed(2))) }))}
+              onClick={() => zoomAroundScreenPoint(stageSize.w / 2, stageSize.h / 2, 1.2)}
               aria-label="放大"
+              title="放大地图（支持直达街道级 Z18）"
             >
               +
             </button>
             <button
               type="button"
-              onClick={() => setCam((c) => ({ ...c, zoom: Math.max(1.0, Number((c.zoom - 0.6).toFixed(2))) }))}
+              onClick={() => zoomAroundScreenPoint(stageSize.w / 2, stageSize.h / 2, -1.2)}
               aria-label="缩小"
+              title="缩小地图"
             >
               -
             </button>
             <button
               type="button"
-              onClick={() => {
-                const [px, py] = lngLatToPixel(118.5, 33.5);
-                setCam({ cx: px, cy: py, zoom: 3.1 });
-              }}
+              onClick={() => setCam({ mx: lngToMercX(118.5), my: latToMercY(33.5), zoom: 4.3 })}
             >
               东亚
             </button>
             <button
               type="button"
-              onClick={() => setCam({ cx: MAP_W / 2, cy: MAP_H / 2, zoom: 1.0 })}
+              onClick={() => setCam({ mx: 0.5, my: 0.45, zoom: 1.8 })}
             >
               全球
             </button>
+            <button
+              type="button"
+              className={pixelStyle === 'pixel' ? 'is-on' : ''}
+              onClick={() => setPixelStyle((s) => (s === 'pixel' ? 'crisp' : 'pixel'))}
+              title="切换复古 GBA 像素化渲染 / 高清原图渲染"
+            >
+              {pixelStyle === 'pixel' ? '像素风' : '高清图'}
+            </button>
           </div>
 
-          {/* Season Badge + Gym Progress Strip */}
           <div className="wt-map-legend">
-            <span>S1 东亚巡礼已开放</span>
-            <em>道馆征服 {tour.clearedCityGyms.length}/{WORLD_CITIES.length}</em>
+            <span>S1 东亚巡礼</span>
+            <em>道馆 {tour.clearedCityGyms.length}/{WORLD_CITIES.length}</em>
+            <small>{layerBadge} · Z{cam.zoom.toFixed(1)}</small>
           </div>
 
-          {/* Flight Banner */}
+          {/* Live Real-World Metric Scale Bar & Lat/Lng */}
+          <div className="wt-scale-hud">
+            <div className="wt-scale-bar" style={{ width: `${scaleInfo.widthPx}px` }}>
+              <span>{scaleInfo.label}</span>
+            </div>
+            <small>
+              {Math.abs(centerLat).toFixed(2)}°{centerLat >= 0 ? 'N' : 'S'}, {Math.abs(centerLng).toFixed(2)}°{centerLng >= 0 ? 'E' : 'W'}
+            </small>
+          </div>
+
           {flightAnim && (
             <div className="wt-flight-banner">
               ✈ 正在飞往 {flightAnim.targetCity ? flightAnim.targetCity.name : 'GPS 家乡'}...
             </div>
           )}
 
-          {/* Toast / GPS Feedback */}
           {(toastMsg || gpsStatus) && (
             <div className="wt-toast">{toastMsg ?? gpsStatus}</div>
           )}
         </div>
 
-        {/* RIGHT / BOTTOM INSPECTOR DRAWER */}
         <aside className="wt-drawer scroll-y">
-          {/* Quick City Strip for easy tapping on mobile */}
           <div className="wt-city-chips">
             <button
               type="button"
@@ -964,6 +1103,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 sound.play('cursor');
                 setSelectedCityId(null);
                 setSelectedZoneId(null);
+                if (tour.homeCoords) {
+                  setCam({
+                    mx: lngToMercX(tour.homeCoords.lng),
+                    my: latToMercY(tour.homeCoords.lat),
+                    zoom: Math.max(cam.zoom, 11.5),
+                  });
+                }
               }}
             >
               🏠 老家
@@ -980,8 +1126,11 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     sound.play('cursor');
                     setSelectedCityId(c.id);
                     setSelectedZoneId(null);
-                    const [px, py] = lngLatToPixel(c.lng, c.lat);
-                    setCam((prev) => ({ ...prev, cx: px, cy: py }));
+                    setCam((prev) => ({
+                      mx: lngToMercX(c.lng),
+                      my: latToMercY(c.lat),
+                      zoom: Math.max(prev.zoom, 6.2),
+                    }));
                   }}
                 >
                   {isHere ? '📍' : cleared ? '👑' : ''}
@@ -991,7 +1140,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             })}
           </div>
 
-          {/* CASE A: Locked Future Global Region Teaser */}
           {selectedZone && !selectedZone.unlocked && (
             <div className="wt-card">
               <div className="wt-card-head is-locked">
@@ -1014,7 +1162,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             </div>
           )}
 
-          {/* CASE B: GPS Home Spawn Hub */}
           {isViewingHome && (() => {
             const lat = tour.homeCoords?.lat ?? 31.23;
             const lng = tour.homeCoords?.lng ?? 121.47;
@@ -1026,7 +1173,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   <span>永久免费</span>
                 </div>
                 <p className="wt-desc">
-                  当前匹配生态：<strong>{eco.regionLabel}</strong>（经纬度 {lat.toFixed(2)}°, {lng.toFixed(2)}°）。在家乡周边可无限免费探索与免费回血！
+                  当前匹配生态：<strong>{eco.regionLabel}</strong>（{lat.toFixed(3)}°, {lng.toFixed(3)}°）。滚轮或双指放大可一直下钻到你的真实街区！
                 </p>
                 {!tour.homeCoords && (
                   <button type="button" className="wt-secondary-btn" onClick={handleLocateGps}>
@@ -1055,7 +1202,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             );
           })()}
 
-          {/* CASE C: Currently Staying in Selected City -> CITY HUB */}
           {selectedCity && isViewingCurrentCity && (() => {
             const cleared = tour.clearedCityGyms.includes(selectedCity.id);
             const curTierMeta = HOTEL_TIERS.find((t) => t.id === tour.stayHotelTier) ?? HOTEL_TIERS[0];
@@ -1132,7 +1278,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             );
           })()}
 
-          {/* CASE D: Viewing Another Unlocked City -> AIRPORT BOARDING PASS + HOTEL BOOKING */}
           {selectedCity && !isViewingCurrentCity && (() => {
             const distKm = calcGeoDistanceKm(originPoint.lat, originPoint.lng, selectedCity.lat, selectedCity.lng);
             const isRealHomeTurf = Boolean(
