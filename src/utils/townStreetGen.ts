@@ -96,7 +96,17 @@ export interface GeneratedTownLayout {
   boundingRadius: number;
 }
 
-/** Iconic S-curving Huangpu River (黄浦江) & Suzhou Creek (苏州河) local spline definitions! */
+/** Deterministic string hash so EVERY real-world city gets its own unique procedural seed! */
+export function hashCitySeed(cityId: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < cityId.length; i++) {
+    h ^= cityId.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return (h % 90000) + 101;
+}
+
+/** Iconic S-curving Huangpu River (黄浦江) & Suzhou Creek (苏州河) for Shanghai! */
 export const SHANGHAI_LOCAL_RIVERS: TownRiverSpline[] = [
   {
     id: 'huangpu',
@@ -128,10 +138,112 @@ export const SHANGHAI_LOCAL_RIVERS: TownRiverSpline[] = [
   },
 ];
 
-/** Signed distance to Shanghai's iconic Huangpu River & Suzhou Creek (negative = inside river water!) */
-export function getShanghaiRiverSignedDist(dx: number, dz: number): number {
+export interface CityBridgeDef {
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+  width: number;
+  style: 'nanpu' | 'yangpu' | 'waibaidu';
+}
+
+export const SHANGHAI_LOCAL_BRIDGES: CityBridgeDef[] = [
+  { x1: -12, z1: 112, x2: 96, z2: 112, width: 22, style: 'nanpu' },
+  { x1: 68, z1: -128, x2: 146, z2: -74, width: 22, style: 'yangpu' },
+  { x1: 4, z1: -86, x2: 12, z2: -34, width: 16, style: 'waibaidu' },
+  { x1: -116, z1: -88, x2: -110, z2: -42, width: 16, style: 'waibaidu' },
+];
+
+const CITY_HYDRO_CACHE = new Map<string, { rivers: TownRiverSpline[]; bridges: CityBridgeDef[] }>();
+
+/**
+ * Per-city deterministic procedural river & bridge hydrography!
+ * - Shanghai uses its signature S-curving Huangpu River + Suzhou Creek.
+ * - Every other city (Beijing, Guangzhou, Hangzhou, Tokyo, Kyoto, Osaka, etc.) generates its OWN unique
+ *   winding river angle, curvature, optional tributary creek & matching cross-river bridges!
+ */
+export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[]; bridges: CityBridgeDef[] } {
+  const cleanId = cityId.replace(/^geo_city_/, '').replace(/^city_/, '');
+  const cached = CITY_HYDRO_CACHE.get(cleanId);
+  if (cached) return cached;
+
+  if (cleanId === 'shanghai') {
+    const res = { rivers: SHANGHAI_LOCAL_RIVERS, bridges: SHANGHAI_LOCAL_BRIDGES };
+    CITY_HYDRO_CACHE.set(cleanId, res);
+    return res;
+  }
+
+  const rng = makeRng(hashCitySeed(cleanId) * 41 + 9);
+  const rivers: TownRiverSpline[] = [];
+  const bridges: CityBridgeDef[] = [];
+
+  // Choose unique river axis, offset, S-curve wave amplitude & width for this city!
+  const axisAng = rng() * Math.PI;
+  const dirX = Math.cos(axisAng);
+  const dirZ = Math.sin(axisAng);
+  const nx = -dirZ;
+  const nz = dirX;
+  const riverOffset = (rng() > 0.5 ? 1 : -1) * (34 + rng() * 34);
+  const waveAmp = 18 + rng() * 26;
+  const waveFreq = 0.011 + rng() * 0.008;
+  const wavePhase = rng() * Math.PI * 2;
+  const mainW = 22 + Math.round(rng() * 14);
+
+  const mainPts: [number, number][] = [];
+  for (let s = -220; s <= 220; s += 44) {
+    const bend = riverOffset + Math.sin(s * waveFreq + wavePhase) * waveAmp;
+    mainPts.push([Math.round(dirX * s + nx * bend), Math.round(dirZ * s + nz * bend)]);
+  }
+  rivers.push({ id: `${cleanId}_main_riv`, name: `${cleanId}主河`, width: mainW, points: mainPts });
+
+  // Place 2-3 unique walkable bridges crossing this city's river cleanly!
+  const bridgeFracs = [-88, 12, 108];
+  const styles: ('nanpu' | 'yangpu' | 'waibaidu')[] = ['nanpu', 'waibaidu', 'yangpu'];
+  bridgeFracs.forEach((s, idx) => {
+    if (idx === 2 && rng() < 0.35) return;
+    const bend = riverOffset + Math.sin(s * waveFreq + wavePhase) * waveAmp;
+    const mx = dirX * s + nx * bend;
+    const mz = dirZ * s + nz * bend;
+    const halfSpan = mainW * 0.85 + 20;
+    bridges.push({
+      x1: Math.round(mx - nx * halfSpan),
+      z1: Math.round(mz - nz * halfSpan),
+      x2: Math.round(mx + nx * halfSpan),
+      z2: Math.round(mz + nz * halfSpan),
+      width: idx === 1 ? 20 : 18,
+      style: styles[(idx + Math.floor(rng() * 3)) % 3],
+    });
+  });
+
+  // 65% of cities also get a winding tributary canal/creek branching off the main river!
+  if (rng() < 0.65) {
+    const branchSide = rng() > 0.5 ? 1 : -1;
+    const branchS = (rng() - 0.5) * 90;
+    const bend0 = riverOffset + Math.sin(branchS * waveFreq + wavePhase) * waveAmp;
+    const sx = dirX * branchS + nx * bend0;
+    const sz = dirZ * branchS + nz * bend0;
+    const tribPts: [number, number][] = [[Math.round(sx), Math.round(sz)]];
+    for (let k = 1; k <= 4; k++) {
+      const dist = k * 48;
+      const sway = Math.sin(k * 1.1 + wavePhase) * 18;
+      tribPts.push([
+        Math.round(sx + nx * branchSide * dist + dirX * sway),
+        Math.round(sz + nz * branchSide * dist + dirZ * sway),
+      ]);
+    }
+    rivers.push({ id: `${cleanId}_trib`, name: `${cleanId}支流`, width: 14, points: tribPts });
+  }
+
+  const res = { rivers, bridges };
+  CITY_HYDRO_CACHE.set(cleanId, res);
+  return res;
+}
+
+/** Signed distance to ANY city's unique procedural river network (negative = inside river water!) */
+export function getShanghaiRiverSignedDist(dx: number, dz: number, cityId = 'shanghai'): number {
+  const { rivers } = getCityHydrography(cityId);
   let minSigned = 9999;
-  for (const riv of SHANGHAI_LOCAL_RIVERS) {
+  for (const riv of rivers) {
     const halfW = riv.width * 0.5;
     for (let i = 0; i < riv.points.length - 1; i++) {
       const [ax, az] = riv.points[i];
@@ -143,23 +255,9 @@ export function getShanghaiRiverSignedDist(dx: number, dz: number): number {
   return minSigned;
 }
 
-/** Bridge corridors spanning Huangpu River & Suzhou Creek (100% walkable elevated bridge decks!) */
-export const SHANGHAI_LOCAL_BRIDGES: {
-  x1: number;
-  z1: number;
-  x2: number;
-  z2: number;
-  width: number;
-  style: 'nanpu' | 'yangpu' | 'waibaidu';
-}[] = [
-  { x1: -12, z1: 112, x2: 96, z2: 112, width: 22, style: 'nanpu' },      // 南浦大桥
-  { x1: 68, z1: -128, x2: 146, z2: -74, width: 22, style: 'yangpu' },    // 杨浦大桥
-  { x1: 4, z1: -86, x2: 12, z2: -34, width: 16, style: 'waibaidu' },     // 外白渡桥
-  { x1: -116, z1: -88, x2: -110, z2: -42, width: 16, style: 'waibaidu' }, // 苏州河西桥
-];
-
-export function isOnShanghaiBridgeLocal(dx: number, dz: number): boolean {
-  for (const br of SHANGHAI_LOCAL_BRIDGES) {
+export function isOnShanghaiBridgeLocal(dx: number, dz: number, cityId = 'shanghai'): boolean {
+  const { bridges } = getCityHydrography(cityId);
+  for (const br of bridges) {
     if (distToSeg(dx, dz, br.x1, br.z1, br.x2, br.z2) < br.width * 0.54) return true;
   }
   return false;
@@ -193,14 +291,20 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const cached = LAYOUT_CACHE.get(anchor.id);
   if (cached) return cached;
 
-  const rng = makeRng(anchor.seed * 31 + 17);
+  const cleanCityId = (anchor.landmarkCityId ?? anchor.id).replace(/^geo_city_/, '').replace(/^city_/, '');
+  const seedVal = hashCitySeed(cleanCityId) + anchor.seed;
+  const rng = makeRng(seedVal * 31 + 17);
   const cx = anchor.x;
   const cz = anchor.z;
 
   const streets: TownStreetSeg[] = [];
   const junctions: TownJunctionNode[] = [];
   const rail: TownStreetSeg[] = [];
-  const rivers: TownRiverSpline[] = SHANGHAI_LOCAL_RIVERS;
+  const hydro = getCityHydrography(cleanCityId);
+  const rivers: TownRiverSpline[] = hydro.rivers.map((rv) => ({
+    ...rv,
+    points: rv.points.map(([rx, rz]) => [cx + rx, cz + rz] as [number, number]),
+  }));
 
   const addSeg = (
     x1: number,
@@ -241,138 +345,204 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     }
   };
 
-  // ==================== ORGANIC SHANGHAI MASTERPLAN (MODELED AFTER OUR GBA PIXEL-ART SHANGHAI MAP!) ====================
-  // ZERO giant circular roundabout! Real S-curving Huangpu River + Suzhou Creek + People's Square Park + Lujiazui Century Ave!
+  const parks: TownParkZone[] = [];
+  const metroLines: TownMetroLine[] = [];
 
-  // 1. Lush Urban Parks (People's Square Park in Puxi + Century Park in Pudong!)
-  const parks: TownParkZone[] = [
-    { id: `${anchor.id}_peoples_sq`, name: '人民广场公园', x: cx - 54, z: cz + 6, w: 54, d: 44, hasPond: true, hasFountain: true },
-    { id: `${anchor.id}_century_pk`, name: '世纪公园', x: cx + 138, z: cz + 46, w: 56, d: 52, hasPond: true, hasFountain: false },
-  ];
+  if (cleanCityId === 'shanghai') {
+    // ==================== SIGNATURE SHANGHAI MASTERPLAN (Huangpu River + Suzhou Creek + People's Square + Lujiazui!) ====================
+    parks.push(
+      { id: `${anchor.id}_peoples_sq`, name: '人民广场公园', x: cx - 54, z: cz + 6, w: 54, d: 44, hasPond: true, hasFountain: true },
+      { id: `${anchor.id}_century_pk`, name: '世纪公园', x: cx + 138, z: cz + 46, w: 56, d: 52, hasPond: true, hasFountain: false },
+    );
 
-  // 2. Curved Golden-Amber Arterial Boulevards (3x-character-width lanes — flowing naturally, NO rigid "+" stamp!)
-  // 2A. 南北高架 / 西藏路 (Sweeping N-S Puxi Arterial passing east of People's Square)
-  addPolyRoad(
-    [
-      [-26, -182],
-      [-18, -118],
-      [-14, -46],
-      [-18, 12],
-      [-14, 72],
-      [-12, 112],
-      [-2, 182],
-    ],
-    28,
-    'arterial',
-    20,
-  );
+    addPolyRoad([[-26, -182], [-18, -118], [-14, -46], [-18, 12], [-14, 72], [-12, 112], [-2, 182]], 28, 'arterial', 20);
+    // Split SW & NE diagonal arterial branches so they meet the N-S arterial cleanly with ZERO overlapping road meshes!
+    addPolyRoad([[-172, 146], [-104, 114], [-14, 72]], 26, 'arterial', 22);
+    addPolyRoad([[-14, -46], [38, -104], [96, -158]], 26, 'arterial', 18);
+    addPolyRoad([[62, -16], [92, 16], [126, 56], [168, 108], [204, 158]], 34, 'arterial', 22);
 
-  // 2B. 延安高架 / 北外滩干线 (Sweeping SW -> NE diagonal arterial curving past the river bend!)
-  addPolyRoad(
-    [
-      [-172, 146],
-      [-104, 114],
-      [-14, 72],
-      [-14, -46],
-      [38, -104],
-      [96, -158],
-    ],
-    26,
-    'arterial',
-    18,
-  );
+    for (const br of hydro.bridges) {
+      addSeg(cx + br.x1, cz + br.z1, cx + br.x2, cz + br.z2, br.width, br.width, 'arterial', true, br.style);
+    }
 
-  // 2C. 世纪大道 (Iconic Pudong Lujiazui diagonal 8-lane grand boulevard radiating SE from Oriental Pearl Tower!)
-  addPolyRoad(
-    [
-      [62, -16],
-      [92, 16],
-      [126, 56],
-      [168, 108],
-      [204, 158],
-    ],
-    34,
-    'arterial',
-    22,
-  );
+    addPolyRoad([[-168, -124], [-96, -120], [-18, -118], [58, -124]], 16, 'street');
+    addPolyRoad([[-174, -22], [-110, -24], [-54, -22], [-16, -24], [6, -26]], 18, 'street');
+    addPolyRoad([[-174, 34], [-110, 34], [-86, 34], [-18, 36], [8, 36]], 16, 'street');
+    addPolyRoad([[-170, 86], [-110, 86], [-62, 86], [-14, 72]], 16, 'street');
+    addPolyRoad([[-158, 134], [-96, 136], [-12, 112]], 15, 'street');
 
-  // 3. Real Walkable Bridges across Huangpu River & Suzhou Creek (南浦大桥 / 杨浦大桥 / 外白渡桥 / 苏州河西桥)!
-  for (const br of SHANGHAI_LOCAL_BRIDGES) {
-    addSeg(cx + br.x1, cz + br.z1, cx + br.x2, cz + br.z2, br.width, br.width, 'arterial', true, br.style);
+    addPolyRoad([[-144, -152], [-138, -94], [-134, -22], [-136, 48], [-140, 128]], 16, 'street');
+    addPolyRoad([[-96, -156], [-104, -92], [-96, -24], [-92, 34], [-96, 98], [-98, 158]], 17, 'street');
+    addPolyRoad([[-56, -148], [-58, -94]], 14, 'street');
+    addPolyRoad([[-54, 34], [-54, 86], [-52, 146]], 14, 'street');
+    addPolyRoad([[8, -36], [4, -4], [8, 42], [18, 92], [14, 148]], 16, 'street');
+
+    addPolyRoad([[68, -46], [48, -6], [56, 42], [86, 94], [96, 112], [116, 162]], 18, 'street');
+    addPolyRoad([[68, -46], [116, -72], [156, -98], [188, -126]], 18, 'street');
+    addPolyRoad([[92, 16], [146, -24], [184, -62]], 16, 'street');
+    addPolyRoad([[96, 112], [154, 108], [192, 108]], 16, 'street');
+
+    addSeg(cx - 118, cz + 6, cx - 94, cz + 6, 10, 10, 'alley');
+    addSeg(cx - 74, cz + 58, cx - 54, cz + 58, 10, 10, 'alley');
+    addSeg(cx - 122, cz - 142, cx - 96, cz - 140, 10, 10, 'alley');
+
+    metroLines.push(
+      {
+        id: 'metro_line2',
+        color: '#2f9e44',
+        points: [
+          [cx - 170, cz + 4], [cx - 96, cz + 4], [cx - 54, cz + 4],
+          [cx - 16, cz + 4], [cx + 62, cz - 12], [cx + 126, cz + 52], [cx + 188, cz + 120],
+        ],
+        stations: [
+          { x: cx - 134, z: cz + 4, name: '静安寺' },
+          { x: cx - 54, z: cz + 4, name: '人民广场' },
+          { x: cx + 62, z: cz - 12, name: '陆家嘴' },
+          { x: cx + 126, z: cz + 52, name: '世纪大道' },
+        ],
+      },
+      {
+        id: 'metro_line1',
+        color: '#ae3ec9',
+        points: [
+          [cx - 14, cz - 170], [cx - 16, cz - 96], [cx - 18, cz + 12],
+          [cx - 54, cz + 36], [cx - 96, cz + 86], [cx - 156, cz + 150],
+        ],
+        stations: [
+          { x: cx - 16, z: cz - 96, name: '上海火车站' },
+          { x: cx - 96, z: cz + 86, name: '徐家汇' },
+        ],
+      },
+    );
+  } else {
+    // ==================== PROCEDURAL UNIQUE CITY GENERATOR FOR EVERY OTHER REAL CITY ON EARTH! ====================
+    // Random urban orientation, curved golden arterials, irregular organic block grid, unique river bridges, parks & metro lines!
+    const gridTilt = (rng() - 0.5) * 0.55;
+    const cosG = Math.cos(gridTilt);
+    const sinG = Math.sin(gridTilt);
+    const rotPt = (lx: number, lz: number): [number, number] => [
+      Math.round(lx * cosG - lz * sinG),
+      Math.round(lx * sinG + lz * cosG),
+    ];
+
+    // 1. Place 2 unique lush parks on guaranteed dry land away from this city's river!
+    for (let pi = 0; pi < 2; pi++) {
+      for (let tries = 0; tries < 24; tries++) {
+        const ang = (pi === 0 ? 0.4 : 3.4) + (rng() - 0.5) * 1.4;
+        const dist = pi === 0 ? 32 + rng() * 28 : 96 + rng() * 44;
+        const px = Math.round(Math.cos(ang) * dist);
+        const pz = Math.round(Math.sin(ang) * dist);
+        if (getShanghaiRiverSignedDist(px, pz, cleanCityId) > 30) {
+          parks.push({
+            id: `${anchor.id}_park_${pi}`,
+            name: pi === 0 ? `${anchor.name}中心公园` : `${anchor.name}滨水绿地`,
+            x: cx + px,
+            z: cz + pz,
+            w: 44 + Math.round(rng() * 18),
+            d: 38 + Math.round(rng() * 16),
+            hasPond: true,
+            hasFountain: pi === 0,
+          });
+          break;
+        }
+      }
+    }
+    if (parks.length === 0) {
+      parks.push({ id: `${anchor.id}_park_0`, name: `${anchor.name}中心公园`, x: cx - 42, z: cz + 12, w: 46, d: 40, hasPond: true, hasFountain: true });
+    }
+
+    // 2. Two sweeping curved golden arterial boulevards + a diagonal bypass unique to this city!
+    const bend1 = (rng() - 0.5) * 28;
+    const bend2 = (rng() - 0.5) * 32;
+    const art1: [number, number][] = [];
+    const art2: [number, number][] = [];
+    for (let s = -170; s <= 170; s += 56) {
+      art1.push(rotPt(-12 + Math.sin(s * 0.012) * bend1, s));
+      art2.push(rotPt(s, -8 + Math.cos(s * 0.013) * bend2));
+    }
+    addPolyRoad(art1, 28, 'arterial', 20);
+    addPolyRoad(art2, 26, 'arterial', 18);
+    // Diagonal grand avenue unique to this city
+    const diagSign = rng() > 0.5 ? 1 : -1;
+    addPolyRoad(
+      [
+        rotPt(-140 * diagSign, -110),
+        rotPt(-55 * diagSign, -35),
+        rotPt(45 * diagSign, 45),
+        rotPt(155 * diagSign, 130),
+      ],
+      24,
+      'arterial',
+      16,
+    );
+
+    // 3. Add this city's unique cross-river bridges!
+    for (const br of hydro.bridges) {
+      addSeg(cx + br.x1, cz + br.z1, cx + br.x2, cz + br.z2, br.width, br.width, 'arterial', true, br.style);
+    }
+
+    // 4. Irregular organic neighborhood street grid (varied spacing per city, avoiding river water!)
+    const colOffsets = [-136, -86 + Math.round((rng() - 0.5) * 18), 46 + Math.round((rng() - 0.5) * 18), 108 + Math.round((rng() - 0.5) * 16)];
+    const rowOffsets = [-126, -68 + Math.round((rng() - 0.5) * 18), 54 + Math.round((rng() - 0.5) * 18), 116 + Math.round((rng() - 0.5) * 16)];
+    for (const ox of colOffsets) {
+      const pts: [number, number][] = [];
+      for (let z = -150; z <= 150; z += 50) {
+        const p = rotPt(ox + Math.round((rng() - 0.5) * 10), z);
+        if (getShanghaiRiverSignedDist(p[0], p[1], cleanCityId) > 6) pts.push(p);
+        else if (pts.length >= 2) {
+          addPolyRoad(pts, 15, 'street');
+          pts.length = 0;
+        } else pts.length = 0;
+      }
+      if (pts.length >= 2) addPolyRoad(pts, 15, 'street');
+    }
+    for (const oz of rowOffsets) {
+      const pts: [number, number][] = [];
+      for (let x = -150; x <= 150; x += 50) {
+        const p = rotPt(x, oz + Math.round((rng() - 0.5) * 10));
+        if (getShanghaiRiverSignedDist(p[0], p[1], cleanCityId) > 6) pts.push(p);
+        else if (pts.length >= 2) {
+          addPolyRoad(pts, 15, 'street');
+          pts.length = 0;
+        } else pts.length = 0;
+      }
+      if (pts.length >= 2) addPolyRoad(pts, 15, 'street');
+    }
+
+    // 5. Unique colored metro lines for this city!
+    const metroPalette = ['#2f9e44', '#ae3ec9', '#1c7ed6', '#e8590c'];
+    const cA = metroPalette[Math.floor(rng() * metroPalette.length)];
+    const cB = metroPalette[(Math.floor(rng() * 3) + 1) % metroPalette.length];
+    const mPts1 = art1.map(([x, z]) => [cx + x, cz + z] as [number, number]);
+    const mPts2 = art2.map(([x, z]) => [cx + x, cz + z] as [number, number]);
+    metroLines.push(
+      {
+        id: `${cleanCityId}_m1`,
+        color: cA,
+        points: mPts1,
+        stations: [
+          { x: mPts1[1][0], z: mPts1[1][1], name: `${anchor.name}北站` },
+          { x: mPts1[3][0], z: mPts1[3][1], name: `${anchor.name}中心` },
+          { x: mPts1[5][0], z: mPts1[5][1], name: `${anchor.name}南站` },
+        ],
+      },
+      {
+        id: `${cleanCityId}_m2`,
+        color: cB,
+        points: mPts2,
+        stations: [
+          { x: mPts2[2][0], z: mPts2[2][1], name: `${anchor.name}西站` },
+          { x: mPts2[4][0], z: mPts2[4][1], name: `${anchor.name}东站` },
+        ],
+      },
+    );
   }
 
-  // 4. Organic Puxi Street Grid (West of Huangpu River — dense warm ivory cross-streets & alleys!)
-  // Puxi E-W Streets (Nanjing Rd, Huaihai Rd, Fuxing Rd, Suzhou North Rd)
-  addPolyRoad([[-168, -124], [-96, -120], [-18, -118], [58, -124]], 16, 'street');
-  addPolyRoad([[-174, -22], [-110, -24], [-54, -22], [-16, -24], [6, -26]], 18, 'street');
-  addPolyRoad([[-174, 34], [-110, 34], [-86, 34], [-18, 36], [8, 36]], 16, 'street');
-  addPolyRoad([[-170, 86], [-110, 86], [-62, 86], [-14, 72]], 16, 'street');
-  addPolyRoad([[-158, 134], [-96, 136], [-12, 112]], 15, 'street');
-
-  // Puxi N-S Cross-Streets (offset, slightly angled around Suzhou Creek & People's Square!)
-  addPolyRoad([[-144, -152], [-138, -94], [-134, -22], [-136, 48], [-140, 128]], 16, 'street');
-  addPolyRoad([[-96, -156], [-104, -92], [-96, -24], [-92, 34], [-96, 98], [-98, 158]], 17, 'street');
-  addPolyRoad([[-56, -148], [-58, -94]], 14, 'street');
-  addPolyRoad([[-54, 34], [-54, 86], [-52, 146]], 14, 'street');
-
-  // 外滩滨江大道 (The Bund — curved waterfront avenue hugging West bank of Huangpu River!)
-  addPolyRoad([[8, -36], [4, -4], [8, 42], [18, 92], [14, 148]], 16, 'street');
-
-  // 5. Pudong / Lujiazui Waterfront Loop & Modern District Avenues (East of Huangpu River!)
-  addPolyRoad([[68, -46], [48, -6], [56, 42], [86, 94], [96, 112], [116, 162]], 18, 'street');
-  addPolyRoad([[68, -46], [116, -72], [156, -98], [188, -126]], 18, 'street');
-  addPolyRoad([[92, 16], [146, -24], [184, -62]], 16, 'street');
-  addPolyRoad([[96, 112], [154, 108], [192, 108]], 16, 'street');
-
-  // Cozy Neighborhood Alleys (弄堂)
-  addSeg(cx - 118, cz + 6, cx - 94, cz + 6, 10, 10, 'alley');
-  addSeg(cx - 74, cz + 58, cx - 54, cz + 58, 10, 10, 'alley');
-  addSeg(cx - 122, cz - 142, cx - 96, cz - 140, 10, 10, 'alley');
-
-  // 6. Colored Shanghai Metro Lines (地铁 2 号线绿线 & 地铁 1 号线紫红线) with Crisp Station Dots!
-  const metroLines: TownMetroLine[] = [
-    {
-      id: 'metro_line2',
-      color: '#2f9e44',
-      points: [
-        [cx - 170, cz + 4],
-        [cx - 96, cz + 4],
-        [cx - 54, cz + 4],
-        [cx - 16, cz + 4],
-        [cx + 62, cz - 12],
-        [cx + 126, cz + 52],
-        [cx + 188, cz + 120],
-      ],
-      stations: [
-        { x: cx - 134, z: cz + 4, name: '静安寺' },
-        { x: cx - 54, z: cz + 4, name: '人民广场' },
-        { x: cx + 62, z: cz - 12, name: '陆家嘴' },
-        { x: cx + 126, z: cz + 52, name: '世纪大道' },
-      ],
-    },
-    {
-      id: 'metro_line1',
-      color: '#ae3ec9',
-      points: [
-        [cx - 14, cz - 170],
-        [cx - 16, cz - 96],
-        [cx - 18, cz + 12],
-        [cx - 54, cz + 36],
-        [cx - 96, cz + 86],
-        [cx - 156, cz + 150],
-      ],
-      stations: [
-        { x: cx - 16, z: cz - 96, name: '上海火车站' },
-        { x: cx - 96, z: cz + 86, name: '徐家汇' },
-      ],
-    },
-  ];
-
-  // 7. Curved High-Speed Railway Corridor across North Puxi (上海火车站)
+  // 7. Curved High-Speed Railway Corridor across North District
   const railCenterZ = cz - 146;
   let rx = cx - 156;
   let rz = railCenterZ;
-  let ra = -0.015;
+  let ra = -0.015 + (rng() - 0.5) * 0.03;
   for (let i = 0; i < 6; i++) {
     const nrx = rx + Math.cos(ra) * 44;
     const nrz = rz + Math.sin(ra) * 44;
@@ -390,17 +560,14 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const busX = cx - 28;
   const busZ = cz + 28;
   const busRotY = 0;
-  void rng();
 
-  // 8. Automatic Curbside Lot Subdivision — STRICTLY avoiding Rivers, Bridges & Parks!
+  // 8. Automatic Curbside Lot Subdivision — STRICTLY avoiding THIS city's Rivers, Bridges & Parks!
   const lots: TownBuildingLot[] = [];
   const streetLamps: { x: number; z: number; rotY: number }[] = [];
 
   const isTooCloseToRoadOrLot = (lx: number, lz: number, halfW: number, halfD: number): boolean => {
     const radius = Math.hypot(halfW, halfD) * 0.82;
-    // Reject if inside or too close to Huangpu River / Suzhou Creek!
-    if (getShanghaiRiverSignedDist(lx - cx, lz - cz) < radius + 4.5) return true;
-    // Reject if overlapping People's Square Park or Century Park!
+    if (getShanghaiRiverSignedDist(lx - cx, lz - cz, cleanCityId) < radius + 4.5) return true;
     for (const pk of parks) {
       if (
         Math.abs(lx - pk.x) < pk.w * 0.5 + halfW + 3.0 &&
@@ -409,17 +576,14 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
         return true;
       }
     }
-    // Reject if overlapping any street centerline
     for (const st of streets) {
-      if (distToSeg(lx, lz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.5 + Math.min(halfW, halfD) * 0.82) {
+      if (distToSeg(lx, lz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.5 + Math.hypot(halfW, halfD) * 0.86 + 1.4) {
         return true;
       }
     }
-    // Reject if overlapping rail
     for (const rl of rail) {
       if (distToSeg(lx, lz, rl.x1, rl.z1, rl.x2, rl.z2) < 6.5 + radius * 0.5) return true;
     }
-    // Reject if overlapping any already placed building lot
     for (const ex of lots) {
       const exR = Math.hypot(ex.width * 0.5, ex.depth * 0.5) * 0.92;
       if (Math.hypot(lx - ex.x, lz - ex.z) < radius + exR + 1.8) return true;
@@ -427,39 +591,61 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     return false;
   };
 
-  // Anchor Iconic Shanghai Lujiazui Skyline FIRST (Oriental Pearl Tower + 3 Tall Modern Blue-Glass Skyscrapers!)
-  const landmarkCity = anchor.landmarkCityId ?? 'shanghai';
-  lots.push({
-    id: `${anchor.id}_landmark_main`,
-    kind: 'landmark',
-    x: cx + 68,
-    z: cz - 24,
-    rotY: 0,
-    width: 16,
-    depth: 16,
-    houseVariant: 0,
-    doorX: cx + 60,
-    doorZ: cz - 14,
-  });
-  // Lujiazui Trio Skyscrapers (上海中心 / 环球金融中心 / 金茂大厦 style!)
-  for (const [si, sx, sz] of [
-    [0, 96, -24],
-    [1, 118, -8],
-    [2, 84, 34],
-  ] as const) {
-    if (!isTooCloseToRoadOrLot(cx + sx, cz + sz, 9.5, 9.5)) {
-      lots.push({
-        id: `${anchor.id}_sky_${si}`,
-        kind: 'skyscraper',
-        x: cx + sx,
-        z: cz + sz,
-        rotY: Math.PI * 0.25,
-        width: 18,
-        depth: 16,
-        houseVariant: si,
-        doorX: cx + sx - 8,
-        doorZ: cz + sz + 8,
-      });
+  if (cleanCityId === 'shanghai') {
+    lots.push({
+      id: `${anchor.id}_landmark_main`,
+      kind: 'landmark',
+      x: cx + 68,
+      z: cz - 24,
+      rotY: 0,
+      width: 16,
+      depth: 16,
+      houseVariant: 0,
+      doorX: cx + 60,
+      doorZ: cz - 14,
+    });
+    for (const [si, sx, sz] of [
+      [0, 96, -24],
+      [1, 118, -8],
+      [2, 84, 34],
+    ] as const) {
+      if (!isTooCloseToRoadOrLot(cx + sx, cz + sz, 9.5, 9.5)) {
+        lots.push({
+          id: `${anchor.id}_sky_${si}`,
+          kind: 'skyscraper',
+          x: cx + sx,
+          z: cz + sz,
+          rotY: Math.PI * 0.25,
+          width: 18,
+          depth: 16,
+          houseVariant: si,
+          doorX: cx + sx - 8,
+          doorZ: cz + sz + 8,
+        });
+      }
+    }
+  } else if (anchor.landmarkCityId) {
+    // Find a prime dry landmark spot unique to this city!
+    for (let t = 0; t < 24; t++) {
+      const la = rng() * Math.PI * 2;
+      const ld = 36 + rng() * 44;
+      const lx = Math.round(cx + Math.cos(la) * ld);
+      const lz = Math.round(cz + Math.sin(la) * ld);
+      if (!isTooCloseToRoadOrLot(lx, lz, 9, 9)) {
+        lots.push({
+          id: `${anchor.id}_landmark_main`,
+          kind: 'landmark',
+          x: lx,
+          z: lz,
+          rotY: 0,
+          width: 16,
+          depth: 16,
+          houseVariant: 0,
+          doorX: lx,
+          doorZ: lz + 10,
+        });
+        break;
+      }
     }
   }
 
@@ -477,7 +663,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
 
   for (let si = 0; si < streets.length; si++) {
     const st = streets[si];
-    if (st.isBridge) continue; // never place houses or lamps on bridge water!
+    if (st.isBridge) continue;
     const dx = st.x2 - st.x1;
     const dz = st.z2 - st.z1;
     const len = Math.hypot(dx, dz);
@@ -490,7 +676,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     if (si % 2 === 0) {
       const lampX = (st.x1 + st.x2) * 0.5 + nx * (st.width * 0.5 + 1.2);
       const lampZ = (st.z1 + st.z2) * 0.5 + nz * (st.width * 0.5 + 1.2);
-      if (getShanghaiRiverSignedDist(lampX - cx, lampZ - cz) > 4) {
+      if (getShanghaiRiverSignedDist(lampX - cx, lampZ - cz, cleanCityId) > 4) {
         streetLamps.push({ x: lampX, z: lampZ, rotY: Math.atan2(nx, nz) });
       }
     }
@@ -515,7 +701,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
           doorZ,
           distFromCenter: Math.hypot(lx - (cx - 24), lz - cz),
           isArterial: st.kind === 'arterial',
-          isPudong: lx - cx > 42,
+          isPudong: cleanCityId === 'shanghai' ? lx - cx > 42 : rng() < 0.25,
         });
       }
     }
@@ -523,7 +709,6 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
 
   candidates.sort((a, b) => a.distFromCenter - b.distFromCenter);
 
-  // Assign Civic Flagship Lots right in downtown Puxi (near People's Square!)
   const civicQueue: { kind: TownLotKind; w: number; d: number; walkable?: boolean }[] = [
     { kind: 'pokemon_center', w: 23.0, d: 19.0, walkable: true },
     { kind: 'poke_mart', w: 21.0, d: 17.5, walkable: true },
@@ -534,7 +719,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   let lotCounter = 0;
   for (const cv of civicQueue) {
     for (const cand of candidates) {
-      if (cand.isPudong) continue;
+      if (cleanCityId === 'shanghai' && cand.isPudong) continue;
       if (isTooCloseToRoadOrLot(cand.x, cand.z, cv.w * 0.5, cv.d * 0.5)) continue;
       lots.push({
         id: `${anchor.id}_lot_${lotCounter++}`,
@@ -553,7 +738,6 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     }
   }
 
-  // Fill Puxi & Pudong blocks with rich clusters of 24 diverse townhouses, villas & modern towers!
   let houseCount = 0;
   for (const cand of candidates) {
     if (houseCount >= 24) break;
@@ -568,7 +752,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       rotY: cand.rotY,
       width: hw,
       depth: hd,
-      houseVariant: (anchor.seed + houseCount) % 10,
+      houseVariant: (seedVal + houseCount) % 10,
       walkable: houseCount === 0,
       doorX: cand.doorX,
       doorZ: cand.doorZ,
@@ -580,8 +764,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   for (const l of lots) {
     maxDist = Math.max(maxDist, Math.hypot(l.x - cx, l.z - cz) + 18);
   }
-  void landmarkCity;
 
+  const primaryPark = parks[0];
   const layout: GeneratedTownLayout = {
     townId: anchor.id,
     townName: anchor.name,
@@ -594,8 +778,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     metroLines,
     rail,
     lots,
-    plazaX: cx - 54,
-    plazaZ: cz + 6,
+    plazaX: primaryPark?.x ?? cx - 42,
+    plazaZ: primaryPark?.z ?? cz + 8,
     busX,
     busZ,
     busRotY,

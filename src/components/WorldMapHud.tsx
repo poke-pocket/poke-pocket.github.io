@@ -18,7 +18,7 @@ import {
   WORLD_ROAD_SEGMENTS_3D,
   WORLD_TOWNS_3D,
 } from '../data/survivorsTactics';
-import { generateTownLayout } from '../utils/townStreetGen';
+import { generateTownLayout, hashCitySeed } from '../utils/townStreetGen';
 import { BIOME_PALETTES, type BiomeId } from '../data/worldTextures3D';
 import { sound } from '../utils/sound';
 import { PixelItemImg } from './PixelSprite';
@@ -428,234 +428,249 @@ function paintRoadsAndTownsOnMap(
       }
     }
 
-    // 2. Active Real-Earth City's GBA Pixel-Art Shanghai Masterplan (Warm Urban Parchment + S-Curving Huangpu River + Suzhou Creek + Parks + Organic Roads + Bridges + Colored Metro + Terracotta/Skyscraper Blocks!)
+    // 2. EVERY Visible Real-Earth City's UNIQUE Procedural GBA Pixel-Art Masterplan
+    // (Shanghai uses its signature Huangpu River + Suzhou Creek + Lujiazui layout; EVERY other city gets its own unique procedural river, bridges, tilted street grid, parks & metro lines!)
     if (unitsPerPx < 4.5) {
-      const cityId = activeGeo.startCityId ?? 'shanghai';
-      const activeAnchor = {
-        id: `geo_city_${cityId}`,
-        name: activeGeo.startCityName,
-        x: 0,
-        z: 0,
-        seed: 101,
-        plazaRadius: 190,
-        plateauY: 1.65,
-        landmarkCityId: cityId,
-      };
-      const layout = generateTownLayout(activeAnchor);
+      const projected = getProjectedGeoCities();
+      const citiesToRender: { id: string; name: string; x: number; z: number }[] = [];
+      const activeId = activeGeo.startCityId ?? 'shanghai';
+      citiesToRender.push({ id: activeId, name: activeGeo.startCityName, x: 0, z: 0 });
+      for (const gc of projected) {
+        if (gc.city.id === activeId && Math.hypot(gc.x, gc.z) < 40) continue;
+        citiesToRender.push({ id: gc.city.id, name: gc.city.name, x: gc.x, z: gc.z });
+      }
 
-      // 2A. Warm Sunlit Urban Parchment Footprint (matches retro GBA pixel city map palette!)
-      const cOrigin = toScreen(0, 0);
+      const viewW = Math.max(ctx.canvas.width, 1200);
+      const viewH = Math.max(ctx.canvas.height, 900);
       const urbanR = Math.max(12, 182 * invScale);
-      ctx.fillStyle = '#efe2be';
-      ctx.beginPath();
-      ctx.ellipse(cOrigin.sx, cOrigin.sy, urbanR * 1.04, urbanR * 0.96, -0.1, 0, Math.PI * 2);
-      ctx.fill();
+      for (const rc of citiesToRender) {
+        const cOrigin = toScreen(rc.x, rc.z);
+        if (
+          cOrigin.sx + urbanR * 1.45 < 0 ||
+          cOrigin.sx - urbanR * 1.45 > viewW ||
+          cOrigin.sy + urbanR * 1.45 < 0 ||
+          cOrigin.sy - urbanR * 1.45 > viewH
+        ) {
+          continue;
+        }
 
-      // 2B. Lush Green Urban Parks (人民广场公园 & 世纪公园 with blue ponds & pixel tree dots!)
-      for (const pk of layout.parks) {
-        const pp = toScreen(pk.x, pk.z);
-        const pw = pk.w * invScale;
-        const pd = pk.d * invScale;
-        ctx.fillStyle = '#67b84e';
-        ctx.strokeStyle = '#3f7d2e';
-        ctx.lineWidth = detailed ? 1.4 : 0.8;
-        ctx.fillRect(pp.sx - pw * 0.5, pp.sy - pd * 0.5, pw, pd);
-        ctx.strokeRect(pp.sx - pw * 0.5, pp.sy - pd * 0.5, pw, pd);
+        const cityAnchor = {
+          id: `geo_city_${rc.id}_${Math.round(rc.x)}_${Math.round(rc.z)}`,
+          name: rc.name,
+          x: rc.x,
+          z: rc.z,
+          seed: hashCitySeed(rc.id),
+          plazaRadius: 190,
+          plateauY: 1.65,
+          landmarkCityId: rc.id,
+        };
+        const layout = generateTownLayout(cityAnchor);
 
-        if (pk.hasPond && pw >= 10) {
-          ctx.fillStyle = '#2f80ed';
+        // 2A. Warm Sunlit Urban Parchment Footprint (uniquely oriented per city!)
+        const citySeedRot = ((hashCitySeed(rc.id) % 314) - 157) * 0.005;
+        ctx.fillStyle = '#efe2be';
+        ctx.beginPath();
+        ctx.ellipse(cOrigin.sx, cOrigin.sy, urbanR * 1.04, urbanR * 0.94, citySeedRot, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2B. Lush Green Urban Parks with blue ponds & pixel tree dots
+        for (const pk of layout.parks) {
+          const pp = toScreen(pk.x, pk.z);
+          const pw = pk.w * invScale;
+          const pd = pk.d * invScale;
+          ctx.fillStyle = '#67b84e';
+          ctx.strokeStyle = '#3f7d2e';
+          ctx.lineWidth = detailed ? 1.4 : 0.8;
+          ctx.fillRect(pp.sx - pw * 0.5, pp.sy - pd * 0.5, pw, pd);
+          ctx.strokeRect(pp.sx - pw * 0.5, pp.sy - pd * 0.5, pw, pd);
+
+          if (pk.hasPond && pw >= 10) {
+            ctx.fillStyle = '#2f80ed';
+            ctx.beginPath();
+            ctx.ellipse(pp.sx, pp.sy, pw * 0.22, pd * 0.2, 0.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#90e0ef';
+            ctx.fillRect(pp.sx - pw * 0.08, pp.sy - pd * 0.05, Math.max(2, pw * 0.07), 1.5);
+          }
+          if (detailed && pw >= 16) {
+            ctx.fillStyle = '#2b7a2b';
+            for (const [ox, oy] of [[-0.32, -0.3], [0.32, -0.28], [-0.3, 0.3], [0.3, 0.3]]) {
+              ctx.beginPath();
+              ctx.arc(pp.sx + ox * pw, pp.sy + oy * pd, Math.max(2, pw * 0.07), 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+
+        // 2C. Unique Procedural Blue City Rivers & Tributaries with Crisp Riverbanks & White Wave Marks
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (const riv of layout.rivers) {
+          const pts = riv.points.map(([rx, rz]) => toScreen(rx, rz));
+          const rw = Math.max(detailed ? 4 : 2.2, riv.width * invScale);
+          ctx.strokeStyle = '#6ec056';
+          ctx.lineWidth = rw + (detailed ? 5.5 : 2.5);
           ctx.beginPath();
-          ctx.ellipse(pp.sx, pp.sy, pw * 0.22, pd * 0.2, 0.2, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#90e0ef';
-          ctx.fillRect(pp.sx - pw * 0.08, pp.sy - pd * 0.05, Math.max(2, pw * 0.07), 1.5);
-        }
-        // Tiny pixel tree clusters inside park
-        if (detailed && pw >= 16) {
-          ctx.fillStyle = '#2b7a2b';
-          for (const [ox, oy] of [[-0.32, -0.3], [0.32, -0.28], [-0.3, 0.3], [0.3, 0.3]]) {
-            ctx.beginPath();
-            ctx.arc(pp.sx + ox * pw, pp.sy + oy * pd, Math.max(2, pw * 0.07), 0, Math.PI * 2);
-            ctx.fill();
+          ctx.moveTo(pts[0].sx, pts[0].sy);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#1b4965';
+          ctx.lineWidth = rw + (detailed ? 2.2 : 1.0);
+          ctx.beginPath();
+          ctx.moveTo(pts[0].sx, pts[0].sy);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#2f80ed';
+          ctx.lineWidth = rw;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].sx, pts[0].sy);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+          ctx.stroke();
+
+          if (detailed && rw >= 8) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+            ctx.lineWidth = 1.2;
+            for (let i = 1; i < pts.length - 1; i++) {
+              const wx = (pts[i].sx + pts[i + 1].sx) * 0.5;
+              const wy = (pts[i].sy + pts[i + 1].sy) * 0.5;
+              ctx.beginPath();
+              ctx.moveTo(wx - 4, wy);
+              ctx.lineTo(wx - 1, wy - 1.5);
+              ctx.lineTo(wx + 2, wy);
+              ctx.lineTo(wx + 5, wy - 1.5);
+              ctx.stroke();
+            }
           }
         }
-      }
 
-      // 2C. S-Curving Blue Huangpu River (黄浦江) & Suzhou Creek (苏州河) with Crisp Riverbanks & White Wave Marks!
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      for (const riv of layout.rivers) {
-        const pts = riv.points.map(([rx, rz]) => toScreen(rx, rz));
-        const rw = Math.max(detailed ? 4 : 2.2, riv.width * invScale);
-        // Green riverfront promenade strip
-        ctx.strokeStyle = '#6ec056';
-        ctx.lineWidth = rw + (detailed ? 5.5 : 2.5);
-        ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-        ctx.stroke();
+        // 2D. Two-Pass Organic City Streets (Land streets first, then Bridges cleanly ON TOP of rivers!)
+        const landStreets = layout.streets.filter((s) => !s.isBridge);
+        const bridgeStreets = layout.streets.filter((s) => s.isBridge);
 
-        // Dark riverbank outline
-        ctx.strokeStyle = '#1b4965';
-        ctx.lineWidth = rw + (detailed ? 2.2 : 1.0);
-        ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-        ctx.stroke();
+        ctx.strokeStyle = '#5c4b37';
+        ctx.fillStyle = '#5c4b37';
+        for (const st of landStreets) {
+          const a = toScreen(st.x1, st.z1);
+          const b = toScreen(st.x2, st.z2);
+          const w = Math.max(detailed ? 2.2 : 1.2, st.width * invScale);
+          ctx.lineWidth = w + (detailed ? 2.2 : 1.0);
+          ctx.beginPath();
+          ctx.moveTo(a.sx, a.sy);
+          ctx.lineTo(b.sx, b.sy);
+          ctx.stroke();
+        }
 
-        // Vibrant GBA Blue River Water
-        ctx.strokeStyle = '#2f80ed';
-        ctx.lineWidth = rw;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-        ctx.stroke();
+        for (const st of [...landStreets.filter((s) => s.kind !== 'arterial'), ...landStreets.filter((s) => s.kind === 'arterial')]) {
+          const a = toScreen(st.x1, st.z1);
+          const b = toScreen(st.x2, st.z2);
+          const w = Math.max(detailed ? 2.2 : 1.2, st.width * invScale);
+          ctx.strokeStyle = st.kind === 'arterial' ? '#f4b942' : st.kind === 'street' ? '#fff8e6' : '#f1e7cf';
+          ctx.lineWidth = w;
+          ctx.beginPath();
+          ctx.moveTo(a.sx, a.sy);
+          ctx.lineTo(b.sx, b.sy);
+          ctx.stroke();
+        }
 
-        // White pixel wave ripples along the Huangpu River!
-        if (detailed && rw >= 8) {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
-          ctx.lineWidth = 1.2;
-          for (let i = 1; i < pts.length - 1; i++) {
-            const wx = (pts[i].sx + pts[i + 1].sx) * 0.5;
-            const wy = (pts[i].sy + pts[i + 1].sy) * 0.5;
-            ctx.beginPath();
-            ctx.moveTo(wx - 4, wy);
-            ctx.lineTo(wx - 1, wy - 1.5);
-            ctx.lineTo(wx + 2, wy);
-            ctx.lineTo(wx + 5, wy - 1.5);
-            ctx.stroke();
+        ctx.lineCap = 'butt';
+        for (const br of bridgeStreets) {
+          const a = toScreen(br.x1, br.z1);
+          const b = toScreen(br.x2, br.z2);
+          const w = Math.max(detailed ? 3.2 : 1.8, br.width * invScale);
+          ctx.strokeStyle = br.bridgeStyle === 'waibaidu' ? '#c92a2a' : '#3b4252';
+          ctx.lineWidth = w + (detailed ? 3.2 : 1.6);
+          ctx.beginPath();
+          ctx.moveTo(a.sx, a.sy);
+          ctx.lineTo(b.sx, b.sy);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#d8dee9';
+          ctx.lineWidth = w;
+          ctx.beginPath();
+          ctx.moveTo(a.sx, a.sy);
+          ctx.lineTo(b.sx, b.sy);
+          ctx.stroke();
+        }
+
+        // 2E. Colored Urban Metro Lines + White Station Dots
+        ctx.lineCap = 'round';
+        for (const ml of layout.metroLines) {
+          const pts = ml.points.map(([mx, mz]) => toScreen(mx, mz));
+          ctx.strokeStyle = ml.color;
+          ctx.lineWidth = detailed ? 2.0 : 1.1;
+          ctx.beginPath();
+          ctx.moveTo(pts[0].sx, pts[0].sy);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+          ctx.stroke();
+
+          if (detailed) {
+            for (const st of ml.stations) {
+              const sp = toScreen(st.x, st.z);
+              ctx.fillStyle = '#ffffff';
+              ctx.strokeStyle = ml.color;
+              ctx.lineWidth = 1.6;
+              ctx.beginPath();
+              ctx.arc(sp.sx, sp.sy, 3.2, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            }
           }
         }
-      }
 
-      // 2D. Two-Pass Organic City Streets (Land streets first, then Bridges cleanly ON TOP of rivers!)
-      const landStreets = layout.streets.filter((s) => !s.isBridge);
-      const bridgeStreets = layout.streets.filter((s) => s.isBridge);
-
-      // Pass 1: Unified warm-brown road outline casing (ZERO internal seam lines!)
-      ctx.strokeStyle = '#5c4b37';
-      ctx.fillStyle = '#5c4b37';
-      for (const st of landStreets) {
-        const a = toScreen(st.x1, st.z1);
-        const b = toScreen(st.x2, st.z2);
-        const w = Math.max(detailed ? 2.2 : 1.2, st.width * invScale);
-        ctx.lineWidth = w + (detailed ? 2.2 : 1.0);
-        ctx.beginPath();
-        ctx.moveTo(a.sx, a.sy);
-        ctx.lineTo(b.sx, b.sy);
-        ctx.stroke();
-      }
-
-      // Pass 2: Seamless merged road fills (Cream-ivory grid + Golden-amber curved arterials!)
-      for (const st of [...landStreets.filter((s) => s.kind !== 'arterial'), ...landStreets.filter((s) => s.kind === 'arterial')]) {
-        const a = toScreen(st.x1, st.z1);
-        const b = toScreen(st.x2, st.z2);
-        const w = Math.max(detailed ? 2.2 : 1.2, st.width * invScale);
-        ctx.strokeStyle = st.kind === 'arterial' ? '#f4b942' : st.kind === 'street' ? '#fff8e6' : '#f1e7cf';
-        ctx.lineWidth = w;
-        ctx.beginPath();
-        ctx.moveTo(a.sx, a.sy);
-        ctx.lineTo(b.sx, b.sy);
-        ctx.stroke();
-      }
-
-      // Pass 2B: Bridges Spanning Right Over the Blue Rivers (Nanpu / Yangpu / Waibaidu Red Steel Truss!)
-      ctx.lineCap = 'butt';
-      for (const br of bridgeStreets) {
-        const a = toScreen(br.x1, br.z1);
-        const b = toScreen(br.x2, br.z2);
-        const w = Math.max(detailed ? 3.2 : 1.8, br.width * invScale);
-        ctx.strokeStyle = br.bridgeStyle === 'waibaidu' ? '#c92a2a' : '#3b4252';
-        ctx.lineWidth = w + (detailed ? 3.2 : 1.6);
-        ctx.beginPath();
-        ctx.moveTo(a.sx, a.sy);
-        ctx.lineTo(b.sx, b.sy);
-        ctx.stroke();
-
-        ctx.strokeStyle = '#d8dee9';
-        ctx.lineWidth = w;
-        ctx.beginPath();
-        ctx.moveTo(a.sx, a.sy);
-        ctx.lineTo(b.sx, b.sy);
-        ctx.stroke();
-      }
-
-      // 2E. Colored Shanghai Metro Lines (地铁 2 号线绿 / 1 号线紫) + Tiny Crisp White Station Dots!
-      ctx.lineCap = 'round';
-      for (const ml of layout.metroLines) {
-        const pts = ml.points.map(([mx, mz]) => toScreen(mx, mz));
-        ctx.strokeStyle = ml.color;
-        ctx.lineWidth = detailed ? 2.0 : 1.1;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-        ctx.stroke();
-
-        if (detailed) {
-          for (const st of ml.stations) {
-            const sp = toScreen(st.x, st.z);
-            ctx.fillStyle = '#ffffff';
-            ctx.strokeStyle = ml.color;
-            ctx.lineWidth = 1.6;
-            ctx.beginPath();
-            ctx.arc(sp.sx, sp.sy, 3.2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
+        // 2F. Dense Urban Buildings, Skyscrapers & Landmarks
+        for (const lot of layout.lots) {
+          const lp = toScreen(lot.x, lot.z);
+          const bw = Math.max(detailed ? 4.0 : 2.2, lot.width * invScale);
+          const bd = Math.max(detailed ? 3.4 : 2.0, lot.depth * invScale);
+          ctx.save();
+          ctx.translate(lp.sx, lp.sy);
+          ctx.rotate(-lot.rotY);
+          if (detailed && bw >= 4.5) {
+            ctx.fillStyle = 'rgba(38, 28, 20, 0.3)';
+            ctx.fillRect(-bw / 2 + 2, -bd / 2 + 2, bw, bd);
           }
-        }
-      }
-
-      // 2F. Dense Terracotta Puxi Buildings + Sleek Blue-Glass Lujiazui Skyscrapers + Oriental Pearl Tower!
-      for (const lot of layout.lots) {
-        const lp = toScreen(lot.x, lot.z);
-        const bw = Math.max(detailed ? 4.0 : 2.2, lot.width * invScale);
-        const bd = Math.max(detailed ? 3.4 : 2.0, lot.depth * invScale);
-        ctx.save();
-        ctx.translate(lp.sx, lp.sy);
-        ctx.rotate(-lot.rotY);
-        if (detailed && bw >= 4.5) {
-          ctx.fillStyle = 'rgba(38, 28, 20, 0.3)';
-          ctx.fillRect(-bw / 2 + 2, -bd / 2 + 2, bw, bd);
-        }
-        ctx.fillStyle =
-          lot.kind === 'pokemon_center'
-            ? '#fa5252'
-            : lot.kind === 'poke_mart'
-              ? '#228be6'
-              : lot.kind === 'hotel'
-                ? '#e67700'
-                : lot.kind === 'restaurant'
-                  ? '#fd7e14'
-                  : lot.kind === 'landmark'
-                    ? '#e64980'
-                    : lot.kind === 'skyscraper'
-                      ? '#5aa9e6'
-                      : '#b86b52';
-        ctx.strokeStyle = '#3b2d22';
-        ctx.lineWidth = detailed ? 1.0 : 0.5;
-        ctx.fillRect(-bw / 2, -bd / 2, bw, bd);
-        ctx.strokeRect(-bw / 2, -bd / 2, bw, bd);
-        if (detailed && bw >= 7) {
-          ctx.fillStyle = lot.kind === 'skyscraper' ? 'rgba(220,245,255,0.4)' : 'rgba(255,235,210,0.28)';
-          ctx.fillRect(-bw / 2 + 1.2, -bd / 2 + 1.2, bw - 2.4, Math.max(1.8, bd * 0.34));
-        }
-        ctx.restore();
-
-        if (detailed && bw >= 10 && lot.kind !== 'house' && lot.kind !== 'skyscraper') {
-          const sym =
+          ctx.fillStyle =
             lot.kind === 'pokemon_center'
-              ? '🏥'
+              ? '#fa5252'
               : lot.kind === 'poke_mart'
-                ? '🏪'
+                ? '#228be6'
                 : lot.kind === 'hotel'
-                  ? '🏨'
+                  ? '#e67700'
                   : lot.kind === 'restaurant'
-                    ? '🍜'
-                    : '🗼';
-          ctx.font = `${Math.min(13, Math.max(9, Math.round(bw * 0.5)))}px sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(sym, lp.sx, lp.sy);
+                    ? '#fd7e14'
+                    : lot.kind === 'landmark'
+                      ? '#e64980'
+                      : lot.kind === 'skyscraper'
+                        ? '#5aa9e6'
+                        : '#b86b52';
+          ctx.strokeStyle = '#3b2d22';
+          ctx.lineWidth = detailed ? 1.0 : 0.5;
+          ctx.fillRect(-bw / 2, -bd / 2, bw, bd);
+          ctx.strokeRect(-bw / 2, -bd / 2, bw, bd);
+          if (detailed && bw >= 7) {
+            ctx.fillStyle = lot.kind === 'skyscraper' ? 'rgba(220,245,255,0.4)' : 'rgba(255,235,210,0.28)';
+            ctx.fillRect(-bw / 2 + 1.2, -bd / 2 + 1.2, bw - 2.4, Math.max(1.8, bd * 0.34));
+          }
+          ctx.restore();
+
+          if (detailed && bw >= 10 && lot.kind !== 'house' && lot.kind !== 'skyscraper') {
+            const sym =
+              lot.kind === 'pokemon_center'
+                ? '🏥'
+                : lot.kind === 'poke_mart'
+                  ? '🏪'
+                  : lot.kind === 'hotel'
+                    ? '🏨'
+                    : lot.kind === 'restaurant'
+                      ? '🍜'
+                      : '🗼';
+            ctx.font = `${Math.min(13, Math.max(9, Math.round(bw * 0.5)))}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(sym, lp.sx, lp.sy);
+          }
         }
       }
     }

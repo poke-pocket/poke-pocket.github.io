@@ -1622,6 +1622,13 @@ function buildStreetRibbonMesh(
   const dirZ = (seg.z2 - seg.z1) / Math.max(0.01, dist);
   const wStart = seg.widthStart ?? seg.width;
   const wEnd = seg.widthEnd ?? seg.width;
+  // Extend ribbon slightly past each endpoint to seal angled polyline miter joints (ZERO grass V-slivers at road bends!)
+  const endPad = Math.min(2.6, Math.max(wStart, wEnd) * 0.12);
+  const sx1 = seg.x1 - dirX * endPad;
+  const sz1 = seg.z1 - dirZ * endPad;
+  const sx2 = seg.x2 + dirX * endPad;
+  const sz2 = seg.z2 + dirZ * endPad;
+  const paddedDist = dist + endPad * 2;
 
   const positions: number[] = [];
   const uvs: number[] = [];
@@ -1632,8 +1639,8 @@ function buildStreetRibbonMesh(
     const curHalfW = (wStart + (wEnd - wStart) * t) * 0.5;
     const perpX = -dirZ * curHalfW;
     const perpZ = dirX * curHalfW;
-    const wx = seg.x1 + (seg.x2 - seg.x1) * t;
-    const wz = seg.z1 + (seg.z2 - seg.z1) * t;
+    const wx = sx1 + (sx2 - sx1) * t;
+    const wz = sz1 + (sz2 - sz1) * t;
     const lx = wx - perpX;
     const lz = wz - perpZ;
     const rx = wx + perpX;
@@ -1650,7 +1657,7 @@ function buildStreetRibbonMesh(
       rx - originX, yR, rz - originZ,       // 3: right sidewalk edge
       rx - originX, yR - 1.4, rz - originZ, // 4: right curb skirt bottom
     );
-    const u = (t * dist) / (seg.kind === 'arterial' ? 16.5 : 10.5);
+    const u = (t * paddedDist) / (seg.kind === 'arterial' ? 16.5 : 10.5);
     uvs.push(u, 0, u, 0, u, 0.5, u, 1, u, 1);
     if (s < steps) {
       const i0 = s * 5;
@@ -1759,7 +1766,27 @@ export function buildProceduralTown3D(
   const curbStoneMat = new THREE.MeshLambertMaterial({ color: 0xd8d0c0 });
   const medianGrassMat = new THREE.MeshLambertMaterial({ color: 0x37a84f });
 
-  for (const seg of layout.streets) {
+  const distToSeg2D = (px: number, pz: number, x1: number, z1: number, x2: number, z2: number) => {
+    const vx = x2 - x1;
+    const vz = z2 - z1;
+    const lenSq = vx * vx + vz * vz;
+    if (lenSq < 0.001) return Math.hypot(px - x1, pz - z1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * vx + (pz - z1) * vz) / lenSq));
+    return Math.hypot(px - (x1 + t * vx), pz - (z1 + t * vz));
+  };
+  const isBlockedForGreenery = (wx: number, wz: number, skipSeg: TownStreetSeg) => {
+    if (getGroundHeight(wx, wz) < WATER_LEVEL_3D + 0.35) return true;
+    for (const other of layout.streets) {
+      if (other === skipSeg) continue;
+      if (distToSeg2D(wx, wz, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 1.6) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (let segIdx = 0; segIdx < layout.streets.length; segIdx++) {
+    const seg = layout.streets[segIdx];
     if (seg.isBridge) {
       // REAL 3D RIVER BRIDGE (Nanpu Bridge / Yangpu Bridge / Waibaidu Red Steel Truss Bridge across Huangpu River & Suzhou Creek!)
       const bLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
@@ -1822,9 +1849,11 @@ export function buildProceduralTown3D(
         : seg.kind === 'street'
           ? tex.collector2Lane
           : tex.alleyCobble;
-    // Ultra-flush layered road elevations (+0.04 / +0.06 / +0.08) so characters walking at ground + 0.14 ALWAYS stand squarely ON TOP!
-    const liftY = seg.kind === 'arterial' ? 0.08 : seg.kind === 'street' ? 0.06 : 0.04;
-    const polyOff = seg.kind === 'arterial' ? -2 : seg.kind === 'street' ? -1 : 0;
+    // Crisp layered road elevations (+0.05 / +0.075 / +0.10 + micro-stagger) so intersecting segments NEVER Z-fight,
+    // while characters walking at ground + 0.16 ALWAYS stand squarely ON TOP of every road & crosswalk!
+    const microStagger = (segIdx % 7) * 0.002;
+    const liftY = (seg.kind === 'arterial' ? 0.10 : seg.kind === 'street' ? 0.075 : 0.05) + microStagger;
+    const polyOff = seg.kind === 'arterial' ? -4 : seg.kind === 'street' ? -2 : -1;
     group.add(buildStreetRibbonMesh(seg, baseY, centerX, centerZ, roadTex, getGroundHeight, liftY, polyOff));
 
     // Neatly spaced Pixel-Art Street Trees & Bushes inside the 8-Lane Central Green Median (strictly outside plaza r >= 36m & clear of junctions!)
@@ -1839,9 +1868,9 @@ export function buildProceduralTown3D(
     const nearJunction = layout.junctions.some((jn) => Math.hypot(jn.x - midX, jn.z - midZ) < 25.0);
     const distFromPlaza = Math.hypot(midX - centerX, midZ - centerZ);
 
-    if (seg.kind === 'arterial' && segLen >= 22 && !nearJunction && distFromPlaza >= 40) {
+    if (seg.kind === 'arterial' && segLen >= 22 && !nearJunction && distFromPlaza >= 40 && !isBlockedForGreenery(midX, midZ, seg)) {
       const mLen = Math.max(10.0, segLen - 22.0);
-      const my = localGroundY(midX, midZ) + 0.09;
+      const my = localGroundY(midX, midZ) + 0.11;
       // Low neat curb border for the central green median strip
       const curbBox = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.16, mLen), curbStoneMat);
       curbBox.position.set(midX - centerX, my + 0.08, midZ - centerZ);
@@ -1857,15 +1886,17 @@ export function buildProceduralTown3D(
         const f = -0.4 + (treeSlots > 1 ? (ti / (treeSlots - 1)) * 0.8 : 0.4);
         const tx = midX + dirX * (f * mLen);
         const tz = midZ + dirZ * (f * mLen);
-        if (Math.hypot(tx - centerX, tz - centerZ) < 36) continue;
+        if (Math.hypot(tx - centerX, tz - centerZ) < 36 || isBlockedForGreenery(tx, tz, seg)) continue;
         const ty = localGroundY(tx, tz) + 0.24;
         const treeTex = floraTex.treeSprites[(ti + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
         spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 5.4, 6.4);
         if (ti < treeSlots - 1) {
           const bx = tx + dirX * (mLen / (treeSlots * 2));
           const bz = tz + dirZ * (mLen / (treeSlots * 2));
-          const bushTex = floraTex.bushes[ti % floraTex.bushes.length] ?? floraTex.bush;
-          spawnPixelGreenery(bushTex, bx - centerX, localGroundY(bx, bz) + 0.22, bz - centerZ, 2.3, 2.0);
+          if (!isBlockedForGreenery(bx, bz, seg)) {
+            const bushTex = floraTex.bushes[ti % floraTex.bushes.length] ?? floraTex.bush;
+            spawnPixelGreenery(bushTex, bx - centerX, localGroundY(bx, bz) + 0.22, bz - centerZ, 2.3, 2.0);
+          }
         }
       }
     }
@@ -1881,6 +1912,7 @@ export function buildProceduralTown3D(
         for (const side of [-1, 1]) {
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;
+          if (isBlockedForGreenery(tx, tz, seg)) continue;
           const ty = localGroundY(tx, tz) + 0.14;
           const texPick =
             ti % 2 === 0
@@ -1897,8 +1929,8 @@ export function buildProceduralTown3D(
   const junctionMat = new THREE.MeshLambertMaterial({
     map: tex.junctionAsphalt,
     polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4,
+    polygonOffsetFactor: -6,
+    polygonOffsetUnits: -6,
   });
   const signalPoleMat = new THREE.MeshLambertMaterial({ color: 0x343a40 });
   const signalBoxMat = new THREE.MeshLambertMaterial({ color: 0x1b1f26 });
@@ -1917,7 +1949,7 @@ export function buildProceduralTown3D(
       const vz = posAttr.getZ(vi);
       const wx = jn.x + vx * cosR + vz * sinR;
       const wz = jn.z - vx * sinR + vz * cosR;
-      posAttr.setXYZ(vi, wx - centerX, localGroundY(wx, wz) + 0.10, wz - centerZ);
+      posAttr.setXYZ(vi, wx - centerX, localGroundY(wx, wz) + 0.13, wz - centerZ);
     }
     padGeo.computeVertexNormals();
     const pad = new THREE.Mesh(padGeo, junctionMat);

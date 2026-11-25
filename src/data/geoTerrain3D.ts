@@ -263,8 +263,9 @@ export function sampleGeoTerrainHeight3D(
   if (!preferMacro) {
     const cityDist = Math.hypot(wx, wz);
     if (cityDist < 224) {
-      // Smooth river channel carving for Huangpu River & Suzhou Creek!
-      const rivSigned = getShanghaiRiverSignedDist(wx, wz);
+      // Smooth river channel carving for the active city's unique procedural river!
+      const activeCityId = activeOrigin.startCityId ?? 'shanghai';
+      const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
       const riverElev = -1.65;
       const dryCityY = 1.65;
       let cityTargetY = dryCityY;

@@ -112,6 +112,7 @@ import { WorldMapHud, type LiveMapSnapshot, type WorldMapData } from './WorldMap
 import type { GachaOutcome, GachaTenOutcome, SurvivorsResultPayload } from '../utils/petEngine';
 import type { AccessoryId, FoodId, GachaBoxId, RoomThemeId } from '../types/pet';
 import { sound } from '../utils/sound';
+import { hashCitySeed } from '../utils/townStreetGen';
 import {
   buildInterTownRoadNetwork3D,
   buildProceduralTown3D,
@@ -2292,8 +2293,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             name: activeGeoNow.startCityName || '上海市',
             x: 0,
             z: 0,
-            seed: 101,
-            plazaRadius: 155,
+            seed: hashCitySeed(activeGeoNow.startCityId ?? 'shanghai'),
+            plazaRadius: 185,
             plateauY: 1.65,
             landmarkCityId: activeGeoNow.startCityId ?? 'shanghai',
           },
