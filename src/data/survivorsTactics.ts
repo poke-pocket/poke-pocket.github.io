@@ -549,16 +549,17 @@ export function getRawNaturalTerrainHeight3D(wx: number, wz: number): number {
   for (let i = 0; i < WORLD_TOWNS_3D.length; i++) {
     const t = WORLD_TOWNS_3D[i];
     const d = Math.hypot(wx - t.x, wz - t.z);
+    if (d <= 38) {
+      return t.plateauY;
+    }
     const outerR = t.plazaRadius + 24;
     if (d < outerR) {
       const zoneMask = 1.0 - smoothstep(t.plazaRadius - 6, outerR, d);
-      // Natural gentle rolling hillside across cities (smooth low-frequency slope so 8-lane avenues sit flat & flush
-      // without sudden bumps or floating edges, while preserving authentic hillside elevation changes across districts!)
       const gentleCitySlope =
         t.plateauY +
-        Math.sin((wx - t.x) * 0.0085 + t.seed) * 0.85 +
-        Math.cos((wz - t.z) * 0.0085 - t.seed) * 0.85;
-      const plazaFlat = 1.0 - smoothstep(26, 46, d);
+        Math.sin((wx - t.x) * 0.0085 + t.seed) * 0.65 +
+        Math.cos((wz - t.z) * 0.0085 - t.seed) * 0.65;
+      const plazaFlat = 1.0 - smoothstep(38, 56, d);
       const cityTargetY = gentleCitySlope * (1.0 - plazaFlat) + t.plateauY * plazaFlat;
       const dryElev = Math.max(elev, WATER_LEVEL_3D + 0.95);
       const safeElev = elev * (1.0 - zoneMask) + dryElev * zoneMask;
@@ -594,18 +595,35 @@ export function getTerrainHeight3D(wx: number, wz: number): number {
   return elev;
 }
 
-/** Walkable surface height for Player, Followers & Enemies: elevates smoothly onto Bridge Decks when crossing over lakes! */
+/**
+ * Walkable surface height for Player, Followers & Enemies:
+ * - Elevates smoothly onto Bridge Decks over lakes
+ * - Matches paved urban road/plaza thickness (+0.11m inside cities) so characters ALWAYS stand ON TOP of asphalt, crosswalks & plaza stone (NEVER sinking underneath!)
+ */
 export function getWalkableSurfaceHeight3D(wx: number, wz: number): number {
   const ground = getTerrainHeight3D(wx, wz);
   if (!sampleGeoTerrainHeight3D(wx, wz)) {
     const roadDist = getNearestRoadDist3D(wx, wz);
     if (roadDist < 12.2 && ground < BRIDGE_DECK_Y_3D) {
-      // Smooth approach ramp from shoreline right onto the elevated wooden bridge deck (always safely dry above WATER_LEVEL_3D!)
       if (ground <= WATER_LEVEL_3D + 0.25) {
-        return BRIDGE_DECK_Y_3D;
+        return BRIDGE_DECK_Y_3D + 0.06;
       }
       const rampT = 1.0 - smoothstep(WATER_LEVEL_3D + 0.25, BRIDGE_DECK_Y_3D, ground);
-      return ground * (1 - rampT) + BRIDGE_DECK_Y_3D * rampT;
+      return ground * (1 - rampT) + (BRIDGE_DECK_Y_3D + 0.06) * rampT;
+    }
+    if (roadDist < 12.2) {
+      return ground + 0.10;
+    }
+    for (let i = 0; i < WORLD_TOWNS_3D.length; i++) {
+      const t = WORLD_TOWNS_3D[i];
+      if (Math.hypot(wx - t.x, wz - t.z) < t.plazaRadius) {
+        return ground + 0.14;
+      }
+    }
+  } else {
+    // Active Real-Earth city centered at (0, 0) has paved plazas & avenues at +0.05..+0.13 above ground
+    if (Math.hypot(wx, wz) < 160) {
+      return ground + 0.14;
     }
   }
   return ground;

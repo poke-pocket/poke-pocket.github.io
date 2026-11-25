@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   GEO_UNITS_PER_KM,
+  REAL_WORLD_CORRIDORS,
+  geoToWorld,
   getActiveGeoTerrainOrigin,
   getProjectedGeoCities,
   sampleGeoTerrainHeight3D,
@@ -124,6 +126,120 @@ export function generateRegionalPois(): WorldPoi[] {
   return [...townPois, ...basePois, ...lakePois];
 }
 
+/** Real-World Web Mercator Map Tile Cache (Carto Voyager — real streets, rivers, parks, railways & continents!) */
+const REAL_MAP_TILE_CACHE = new Map<string, HTMLImageElement | 'loading' | 'err'>();
+const MAX_REAL_TILE_CACHE = 260;
+
+function tileFracToLatLng(fx: number, fy: number, z: number): { lat: number; lng: number } {
+  const n = 1 << z;
+  const lng = (fx / n) * 360 - 180;
+  const latRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * fy) / n)));
+  return { lat: (latRad * 180) / Math.PI, lng };
+}
+
+function latLngToTileFracMap(lat: number, lng: number, z: number): { fx: number; fy: number } {
+  const n = 1 << z;
+  const clamped = Math.max(-85.0511, Math.min(85.0511, lat));
+  const rad = (clamped * Math.PI) / 180;
+  return {
+    fx: ((lng + 180) / 360) * n,
+    fy: ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n,
+  };
+}
+
+/**
+ * Renders genuine Real-World Map Tiles (Carto Voyager / OpenStreetMap) aligned 1:1 with the live 3D GPS coordinate space!
+ * Zoomed in: real Shanghai People's Square, Huangpu River, Nanjing Rd, Lujiazui, metro lines & blocks.
+ * Zoomed out: real China, Yangtze Estuary, Hangzhou Bay, East China Sea, Korea & Japan.
+ * Returns true if Real-Earth Geo mode is active.
+ */
+function paintRealWorldMapTiles(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  centerX: number,
+  centerZ: number,
+  unitsPerPx: number,
+  toScreen: (wx: number, wz: number) => { sx: number; sy: number },
+  onTileReady: () => void,
+): boolean {
+  const origin = getActiveGeoTerrainOrigin();
+  if (!origin) return false;
+
+  const centerGeo = worldToGeo(centerX, centerZ, origin);
+  if (!centerGeo) return false;
+
+  // Match slippy-map zoom level z (3..17) directly to current screen meters-per-pixel!
+  const metersPerPx = (unitsPerPx / origin.unitsPerKm) * 1000;
+  const cosLat = Math.max(0.2, Math.cos((centerGeo.lat * Math.PI) / 180));
+  const rawZ = Math.log2((156543.03392 * cosLat) / Math.max(0.25, metersPerPx));
+  const z = Math.max(3, Math.min(17, Math.round(rawZ)));
+  const n = 1 << z;
+
+  const tlGeo = worldToGeo(centerX - (w / 2) * unitsPerPx, centerZ - (h / 2) * unitsPerPx, origin);
+  const brGeo = worldToGeo(centerX + (w / 2) * unitsPerPx, centerZ + (h / 2) * unitsPerPx, origin);
+  if (!tlGeo || !brGeo) return false;
+
+  const tlFrac = latLngToTileFracMap(tlGeo.lat, tlGeo.lng, z);
+  const brFrac = latLngToTileFracMap(brGeo.lat, brGeo.lng, z);
+
+  const txMin = Math.floor(Math.min(tlFrac.fx, brFrac.fx));
+  const txMax = Math.floor(Math.max(tlFrac.fx, brFrac.fx));
+  const tyMin = Math.max(0, Math.floor(Math.min(tlFrac.fy, brFrac.fy)));
+  const tyMax = Math.min(n - 1, Math.floor(Math.max(tlFrac.fy, brFrac.fy)));
+
+  // Safety cap so extreme pan never floods tile requests
+  if ((txMax - txMin + 1) * (tyMax - tyMin + 1) > 42) return true;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+
+  for (let ty = tyMin; ty <= tyMax; ty++) {
+    for (let txRaw = txMin; txRaw <= txMax; txRaw++) {
+      const tx = ((txRaw % n) + n) % n;
+      const key = `${z}/${tx}/${ty}`;
+      const cached = REAL_MAP_TILE_CACHE.get(key);
+
+      if (cached && cached !== 'loading' && cached !== 'err') {
+        const nw = tileFracToLatLng(txRaw, ty, z);
+        const se = tileFracToLatLng(txRaw + 1, ty + 1, z);
+        const nwW = geoToWorld(nw.lat, nw.lng, origin);
+        const seW = geoToWorld(se.lat, se.lng, origin);
+        if (nwW && seW) {
+          const p0 = toScreen(nwW.x, nwW.z);
+          const p1 = toScreen(seW.x, seW.z);
+          ctx.drawImage(
+            cached,
+            Math.floor(p0.sx),
+            Math.floor(p0.sy),
+            Math.ceil(p1.sx - p0.sx) + 1,
+            Math.ceil(p1.sy - p0.sy) + 1,
+          );
+        }
+      } else if (!cached) {
+        if (REAL_MAP_TILE_CACHE.size >= MAX_REAL_TILE_CACHE) {
+          const oldest = REAL_MAP_TILE_CACHE.keys().next().value;
+          if (oldest) REAL_MAP_TILE_CACHE.delete(oldest);
+        }
+        REAL_MAP_TILE_CACHE.set(key, 'loading');
+        const sub = ['a', 'b', 'c'][(tx + ty) % 3];
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          REAL_MAP_TILE_CACHE.set(key, img);
+          onTileReady();
+        };
+        img.onerror = () => {
+          REAL_MAP_TILE_CACHE.set(key, 'err');
+        };
+        img.src = `https://${sub}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${tx}/${ty}.png`;
+      }
+    }
+  }
+  ctx.restore();
+  return true;
+}
+
 /** Helper: draw a tapered road trapezoid polygon from (x1,z1,wStart) to (x2,z2,wEnd) in map screen space! */
 function traceTaperedRoadPoly(
   ctx: CanvasRenderingContext2D,
@@ -161,15 +277,42 @@ function paintRoadsAndTownsOnMap(
   unitsPerPx: number,
   detailed: boolean,
 ) {
-  if (getActiveGeoTerrainOrigin()) return;
-
+  const activeGeo = getActiveGeoTerrainOrigin();
   const invScale = 1 / Math.max(0.1, unitsPerPx);
   const casingExtra = detailed ? 2.4 : 1.2;
-  const layouts = WORLD_TOWNS_3D.map((t) => ({ town: t, layout: generateTownLayout(t) }));
 
   ctx.save();
-  ctx.lineCap = 'butt';
+  ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+
+  // ==================== REAL-EARTH GEO MODE: REAL WORLD MAP TILES ALREADY RENDER REAL STREETS, RIVERS & HIGHWAYS! ====================
+  if (activeGeo) {
+    // Only overlay subtle trans-ocean routes when zoomed far out; never stamp fake cartoon roads over real Shanghai streets!
+    if (detailed && unitsPerPx > 3.5) {
+      for (const cor of REAL_WORLD_CORRIDORS) {
+        if (cor.kind !== 'ferry') continue;
+        const pts: { sx: number; sy: number }[] = [];
+        for (const [lat, lng] of cor.points) {
+          const wp = geoToWorld(lat, lng, activeGeo);
+          if (wp) pts.push(toScreen(wp.x, wp.z));
+        }
+        if (pts.length < 2) continue;
+        ctx.strokeStyle = 'rgba(25, 113, 194, 0.72)';
+        ctx.lineWidth = 1.6;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(pts[0].sx, pts[0].sy);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+    ctx.restore();
+    return;
+  }
+
+  const layouts = WORLD_TOWNS_3D.map((t) => ({ town: t, layout: generateTownLayout(t) }));
+  ctx.lineCap = 'butt';
 
   // ==================== PASS 1: UNIFIED DARK ROAD & PLAZA CASINGS (Zero internal intersection lines!) ====================
   ctx.fillStyle = '#475569';
@@ -558,13 +701,22 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
     const geoOrigin = getActiveGeoTerrainOrigin();
     const span = geoOrigin ? 180 : 84;
 
-    paintTopographicMap(ctx, W, H, snapshot.px, snapshot.pz, span, biome, 4);
-
     const toScreen = (wx: number, wz: number) => ({
       sx: ((wx - snapshot.px) / span + 0.5) * W,
       sy: ((wz - snapshot.pz) / span + 0.5) * H,
     });
 
+    paintTopographicMap(ctx, W, H, snapshot.px, snapshot.pz, span, biome, 4);
+    paintRealWorldMapTiles(
+      ctx,
+      W,
+      H,
+      snapshot.px,
+      snapshot.pz,
+      span / Math.max(1, W),
+      toScreen,
+      () => setDemTick((t) => t + 1),
+    );
     paintRoadsAndTownsOnMap(ctx, toScreen, span / Math.max(1, W), false);
 
     if (geoOrigin) {
@@ -772,41 +924,46 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
     const cx = snapshot.px + pan.x;
     const cz = snapshot.pz + pan.z;
 
-    // Adaptive pixel step: fast 7px step while dragging/pinching on mobile (~5x faster!), crisp 4px when settled!
-    paintTopographicMap(ctx, W, H, cx, cz, spanMin, biome, isInteracting ? 7 : 4);
-
-    // Subtle crisp square world-grid lines (every 30m world units, scaling naturally with zoom!)
-    const gridWorldStep = zoom < 0.35 ? 100 : zoom < 0.85 ? 50 : zoom > 3 ? 10 : 25;
-    ctx.strokeStyle = 'rgba(22, 20, 32, 0.14)';
-    ctx.lineWidth = 1;
-    const minWx = cx - (W / 2) * unitsPerPx;
-    const maxWx = cx + (W / 2) * unitsPerPx;
-    const minWz = cz - (H / 2) * unitsPerPx;
-    const maxWz = cz + (H / 2) * unitsPerPx;
-    for (let gx = Math.floor(minWx / gridWorldStep) * gridWorldStep; gx <= maxWx; gx += gridWorldStep) {
-      const sx = (gx - cx) / unitsPerPx + W / 2;
-      ctx.beginPath();
-      ctx.moveTo(sx, 0);
-      ctx.lineTo(sx, H);
-      ctx.stroke();
-    }
-    for (let gz = Math.floor(minWz / gridWorldStep) * gridWorldStep; gz <= maxWz; gz += gridWorldStep) {
-      const sy = (gz - cz) / unitsPerPx + H / 2;
-      ctx.beginPath();
-      ctx.moveTo(0, sy);
-      ctx.lineTo(W, sy);
-      ctx.stroke();
-    }
-
     const toScreen = (wx: number, wz: number) => ({
       sx: (wx - cx) / unitsPerPx + W / 2,
       sy: (wz - cz) / unitsPerPx + H / 2,
     });
 
+    const onIconReady = () => setIconTick((t) => t + 1);
+
+    // Base map: genuine Real-World Carto Voyager Map Tiles (real Shanghai / China / Japan streets, rivers & highways!)
+    // with NASA/SRTM topographic elevation seamlessly underneath while tiles stream in!
+    paintTopographicMap(ctx, W, H, cx, cz, spanMin, biome, isInteracting ? 7 : 4);
+    const hasRealMapTiles = paintRealWorldMapTiles(ctx, W, H, cx, cz, unitsPerPx, toScreen, onIconReady);
+
+    // Subtle world-grid lines ONLY in fallback procedural mode (never clutter real Carto street map!)
+    if (!hasRealMapTiles) {
+      const gridWorldStep = zoom < 0.35 ? 100 : zoom < 0.85 ? 50 : zoom > 3 ? 10 : 25;
+      ctx.strokeStyle = 'rgba(22, 20, 32, 0.14)';
+      ctx.lineWidth = 1;
+      const minWx = cx - (W / 2) * unitsPerPx;
+      const maxWx = cx + (W / 2) * unitsPerPx;
+      const minWz = cz - (H / 2) * unitsPerPx;
+      const maxWz = cz + (H / 2) * unitsPerPx;
+      for (let gx = Math.floor(minWx / gridWorldStep) * gridWorldStep; gx <= maxWx; gx += gridWorldStep) {
+        const sx = (gx - cx) / unitsPerPx + W / 2;
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, H);
+        ctx.stroke();
+      }
+      for (let gz = Math.floor(minWz / gridWorldStep) * gridWorldStep; gz <= maxWz; gz += gridWorldStep) {
+        const sy = (gz - cz) / unitsPerPx + H / 2;
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(W, sy);
+        ctx.stroke();
+      }
+    }
+
     paintRoadsAndTownsOnMap(ctx, toScreen, unitsPerPx, true);
 
     ctx.imageSmoothingEnabled = false;
-    const onIconReady = () => setIconTick((t) => t + 1);
 
     // Regional POIs — icon-only, fixed screen-pixel size (never scales with zoom, no square frame!)
     const ICON_PX = 18;
@@ -1162,9 +1319,11 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
         <div className="lcd-map-float-tl">
           <PixelItemImg src="/sprites/items/poke-radar.png" size={14} />
           <strong>
-            {WORLD_TOWNS_3D.find(
-              (t) => Math.hypot(snapshot.px - t.x, snapshot.pz - t.z) < t.plazaRadius + 10,
-            )?.name ?? regionName}
+            {getActiveGeoTerrainOrigin()?.startCityName ??
+              WORLD_TOWNS_3D.find(
+                (t) => Math.hypot(snapshot.px - t.x, snapshot.pz - t.z) < t.plazaRadius + 10,
+              )?.name ??
+              regionName}
           </strong>
           {(() => {
             const g = worldToGeo(snapshot.px, snapshot.pz);

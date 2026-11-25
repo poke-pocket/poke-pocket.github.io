@@ -2274,17 +2274,32 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const floraGroup = new THREE.Group();
     scene.add(floraGroup);
 
-    // 2B. Terrain-Matched 15-Building Procedural 3D Towns + Inter-Town Highway Road Network + Iconic Landmarks!
+    // 2B. Real-Earth Metropolis at Active GPS City Origin (0, 0) (or Procedural Cities fallback)!
     const townsGroup = new THREE.Group();
     scene.add(townsGroup);
-    if (!getActiveGeoTerrainOrigin()) {
+    const activeGeoNow = getActiveGeoTerrainOrigin();
+    if (!activeGeoNow) {
       const roadNetGroup = buildInterTownRoadNetwork3D(
         (x, z) => getTerrainHeight3D(x, z),
         (x, z) => getRawNaturalTerrainHeight3D(x, z),
       );
       townsGroup.add(roadNetGroup);
     }
-    const proceduralTowns: ProceduralTownInstance[] = WORLD_TOWNS_3D.map((spec) => {
+    const townSpecs = activeGeoNow
+      ? [
+          {
+            id: `geo_city_${activeGeoNow.startCityId ?? 'shanghai'}`,
+            name: activeGeoNow.startCityName || '上海市',
+            x: 0,
+            z: 0,
+            seed: 101,
+            plazaRadius: 155,
+            plateauY: 1.65,
+            landmarkCityId: activeGeoNow.startCityId ?? 'shanghai',
+          },
+        ]
+      : WORLD_TOWNS_3D;
+    const proceduralTowns: ProceduralTownInstance[] = townSpecs.map((spec) => {
       const t = buildProceduralTown3D(
         spec.id,
         spec.x,
@@ -3135,17 +3150,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       attachFollowerMeshes(f);
     });
 
-    // Restore last saved world position so re-entering resumes right where the player left off!
+    // Start cleanly on the Grand Central Plaza Promenade of the active real-Earth city (facing the fountain & downtown skyline!),
+    // or resume the player's last saved position in that city!
     let startPx = 0;
-    let startPz = 0;
-    if (phase === 'playing' && !getActiveGeoTerrainOrigin()) {
+    let startPz = 26;
+    if (phase === 'playing') {
       try {
-        const rawPos = window.localStorage.getItem('pocket_paw_last_world_pos_v1');
+        const geoOrigin = getActiveGeoTerrainOrigin();
+        const posKey = geoOrigin ? `pocket_paw_geo_pos_${geoOrigin.startCityId ?? 'shanghai'}_v1` : 'pocket_paw_last_world_pos_v1';
+        const rawPos = window.localStorage.getItem(posKey);
         if (rawPos) {
           const parsed = JSON.parse(rawPos) as { x?: number; z?: number };
           if (typeof parsed.x === 'number' && typeof parsed.z === 'number' && Number.isFinite(parsed.x) && Number.isFinite(parsed.z)) {
-            startPx = Math.max(-420, Math.min(420, parsed.x));
-            startPz = Math.max(-420, Math.min(420, parsed.z));
+            startPx = parsed.x;
+            startPz = parsed.z;
           }
         }
       } catch {
@@ -3210,11 +3228,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     syncFollowersView();
     updateWorldAround(0, 0);
 
-    // When real-Earth NASA/SRTM DEM elevation tiles finish streaming in World Tour mode,
-    // rebuild the live 3D terrain mesh & flora so real coastlines, seas, plains & mountains snap in seamlessly!
+    // When real-Earth NASA/SRTM DEM elevation tiles finish streaming, rebuild terrain, flora AND re-snap city height!
     const unsubGeoDem = subscribeGeoDemLoaded(() => {
       lastChunkX = NaN;
       lastChunkZ = NaN;
+      for (const town of proceduralTowns) {
+        town.group.position.y = getTerrainHeight3D(town.centerX, town.centerZ);
+      }
       for (const [, entry] of placedFloraCells) {
         for (const obj of entry.objs) floraGroup.remove(obj);
         for (const bb of entry.bbs) floraBillboards.delete(bb);
@@ -5292,7 +5312,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               : `${dirKey}_idle${idleFrame}`;
           playerSpriteMat.map = heroFrames[frameKey] ?? heroFrames[`${dirKey}_0`] ?? heroFrames.down_idle0;
           const walkBob = mLen > 0.08 && !isAirborne ? Math.abs(Math.sin(sim.walkDist * 2.8)) * 0.16 : 0;
-          playerSprite.position.set(sim.px, sim.py + walkBob - 0.04, sim.pz);
+          playerSprite.position.set(sim.px, sim.py + walkBob + 0.02, sim.pz);
           playerSprite.rotation.set(bbTiltX, camYawNow, 0);
           // Lab Passive HP Regen + Hero Exclusive Periodic Signatures (Red Ball Burst / Misty Tide & Heal / Brock Quake!)
           const cb = metaBonusesRef.current;
@@ -5798,7 +5818,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               const stretch = f.castAnim > 0 ? 1.12 : 1.0;
               const fScale = getPokemonWorldScale3D(f.species, f.stage, 1.0);
               const flightBank = isFlightForm ? Math.max(-0.14, Math.min(0.14, -fRelRight * 0.12)) : 0;
-              f.sprite.position.set(f.x, f.y + stepBob + castJump - 0.04, f.z);
+              f.sprite.position.set(f.x, f.y + stepBob + castJump + 0.02, f.z);
               f.sprite.rotation.set(bbTiltX, camYawNow, flightBank);
               if (f.pmdSheet?.ready) {
                 const dirIdx = pickPmdDirIndex(fRelFwd, fRelRight);
@@ -6186,7 +6206,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               const eFaceZ = dz / dist;
               const eRelFwd = eFaceX * camFwdX + eFaceZ * camFwdZ;
               const eRelRight = eFaceX * camRightX + eFaceZ * camRightZ;
-              en.sprite.position.set(en.x, en.y + hop - 0.04, en.z);
+              en.sprite.position.set(en.x, en.y + hop + 0.02, en.z);
               en.sprite.rotation.set(bbTiltX, camYawNow, 0);
               if (!en.isTrainer && en.pmdSheet?.ready) {
                 if (showSprite) {
@@ -7164,23 +7184,30 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     }
   }, [phase]);
 
+  // Unified Single Real-Earth Entry! Clicking「开始冒险」launches directly into REAL EARTH (default: 上海市 31.23°N, 121.47°E)!
   const handleLaunchRun = () => {
-    sound.play('confirm');
-    setActiveGeoTerrainOrigin(null);
-    setActiveWorldRun(null);
-    setLiveOverlandCity(null);
-    liveOverlandCityRef.current = null;
-    overlandCityIdRef.current = null;
-    pausedRef.current = false;
-    endedRef.current = false;
-    setLaunchFlashSeq((s) => s + 1);
-    setPhase('playing');
-    showBanner(
-      gameMode === 'story'
-        ? `${baseRegionMeta.name}（${diffMeta.label}）：击退野生群与敌方训练师，迎战 ${baseRegionMeta.bossName}！`
-        : `${baseRegionMeta.name} · 无尽生存（${diffMeta.label}）：右上方向有 3D 安全区！`,
-      3400,
-    );
+    const wt = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+    const activeId = wt.currentCityId || 'shanghai';
+    const city = WORLD_CITIES.find((c) => c.id === activeId) ?? WORLD_CITIES.find((c) => c.id === 'shanghai') ?? WORLD_CITIES[0];
+    handleLaunchWorldRun({
+      cityId: city.id,
+      cityName: `${city.name}市`.replace(/市市$/, '市'),
+      gymName: city.gymName,
+      gymBadgeName: city.gymBadgeName,
+      biome: city.biome,
+      wildPool: city.wildPool,
+      bossSpecies: city.gymBossSpecies,
+      bossName: city.gymBossTitle,
+      bossTrainerKey: city.gymTrainerKey,
+      bossTrainerName: city.gymLeaderName,
+      regionalSkinId: city.regionalSkinId,
+      rewardCoins: city.rewardCoins,
+      originLat: city.lat,
+      originLng: city.lng,
+      isGymChallenge: false,
+      isHomeTurf: true,
+      hotelTier: wt.stayHotelTier ?? null,
+    });
   };
 
   const handleLaunchWorldRun = (payload: WorldLaunchPayload) => {
@@ -8672,7 +8699,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 return (
                   <div className="surv-top-status-deck">
                     <div className="top-deck-wing is-left">
-                      <strong>无限大世界</strong>
+                      <strong>真实地球</strong>
                       <div className="top-deck-sub">
                         <span
                           className="top-weather-chip"
@@ -8688,9 +8715,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                       <PixelItemImg src="/sprites/items/poke-ball.png" size={16} />
                       <strong>{minStr}</strong>
                       <small>
-                        {WORLD_TOWNS_3D.find(
-                          (t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6,
-                        )?.name ?? '野外探索'}
+                        {liveOverlandCity?.name ??
+                          activeWorldRun?.cityName ??
+                          WORLD_TOWNS_3D.find(
+                            (t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6,
+                          )?.name ??
+                          '野外探索'}
                       </small>
                     </div>
                     <div className="top-deck-wing is-right">

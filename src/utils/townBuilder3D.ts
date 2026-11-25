@@ -1766,11 +1766,13 @@ export function buildProceduralTown3D(
         : seg.kind === 'street'
           ? tex.collector2Lane
           : tex.alleyCobble;
-    const liftY = seg.kind === 'arterial' ? 0.14 : seg.kind === 'street' ? 0.12 : 0.10;
+    // Ultra-flush layered road elevations (+0.04 / +0.06 / +0.08) strictly BELOW intersection pads (+0.10) & Plaza (+0.13)
+    // so characters walking at ground + 0.14 ALWAYS stand squarely ON TOP of every road & zero green medians poke into the plaza!
+    const liftY = seg.kind === 'arterial' ? 0.08 : seg.kind === 'street' ? 0.06 : 0.04;
     const polyOff = seg.kind === 'arterial' ? -2 : seg.kind === 'street' ? -1 : 0;
     group.add(buildStreetRibbonMesh(seg, baseY, centerX, centerZ, roadTex, getGroundHeight, liftY, polyOff));
 
-    // Neatly spaced Pixel-Art Street Trees & Bushes inside the 8-Lane Central Green Median (trimmed clear of intersections!)
+    // Neatly spaced Pixel-Art Street Trees & Bushes inside the 8-Lane Central Green Median (strictly outside plaza r >= 36m & clear of junctions!)
     const segLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
     const dirX = (seg.x2 - seg.x1) / Math.max(0.01, segLen);
     const dirZ = (seg.z2 - seg.z1) / Math.max(0.01, segLen);
@@ -1779,17 +1781,18 @@ export function buildProceduralTown3D(
     const angle = Math.atan2(seg.x2 - seg.x1, seg.z2 - seg.z1);
     const midX = (seg.x1 + seg.x2) * 0.5;
     const midZ = (seg.z1 + seg.z2) * 0.5;
-    const nearJunction = layout.junctions.some((jn) => Math.hypot(jn.x - midX, jn.z - midZ) < 24.5);
+    const nearJunction = layout.junctions.some((jn) => Math.hypot(jn.x - midX, jn.z - midZ) < 25.0);
+    const distFromPlaza = Math.hypot(midX - centerX, midZ - centerZ);
 
-    if (seg.kind === 'arterial' && segLen >= 22 && !nearJunction) {
-      const mLen = Math.max(12.0, segLen - 22.0);
-      const my = localGroundY(midX, midZ) + 0.18;
+    if (seg.kind === 'arterial' && segLen >= 22 && !nearJunction && distFromPlaza >= 40) {
+      const mLen = Math.max(10.0, segLen - 22.0);
+      const my = localGroundY(midX, midZ) + 0.09;
       // Low neat curb border for the central green median strip
-      const curbBox = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.24, mLen), curbStoneMat);
-      curbBox.position.set(midX - centerX, my + 0.12, midZ - centerZ);
+      const curbBox = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.16, mLen), curbStoneMat);
+      curbBox.position.set(midX - centerX, my + 0.08, midZ - centerZ);
       curbBox.rotation.y = angle;
-      const grassBox = new THREE.Mesh(new THREE.BoxGeometry(3.3, 0.14, mLen - 0.5), medianGrassMat);
-      grassBox.position.set(midX - centerX, my + 0.25, midZ - centerZ);
+      const grassBox = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.10, mLen - 0.5), medianGrassMat);
+      grassBox.position.set(midX - centerX, my + 0.17, midZ - centerZ);
       grassBox.rotation.y = angle;
       group.add(curbBox, grassBox);
 
@@ -1799,14 +1802,15 @@ export function buildProceduralTown3D(
         const f = -0.4 + (treeSlots > 1 ? (ti / (treeSlots - 1)) * 0.8 : 0.4);
         const tx = midX + dirX * (f * mLen);
         const tz = midZ + dirZ * (f * mLen);
-        const ty = localGroundY(tx, tz) + 0.34;
+        if (Math.hypot(tx - centerX, tz - centerZ) < 36) continue;
+        const ty = localGroundY(tx, tz) + 0.24;
         const treeTex = floraTex.treeSprites[(ti + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
         spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 5.4, 6.4);
         if (ti < treeSlots - 1) {
           const bx = tx + dirX * (mLen / (treeSlots * 2));
           const bz = tz + dirZ * (mLen / (treeSlots * 2));
           const bushTex = floraTex.bushes[ti % floraTex.bushes.length] ?? floraTex.bush;
-          spawnPixelGreenery(bushTex, bx - centerX, localGroundY(bx, bz) + 0.32, bz - centerZ, 2.3, 2.0);
+          spawnPixelGreenery(bushTex, bx - centerX, localGroundY(bx, bz) + 0.22, bz - centerZ, 2.3, 2.0);
         }
       }
     }
@@ -1858,7 +1862,7 @@ export function buildProceduralTown3D(
       const vz = posAttr.getZ(vi);
       const wx = jn.x + vx * cosR + vz * sinR;
       const wz = jn.z - vx * sinR + vz * cosR;
-      posAttr.setXYZ(vi, wx - centerX, localGroundY(wx, wz) + 0.17, wz - centerZ);
+      posAttr.setXYZ(vi, wx - centerX, localGroundY(wx, wz) + 0.10, wz - centerZ);
     }
     padGeo.computeVertexNormals();
     const pad = new THREE.Mesh(padGeo, junctionMat);
@@ -1895,27 +1899,33 @@ export function buildProceduralTown3D(
     }
   }
 
-  // Grand Spacious Civic Square / Central Plaza (r = 32.5m!) matching the 8-Lane Metropolis Boulevards!
+  // Grand Spacious Civic Square / Central Plaza (r = 32.5m, strictly ABOVE boulevard ribbons at +0.13 with polygonOffset -8 -> ZERO overlap!)
   const hubPlaza = new THREE.Mesh(
     new THREE.CircleGeometry(32.5, 36),
     new THREE.MeshLambertMaterial({
       map: tex.cobblePlaza,
       polygonOffset: true,
-      polygonOffsetFactor: -5,
-      polygonOffsetUnits: -5,
+      polygonOffsetFactor: -8,
+      polygonOffsetUnits: -8,
     }),
   );
   hubPlaza.rotation.x = -Math.PI / 2;
-  hubPlaza.position.set(0, 0.21, 0);
+  hubPlaza.position.set(0, 0.13, 0);
   hubPlaza.receiveShadow = true;
   group.add(hubPlaza);
 
   const plazaRim = new THREE.Mesh(
     new THREE.RingGeometry(31.2, 32.8, 36),
-    new THREE.MeshLambertMaterial({ color: 0xe6dfd1, side: THREE.DoubleSide }),
+    new THREE.MeshLambertMaterial({
+      color: 0xe6dfd1,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -9,
+      polygonOffsetUnits: -9,
+    }),
   );
   plazaRim.rotation.x = -Math.PI / 2;
-  plazaRim.position.set(0, 0.22, 0);
+  plazaRim.position.set(0, 0.135, 0);
   group.add(plazaRim);
 
   const benchWoodMat = new THREE.MeshLambertMaterial({ color: 0x9c6644 });

@@ -101,10 +101,9 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const junctions: TownJunctionNode[] = [];
   const rail: TownStreetSeg[] = [];
 
-  // 1. Real-World Megacity Road Network Templates (each city reflects its iconic real urban plan + tapered lane transitions + branching Y-forks!):
-  // - Main 8-Lane Grand Boulevards with Wide Sidewalks & Tree Median (46m -> smoothly tapers to 22m at outer city gates!)
-  // - Secondary 4-Lane Collector Avenues & Ring Roads (26m -> tapers cleanly into 14m neighborhood roads!)
-  // - Cozy Cobblestone Pedestrian Alleys / Hutongs / Machiya Lanes (12.5m)
+  // 1. REAL-WORLD ASYMMETRIC METROPOLIS STREET GRID (NO symmetrical radial snowflake stamps!!):
+  // Modeled after real East Asia urban fabric (e.g. Shanghai Puxi/Lujiazui irregular blocks, offset parallel avenues,
+  // angled waterfront diagonal boulevard, cross-streets & cobblestone back-alleys — every city has its own authentic urban geometry!)
   const addSeg = (
     x1: number,
     z1: number,
@@ -134,152 +133,71 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     junctions.push({ x: jx, z: jz, width: size, depth: size, rotY, kind });
   };
 
-  // Core 8-Lane Cardinal Grand Boulevards radiating seamlessly from UNDER the Grand Civic Plaza rim (r = 27m -> 57m, then 103m -> 124m)
-  // Trimmed cleanly at each 46m intersection pad edge (r = 80 ± 23m) so ZERO curb-skirt triangles ever clip across crosswalks!
-  // PLUS Smooth 26m Tapered Gateway Transitions (r = 124m -> 150m: 46m 8-lane -> 22m 4-lane expressway!)
-  const cardinals: { dx: number; dz: number; ang: number }[] = [
-    { dx: 1, dz: 0, ang: 0 },
-    { dx: -1, dz: 0, ang: Math.PI },
-    { dx: 0, dz: 1, ang: Math.PI * 0.5 },
-    { dx: 0, dz: -1, ang: -Math.PI * 0.5 },
-  ];
-  const midNodes: { x: number; z: number; ang: number }[] = [];
-  for (const c of cardinals) {
-    // Inner 8-lane boulevard (starts at r=27 tucked neatly beneath the r=32.5m circular stone plaza, ends flush at intersection edge r=57!)
-    addSeg(cx + c.dx * 27, cz + c.dz * 27, cx + c.dx * 57, cz + c.dz * 57, 46, 46, 'arterial');
-    midNodes.push({ x: cx + c.dx * 80, z: cz + c.dz * 80, ang: c.ang });
-    // Outer 8-lane boulevard (starts flush at outer intersection edge r=103 -> r=124!)
-    addSeg(cx + c.dx * 103, cz + c.dz * 103, cx + c.dx * 124, cz + c.dz * 124, 46, 46, 'arterial');
-    // Smooth Tapered Gateway Transition (124 -> 150: smoothly narrows 46m 8-lane -> 22m 4-lane expressway!)
-    addSeg(cx + c.dx * 124, cz + c.dz * 124, cx + c.dx * 150, cz + c.dz * 150, 46, 22, 'street');
-    addJunction(cx + c.dx * 80, cz + c.dz * 80, 46.2, -c.ang, 'cross');
-  }
+  // Primary 8-Lane Urban Axes (asymmetric arm lengths! Not a rigid equal-armed "+" stamp!)
+  // South Grand Avenue (leading from South entrance -> Grand Plaza)
+  addSeg(cx, cz + 27, cx, cz + 60, 44, 44, 'arterial');
+  addJunction(cx, cz + 82, 44.2, 0, 'cross');
+  addSeg(cx, cz + 104, cx, cz + 132, 44, 24, 'street'); // smooth tapered exit ramp!
 
-  // 2. Real-World City-Specific Secondary Road Networks, Ring Roads & Angled Y-Forks!
-  const cityStyle = anchor.landmarkCityId ?? 'shanghai';
-  if (cityStyle === 'beijing' || cityStyle === 'kyoto') {
-    // 🏯 Beijing (Ring Road + Axial Grid) & ⛩️ Kyoto (Heian-kyo Grid): Clean Rectangular Ring Loop connecting all 4 avenues at r=80m!
-    const ringPts = [
-      { x: cx + 80, z: cz },
-      { x: cx + 80, z: cz + 80 },
-      { x: cx, z: cz + 80 },
-      { x: cx - 80, z: cz + 80 },
-      { x: cx - 80, z: cz },
-      { x: cx - 80, z: cz - 80 },
-      { x: cx, z: cz - 80 },
-      { x: cx + 80, z: cz - 80 },
-    ];
-    for (let i = 0; i < ringPts.length; i++) {
-      const a = ringPts[i];
-      const b = ringPts[(i + 1) % ringPts.length];
-      const vx = b.x - a.x;
-      const vz = b.z - a.z;
-      const len = Math.hypot(vx, vz);
-      // Trim 22m at cardinal boulevard intersections so ZERO overlapping curbs!
-      const trimA = i % 2 === 0 ? 22 : 12;
-      const trimB = i % 2 === 1 ? 22 : 12;
-      if (len > trimA + trimB + 4) {
-        addSeg(
-          a.x + (vx / len) * trimA,
-          a.z + (vz / len) * trimA,
-          b.x - (vx / len) * trimB,
-          b.z - (vz / len) * trimB,
-          26,
-          26,
-          'street',
-        );
-      }
-      if (i % 2 === 1) {
-        addJunction(a.x, a.z, 26.4, 0, 'tee');
-        // Branching Hutong / Machiya cobblestone fork off each ring corner!
-        const outAng = Math.atan2(a.z - cz, a.x - cx);
-        addSeg(
-          a.x + Math.cos(outAng) * 13,
-          a.z + Math.sin(outAng) * 13,
-          a.x + Math.cos(outAng) * 44,
-          a.z + Math.sin(outAng) * 44,
-          16,
-          12,
-          'alley',
-        );
-      }
-    }
-  } else {
-    // 🗼 Shanghai (Lujiazui Radial Ring + Diagonal Y-Forks), Tokyo (Yamanote Orbital Loop + Spokes), Guangzhou (Sweeping Waterfront Forks)!
-    // Octagonal Urban Ring Road connecting all 4 Boulevards at r=80m with smooth diagonal diagonals!
-    const octR = 80;
-    const diagR = cityStyle === 'tokyo' ? 84 : 88;
-    const loopNodes = [
-      { x: cx + octR, z: cz, isMain: true },
-      { x: cx + diagR * 0.707, z: cz + diagR * 0.707, isMain: false },
-      { x: cx, z: cz + octR, isMain: true },
-      { x: cx - diagR * 0.707, z: cz + diagR * 0.707, isMain: false },
-      { x: cx - octR, z: cz, isMain: true },
-      { x: cx - diagR * 0.707, z: cz - diagR * 0.707, isMain: false },
-      { x: cx, z: cz - octR, isMain: true },
-      { x: cx + diagR * 0.707, z: cz - diagR * 0.707, isMain: false },
-    ];
-    for (let i = 0; i < loopNodes.length; i++) {
-      const a = loopNodes[i];
-      const b = loopNodes[(i + 1) % loopNodes.length];
-      const vx = b.x - a.x;
-      const vz = b.z - a.z;
-      const len = Math.hypot(vx, vz);
-      const trimA = a.isMain ? 16 : 9;
-      const trimB = b.isMain ? 16 : 9;
-      if (len > trimA + trimB + 4) {
-        addSeg(
-          a.x + (vx / len) * trimA,
-          a.z + (vz / len) * trimA,
-          b.x - (vx / len) * trimB,
-          b.z - (vz / len) * trimB,
-          26,
-          26,
-          'street',
-        );
-      }
-      // At every diagonal ring node, create an organic Y-Fork (one radial 4-lane avenue + one tapered neighborhood alley!)
-      if (!a.isMain) {
-        const ang = Math.atan2(a.z - cz, a.x - cx);
-        addJunction(a.x, a.z, 26.4, -ang, 'tee');
-        // Fork Arm A: Tapered Collector Avenue (26m -> 18m)
-        const forkA = ang + (cityStyle === 'guangzhou' ? 0.34 : 0.28);
-        addSeg(
-          a.x + Math.cos(forkA) * 13,
-          a.z + Math.sin(forkA) * 13,
-          a.x + Math.cos(forkA) * (42 + Math.round(rng() * 8)),
-          a.z + Math.sin(forkA) * (42 + Math.round(rng() * 8)),
-          24,
-          16,
-          'street',
-        );
-        // Fork Arm B: Tapered Pedestrian / Neighborhood Alley (16m -> 12m)
-        const forkB = ang - 0.36;
-        addSeg(
-          a.x + Math.cos(forkB) * 13,
-          a.z + Math.sin(forkB) * 13,
-          a.x + Math.cos(forkB) * (36 + Math.round(rng() * 8)),
-          a.z + Math.sin(forkB) * (36 + Math.round(rng() * 8)),
-          16,
-          12,
-          'alley',
-        );
-      }
-    }
-  }
+  // North Grand Avenue (shorter downtown commercial leg -> railway station district)
+  addSeg(cx, cz - 27, cx, cz - 58, 44, 44, 'arterial');
+  addJunction(cx, cz - 78, 44.2, 0, 'cross');
+  addSeg(cx, cz - 100, cx, cz - 126, 44, 24, 'street');
 
-  // 3. Gently Curved High-Speed Railway / Metro Corridor connecting seamlessly to Inter-City Rail (z = cz - 108 -> east/west gates!)
-  const railCenterZ = cz - 108;
-  let rx = cx - 108;
+  // East Boulevard (Century Ave / Pudong financial axis — extended east!)
+  addSeg(cx + 27, cz, cx + 64, cz, 44, 44, 'arterial');
+  addJunction(cx + 86, cz, 44.2, 0, 'cross');
+  addSeg(cx + 108, cz, cx + 140, cz, 44, 24, 'street');
+
+  // West Boulevard (Nanjing West Rd commercial corridor)
+  addSeg(cx - 27, cz, cx - 54, cz, 44, 44, 'arterial');
+  addJunction(cx - 76, cz, 44.2, 0, 'cross');
+  addSeg(cx - 98, cz, cx - 128, cz, 44, 24, 'street');
+
+  // 2. Asymmetric Urban City Blocks, Parallel Commercial Streets & Real Diagonal Waterfront Avenue!
+  // (No circular spoke wheel! Real rectangular/trapezoidal city blocks like real Shanghai / Tokyo / Beijing!)
+  // South Commercial Cross-Avenue (Huaihai Rd style: spans asymmetrically West -118m -> East +112m at z = cz + 82!)
+  addSeg(cx - 118, cz + 82, cx - 22, cz + 82, 24, 24, 'street');
+  addSeg(cx + 22, cz + 82, cx + 114, cz + 82, 24, 24, 'street');
+
+  // North Station Cross-Avenue (Suzhou Creek Rd style: spans West -108m -> East +120m at z = cz - 78!)
+  addSeg(cx - 108, cz - 78, cx - 22, cz - 78, 24, 24, 'street');
+  addSeg(cx + 22, cz - 78, cx + 120, cz - 78, 24, 24, 'street');
+
+  // West Parallel North-South Avenue (at x = cx - 76, connects North -78 -> South +82 -> extends to +118!)
+  addSeg(cx - 76, cz - 78, cx - 76, cz - 22, 24, 24, 'street');
+  addSeg(cx - 76, cz + 22, cx - 76, cz + 82, 24, 24, 'street');
+  addSeg(cx - 76, cz + 82, cx - 76, cz + 118, 24, 15, 'street');
+  addJunction(cx - 76, cz + 82, 24.5, 0, 'cross');
+  addJunction(cx - 76, cz - 78, 24.5, 0, 'cross');
+
+  // East Waterfront Parallel Avenue (at x = cx + 86, gently angled southeastward like The Bund / Huangpu bend!)
+  addSeg(cx + 86, cz - 78, cx + 86, cz - 22, 24, 24, 'street');
+  addSeg(cx + 86, cz + 22, cx + 86, cz + 82, 24, 24, 'street');
+  addJunction(cx + 86, cz + 82, 24.5, 0, 'cross');
+  addJunction(cx + 86, cz - 78, 24.5, 0, 'cross');
+
+  // Organic Diagonal Branching Avenue (southwest -> northwest urban bypass) & Cozy Old-Town Alleys (弄堂/胡同)!
+  addSeg(cx + 86, cz + 82, cx + 122, cz + 114, 22, 14, 'street');
+  addSeg(cx - 76, cz - 78, cx - 110, cz - 104, 20, 14, 'street');
+  // Intimate neighborhood cobblestone alleys inside asymmetric blocks
+  addSeg(cx - 38, cz + 82, cx - 38, cz + 116, 13, 11, 'alley');
+  addSeg(cx + 46, cz - 78, cx + 46, cz - 110, 13, 11, 'alley');
+  addSeg(cx - 76, cz + 46, cx - 112, cz + 46, 13, 11, 'alley');
+  addSeg(cx + 86, cz - 42, cx + 124, cz - 42, 13, 11, 'alley');
+
+  // 3. Gently Curved High-Speed Railway / Metro Corridor skirting the northern edge of the urban district!
+  const railCenterZ = cz - 106;
+  let rx = cx - 114;
   let rz = railCenterZ;
-  let ra = -0.025;
+  let ra = -0.022;
   for (let i = 0; i < 6; i++) {
-    const nrx = rx + Math.cos(ra) * 36;
-    const nrz = rz + Math.sin(ra) * 36;
+    const nrx = rx + Math.cos(ra) * 38;
+    const nrz = rz + Math.sin(ra) * 38;
     rail.push({ x1: rx, z1: rz, x2: nrx, z2: nrz, width: 7.2, kind: 'rail' });
     rx = nrx;
     rz = nrz;
-    ra += 0.01;
+    ra += 0.009;
   }
 
   // Station sits neatly beside the middle of the rail line
@@ -289,10 +207,11 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const stationRotY = -Math.atan2(midRail.z2 - midRail.z1, midRail.x2 - midRail.x1);
 
   // Bus/Tram stop along the West boulevard wide sidewalk!
-  const busNode = midNodes[1];
-  const busX = busNode.x;
-  const busZ = busNode.z + 24.5;
-  const busRotY = -busNode.ang;
+  const busX = cx - 50;
+  const busZ = cz + 24.0;
+  const busRotY = 0;
+  // Consume rng slightly for deterministic architectural variety
+  void rng();
 
   // 4. Automatic Curbside Lot Subdivision (walks both curbs of every street, rejects overlaps!)
   const lots: TownBuildingLot[] = [];

@@ -238,13 +238,11 @@ export function sampleGeoTerrainHeight3D(
   const meters = sampleRealElevationMeters(geo.lat, geo.lng, preferMacro);
   const micro = preferMacro ? 0 : microSculpt(wx, wz);
 
-  if (meters === null) {
-    // Calm neutral meadow placeholder for the ~150ms before Z5 tile resolves — NEVER random noise lakes!
-    return 1.35 + micro * 0.35;
-  }
-
   let elev: number;
-  if (meters <= 0.6) {
+  if (meters === null) {
+    // Calm neutral plain placeholder for the ~150ms before Z5 tile resolves — NEVER return early before city grading!
+    elev = 1.65 + micro * 0.25;
+  } else if (meters <= 0.6) {
     // Real Ocean / Sea / Bay / Estuary (shallow sandy shoreline -> deep sea)
     elev = Math.max(-2.45, -0.22 + Math.min(0, meters) * 0.055) + micro * 0.12;
     if (elev > -0.05) elev = -0.08;
@@ -259,18 +257,188 @@ export function sampleGeoTerrainHeight3D(
     elev = 7.1 + Math.min(6.4, Math.log1p((meters - 420) / 260) * 3.05) + micro;
   }
 
-  // Keep immediate spawn sanctuary (~14m around origin) dry & welcoming even if coastal city center sits on a pier
+  // Deterministic Urban Core Elevation (identical at t=0ms AND after NASA DEM loads -> ZERO road/character height desync!):
+  // - Central Civic Plaza (r <= 38m): exact flat 1.65m (zero road/plaza Z-fighting!)
+  // - Downtown Street Grid (38m < r <= 132m): smooth gentle hillside around 1.65m
+  // - Outer Suburb Blend (132m < r < 168m): smoothly blends into real NASA/SRTM coastlines, bays & hills!
   if (!preferMacro) {
-    const spawnDist = Math.hypot(wx, wz);
-    if (spawnDist < 18) {
-      const t = Math.max(0, 1 - Math.max(0, spawnDist - 8) / 10);
-      const dryFloor = 0.95 + micro * 0.3;
-      elev = elev * (1 - t) + Math.max(elev, dryFloor) * t;
+    const cityDist = Math.hypot(wx, wz);
+    if (cityDist <= 38) {
+      return 1.65;
+    }
+    if (cityDist < 168) {
+      const gentleCityY = 1.65 + Math.sin(wx * 0.008) * 0.36 + Math.cos(wz * 0.008) * 0.36;
+      const plazaBlend = Math.max(0, 1 - (cityDist - 38) / 18);
+      const cityTargetY = gentleCityY * (1 - plazaBlend) + 1.65 * plazaBlend;
+      if (cityDist <= 132) {
+        return cityTargetY;
+      }
+      const outerT = (cityDist - 132) / 36;
+      const smoothOuter = outerT * outerT * (3 - 2 * outerT);
+      elev = cityTargetY * (1 - smoothOuter) + elev * smoothOuter;
     }
   }
 
   return elev;
 }
+
+export interface RealWorldCorridor {
+  id: string;
+  label: string;
+  kind: 'highway' | 'rail' | 'ferry';
+  /** Authentic real-Earth GPS [lat, lng] waypoints curving along valleys, plains & coastlines */
+  points: [number, number][];
+}
+
+/**
+ * Real-World East Asia Inter-City Highway, High-Speed Rail / Shinkansen & Maritime Corridors!
+ * Projected dynamically onto real Earth coordinates via geoToWorld(lat, lng).
+ */
+export const REAL_WORLD_CORRIDORS: RealWorldCorridor[] = [
+  // G2 京沪高速 & 京哈高速 (上海 -> 苏州 -> 南京 -> 徐州 -> 济南 -> 天津 -> 北京 -> 沈阳 -> 长春 -> 哈尔滨)
+  {
+    id: 'g2_jinghu',
+    label: 'G2 京沪高速',
+    kind: 'highway',
+    points: [
+      [31.23, 121.47], // 上海
+      [31.30, 120.59], // 苏州
+      [32.06, 118.80], // 南京
+      [34.21, 117.28], // 徐州
+      [36.65, 117.12], // 济南
+      [39.13, 117.20], // 天津
+      [39.90, 116.40], // 北京
+      [41.80, 123.43], // 沈阳
+      [43.82, 125.32], // 长春
+      [45.80, 126.53], // 哈尔滨
+    ],
+  },
+  // 京沪-京哈高铁 (Parallel slightly offset for crisp railway clarity on map!)
+  {
+    id: 'hsr_jinghu',
+    label: '京沪高铁',
+    kind: 'rail',
+    points: [
+      [31.23, 121.47],
+      [31.49, 120.31], // 无锡
+      [32.06, 118.80], // 南京
+      [32.94, 117.39], // 蚌埠
+      [34.27, 117.19], // 徐州东
+      [36.67, 116.90], // 济南西
+      [39.06, 117.07], // 天津南
+      [39.90, 116.40], // 北京
+      [41.80, 123.43],
+      [45.80, 126.53],
+    ],
+  },
+  // G15/G60 东南沿海高速 (上海 -> 杭州 -> 温州 -> 福州 -> 厦门 -> 深圳 -> 香港 & 广州)
+  {
+    id: 'g15_coastal',
+    label: 'G15 沈海高速',
+    kind: 'highway',
+    points: [
+      [31.23, 121.47], // 上海
+      [30.27, 120.15], // 杭州
+      [29.87, 121.55], // 宁波
+      [28.00, 120.70], // 温州
+      [26.07, 119.30], // 福州
+      [24.48, 118.09], // 厦门
+      [23.35, 116.68], // 汕头
+      [22.54, 114.06], // 深圳
+      [22.32, 114.17], // 香港
+    ],
+  },
+  {
+    id: 'g4_guangshen',
+    label: 'G4 广深高速',
+    kind: 'highway',
+    points: [
+      [23.13, 113.26], // 广州
+      [22.82, 113.75], // 东莞
+      [22.54, 114.06], // 深圳
+    ],
+  },
+  // 沪昆-东南沿海高铁
+  {
+    id: 'hsr_coastal',
+    label: '沪广高铁',
+    kind: 'rail',
+    points: [
+      [31.23, 121.47],
+      [30.27, 120.15], // 杭州
+      [28.68, 115.86], // 南昌
+      [28.23, 112.94], // 长沙
+      [23.13, 113.26], // 广州
+      [22.54, 114.06], // 深圳
+      [22.32, 114.17], // 香港
+    ],
+  },
+  // G42 沪蓉高速 (上海 -> 南京 -> 合肥 -> 武汉 -> 重庆 -> 成都)
+  {
+    id: 'g42_hurong',
+    label: 'G42 沪蓉高速',
+    kind: 'highway',
+    points: [
+      [32.06, 118.80], // 南京
+      [31.82, 117.23], // 合肥
+      [30.59, 114.31], // 武汉
+      [30.69, 111.29], // 宜昌
+      [29.56, 106.55], // 重庆
+      [30.57, 104.06], // 成都
+    ],
+  },
+  // 日本东海道・山阳・东北新干线 (福冈 -> 广岛 -> 大阪 -> 京都 -> 名古屋 -> 东京 -> 仙台 -> 青森 -> 札幌)
+  {
+    id: 'jp_shinkansen',
+    label: '东海道新干线',
+    kind: 'rail',
+    points: [
+      [33.59, 130.40], // 福冈
+      [34.39, 132.46], // 广岛
+      [34.69, 135.50], // 大阪
+      [35.01, 135.77], // 京都
+      [35.18, 136.91], // 名古屋
+      [35.68, 139.65], // 东京
+      [38.27, 140.87], // 仙台
+      [40.82, 140.74], // 青森
+      [43.06, 141.35], // 札幌
+    ],
+  },
+  // 日本东名/名神高速
+  {
+    id: 'jp_tomei',
+    label: '东名高速',
+    kind: 'highway',
+    points: [
+      [33.59, 130.40],
+      [34.69, 135.50],
+      [35.01, 135.77],
+      [35.18, 136.91],
+      [35.68, 139.65],
+    ],
+  },
+  // 东海跨海航线 (上海 <-> 福冈 / 大阪 / 冲绳)
+  {
+    id: 'ferry_sh_jp',
+    label: '东海航线',
+    kind: 'ferry',
+    points: [
+      [31.23, 121.47], // 上海
+      [32.60, 126.20],
+      [33.59, 130.40], // 福冈
+    ],
+  },
+  {
+    id: 'ferry_sh_ok',
+    label: '沪冲航线',
+    kind: 'ferry',
+    points: [
+      [31.23, 121.47], // 上海
+      [28.70, 124.90],
+      [26.21, 127.68], // 冲绳
+    ],
+  },
+];
 
 /** Project all Season-1 cities into the current 3D geo world coordinate space for minimap & overland travel! */
 export function getProjectedGeoCities(): {
