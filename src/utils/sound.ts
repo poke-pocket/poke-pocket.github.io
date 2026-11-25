@@ -358,8 +358,8 @@ class RetroSoundEngine {
       sub.stop(start + dur + 0.02);
     };
 
-    playSoftNote(baseHz, baseHz * 1.12, now, 0.11, 0.12);
-    playSoftNote(secondHz, secondHz * 1.06, now + 0.1, 0.16, 0.13);
+    playSoftNote(baseHz, baseHz * 1.12, now, 0.11, 0.075);
+    playSoftNote(secondHz, secondHz * 1.06, now + 0.1, 0.16, 0.082);
   }
 
   /**
@@ -421,7 +421,7 @@ class RetroSoundEngine {
           comp.release.value = 0.12;
 
           const gain = ctx.createGain();
-          const targetGain = Math.max(0.03, Math.min(0.95, volBase * 0.72));
+          const targetGain = Math.max(0.02, Math.min(0.65, volBase * 0.42));
           const now = ctx.currentTime;
           const dur = Math.max(0.08, buf.duration);
           gain.gain.setValueAtTime(0.0001, now);
@@ -445,7 +445,7 @@ class RetroSoundEngine {
           };
           src.start(now);
         } catch {
-          this.playHtmlAudioFallback(url, volBase * 0.65);
+          this.playHtmlAudioFallback(url, volBase * 0.4);
         }
       };
 
@@ -462,12 +462,12 @@ class RetroSoundEngine {
           playDecoded(decoded);
         })
         .catch(() => {
-          this.playHtmlAudioFallback(url, volBase * 0.65);
+          this.playHtmlAudioFallback(url, volBase * 0.4);
         });
       return;
     }
 
-    this.playHtmlAudioFallback(url, volBase * 0.8);
+    this.playHtmlAudioFallback(url, volBase * 0.48);
   }
 
   private playHtmlAudioFallback(url: string, volume: number) {
