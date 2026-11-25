@@ -197,11 +197,17 @@ function paintRoadsAndTownsOnMap(
     for (const jn of layout.junctions) {
       const jp = toScreen(jn.x, jn.z);
       const jw = Math.max(detailed ? 3.5 : 2.0, jn.width * invScale) + casingExtra;
-      ctx.save();
-      ctx.translate(jp.sx, jp.sy);
-      ctx.rotate(-jn.rotY);
-      ctx.fillRect(-jw * 0.5, -jw * 0.5, jw, jw);
-      ctx.restore();
+      if (jn.width >= 40) {
+        ctx.save();
+        ctx.translate(jp.sx, jp.sy);
+        ctx.rotate(-jn.rotY);
+        ctx.fillRect(-jw * 0.5, -jw * 0.5, jw, jw);
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.arc(jp.sx, jp.sy, jw * 0.54, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     // Grand Central Circular Plaza casing (r = 32.5m)
     const c = toScreen(town.x, town.z);
@@ -269,16 +275,23 @@ function paintRoadsAndTownsOnMap(
       }
     }
 
-    // Seamless Junction Fill Pads (completely merges cross-roads & T-forks!)
+    // Seamless Junction Fill Pads (smooth circular fillets on ring/fork nodes + merged square hubs on 8-lane crossroads!)
     for (const jn of layout.junctions) {
       const jp = toScreen(jn.x, jn.z);
       const jw = Math.max(detailed ? 3.5 : 2.0, jn.width * invScale);
-      ctx.save();
-      ctx.translate(jp.sx, jp.sy);
-      ctx.rotate(-jn.rotY);
-      ctx.fillStyle = jn.width >= 40 ? '#ffd97d' : '#f8f5ec';
-      ctx.fillRect(-jw * 0.5, -jw * 0.5, jw, jw);
-      ctx.restore();
+      if (jn.width >= 40) {
+        ctx.save();
+        ctx.translate(jp.sx, jp.sy);
+        ctx.rotate(-jn.rotY);
+        ctx.fillStyle = '#ffd97d';
+        ctx.fillRect(-jw * 0.5, -jw * 0.5, jw, jw);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#f8f5ec';
+        ctx.beginPath();
+        ctx.arc(jp.sx, jp.sy, jw * 0.54, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // Grand Central Circular Plaza (Stone terrace + green park ring + shimmering blue fountain dot!)

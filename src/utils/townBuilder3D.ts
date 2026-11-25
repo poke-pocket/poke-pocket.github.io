@@ -58,6 +58,31 @@ export interface EnterableBuildingInterior {
   cutawayAlpha: number;
 }
 
+export interface TownMovingVehicle {
+  group: THREE.Group;
+  axis: 'x' | 'z';
+  laneOffset: number;
+  dir: 1 | -1;
+  minCoord: number;
+  maxCoord: number;
+  coord: number;
+  speed: number;
+  baseY: number;
+}
+
+export interface TownStrollingCitizen {
+  mesh: THREE.Mesh;
+  shadow: THREE.Mesh;
+  mode: 'plaza_orbit' | 'sidewalk_patrol';
+  cx: number;
+  cz: number;
+  radius: number;
+  angle: number;
+  speed: number;
+  phase: number;
+  baseY: number;
+}
+
 export interface ProceduralTownInstance {
   id: string;
   name: string;
@@ -74,6 +99,8 @@ export interface ProceduralTownInstance {
     spinners: THREE.Object3D[];
     fountains: THREE.Object3D[];
     billboards: THREE.Mesh[];
+    vehicles: TownMovingVehicle[];
+    walkers: TownStrollingCitizen[];
   };
 }
 
@@ -299,6 +326,80 @@ function createNpcBillboard(
   return mesh;
 }
 
+/**
+ * World-Space HD-2D Pixel-Art Architecture Shader Hook:
+ * Injects crisp 16cm world-space pixel masonry/brick courses on vertical walls,
+ * pixel roof shingle rows on roofs, subtle GBA Bayer dithering, and gentle 3-band HD-2D
+ * cel quantization so EVERY 3D building/prop matches our chibi pixel characters & pixel trees!
+ */
+function applyPixelArtArchShader(mat: THREE.MeshLambertMaterial): THREE.MeshLambertMaterial {
+  mat.customProgramCacheKey = () => 'pk_pixel_arch_hd2d_v1';
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec3 vArchWorldPos;
+varying vec3 vArchWorldNorm;`,
+      )
+      .replace(
+        '#include <worldpos_vertex>',
+        `#include <worldpos_vertex>
+vec4 archWp = modelMatrix * vec4(transformed, 1.0);
+vArchWorldPos = archWp.xyz;
+vArchWorldNorm = normalize(mat3(modelMatrix) * objectNormal);`,
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec3 vArchWorldPos;
+varying vec3 vArchWorldNorm;
+float archHash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}`,
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+vec3 aNorm = normalize(vArchWorldNorm);
+vec3 pxCoord = floor(vArchWorldPos * 6.0);
+float grain = 1.0;
+if (abs(aNorm.y) < 0.55) {
+  // Vertical facades: crisp pixel running-bond brick / tile courses!
+  float hCoord = abs(aNorm.x) > abs(aNorm.z) ? pxCoord.z : pxCoord.x;
+  float rowIdx = floor(pxCoord.y * 0.333);
+  float mortarH = step(2.6, mod(pxCoord.y, 3.0));
+  float brickCol = floor((hCoord + mod(rowIdx, 2.0) * 3.0) * 0.1667);
+  float mortarV = step(5.5, mod(hCoord + mod(rowIdx, 2.0) * 3.0, 6.0));
+  float brickVar = (archHash21(vec2(brickCol, rowIdx)) - 0.5) * 0.095;
+  float mortarMask = max(mortarH, mortarV);
+  grain = 1.0 + brickVar - mortarMask * 0.075;
+} else {
+  // Roofs & horizontal trims: crisp pixel shingle / tile rows!
+  float shingleRow = step(2.5, mod(pxCoord.x + pxCoord.z, 3.0));
+  float tileVar = (archHash21(pxCoord.xz * 0.5) - 0.5) * 0.085;
+  grain = 1.0 + tileVar - shingleRow * 0.06;
+}
+// Subtle GBA 2x2 Bayer pixel dither + preserve bright glass/white highlights
+float bayer = mod(pxCoord.x + pxCoord.y + pxCoord.z, 2.0) * 0.024 - 0.012;
+diffuseColor.rgb *= clamp(grain + bayer, 0.84, 1.12);`,
+      )
+      .replace(
+        '#include <dithering_fragment>',
+        `// Gentle HD-2D cel-stepped tone cohesion (crisp shadow/mid/sunlight bands without crushing whites)
+float lum = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
+float qLum = floor(lum * 7.5 + 0.5) / 7.5;
+gl_FragColor.rgb *= mix(1.0, qLum / max(0.05, lum), 0.32);
+#include <dithering_fragment>`,
+      );
+  };
+  return mat;
+}
+
 function loadRawGlb(url: string): Promise<THREE.Group | null> {
   const cached = MODEL_PROMISE_CACHE.get(url);
   if (cached) return cached;
@@ -321,13 +422,15 @@ function loadRawGlb(url: string): Promise<THREE.Group | null> {
                 std.map.colorSpace = THREE.SRGBColorSpace;
                 std.map.needsUpdate = true;
               }
-              return new THREE.MeshLambertMaterial({
-                color: std.color ? std.color.clone() : new THREE.Color(0xffffff),
-                map: std.map ?? null,
-                side: std.side,
-                transparent: std.transparent,
-                opacity: std.opacity,
-              });
+              return applyPixelArtArchShader(
+                new THREE.MeshLambertMaterial({
+                  color: std.color ? std.color.clone() : new THREE.Color(0xffffff),
+                  map: std.map ?? null,
+                  side: std.side,
+                  transparent: std.transparent,
+                  opacity: std.opacity,
+                }),
+              );
             });
             m.material = Array.isArray(m.material) ? brightMats : brightMats[0];
           }
@@ -392,12 +495,12 @@ async function mountGlbModel(
         const tintColor = opts.tintHex !== undefined ? new THREE.Color(opts.tintHex) : null;
         if (Array.isArray(mesh.material)) {
           mesh.material = mesh.material.map((mm) => {
-            const c = mm.clone() as THREE.MeshLambertMaterial;
+            const c = applyPixelArtArchShader(mm.clone() as THREE.MeshLambertMaterial);
             if (tintColor && c.color) c.color.lerp(tintColor, 0.2);
             return c;
           });
         } else if (mesh.material) {
-          const c = mesh.material.clone() as THREE.MeshLambertMaterial;
+          const c = applyPixelArtArchShader(mesh.material.clone() as THREE.MeshLambertMaterial);
           if (tintColor && c.color) c.color.lerp(tintColor, 0.2);
           mesh.material = c;
         }
@@ -588,7 +691,7 @@ function getGroundTex(): TownGroundTex {
         ctx.fillRect(x, 97, 14, 2);
       }
 
-      // Lush Central Green Median Strip (y=57..71) with double yellow curbs + grass & bright flowers!
+      // Lush Central Green Median Strip (y=57..71) with clean double yellow curbs + lush pixel grass tufts!
       ctx.fillStyle = '#fcc419';
       ctx.fillRect(0, 56, 128, 2);
       ctx.fillRect(0, 70, 128, 2);
@@ -598,9 +701,9 @@ function getGroundTex(): TownGroundTex {
       ctx.fillRect(8, 60, 18, 3);
       ctx.fillRect(58, 64, 22, 3);
       ctx.fillRect(96, 60, 16, 3);
-      ctx.fillStyle = '#ffd43b';
-      ctx.fillRect(28, 62, 3, 3);
-      ctx.fillRect(84, 61, 3, 3);
+      ctx.fillStyle = '#2b8a3e';
+      ctx.fillRect(30, 62, 10, 3);
+      ctx.fillRect(84, 61, 10, 3);
     },
     1,
     1,
@@ -1620,6 +1723,8 @@ export function buildProceduralTown3D(
   const spinners: THREE.Object3D[] = [];
   const fountains: THREE.Object3D[] = [];
   const billboards: THREE.Mesh[] = [];
+  const vehicles: TownMovingVehicle[] = [];
+  const walkers: TownStrollingCitizen[] = [];
   const interiors: EnterableBuildingInterior[] = [];
   const interactPoints: TownInteractPoint[] = [];
   const colliders: TownCollider[] = [];
@@ -2213,6 +2318,136 @@ export function buildProceduralTown3D(
     });
   }
 
+  // 5. LIVE CITY LIFE: Cruising Pixel-Shaded Taxis/Cars on 8-Lane Boulevards + Strolling Chibi Pixel Citizens + Pixel Vending Machines!
+  const carColors = [0x3bc9db, 0xffd43b, 0xfa5252, 0xf8f9fa, 0x339af0, 0x51cf66];
+  const carConfigs: { axis: 'x' | 'z'; laneOffset: number; dir: 1 | -1; minC: number; maxC: number; start: number; spd: number }[] = [
+    { axis: 'z', laneOffset: 9.5, dir: 1, minC: 35, maxC: 122, start: 54, spd: 11.5 },
+    { axis: 'z', laneOffset: -9.5, dir: -1, minC: 35, maxC: 122, start: 96, spd: 13.0 },
+    { axis: 'z', laneOffset: 9.5, dir: 1, minC: -122, maxC: -35, start: -88, spd: 12.2 },
+    { axis: 'z', laneOffset: -9.5, dir: -1, minC: -122, maxC: -35, start: -52, spd: 10.8 },
+    { axis: 'x', laneOffset: 9.5, dir: 1, minC: 35, maxC: 122, start: 68, spd: 11.8 },
+    { axis: 'x', laneOffset: -9.5, dir: -1, minC: -122, maxC: -35, start: -74, spd: 12.6 },
+  ];
+  const headLampMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
+  const tailLampMat = new THREE.MeshBasicMaterial({ color: 0xff4d4f });
+
+  carConfigs.forEach((cc, idx) => {
+    const carGrp = new THREE.Group();
+    const wx = cc.axis === 'x' ? centerX + cc.start : centerX + cc.laneOffset;
+    const wz = cc.axis === 'z' ? centerZ + cc.start : centerZ + cc.laneOffset;
+    const baseCarY = localGroundY(wx, wz) + 0.16;
+    carGrp.position.set(wx - centerX, baseCarY, wz - centerZ);
+    const yaw = cc.axis === 'z' ? (cc.dir > 0 ? 0 : Math.PI) : cc.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+    carGrp.rotation.y = yaw;
+    void mountGlbModel(carGrp, '/models/town/car/taxi.glb', {
+      x: 0,
+      y: 0,
+      z: 0,
+      rotY: 0,
+      targetWidth: 4.4,
+      tintHex: carColors[(idx + styleIdx) % carColors.length],
+      addInkEdges: true,
+      cloneMaterials: true,
+      onMounted: (wrapper) => {
+        for (const sx of [-0.72, 0.72]) {
+          const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.14), headLampMat);
+          hl.position.set(sx, 0.72, 2.08);
+          const tl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.14), tailLampMat);
+          tl.position.set(sx, 0.72, -2.08);
+          wrapper.add(hl, tl);
+        }
+      },
+    });
+    group.add(carGrp);
+    vehicles.push({
+      group: carGrp,
+      axis: cc.axis,
+      laneOffset: cc.laneOffset,
+      dir: cc.dir,
+      minCoord: cc.minC,
+      maxCoord: cc.maxC,
+      coord: cc.start,
+      speed: cc.spd,
+      baseY: baseCarY,
+    });
+  });
+
+  // Strolling Chibi Pixel Citizens around the Grand Central Plaza & Wide Promenade Sidewalks!
+  const citizenPool = [
+    '/sprites/trainers/youngster-ow.png',
+    '/sprites/trainers/lass-ow.png',
+    '/sprites/trainers/erika-ow.png',
+    '/sprites/trainers/blue-ow.png',
+    '/sprites/trainers/misty-ow.png',
+    '/sprites/trainers/brock-ow.png',
+    '/sprites/trainers/nurse-ow.png',
+  ];
+  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x10141c, transparent: true, opacity: 0.34, depthWrite: false });
+  const shadowGeo = new THREE.CircleGeometry(0.85, 12);
+  shadowGeo.rotateX(-Math.PI / 2);
+
+  for (let wi = 0; wi < 7; wi++) {
+    const spriteUrl = citizenPool[(wi + styleIdx) % citizenPool.length];
+    const orbitR = wi < 4 ? 12.5 + wi * 3.8 : 26.5 + (wi - 4) * 1.4;
+    const initAng = (wi / 7) * Math.PI * 2;
+    const px = Math.cos(initAng) * orbitR;
+    const pz = Math.sin(initAng) * orbitR;
+    const py = localGroundY(centerX + px, centerZ + pz) + 0.22;
+    const citizenMesh = createNpcBillboard(spriteUrl, px, py, pz, 2.35);
+    const cShadow = new THREE.Mesh(shadowGeo, shadowMat);
+    cShadow.position.set(px, py + 0.04, pz);
+    group.add(citizenMesh, cShadow);
+    walkers.push({
+      mesh: citizenMesh,
+      shadow: cShadow,
+      mode: 'plaza_orbit',
+      cx: 0,
+      cz: 0,
+      radius: orbitR,
+      angle: initAng,
+      speed: (wi % 2 === 0 ? 1 : -1) * (0.14 + (wi % 3) * 0.05),
+      phase: wi * 1.3,
+      baseY: py,
+    });
+  }
+
+  // Pixel-Art Street Vending Machines (Poké-Drink!) tucked neatly along the 4 Plaza Entrance Sidewalks!
+  const vendFrontTex = makePixelTex(24, 36, (ctx) => {
+    ctx.fillStyle = '#e03131';
+    ctx.fillRect(0, 0, 24, 36);
+    ctx.fillStyle = '#181a24';
+    ctx.fillRect(2, 3, 20, 16);
+    ctx.fillStyle = '#74c0fc';
+    ctx.fillRect(3, 4, 18, 14);
+    // Tiny colorful drink bottles inside glass display
+    const cols = ['#ff6b6b', '#ffd43b', '#51cf66', '#339af0'];
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 4; c++) {
+        ctx.fillStyle = cols[(c + r) % 4];
+        ctx.fillRect(5 + c * 4, 6 + r * 6, 2, 4);
+      }
+    }
+    ctx.fillStyle = '#f8f9fa';
+    ctx.fillRect(4, 21, 16, 3);
+    ctx.fillStyle = '#212529';
+    ctx.fillRect(4, 27, 16, 6);
+  });
+  const vendSideMat = new THREE.MeshLambertMaterial({ color: 0xc92a2a });
+  const vendFrontMat = new THREE.MeshBasicMaterial({ map: vendFrontTex });
+  const vendMats = [vendSideMat, vendSideMat, vendSideMat, vendSideMat, vendFrontMat, vendSideMat];
+  for (const [vx, vz, ry] of [
+    [-20.5, 34.5, 0],
+    [20.5, -34.5, Math.PI],
+    [34.5, 20.5, -Math.PI / 2],
+    [-34.5, -20.5, Math.PI / 2],
+  ]) {
+    const vm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.4, 1.0), vendMats);
+    vm.position.set(vx, localGroundY(centerX + vx, centerZ + vz) + 1.35, vz);
+    vm.rotation.y = ry;
+    vm.castShadow = true;
+    group.add(vm);
+  }
+
   interactPoints.push(
     {
       id: `${id}_station`,
@@ -2252,6 +2487,8 @@ export function buildProceduralTown3D(
       spinners,
       fountains,
       billboards,
+      vehicles,
+      walkers,
     },
   };
 }

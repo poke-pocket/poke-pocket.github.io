@@ -225,8 +225,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       const vx = b.x - a.x;
       const vz = b.z - a.z;
       const len = Math.hypot(vx, vz);
-      const trimA = a.isMain ? 22 : 11;
-      const trimB = b.isMain ? 22 : 11;
+      const trimA = a.isMain ? 16 : 9;
+      const trimB = b.isMain ? 16 : 9;
       if (len > trimA + trimB + 4) {
         addSeg(
           a.x + (vx / len) * trimA,

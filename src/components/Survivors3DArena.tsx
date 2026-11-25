@@ -5000,6 +5000,33 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               for (const bb of town.animatedParts.billboards) {
                 bb.rotation.set(bbTiltX, camYawNow, 0);
               }
+              // Live boulevard pixel traffic!
+              for (const v of town.animatedParts.vehicles) {
+                v.coord += v.dir * v.speed * dt;
+                if (v.dir > 0 && v.coord > v.maxCoord) v.coord = v.minCoord;
+                else if (v.dir < 0 && v.coord < v.minCoord) v.coord = v.maxCoord;
+                if (v.axis === 'z') {
+                  v.group.position.x = v.laneOffset;
+                  v.group.position.z = v.coord;
+                } else {
+                  v.group.position.x = v.coord;
+                  v.group.position.z = v.laneOffset;
+                }
+                const wy = getTerrainHeight3D(town.centerX + v.group.position.x, town.centerZ + v.group.position.z);
+                v.group.position.y = wy - town.group.position.y + 0.16;
+              }
+              // Strolling GBA chibi pixel citizens around the Grand Plaza!
+              for (const w of town.animatedParts.walkers) {
+                w.angle += w.speed * dt;
+                w.phase += dt * 7.5;
+                const wxLocal = w.cx + Math.cos(w.angle) * w.radius;
+                const wzLocal = w.cz + Math.sin(w.angle) * w.radius;
+                const wy = getTerrainHeight3D(town.centerX + wxLocal, town.centerZ + wzLocal) - town.group.position.y + 0.22;
+                const hop = Math.abs(Math.sin(w.phase)) * 0.15;
+                w.mesh.position.set(wxLocal, wy + hop, wzLocal);
+                w.mesh.rotation.set(bbTiltX, camYawNow, 0);
+                w.shadow.position.set(wxLocal, wy + 0.04, wzLocal);
+              }
             }
             const distToTown = Math.hypot(sim.px - town.centerX, sim.pz - town.centerZ);
             if (distToTown < town.safeRadius) {
