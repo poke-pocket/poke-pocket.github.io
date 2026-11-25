@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SPECIES_CATALOG } from '../data/catalog';
+import type { AppLang } from '../data/i18n';
 import type { MetaProgressState } from '../data/metaProgression';
 import {
   DEFAULT_WORLD_TOUR_STATE,
@@ -9,6 +10,7 @@ import {
   WORLD_ZONES,
   calcFlightTicketCost,
   calcGeoDistanceKm,
+  getDefaultHomeByLanguage,
   getLocalHomeEcology,
   type HotelTierId,
   type WorldCityDef,
@@ -39,6 +41,7 @@ export interface WorldLaunchPayload {
 
 interface WorldMapOverlayProps {
   coins: number;
+  lang: AppLang;
   meta: MetaProgressState;
   onUpdateMeta: (updater: (prev: MetaProgressState) => MetaProgressState, coinDelta?: number) => void;
   onLaunchWorldRun: (payload: WorldLaunchPayload) => void;
@@ -184,12 +187,15 @@ function requestTile(layer: TileLayerKind, z: number, x: number, y: number) {
 
 export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   coins,
+  lang,
   meta,
   onUpdateMeta,
   onLaunchWorldRun,
   onClose,
 }) => {
   const tour: WorldTourState = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+  const defaultHome = useMemo(() => getDefaultHomeByLanguage(lang), [lang]);
+  const effectiveHome = tour.homeCoords ?? defaultHome;
   const nowMs = Date.now();
   const isStayExpired = Boolean(
     tour.currentCityId && tour.stayUntilTs && tour.stayUntilTs <= nowMs,
@@ -200,7 +206,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   );
 
   const [selectedCityId, setSelectedCityId] = useState<string | null>(
-    tour.currentCityId ?? 'shanghai',
+    tour.currentCityId ?? defaultHome.defaultCityId,
   );
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [selectedHotel, setSelectedHotel] = useState<HotelTierId>('inn');
@@ -222,7 +228,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
   // Continuous Web Mercator Camera: (mx, my) in [0..1] + zoom in [1.3 .. 18.5]
   const [cam, setCam] = useState<{ mx: number; my: number; zoom: number }>(() => {
-    const focusLng = currentCity?.lng ?? tour.homeCoords?.lng ?? 118.5;
+    const focusLng = currentCity?.lng ?? tour.homeCoords?.lng ?? (lang === 'ja' ? 132.0 : 118.5);
     const focusLat = currentCity?.lat ?? tour.homeCoords?.lat ?? 33.5;
     return { mx: lngToMercX(focusLng), my: latToMercY(focusLat), zoom: 4.3 };
   });
@@ -252,9 +258,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
   const originPoint = useMemo(() => {
     if (currentCity) return { lat: currentCity.lat, lng: currentCity.lng, label: currentCity.name };
-    if (tour.homeCoords) return { lat: tour.homeCoords.lat, lng: tour.homeCoords.lng, label: tour.homeCoords.label };
-    return { lat: 31.23, lng: 121.47, label: '默认出发点(上海)' };
-  }, [currentCity, tour.homeCoords]);
+    return { lat: effectiveHome.lat, lng: effectiveHome.lng, label: effectiveHome.label };
+  }, [currentCity, effectiveHome]);
 
   const selectedCity = useMemo(
     () => WORLD_CITIES.find((c) => c.id === selectedCityId) ?? null,
@@ -880,8 +885,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
   const handleFlyHome = () => {
     if (!currentCity) return;
-    const homeLat = tour.homeCoords?.lat ?? 31.23;
-    const homeLng = tour.homeCoords?.lng ?? 121.47;
+    const homeLat = effectiveHome.lat;
+    const homeLng = effectiveHome.lng;
     sound.play('confirm');
     setCam({
       mx: (lngToMercX(currentCity.lng) + lngToMercX(homeLng)) / 2,
@@ -929,12 +934,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       });
       return;
     }
-    const lat = tour.homeCoords?.lat ?? 31.23;
-    const lng = tour.homeCoords?.lng ?? 121.47;
+    const lat = effectiveHome.lat;
+    const lng = effectiveHome.lng;
     const eco = getLocalHomeEcology(lat, lng);
     onLaunchWorldRun({
       cityId: null,
-      cityName: tour.homeCoords?.label ?? 'GPS 家乡原野',
+      cityName: effectiveHome.label,
       biome: eco.biome,
       wildPool: eco.wildPool,
       isGymChallenge: false,
@@ -974,7 +979,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             </span>
           ) : (
             <span>
-              <strong>{tour.homeCoords ? tour.homeCoords.label : '未定位老家'}</strong>
+              <strong>{effectiveHome.label}</strong>
               {' · 永久免费停留'}
             </span>
           )}
@@ -1103,13 +1108,11 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 sound.play('cursor');
                 setSelectedCityId(null);
                 setSelectedZoneId(null);
-                if (tour.homeCoords) {
-                  setCam({
-                    mx: lngToMercX(tour.homeCoords.lng),
-                    my: latToMercY(tour.homeCoords.lat),
-                    zoom: Math.max(cam.zoom, 11.5),
-                  });
-                }
+                setCam({
+                  mx: lngToMercX(effectiveHome.lng),
+                  my: latToMercY(effectiveHome.lat),
+                  zoom: Math.max(cam.zoom, 11.5),
+                });
               }}
             >
               🏠 老家
@@ -1163,17 +1166,19 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           )}
 
           {isViewingHome && (() => {
-            const lat = tour.homeCoords?.lat ?? 31.23;
-            const lng = tour.homeCoords?.lng ?? 121.47;
+            const lat = effectiveHome.lat;
+            const lng = effectiveHome.lng;
             const eco = getLocalHomeEcology(lat, lng);
             return (
               <div className="wt-card">
                 <div className="wt-card-head" style={{ backgroundColor: '#1c7ed6' }}>
-                  <strong>🏠 {tour.homeCoords ? tour.homeCoords.label : '我的家乡重生点'}</strong>
+                  <strong>🏠 {effectiveHome.label}</strong>
                   <span>永久免费</span>
                 </div>
                 <p className="wt-desc">
-                  当前匹配生态：<strong>{eco.regionLabel}</strong>（{lat.toFixed(3)}°, {lng.toFixed(3)}°）。滚轮或双指放大可一直下钻到你的真实街区！
+                  当前匹配生态：<strong>{eco.regionLabel}</strong>（{lat.toFixed(3)}°, {lng.toFixed(3)}°）。
+                  {!tour.homeCoords && '未开启 GPS 时自动按界面语言定位（中文默认上海 / 日语默认东京）。'}
+                  滚轮或双指放大可一直下钻到你的真实街区！
                 </p>
                 {!tour.homeCoords && (
                   <button type="button" className="wt-secondary-btn" onClick={handleLocateGps}>

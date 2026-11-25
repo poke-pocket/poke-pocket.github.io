@@ -155,6 +155,8 @@ interface Survivors3DArenaProps {
   onUpdateProfile?: (patch: Partial<TrainerProfile>) => void;
   onUpdatePrefs?: (patch: Partial<GamePrefs>) => void;
   onUpdateMeta?: (updater: (prev: MetaProgressState) => MetaProgressState, coinDelta?: number) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 interface ActiveFollower {
@@ -502,6 +504,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   onUpdateProfile,
   onUpdatePrefs,
   onUpdateMeta,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -6794,6 +6798,18 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               <PixelItemImg src="/sprites/items/town-map.png" size={15} />
               <span>{LANG_LABELS[lang]}</span>
             </button>
+            {onToggleFullscreen && (
+              <button
+                type="button"
+                className={`pkb-util-btn is-fs ${isFullscreen ? 'is-active' : ''}`}
+                onClick={onToggleFullscreen}
+                aria-label={isFullscreen ? tr(lang, 'exitFullscreenBtn') : tr(lang, 'fullscreenBtn')}
+                title={isFullscreen ? '退出浏览器全屏' : '开启浏览器全屏模式'}
+              >
+                <PixelIcon name={isFullscreen ? 'shrink' : 'fullscreen'} size={13} />
+                <span>{isFullscreen ? tr(lang, 'exitFullscreenBtn') : tr(lang, 'fullscreenBtn')}</span>
+              </button>
+            )}
           </footer>
 
           {/* Clean "More" Hub Drawer Modal (All 7 Secondary Features + Guide/Feedback) */}
@@ -6991,6 +7007,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       {phase === 'world_map' && (
         <WorldMapOverlay
           coins={save.coins}
+          lang={lang}
           meta={meta}
           onUpdateMeta={(updater, coinDelta) => onUpdateMeta?.(updater, coinDelta)}
           onLaunchWorldRun={handleLaunchWorldRun}

@@ -1,4 +1,5 @@
 import type { SpeciesId } from '../types/pet';
+import type { AppLang } from './i18n';
 import type { BiomeId } from './worldTextures3D';
 
 export type HotelTierId = 'hostel' | 'inn' | 'grand';
@@ -55,12 +56,12 @@ export const WORLD_ZONES: WorldZoneDef[] = [
   {
     id: 'east_asia',
     name: '东亚 · 华夏与关东赛区',
-    subtitle: '第 1 赛季已全面开放 · 8 座地标道馆',
+    subtitle: '第 1 赛季已全面开放 · 9 座地标道馆',
     unlocked: true,
     centerLat: 33.5,
     centerLng: 118.5,
     seasonTag: 'S1 已开放',
-    teaserText: '横跨燕京、魔都、江南、岭南、巴蜀、冰城、维港与东京关东圣殿！',
+    teaserText: '横跨燕京、魔都、江南、岭南、鹏城、巴蜀、冰城、维港与东京关东圣殿！',
     teaserSpecies: ['pikachu', 'charmander', 'lapras', 'dratini', 'mewtwo'],
   },
   {
@@ -259,6 +260,34 @@ export const WORLD_CITIES: WorldCityDef[] = [
     rewardCoins: 190,
   },
   {
+    id: 'shenzhen',
+    zoneId: 'east_asia',
+    name: '深圳',
+    country: '中国 · 粤港澳',
+    lat: 22.5431,
+    lng: 114.0579,
+    biome: 'storm_coast',
+    accentColor: '#0ca678',
+    gymName: '湾区硅谷道馆',
+    gymBadgeName: '鹏城光核徽章',
+    gymTypeLabel: '超能 / 钢 / 电',
+    gymLeaderName: '馆主 智芯',
+    gymTrainerKey: 'tr_ltsurge',
+    gymBossSpecies: 'porygon',
+    gymBossTitle: '湾芯智核·多边兽',
+    fieldEffect: '科创海风：芯片与超能波频共鸣，高概率偶遇多边兽、凯西、小磁怪与皮卡丘',
+    hotelNames: {
+      hostel: '华强北极客青旅',
+      inn: '南山科技园驿站',
+      grand: '深圳湾云端大酒店',
+    },
+    specialtyName: '鹏城椰子鸡能量锅',
+    description: '南海之滨的赛博创新之都，摩天科技园与红树林海岸吸引着超能、电系与数字宝可梦。',
+    wildPool: ['porygon', 'abra', 'magnemite', 'pikachu', 'voltorb', 'jolteon', 'staryu', 'horsea', 'eevee'],
+    signatureSpecies: ['porygon', 'abra', 'magnemite'],
+    rewardCoins: 200,
+  },
+  {
     id: 'chengdu',
     zoneId: 'east_asia',
     name: '成都',
@@ -396,6 +425,30 @@ export const DEFAULT_WORLD_TOUR_STATE: WorldTourState = {
   clearedCityGyms: [],
   visitedCities: [],
 };
+
+/**
+ * Default spawn point when the user has not set GPS or manual home coords:
+ * - Japanese (`ja`) -> Tokyo
+ * - Chinese (Simplified / Traditional) & default -> Shanghai
+ */
+export function getDefaultHomeByLanguage(lang: AppLang): HomeCoords & { defaultCityId: string } {
+  if (lang === 'ja') {
+    return {
+      lat: 35.6762,
+      lng: 139.6503,
+      label: '默认重生点 · 东京',
+      isRealGps: false,
+      defaultCityId: 'tokyo',
+    };
+  }
+  return {
+    lat: 31.2304,
+    lng: 121.4737,
+    label: '默认重生点 · 上海',
+    isRealGps: false,
+    defaultCityId: 'shanghai',
+  };
+}
 
 /** Great-circle Haversine distance in kilometers */
 export function calcGeoDistanceKm(

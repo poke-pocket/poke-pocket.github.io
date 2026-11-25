@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdoptionModal } from './components/AdoptionModal';
 import { HandheldConsole, type AppSettingsPatch } from './components/HandheldConsole';
+import { LandscapeFullscreenCover } from './components/LandscapeFullscreenCover';
+import { useFullscreenAndOrientation } from './utils/fullscreen';
 import {
   HOME_SIDE_ACTIONS,
   isHomeActionDisabled,
@@ -98,6 +100,24 @@ export function App() {
   const [battleIsTrainer, setBattleIsTrainer] = useState(false);
   const [bezelIndex, setBezelIndex] = useState(0);
   const [menuCursor, setMenuCursor] = useState(0);
+  const {
+    isFullscreen,
+    isStandalone,
+    isMobileLandscape,
+    supportsFullscreen,
+    enterFullscreen,
+    toggleFullscreen,
+  } = useFullscreenAndOrientation();
+  const [dismissedLandscapeCover, setDismissedLandscapeCover] = useState(false);
+  const [manualFullscreenGuide, setManualFullscreenGuide] = useState(false);
+
+  const handleHubToggleFullscreen = useCallback(async () => {
+    sound.play('confirm');
+    const res = await toggleFullscreen();
+    if (!res.ok) {
+      setManualFullscreenGuide(true);
+    }
+  }, [toggleFullscreen]);
 
   const [actionAnim, setActionAnim] = useState<ActionAnim>('idle');
   const [patSeq, setPatSeq] = useState(0);
@@ -965,6 +985,8 @@ export function App() {
             }
             onUpdatePrefs={(prefsPatch) => handleUpdateSettings({ prefs: prefsPatch })}
             onUpdateMeta={handleUpdateMeta}
+            isFullscreen={isFullscreen}
+            onToggleFullscreen={handleHubToggleFullscreen}
           />
         </div>
       )}
@@ -1075,6 +1097,29 @@ export function App() {
       )}
 
       {needsAdoption && <AdoptionModal isFirstPet onAdopt={handleAdopt} />}
+
+      <LandscapeFullscreenCover
+        visible={
+          manualFullscreenGuide ||
+          (isMobileLandscape && !isFullscreen && !isStandalone && !dismissedLandscapeCover)
+        }
+        isManualGuide={manualFullscreenGuide}
+        supportsFullscreen={supportsFullscreen}
+        onEnterFullscreen={async () => {
+          const res = await enterFullscreen();
+          if (res.ok) {
+            setManualFullscreenGuide(false);
+            setDismissedLandscapeCover(false);
+          }
+          return res;
+        }}
+        onDismiss={() => {
+          setManualFullscreenGuide(false);
+          if (isMobileLandscape) {
+            setDismissedLandscapeCover(true);
+          }
+        }}
+      />
     </div>
   );
 }
