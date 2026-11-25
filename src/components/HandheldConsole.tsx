@@ -87,6 +87,8 @@ interface HandheldConsoleProps {
   onPullGachaTen: (boxId: GachaBoxId) => GachaTenOutcome;
   onReleasePet: (petId: string) => boolean;
   onReleasePetsBatch?: (petIds: string[]) => { ok: boolean; count: number; coins: number; xp: number; message: string };
+  onDepositPet?: (petId: string) => boolean;
+  onWithdrawPet?: (petId: string) => boolean;
   onSwitchPet: (petId: string) => void;
   onUpdatePetConfig?: (
     petId: string,
@@ -111,6 +113,8 @@ interface HandheldConsoleProps {
   focusedDetailPetId?: string | null;
   captureReveal?: import('../types/pet').CaptureRevealPayload | null;
   worldMapData?: import('./WorldMapHud').WorldMapData | null;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
@@ -156,6 +160,8 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   onPullGachaTen,
   onReleasePet,
   onReleasePetsBatch,
+  onDepositPet,
+  onWithdrawPet,
   onSwitchPet,
   onUpdatePetConfig,
   onUpdateSettings,
@@ -169,6 +175,8 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   focusedDetailPetId,
   captureReveal,
   worldMapData,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
   const theme = SHELL_THEMES[save.shellTheme];
 
@@ -320,6 +328,8 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
       onPullGachaTen={onPullGachaTen}
       onReleasePet={onReleasePet}
       onReleasePetsBatch={onReleasePetsBatch}
+      onDepositPet={onDepositPet}
+      onWithdrawPet={onWithdrawPet}
       onSwitchPet={onSwitchPet}
       onUpdatePetConfig={onUpdatePetConfig}
       onUpdateSettings={onUpdateSettings}
@@ -333,6 +343,8 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
       focusedDetailPetId={focusedDetailPetId}
       captureReveal={captureReveal}
       worldMapData={worldMapData}
+      isFullscreen={isFullscreen}
+      onToggleFullscreen={onToggleFullscreen}
     />
   );
 

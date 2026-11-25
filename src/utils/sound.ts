@@ -201,7 +201,8 @@ class RetroSoundEngine {
   private bgmTimer: number | null = null;
   private bgmStep = 0;
   private activeCry: HTMLAudioElement | null = null;
-  private cryCache = new Map<number, HTMLAudioElement>();
+  private cryCache = new Map<string, HTMLAudioElement>();
+  private pikachuCryVariant: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw' = 'soft_voice';
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -237,6 +238,46 @@ class RetroSoundEngine {
   setCry(enabled: boolean, volume: number) {
     this.cryEnabled = enabled;
     this.cryVolume = Math.max(0, Math.min(100, Math.round(volume)));
+  }
+
+  setPikachuCryVariant(
+    variant: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw',
+  ) {
+    this.pikachuCryVariant = variant;
+  }
+
+  /** Audition a specific Pikachu cry audio file directly (bypasses cryEnabled check if previewing in settings) */
+  previewPikachuCry(
+    variant: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw',
+  ) {
+    if (typeof window === 'undefined') return;
+    this.playAudioUrl(`/cries/pikachu/${variant}.mp3`, true);
+  }
+
+  private playAudioUrl(url: string, forcePreview = false) {
+    if (!forcePreview && (this.isSilenceActive() || !this.cryEnabled || this.cryVolume <= 0)) return;
+    if (typeof window === 'undefined') return;
+    try {
+      if (this.activeCry) {
+        this.activeCry.pause();
+        this.activeCry.currentTime = 0;
+      }
+      let audio = this.cryCache.get(url);
+      if (!audio) {
+        audio = new Audio(url);
+        audio.preload = 'auto';
+        this.cryCache.set(url, audio);
+      }
+      const volBase = forcePreview
+        ? Math.max(0.25, (this.cryVolume / 100) * (this.masterVolume / 100) * 0.85)
+        : (this.cryVolume / 100) * (this.masterVolume / 100) * 0.85;
+      audio.volume = Math.max(0.03, Math.min(1, volBase));
+      audio.currentTime = 0;
+      this.activeCry = audio;
+      void audio.play().catch(() => {});
+    } catch {
+      // Ignore autoplay errors gracefully
+    }
   }
 
   setCombatSfx(enabled: boolean) {
@@ -391,25 +432,8 @@ class RetroSoundEngine {
 
   /** Play authentic official Pokémon cry (/cries/{dexId}.mp3) respecting independent cry toggle, volume & master volume */
   playCry(dexId: number) {
-    if (this.isSilenceActive() || !this.cryEnabled || this.cryVolume <= 0 || typeof window === 'undefined') return;
-    try {
-      if (this.activeCry) {
-        this.activeCry.pause();
-        this.activeCry.currentTime = 0;
-      }
-      let audio = this.cryCache.get(dexId);
-      if (!audio) {
-        audio = new Audio(`/cries/${dexId}.mp3`);
-        audio.preload = 'auto';
-        this.cryCache.set(dexId, audio);
-      }
-      audio.volume = Math.max(0.03, Math.min(1, (this.cryVolume / 100) * (this.masterVolume / 100) * 0.85));
-      audio.currentTime = 0;
-      this.activeCry = audio;
-      void audio.play().catch(() => {});
-    } catch {
-      // Ignore autoplay errors gracefully
-    }
+    const url = dexId === 25 ? `/cries/pikachu/${this.pikachuCryVariant}.mp3` : `/cries/${dexId}.mp3`;
+    this.playAudioUrl(url, false);
   }
 
   play(kind: SfxKind) {

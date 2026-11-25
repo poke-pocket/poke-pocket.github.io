@@ -42,10 +42,12 @@ import {
   getBiomeTextures,
   getHeroSpriteFrames,
   getPixelEmoteTexture,
+  getSeamlessBiomeAt3D,
   sampleAnimatedFrame,
   type AnimatedSpriteSheet3D,
   type BiomeId,
 } from '../data/worldTextures3D';
+import { MAX_PET_SLOTS } from '../utils/petEngine';
 import { getSkillVfxAtlas } from '../data/skillVfx3D';
 import {
   extractDexIdFromSpriteUrl,
@@ -517,6 +519,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const meta = ensureFreshMetaProgress(save.meta);
   const metaRef = useRef<MetaProgressState>(meta);
   metaRef.current = meta;
+  const savePetsCountRef = useRef(save.pets.length);
+  savePetsCountRef.current = save.pets.length;
+  const dockRowRef = useRef<HTMLDivElement | null>(null);
+  const [visibleDockCount, setVisibleDockCount] = useState(7);
   const metaBonuses = computeMetaCombatBonuses(meta);
   const metaBonusesRef = useRef(metaBonuses);
   metaBonusesRef.current = metaBonuses;
@@ -1267,6 +1273,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     coins: number;
     totalDamage: number;
     elapsed: number;
+    lastSeamlessBiome?: BiomeId;
     speedMult: number;
     pickupRadius: number;
     cdMult: number;
@@ -1929,6 +1936,25 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     return () => window.clearInterval(timer);
   }, [phase]);
 
+  // Responsive Priority+ single-row Hub dock measurement (packs as many tiles as fit, overflows ONLY the rest into "More")
+  useEffect(() => {
+    if (phase !== 'hub') return;
+    const el = dockRowRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const recalc = () => {
+      const w = el.clientWidth;
+      if (w <= 0) return;
+      const TILE_MIN_W = 86;
+      const GAP = 8;
+      const fit = Math.max(3, Math.min(7, Math.floor((w + GAP) / (TILE_MIN_W + GAP))));
+      setVisibleDockCount(fit);
+    };
+    recalc();
+    const ro = new ResizeObserver(recalc);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [phase]);
+
   // Mobile Back / Swipe-Back coordination with App.tsx
   const arenaHasCloseableLayer =
     phase !== 'hub' || hubModal !== 'none' || profileOpen || squadEditorOpen || shopOpen;
@@ -2344,15 +2370,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const nodeIds = existing ? existing.nodeIds : [];
           const isUpgradeFromFar = Boolean(existing);
 
-          // MACRO LANDMARKS (Trees with gentle wind sway & pickable berry clusters, Mineable Ore Boulders, Bushes)
+          // MACRO LANDMARKS (Minecraft-style local biome props: snowy pines, desert cacti, volcanic rocks, coastal palms, lush oaks!)
+          const localBiomeCell = getSeamlessBiomeAt3D(wx, wz, gy, selectedBiome);
+          const localTexCell = getBiomeTextures(localBiomeCell);
           const isTreeCell = (h < 15 || (groveNoise > 0.65 && h < 26)) && (gy > 0.45 || Math.hypot(wx, wz) > 9.5);
           if (isTreeCell) {
             const tx = wx + ((h % 3) - 1) * 0.55;
             const tz = wz + (((h >> 2) % 3) - 1) * 0.55;
             if (!isUpgradeFromFar) {
-              const vIdx = h2 % tex.treeSprites.length;
+              const vIdx = h2 % localTexCell.treeSprites.length;
               const { group: tree, billboard: treeBb } = createLushTreeSprite3D(
-                getSharedFloraMat(tex.treeSprites[vIdx], 0.12),
+                getSharedFloraMat(localTexCell.treeSprites[vIdx], 0.12),
                 vIdx,
                 (h2 & 1) === 1,
               );
@@ -3546,17 +3574,115 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             skillId: 'shadow_star',
           });
         }
+      } else if (skillId === 'earthquake') {
+        const rad = (6.0 + f.level * 0.9) * (tac.castMode === 'charged' ? 1.25 : 1.0);
+        spawnGroundDecalWave(f.x, f.y, f.z, vfxAtlas.waterWaveDecal, rad, 0.5);
+        spawnGlowFlash(f.x, f.y, f.z, meta.hex, rad * 0.65, 0.4);
+        spawnPixelParticles(f.x, f.y + 0.3, f.z, vfxAtlas.electricSpark, 12, 6.8, 0.72, 5.2, 13.5);
+        for (const en of sim.enemies) {
+          const d = Math.hypot(en.x - f.x, en.z - f.z);
+          if (d < rad && en.hp > 0) {
+            damageEnemy3D(en, dmg, meta.color, f.id);
+            if (!en.isBoss && d > 0.1) {
+              en.x += ((en.x - f.x) / d) * 3.1;
+              en.z += ((en.z - f.z) / d) * 3.1;
+            }
+          }
+        }
+        sound.play('hit');
+      } else if (skillId === 'sacred_fire') {
+        const count = Math.min(targets.length, 1 + Math.floor((f.level + 1) / 2));
+        for (let i = 0; i < count; i++) {
+          const t = targets[i];
+          spawnLightningBolt3D(t.x, t.y, t.z, 0xff6b6b);
+          spawnGlowFlash(t.x, t.y, t.z, 0xff922b, 3.6, 0.42);
+          spawnPixelParticles(t.x, t.y + 0.6, t.z, vfxAtlas.electricSpark, 10, 5.5, 0.75, 4.8, 9.0);
+          for (const en of sim.enemies) {
+            if (en.hp > 0 && Math.hypot(en.x - t.x, en.z - t.z) < 3.4) {
+              damageEnemy3D(en, en === t ? dmg : Math.round(dmg * 0.62), meta.color, f.id);
+            }
+          }
+        }
+        sound.play('fireball');
+      } else if (skillId === 'dark_ruin' || skillId === 'psychic_nova') {
+        const t = targets[0];
+        const baseAng = Math.atan2(t.z - f.z, t.x - f.x);
+        const rays = skillId === 'dark_ruin' ? 3 + Math.floor(f.level / 2) : 4 + Math.floor(f.level / 2);
+        const spread = skillId === 'dark_ruin' ? 0.24 : 0.2;
+        const sc = (skillId === 'dark_ruin' ? 1.9 : 1.65) * (tac.castMode === 'charged' ? 1.25 : 1.0);
+        for (let i = 0; i < rays; i++) {
+          const offset = (i - (rays - 1) / 2) * spread;
+          const a = baseAng + offset;
+          spawnSkillProjectile3D({
+            x: f.x,
+            y: f.y + 1.05,
+            z: f.z,
+            vx: Math.cos(a) * 16.5,
+            vz: Math.sin(a) * 16.5,
+            dmg,
+            radius: sc * 0.42,
+            pierce: 4,
+            life: 1.35,
+            colorHex: meta.hex,
+            scale: sc,
+            frames: vfxAtlas.shadowStar,
+            ownerId: f.id,
+            skillId,
+          });
+        }
+        spawnGlowFlash(f.x, f.y, f.z, meta.hex, 1.8, 0.24);
+        sound.play('thunder');
+      } else if (skillId === 'moonblast') {
+        const t = targets[0];
+        const dx = t.x - f.x;
+        const dy = t.y - f.y;
+        const dz = t.z - f.z;
+        const d3 = Math.hypot(dx, dy, dz) || 1;
+        spawnSkillProjectile3D({
+          x: f.x,
+          y: f.y + 1.15,
+          z: f.z,
+          vx: (dx / d3) * 15.5,
+          vy: (dy / d3) * 15.5,
+          vz: (dz / d3) * 15.5,
+          dmg,
+          radius: 1.05,
+          pierce: 2,
+          life: 1.45,
+          colorHex: meta.hex,
+          scale: 2.15,
+          frames: vfxAtlas.swiftStar,
+          ownerId: f.id,
+          skillId,
+        });
+        if (sim.hp < sim.maxHp) {
+          sim.hp = Math.min(sim.maxHp, sim.hp + Math.max(2, Math.round(sim.maxHp * 0.025)));
+        }
+        spawnGlowFlash(f.x, f.y, f.z, meta.hex, 1.7, 0.26);
+        sound.play('happy');
       } else {
         const count =
           skillId === 'swift_volley'
             ? Math.min(targets.length, 2 + Math.floor(f.level / 2))
             : Math.min(targets.length, 1 + Math.floor((f.level + 1) / 2));
-        const speed = skillId === 'swift_volley' ? 19.5 : skillId === 'dragon_pulse' ? 14.2 : 16.2;
+        const speed =
+          skillId === 'swift_volley' || skillId === 'solar_beam'
+            ? 21.0
+            : skillId === 'ice_beam' || skillId === 'aura_sphere'
+              ? 18.0
+              : skillId === 'dragon_pulse'
+                ? 14.2
+                : 16.2;
         const sc =
-          (skillId === 'dragon_pulse' ? 2.45 : skillId === 'fireball' ? 1.7 : 1.35) *
-          (tac.castMode === 'charged' ? 1.28 : 1.0);
+          (skillId === 'dragon_pulse' || skillId === 'solar_beam'
+            ? 2.45
+            : skillId === 'aura_sphere' || skillId === 'ice_beam'
+              ? 1.95
+              : skillId === 'fireball'
+                ? 1.7
+                : 1.35) * (tac.castMode === 'charged' ? 1.28 : 1.0);
         const frames =
-          skillId === 'dragon_pulse'
+          skillId === 'dragon_pulse' || skillId === 'solar_beam' || skillId === 'ice_beam'
             ? vfxAtlas.dragonPulse
             : skillId === 'fireball'
               ? vfxAtlas.fireball
@@ -3576,7 +3702,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             vz: (dz / d3) * speed,
             dmg,
             radius: sc * 0.42,
-            pierce: skillId === 'dragon_pulse' ? 4 : f.level >= 3 ? 2 : 1,
+            pierce:
+              skillId === 'dragon_pulse' || skillId === 'solar_beam' || skillId === 'ice_beam'
+                ? 5
+                : f.level >= 3
+                  ? 2
+                  : 1,
             life: 1.45,
             colorHex: meta.hex,
             scale: sc,
@@ -3586,7 +3717,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           });
         }
         spawnGlowFlash(f.x, f.y, f.z, meta.hex, 1.4, 0.2);
-        sound.play('fireball');
+        sound.play(skillId === 'ice_beam' ? 'water' : 'fireball');
       }
     };
 
@@ -3736,6 +3867,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const startCaptureAnim3D = (target: Enemy3D) => {
       const sim = simRef.current;
       if (!sim || target.beingCaptured) return;
+      if (savePetsCountRef.current >= MAX_PET_SLOTS) {
+        sound.play('error');
+        showBanner(
+          `📦 精灵球盒已满 (${MAX_PET_SLOTS}/${MAX_PET_SLOTS})，无法继续捕捉！请先放生多余精灵，或结束本局战斗后寄存到大木博士处！`,
+          4000,
+        );
+        return;
+      }
       target.beingCaptured = true;
       const ballUrl = target.isBoss
         ? '/sprites/items/master-ball.png'
@@ -3862,6 +4001,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       }
 
       if (kind === 'capture_ko') {
+        if (savePetsCountRef.current >= MAX_PET_SLOTS) {
+          sound.play('error');
+          showBanner(
+            `📦 精灵球盒已满 (${MAX_PET_SLOTS}/${MAX_PET_SLOTS})，无法捕捉！请先放生精灵，或结束战斗后再寄存！`,
+            4000,
+          );
+          return;
+        }
         const en = sim.enemies.find((e) => e.id === enemyId && e.knockedOut && !e.beingCaptured);
         if (en) {
           setNearbyKoTarget(null);
@@ -3871,6 +4018,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       }
 
       if (kind === 'ball') {
+        if (savePetsCountRef.current >= MAX_PET_SLOTS) {
+          sound.play('error');
+          showBanner(
+            `📦 精灵球盒已满 (${MAX_PET_SLOTS}/${MAX_PET_SLOTS})，无法投球捕捉！请先放生多余精灵，或结束战斗后寄存！`,
+            4000,
+          );
+          return;
+        }
         if (sim.actionCds.ball > 0) {
           sound.play('error');
           return;
@@ -5982,6 +6137,30 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             horizonBackdrop.userData.skyUniforms.uTime.value = now * 0.001;
           }
 
+          // Smooth Minecraft-style live biome atmosphere transition (fog color + exploration toast!)
+          const curBiomeAtPlayer = getSeamlessBiomeAt3D(sim.px, sim.pz, sim.py, selectedBiome);
+          const targetFogCol = new THREE.Color(BIOME_PALETTES[curBiomeAtPlayer].fogHex);
+          if (scene.fog instanceof THREE.Fog) {
+            scene.fog.color.lerp(targetFogCol, Math.min(1, dt * 1.4));
+          }
+          if (terrainMat.uniforms?.uFogColor?.value) {
+            (terrainMat.uniforms.uFogColor.value as THREE.Color).lerp(targetFogCol, Math.min(1, dt * 1.4));
+          }
+          if (sim.lastSeamlessBiome !== curBiomeAtPlayer) {
+            const prevBiome = sim.lastSeamlessBiome;
+            sim.lastSeamlessBiome = curBiomeAtPlayer;
+            if (prevBiome && phase === 'playing') {
+              const biomeAnnounce: Record<BiomeId, string> = {
+                verdant_forest: '🌲 踏入「青翠森林 · 阳光原野」地带',
+                rocky_desert: '🏜️ 踏入「岩石沙漠 · 金沙峡谷」地带',
+                storm_coast: '🌴 踏入「风暴海岸 · 椰林海湾」地带',
+                sky_glacier: '🏔️ 踏入「天空冰川 · 雪山之巅」地带',
+                cinnabar_isle: '🌋 踏入「红莲火山 · 熔岩裂谷」地带',
+              };
+              showBanner(biomeAnnounce[curBiomeAtPlayer], 2800);
+            }
+          }
+
           sim.timers.hudSync -= dt;
           if (sim.timers.hudSync <= 0) {
             sim.timers.hudSync = 0.085;
@@ -7119,127 +7298,150 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 </div>
               </div>
 
-              {/* Wide-Screen Full 7-Tile Management Dock (Shown when viewport has room; collapses into "More" on mobile/compact!) */}
-              <div className="pkb-dock-row is-7 pkb-dock-wide-only">
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('party', false)}
-                  title={`精灵球盒 · 共 ${save.pets.length} 只伙伴`}
-                >
-                  <em className="pkb-dock-badge">{save.pets.length}</em>
-                  <PixelItemImg src="/sprites/items/great-ball.png" size={40} />
-                  <strong>{tr(lang, 'dockBox')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('pokedex', false)}
-                  title={`宝可梦图鉴+ · 已收录 ${save.discoveredSpecies.length}/${POKEDEX_ORDER.length}`}
-                >
-                  <em className="pkb-dock-badge is-blue">
-                    {save.discoveredSpecies.length}/{POKEDEX_ORDER.length}
-                  </em>
-                  <PixelItemImg src="/sprites/items/town-map.png" size={40} />
-                  <strong>{tr(lang, 'dockDex')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => {
-                    sound.play('confirm');
-                    setHubModal('lab');
-                  }}
-                  title={`研究所 · 星星沙子 ${meta.stardust} · 永久强化与切换主角 (${activeHeroDef.name})`}
-                >
-                  <em className="pkb-dock-badge is-purple">{meta.stardust}</em>
-                  <PixelItemImg src="/sprites/items/bright-powder.png" size={40} />
-                  <strong>{tr(lang, 'dockLab')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => {
-                    sound.play('confirm');
-                    setHubModal('bounties');
-                  }}
-                  title="每日 & 每周任务委托 · 赚取星星沙子"
-                >
-                  {claimableBountyCount > 0 && (
-                    <em className="pkb-dock-badge">{claimableBountyCount}</em>
-                  )}
-                  <PixelItemImg src="/sprites/items/vs-seeker.png" size={40} />
-                  <strong>{tr(lang, 'dockBounties')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('market', false)}
-                  title="盲盒商店 · 抽卡与补给"
-                >
-                  <em className="pkb-dock-badge is-gold">盲盒</em>
-                  <PixelItemImg src="/sprites/items/amulet-coin.png" size={40} />
-                  <strong>{tr(lang, 'dockShop')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('achievements', false)}
-                  title={`成就徽章 · 已解锁 ${save.unlockedAchievements.length}/${ACHIEVEMENTS.length} 枚`}
-                >
-                  <em className="pkb-dock-badge is-green">{save.unlockedAchievements.length}</em>
-                  <PixelItemImg src="/sprites/items/kings-rock.png" size={40} />
-                  <strong>{tr(lang, 'dockAchieve')}</strong>
-                </button>
-                <button
-                  type="button"
-                  className="pkb-dock-tile"
-                  onClick={() => onOpenPokemonManager('diary', false)}
-                  title="冒险日记 · 成长与战绩"
-                >
-                  <PixelItemImg src="/sprites/items/poke-radar.png" size={40} />
-                  <strong>{tr(lang, 'dockDiary')}</strong>
-                </button>
-              </div>
+              {/* True Responsive Priority+ Single-Row Hub Dock: packs as many tiles as fit in 1 row, overflows ONLY the rest into "More"! */}
+              {(() => {
+                const allDockItems: {
+                  id: string;
+                  label: string;
+                  icon: string;
+                  title: string;
+                  badge?: string | number;
+                  badgeClass?: string;
+                  onClick: () => void;
+                }[] = [
+                  {
+                    id: 'box',
+                    label: tr(lang, 'dockBox'),
+                    icon: '/sprites/items/great-ball.png',
+                    title: `精灵球盒 · 共 ${save.pets.length}/${MAX_PET_SLOTS} 只伙伴`,
+                    badge: save.pets.length,
+                    onClick: () => onOpenPokemonManager('party', false),
+                  },
+                  {
+                    id: 'dex',
+                    label: tr(lang, 'dockDex'),
+                    icon: '/sprites/items/town-map.png',
+                    title: `宝可梦图鉴+ · 已收录 ${save.discoveredSpecies.length}/${POKEDEX_ORDER.length}`,
+                    badge: `${save.discoveredSpecies.length}/${POKEDEX_ORDER.length}`,
+                    badgeClass: 'is-blue',
+                    onClick: () => onOpenPokemonManager('pokedex', false),
+                  },
+                  {
+                    id: 'lab',
+                    label: tr(lang, 'dockLab'),
+                    icon: '/sprites/items/bright-powder.png',
+                    title: `研究所 · 星星沙子 ${meta.stardust} · 永久强化与切换主角 (${activeHeroDef.name})`,
+                    badge: meta.stardust,
+                    badgeClass: 'is-purple',
+                    onClick: () => {
+                      sound.play('confirm');
+                      setHubModal('lab');
+                    },
+                  },
+                  {
+                    id: 'bounties',
+                    label: tr(lang, 'dockBounties'),
+                    icon: '/sprites/items/vs-seeker.png',
+                    title: '每日 & 每周任务委托 · 赚取星星沙子',
+                    badge: claimableBountyCount > 0 ? claimableBountyCount : undefined,
+                    onClick: () => {
+                      sound.play('confirm');
+                      setHubModal('bounties');
+                    },
+                  },
+                  {
+                    id: 'shop',
+                    label: tr(lang, 'dockShop'),
+                    icon: '/sprites/items/amulet-coin.png',
+                    title: '盲盒商店 · 抽卡与补给',
+                    badge: '盲盒',
+                    badgeClass: 'is-gold',
+                    onClick: () => onOpenPokemonManager('market', false),
+                  },
+                  {
+                    id: 'achieve',
+                    label: tr(lang, 'dockAchieve'),
+                    icon: '/sprites/items/kings-rock.png',
+                    title: `成就徽章 · 已解锁 ${save.unlockedAchievements.length}/${ACHIEVEMENTS.length} 枚`,
+                    badge: save.unlockedAchievements.length,
+                    badgeClass: 'is-green',
+                    onClick: () => onOpenPokemonManager('achievements', false),
+                  },
+                  {
+                    id: 'diary',
+                    label: tr(lang, 'dockDiary'),
+                    icon: '/sprites/items/poke-radar.png',
+                    title: '冒险日记 · 成长与战绩',
+                    onClick: () => onOpenPokemonManager('diary', false),
+                  },
+                ];
+                const visibleItems = allDockItems.slice(0, visibleDockCount);
+                const overflowCount = Math.max(0, allDockItems.length - visibleItems.length);
+                return (
+                  <>
+                    <div
+                      ref={dockRowRef}
+                      className="pkb-dock-row is-single-row"
+                      style={{ gridTemplateColumns: `repeat(${visibleItems.length}, minmax(0, 1fr))` }}
+                    >
+                      {visibleItems.map((it) => (
+                        <button
+                          key={it.id}
+                          type="button"
+                          className="pkb-dock-tile"
+                          onClick={it.onClick}
+                          title={it.title}
+                        >
+                          {it.badge !== undefined && (
+                            <em className={`pkb-dock-badge ${it.badgeClass ?? ''}`}>{it.badge}</em>
+                          )}
+                          <PixelItemImg src={it.icon} size={38} />
+                          <strong>{it.label}</strong>
+                        </button>
+                      ))}
+                    </div>
 
-              {/* Bottom Action Bar: Announcement Ticker + Compact-Only "More" Drawer Button */}
-              <div className="pkb-hub-bar">
-                <button
-                  type="button"
-                  className="pkb-news-ticker"
-                  onClick={() => onOpenPokemonManager('news', false)}
-                  title="点击在掌机中查看官方公告与版本更新"
-                >
-                  <PixelItemImg src="/sprites/items/poke-radar.png" size={16} />
-                  <span className="pkb-news-pill">
-                    {lang === 'zh'
-                      ? DEFAULT_ANNOUNCEMENTS[newsTickerIdx % DEFAULT_ANNOUNCEMENTS.length]?.tag ?? tr(lang, 'newsTag')
-                      : tr(lang, 'newsTag')}
-                  </span>
-                  <span className="pkb-news-text">
-                    {lang === 'zh'
-                      ? `${DEFAULT_ANNOUNCEMENTS[newsTickerIdx % DEFAULT_ANNOUNCEMENTS.length]?.title ?? tr(lang, 'newsHeadline')}`
-                      : tr(lang, 'newsHeadline')}
-                  </span>
-                  <em>→</em>
-                </button>
+                    {/* Bottom Action Bar: Rolling Announcement Ticker + Adaptive "More" Button (shown only when items overflow or on compact screens!) */}
+                    <div className="pkb-hub-bar">
+                      <button
+                        type="button"
+                        className="pkb-news-ticker"
+                        onClick={() => onOpenPokemonManager('news', false)}
+                        title="点击在掌机中查看《关都日报》"
+                      >
+                        <PixelItemImg src="/sprites/items/poke-radar.png" size={16} />
+                        <span className="pkb-news-pill">
+                          {lang === 'zh'
+                            ? DEFAULT_ANNOUNCEMENTS[newsTickerIdx % DEFAULT_ANNOUNCEMENTS.length]?.tag ?? tr(lang, 'newsTag')
+                            : tr(lang, 'newsTag')}
+                        </span>
+                        <span className="pkb-news-text">
+                          {lang === 'zh'
+                            ? `${DEFAULT_ANNOUNCEMENTS[newsTickerIdx % DEFAULT_ANNOUNCEMENTS.length]?.title ?? tr(lang, 'newsHeadline')}`
+                            : tr(lang, 'newsHeadline')}
+                        </span>
+                        <em>→</em>
+                      </button>
 
-                <button
-                  type="button"
-                  className="pkb-more-btn"
-                  onClick={() => {
-                    sound.play('confirm');
-                    setHubModal('more');
-                  }}
-                  title="展开更多功能（球盒 / 图鉴 / 研究所 / 委托 / 商店 / 成就 / 日记）"
-                >
-                  {claimableBountyCount > 0 && (
-                    <em className="pkb-dock-badge">{claimableBountyCount}</em>
-                  )}
-                  <PixelItemImg src="/sprites/items/town-map.png" size={18} />
-                  <strong>{tr(lang, 'moreBtn')}</strong>
-                </button>
-              </div>
+                      {overflowCount > 0 && (
+                        <button
+                          type="button"
+                          className="pkb-more-btn is-always-visible"
+                          onClick={() => {
+                            sound.play('confirm');
+                            setHubModal('more');
+                          }}
+                          title="展开剩余功能"
+                        >
+                          <em className="pkb-dock-badge">{overflowCount}</em>
+                          <PixelItemImg src="/sprites/items/town-map.png" size={18} />
+                          <strong>{tr(lang, 'moreBtn')}</strong>
+                        </button>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 
@@ -7329,107 +7531,98 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 </div>
 
                 <div className="pkb-more-grid">
-                  <button
-                    type="button"
-                    className="pkb-dock-tile"
-                    onClick={() => {
-                      setHubModal('none');
-                      onOpenPokemonManager('party', false);
-                    }}
-                  >
-                    <em className="pkb-dock-badge">{save.pets.length}</em>
-                    <PixelItemImg src="/sprites/items/great-ball.png" size={34} />
-                    <strong>{tr(lang, 'dockBox')}</strong>
-                  </button>
-                  <button
-                    type="button"
-                    className="pkb-dock-tile"
-                    onClick={() => {
-                      setHubModal('none');
-                      onOpenPokemonManager('pokedex', false);
-                    }}
-                  >
-                    <em className="pkb-dock-badge is-blue">
-                      {save.discoveredSpecies.length}/{POKEDEX_ORDER.length}
-                    </em>
-                    <PixelItemImg src="/sprites/items/town-map.png" size={34} />
-                    <strong>{tr(lang, 'dockDex')}</strong>
-                  </button>
-                  <button
-                    type="button"
-                    className="pkb-dock-tile"
-                    onClick={() => {
-                      sound.play('confirm');
-                      setHubModal('lab');
-                    }}
-                  >
-                    <em className="pkb-dock-badge is-purple">{meta.stardust}</em>
-                    <PixelItemImg src="/sprites/items/bright-powder.png" size={34} />
-                    <strong>{tr(lang, 'dockLab')}</strong>
-                  </button>
-                  <button
-                    type="button"
-                    className="pkb-dock-tile"
-                    onClick={() => {
-                      sound.play('confirm');
-                      setHubModal('bounties');
-                    }}
-                  >
-                    {claimableBountyCount > 0 && (
-                      <em className="pkb-dock-badge">{claimableBountyCount}</em>
-                    )}
-                    <PixelItemImg src="/sprites/items/vs-seeker.png" size={34} />
-                    <strong>{tr(lang, 'dockBounties')}</strong>
-                  </button>
-                  <button
-                    type="button"
-                    className="pkb-dock-tile"
-                    onClick={() => {
-                      setHubModal('none');
-                      onOpenPokemonManager('market', false);
-                    }}
-                  >
-                    <em className="pkb-dock-badge is-gold">盲盒</em>
-                    <PixelItemImg src="/sprites/items/amulet-coin.png" size={34} />
-                    <strong>{tr(lang, 'dockShop')}</strong>
-                  </button>
-                  <button
-                    type="button"
-                    className="pkb-dock-tile"
-                    onClick={() => {
-                      setHubModal('none');
-                      onOpenPokemonManager('achievements', false);
-                    }}
-                  >
-                    <em className="pkb-dock-badge is-green">{save.unlockedAchievements.length}</em>
-                    <PixelItemImg src="/sprites/items/kings-rock.png" size={34} />
-                    <strong>{tr(lang, 'dockAchieve')}</strong>
-                  </button>
-                  <button
-                    type="button"
-                    className="pkb-dock-tile"
-                    onClick={() => {
-                      setHubModal('none');
-                      onOpenPokemonManager('diary', false);
-                    }}
-                  >
-                    <PixelItemImg src="/sprites/items/poke-radar.png" size={34} />
-                    <strong>{tr(lang, 'dockDiary')}</strong>
-                  </button>
-                  <button
-                    type="button"
-                    className="pkb-dock-tile"
-                    onClick={() => {
-                      setHubModal('none');
-                      onOpenPokemonManager('squad', false);
-                    }}
-                  >
-                    <em className="pkb-dock-badge is-blue">
-                      {effectiveSquadPets.length}/{maxFollowers}
-                    </em>
-                    <PixelItemImg src="/sprites/items/poke-ball.png" size={34} />
-                    <strong>{tr(lang, 'squadBtn')}</strong>
-                  </button>
+                  {([
+                    {
+                      id: 'box',
+                      label: tr(lang, 'dockBox'),
+                      icon: '/sprites/items/great-ball.png',
+                      badge: save.pets.length,
+                      onClick: () => {
+                        setHubModal('none');
+                        onOpenPokemonManager('party', false);
+                      },
+                    },
+                    {
+                      id: 'dex',
+                      label: tr(lang, 'dockDex'),
+                      icon: '/sprites/items/town-map.png',
+                      badge: `${save.discoveredSpecies.length}/${POKEDEX_ORDER.length}`,
+                      badgeClass: 'is-blue',
+                      onClick: () => {
+                        setHubModal('none');
+                        onOpenPokemonManager('pokedex', false);
+                      },
+                    },
+                    {
+                      id: 'lab',
+                      label: tr(lang, 'dockLab'),
+                      icon: '/sprites/items/bright-powder.png',
+                      badge: meta.stardust,
+                      badgeClass: 'is-purple',
+                      onClick: () => {
+                        sound.play('confirm');
+                        setHubModal('lab');
+                      },
+                    },
+                    {
+                      id: 'bounties',
+                      label: tr(lang, 'dockBounties'),
+                      icon: '/sprites/items/vs-seeker.png',
+                      badge: claimableBountyCount > 0 ? claimableBountyCount : undefined,
+                      onClick: () => {
+                        sound.play('confirm');
+                        setHubModal('bounties');
+                      },
+                    },
+                    {
+                      id: 'shop',
+                      label: tr(lang, 'dockShop'),
+                      icon: '/sprites/items/amulet-coin.png',
+                      badge: '盲盒',
+                      badgeClass: 'is-gold',
+                      onClick: () => {
+                        setHubModal('none');
+                        onOpenPokemonManager('market', false);
+                      },
+                    },
+                    {
+                      id: 'achieve',
+                      label: tr(lang, 'dockAchieve'),
+                      icon: '/sprites/items/kings-rock.png',
+                      badge: save.unlockedAchievements.length,
+                      badgeClass: 'is-green',
+                      onClick: () => {
+                        setHubModal('none');
+                        onOpenPokemonManager('achievements', false);
+                      },
+                    },
+                    {
+                      id: 'diary',
+                      label: tr(lang, 'dockDiary'),
+                      icon: '/sprites/items/poke-radar.png',
+                      onClick: () => {
+                        setHubModal('none');
+                        onOpenPokemonManager('diary', false);
+                      },
+                    },
+                  ] as const)
+                    .slice(visibleDockCount)
+                    .map((it) => (
+                      <button
+                        key={it.id}
+                        type="button"
+                        className="pkb-dock-tile"
+                        onClick={it.onClick}
+                      >
+                        {'badge' in it && it.badge !== undefined && (
+                          <em className={`pkb-dock-badge ${'badgeClass' in it && it.badgeClass ? it.badgeClass : ''}`}>
+                            {it.badge}
+                          </em>
+                        )}
+                        <PixelItemImg src={it.icon} size={34} />
+                        <strong>{it.label}</strong>
+                      </button>
+                    ))}
                 </div>
 
                 <div className="pkb-more-footer">
@@ -7689,31 +7882,33 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 )}
               </div>
 
-              {/* Bottom Guardians Preview Bar (Matches PokéBonk's 区域1 -> 区域2 -> 区域3 + 圣地!) */}
+              {/* Bottom Guardians Preview Bar (Crisp single-row square backpack-style tiles, zero wrapping!) */}
               <div className="pkb-guardians-bar">
                 <div className="pkb-guard-head">区域守护者与安全圣地</div>
                 <div className="pkb-guard-chain">
                   {regionMeta.guardians.map((sp, i) => (
                     <React.Fragment key={`${sp}_${i}`}>
-                      <div className="pkb-guard-node">
-                        <small>区域 {i + 1}</small>
+                      <div
+                        className="pkb-guard-tile"
+                        title={`区域 ${i + 1} · ${SPECIES_CATALOG[sp].defaultName}`}
+                      >
                         <img
                           src={SPECIES_CATALOG[sp].stageSprites.adult.static}
                           alt={SPECIES_CATALOG[sp].defaultName}
-                          className="pkb-guard-img"
+                          className="pkb-guard-tile-img"
                           draggable={false}
                         />
-                        <span>{SPECIES_CATALOG[sp].defaultName}</span>
+                        <span className="pkb-guard-tile-name">{SPECIES_CATALOG[sp].defaultName}</span>
                       </div>
                       {i < 2 && <em className="pkb-guard-arrow">→</em>}
                     </React.Fragment>
                   ))}
-                  <div className="pkb-sanctuary-chip">
-                    <PixelItemImg src="/sprites/items/potion.png" size={18} />
-                    <div>
-                      <strong>安全区圣地</strong>
-                      <small>精灵中心 + 商店</small>
-                    </div>
+                  <div
+                    className="pkb-guard-tile is-sanctuary"
+                    title="安全区圣地 · 精灵中心 + 商店"
+                  >
+                    <PixelItemImg src="/sprites/items/potion.png" size={26} />
+                    <span className="pkb-guard-tile-name">安全区</span>
                   </div>
                 </div>
               </div>
@@ -7777,10 +7972,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                         }}
                       >
                         <strong>{d.label}</strong>
-                        <small>{d.badgeText} · {d.desc}</small>
+                        <small className="pkb-diff-full-desc">{d.badgeText} · {d.desc}</small>
+                        <small className="pkb-diff-compact-badge">{d.badgeText}</small>
                       </button>
                     );
                   })}
+                </div>
+                <div className="pkb-diff-compact-note">
+                  {diffMeta.badgeText} · {diffMeta.desc}
                 </div>
 
                 <div className="pkb-record-box">

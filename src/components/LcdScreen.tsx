@@ -206,6 +206,8 @@ interface LcdScreenProps {
   onPullGachaTen: (boxId: GachaBoxId) => GachaTenOutcome;
   onReleasePet: (petId: string) => boolean;
   onReleasePetsBatch?: (petIds: string[]) => { ok: boolean; count: number; coins: number; xp: number; message: string };
+  onDepositPet?: (petId: string) => boolean;
+  onWithdrawPet?: (petId: string) => boolean;
   onSwitchPet: (petId: string) => void;
   onUpdatePetConfig?: (
     petId: string,
@@ -230,6 +232,8 @@ interface LcdScreenProps {
   focusedDetailPetId?: string | null;
   captureReveal?: import('../types/pet').CaptureRevealPayload | null;
   worldMapData?: WorldMapData | null;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 const STAT_BAR_ROWS: {
@@ -281,6 +285,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   onPullGachaTen,
   onReleasePet,
   onReleasePetsBatch,
+  onDepositPet,
+  onWithdrawPet,
   onSwitchPet,
   onUpdatePetConfig,
   onUpdateSettings,
@@ -294,6 +300,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   focusedDetailPetId = null,
   captureReveal = null,
   worldMapData = null,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
   const [wanderOffset, setWanderOffset] = useState(0);
   const [facingLeft, setFacingLeft] = useState(false);
@@ -317,6 +325,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [partyGradeFilter, setPartyGradeFilter] = useState<'all' | 'S' | 'A' | 'B'>('all');
   const [partySortBy, setPartySortBy] = useState<'default' | 'level' | 'grade'>('default');
   const [partyBatchMode, setPartyBatchMode] = useState(false);
+  const [partyBoxTab, setPartyBoxTab] = useState<'active' | 'storage'>('active');
   const [batchSelectedIds, setBatchSelectedIds] = useState<string[]>([]);
   const [confirmBatchRelease, setConfirmBatchRelease] = useState(false);
   const [batchFeedback, setBatchFeedback] = useState<string | null>(null);
@@ -357,7 +366,32 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [confirmReleaseId, setConfirmReleaseId] = useState<string | null>(null);
   const [petActionMenuOpen, setPetActionMenuOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'audio' | 'hud' | 'perf' | 'style' | 'keys'>('audio');
+  const [keysSubTab, setKeysSubTab] = useState<'keyboard' | 'gamepad'>('keyboard');
+  const [connectedGamepadName, setConnectedGamepadName] = useState<string | null>(() => {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
+    const found = Array.from(navigator.getGamepads()).find((g): g is Gamepad => Boolean(g && g.connected));
+    return found ? found.id : null;
+  });
   const [rebindingAction, setRebindingAction] = useState<keyof KeyBindings | null>(null);
+
+  useEffect(() => {
+    const syncPads = () => {
+      if (typeof navigator === 'undefined' || !navigator.getGamepads) {
+        setConnectedGamepadName(null);
+        return;
+      }
+      const found = Array.from(navigator.getGamepads()).find((g): g is Gamepad => Boolean(g && g.connected));
+      setConnectedGamepadName(found ? found.id : null);
+      if (!found) setKeysSubTab('keyboard');
+    };
+    window.addEventListener('gamepadconnected', syncPads);
+    window.addEventListener('gamepaddisconnected', syncPads);
+    syncPads();
+    return () => {
+      window.removeEventListener('gamepadconnected', syncPads);
+      window.removeEventListener('gamepaddisconnected', syncPads);
+    };
+  }, []);
   const [tacticsTab, setTacticsTab] = useState<'skills' | 'squad' | 'mode'>('skills');
   const [tacticsFollowerId, setTacticsFollowerId] = useState<string | null>(null);
   const [tacticsDetailTab, setTacticsDetailTab] = useState<'skills' | 'gear'>('skills');
@@ -1357,6 +1391,56 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                         </button>
                       </div>
                     </div>
+
+                    <div className="settings-card is-span-2">
+                      <div className="settings-card-head">
+                        <div>
+                          <strong>⚡ 皮卡丘叫声试听与挑选</strong>
+                          <small className="audio-track-hint">觉得原声刺耳？点击「试听」挑一款最顺耳的，抚摸时不再叠加尖锐提示音</small>
+                        </div>
+                      </div>
+                      <div className="pika-cry-picker-grid">
+                        {(
+                          [
+                            ['soft_voice', '柔化暖音版', '降噪减刺耳（推荐）'],
+                            ['letsgo', "Let's Go 配音", '官方可爱人声版'],
+                            ['classic_gba', '经典 GBA 版', '复古掌机柔化电音'],
+                            ['pichu_cute', '软萌皮丘版', '轻柔幼年短叫声'],
+                            ['original_raw', '原版未处理', '原始高频对照'],
+                          ] as const
+                        ).map(([id, title, sub]) => {
+                          const active = (prefs.pikachuCryVariant ?? 'soft_voice') === id;
+                          return (
+                            <div key={id} className={`pika-cry-opt ${active ? 'is-active' : ''}`}>
+                              <div className="pika-cry-info">
+                                <strong>{title}</strong>
+                                <small>{sub}</small>
+                              </div>
+                              <div className="pika-cry-actions">
+                                <button
+                                  type="button"
+                                  className="lcd-subtab"
+                                  onClick={() => sound.previewPikachuCry(id)}
+                                >
+                                  ▶ 试听
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`lcd-subtab ${active ? 'active' : ''}`}
+                                  onClick={() => {
+                                    setPref({ pikachuCryVariant: id });
+                                    sound.setPikachuCryVariant(id);
+                                    sound.previewPikachuCry(id);
+                                  }}
+                                >
+                                  {active ? '✓ 使用中' : '选用'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1503,6 +1587,40 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
                 {settingsTab === 'perf' && (
                   <div className="settings-grid-2">
+                    <div className="settings-card is-span-2">
+                      <div className="settings-card-head">
+                        <div>
+                          <strong>全屏 / 显示模式</strong>
+                          <small className="audio-track-hint">支持一键切换浏览器全屏及掌机全屏界面</small>
+                        </div>
+                        <div className="inline-icon-row">
+                          {onToggleFullscreen && (
+                            <button
+                              type="button"
+                              className={`lcd-subtab ${isFullscreen ? 'active' : ''}`}
+                              onClick={onToggleFullscreen}
+                            >
+                              {isFullscreen ? '✓ 浏览器全屏' : '开启全屏'}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className={`lcd-subtab ${save.showShell ? 'active' : ''}`}
+                            onClick={() => onUpdateSettings({ showShell: true })}
+                          >
+                            掌机外壳
+                          </button>
+                          <button
+                            type="button"
+                            className={`lcd-subtab ${!save.showShell ? 'active' : ''}`}
+                            onClick={() => onUpdateSettings({ showShell: false })}
+                          >
+                            全屏掌机
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="settings-card">
                       <div className="settings-card-head">
                         <strong>画质品质</strong>
@@ -1744,73 +1862,100 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
               )}
 
               {settingsTab === 'keys' && (
-                <div className="settings-card">
-                  <div className="settings-row">
-                    <span className="settings-card-title">按键映射（支持全屏键盘操作）</span>
+                <div className="keys-split-shell">
+                  <aside className="keys-side-tabs" aria-label="输入设备切换">
                     <button
                       type="button"
-                      className="lcd-subtab"
+                      className={`keys-side-tab ${keysSubTab === 'keyboard' ? 'active' : ''}`}
                       onClick={() => {
-                        setRebindingAction(null);
-                        onUpdateSettings({ keyBindings: { ...DEFAULT_KEY_BINDINGS } });
+                        sound.play('cursor');
+                        setKeysSubTab('keyboard');
                       }}
                     >
-                      恢复默认
+                      <span>⌨</span>
+                      <strong>键盘</strong>
                     </button>
-                  </div>
-                  <div className="keybind-grid">
-                    {(
-                      [
-                        ['up', '方向 · 上'],
-                        ['down', '方向 · 下'],
-                        ['left', '方向 · 左'],
-                        ['right', '方向 · 右'],
-                        ['confirm', '确认 (A键)'],
-                        ['cancel', '返回 (B键)'],
-                        ['menu', '菜单 (START)'],
-                        ['party', '球盒 (SELECT)'],
-                      ] as [keyof KeyBindings, string][]
-                    ).map(([actionKey, label]) => {
-                      const raw = (save.keyBindings ?? DEFAULT_KEY_BINDINGS)[actionKey];
-                      const display =
-                        raw === ' '
-                          ? 'SPACE'
-                          : raw === 'Escape'
-                            ? 'ESC'
-                            : raw === 'Enter'
-                              ? 'ENTER'
-                              : raw.toUpperCase();
-                      const isListening = rebindingAction === actionKey;
-                      return (
-                        <div key={actionKey} className="keybind-item">
-                          <span>{label}</span>
+                    {connectedGamepadName && (
+                      <button
+                        type="button"
+                        className={`keys-side-tab ${keysSubTab === 'gamepad' ? 'active' : ''}`}
+                        onClick={() => {
+                          sound.play('cursor');
+                          setRebindingAction(null);
+                          setKeysSubTab('gamepad');
+                        }}
+                      >
+                        <PixelIcon name="gamepad" size={13} />
+                        <strong>手柄</strong>
+                      </button>
+                    )}
+                  </aside>
+
+                  <div className="settings-card keys-main-pane">
+                    {keysSubTab === 'keyboard' || !connectedGamepadName ? (
+                      <>
+                        <div className="settings-row">
+                          <span className="settings-card-title">按键映射（支持全屏键盘操作）</span>
                           <button
                             type="button"
-                            className={`keybind-btn ${isListening ? 'is-listening' : ''}`}
-                            onClick={() =>
-                              setRebindingAction(isListening ? null : actionKey)
-                            }
+                            className="lcd-subtab"
+                            onClick={() => {
+                              setRebindingAction(null);
+                              onUpdateSettings({ keyBindings: { ...DEFAULT_KEY_BINDINGS } });
+                            }}
                           >
-                            {isListening ? '请按键...' : display}
+                            恢复默认
                           </button>
                         </div>
-                      );
-                    })}
-                  </div>
-                  {(() => {
-                    const pads =
-                      typeof navigator !== 'undefined' && navigator.getGamepads
-                        ? Array.from(navigator.getGamepads()).filter((g): g is Gamepad => Boolean(g && g.connected))
-                        : [];
-                    return (
-                      <div className="gamepad-guide-box">
+                        <div className="keybind-grid">
+                          {(
+                            [
+                              ['up', '方向 · 上'],
+                              ['down', '方向 · 下'],
+                              ['left', '方向 · 左'],
+                              ['right', '方向 · 右'],
+                              ['confirm', '确认 (A键)'],
+                              ['cancel', '返回 (B键)'],
+                              ['menu', '菜单 (START)'],
+                              ['party', '球盒 (SELECT)'],
+                            ] as [keyof KeyBindings, string][]
+                          ).map(([actionKey, label]) => {
+                            const raw = (save.keyBindings ?? DEFAULT_KEY_BINDINGS)[actionKey];
+                            const display =
+                              raw === ' '
+                                ? 'SPACE'
+                                : raw === 'Escape'
+                                  ? 'ESC'
+                                  : raw === 'Enter'
+                                    ? 'ENTER'
+                                    : raw.toUpperCase();
+                            const isListening = rebindingAction === actionKey;
+                            return (
+                              <div key={actionKey} className="keybind-item">
+                                <span>{label}</span>
+                                <button
+                                  type="button"
+                                  className={`keybind-btn ${isListening ? 'is-listening' : ''}`}
+                                  onClick={() =>
+                                    setRebindingAction(isListening ? null : actionKey)
+                                  }
+                                >
+                                  {isListening ? '请按键...' : display}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="gamepad-guide-box is-tab-pane">
                         <div className="gamepad-guide-head">
                           <div className="inline-icon-row">
                             <PixelIcon name="gamepad" size={14} />
-                            <strong>手柄即插即用（Xbox / PS / Switch Pro / 8BitDo）</strong>
+                            <strong>手柄即插即用映射</strong>
                           </div>
-                          <span className={`gamepad-status-pill ${pads.length > 0 ? 'is-connected' : ''}`}>
-                            {pads.length > 0 ? `已连接：${pads[0].id.slice(0, 22)}` : '待接入 · 按手柄任意键激活'}
+                          <span className="gamepad-status-pill is-connected">
+                            已连接：{connectedGamepadName.slice(0, 22)}
                           </span>
                         </div>
                         <div className="gamepad-map-grid">
@@ -1826,8 +1971,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                           <div><b>SELECT</b><span>视角复位</span></div>
                         </div>
                       </div>
-                    );
-                  })()}
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -3635,27 +3780,49 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
           return (
             <div className="lcd-submenu">
               <div className="lcd-submenu-head">
-                <span className="inline-icon-row">
-                  <PixelItemImg src="/sprites/items/poke-ball.png" size={15} />
-                  <span>精灵球盒 ({save.pets.length}/{MAX_PET_SLOTS})</span>
-                </span>
-                <div className="lcd-head-actions">
+                <div className="party-storage-bar">
                   <button
                     type="button"
-                    className={`lcd-subtab ${partyBatchMode ? 'active' : ''}`}
+                    className={`lcd-subtab inline-icon-btn ${partyBoxTab === 'active' ? 'active' : ''}`}
                     onClick={() => {
                       sound.play('cursor');
-                      setPartyBatchMode((v) => {
-                        if (v) {
-                          setBatchSelectedIds([]);
-                          setConfirmBatchRelease(false);
-                        }
-                        return !v;
-                      });
+                      setPartyBoxTab('active');
                     }}
                   >
-                    {partyBatchMode ? '完成管理' : '批量管理'}
+                    <PixelItemImg src="/sprites/items/poke-ball.png" size={13} />
+                    <span>球盒 ({save.pets.length}/{MAX_PET_SLOTS})</span>
                   </button>
+                  <button
+                    type="button"
+                    className={`lcd-subtab inline-icon-btn ${partyBoxTab === 'storage' ? 'active' : ''}`}
+                    onClick={() => {
+                      sound.play('cursor');
+                      setPartyBatchMode(false);
+                      setPartyBoxTab('storage');
+                    }}
+                  >
+                    <span>📦 寄存箱 ({(save.storedPets ?? []).length})</span>
+                  </button>
+                </div>
+                <div className="lcd-head-actions">
+                  {partyBoxTab === 'active' && (
+                    <button
+                      type="button"
+                      className={`lcd-subtab ${partyBatchMode ? 'active' : ''}`}
+                      onClick={() => {
+                        sound.play('cursor');
+                        setPartyBatchMode((v) => {
+                          if (v) {
+                            setBatchSelectedIds([]);
+                            setConfirmBatchRelease(false);
+                          }
+                          return !v;
+                        });
+                      }}
+                    >
+                      {partyBatchMode ? '完成管理' : '批量管理'}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="lcd-subtab inline-icon-btn"
@@ -3807,6 +3974,50 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
               {batchFeedback && <div className="party-batch-toast">{batchFeedback}</div>}
 
+              {partyBoxTab === 'storage' ? (
+                <div className="scroll-y" style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0 }}>
+                  {openedFromBattle ? (
+                    <div className="party-storage-notice">
+                      ⚔ 战斗模式进行中无法寄存或取出精灵，请先结束本局冒险返回大厅后再操作大木博士寄放箱（局内若球盒已满请先放生多余精灵）。
+                    </div>
+                  ) : (
+                    <div className="party-storage-notice" style={{ color: '#1b4332', background: '#d3f9d8', borderColor: '#2f9e44' }}>
+                      📦 大木博士寄放箱：战斗结束后可自由寄存多余精灵释放球盒空间，或在宝可梦详情菜单中点击「寄存到大木处」。
+                    </div>
+                  )}
+                  {(save.storedPets ?? []).length === 0 ? (
+                    <div className="party-empty-hint">
+                      寄放箱目前为空。战后可在精灵详情页的「更多操作」里将伙伴寄存至此处！
+                    </div>
+                  ) : (
+                    <div className="lcd-grid-4 party-compact-grid">
+                      {(save.storedPets ?? []).map((sp) => {
+                        const st = getGrowthStage(sp.level, sp.species);
+                        return (
+                          <div key={sp.id} className="party-storage-card">
+                            <PixelPetPortrait species={sp.species} stage={st} size={42} />
+                            <strong>{sp.name}</strong>
+                            <small>Lv.{sp.level}</small>
+                            <button
+                              type="button"
+                              className="lcd-subtab"
+                              disabled={Boolean(openedFromBattle) || save.pets.length >= MAX_PET_SLOTS}
+                              onClick={() => {
+                                if (onWithdrawPet?.(sp.id)) {
+                                  setBatchFeedback(`📤 已将「${sp.name}」取回随身球盒！`);
+                                  window.setTimeout(() => setBatchFeedback(null), 2400);
+                                }
+                              }}
+                            >
+                              {openedFromBattle ? '战后可取' : save.pets.length >= MAX_PET_SLOTS ? '球盒已满' : '取出入盒'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
               <div className="lcd-grid-4 party-compact-grid scroll-y">
                 {filteredPets.length === 0 ? (
                   <div className="party-empty-hint">未找到匹配的宝可梦，试试更换关键词或评级筛选</div>
@@ -3873,6 +4084,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                   })
                 )}
               </div>
+              )}
             </div>
           );
         })()}
@@ -3982,6 +4194,23 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                           <PixelIcon name="sound_on" size={11} />
                           <span>播放叫声</span>
                         </button>
+                        {save.pets.length > 1 && onDepositPet && (
+                          <button
+                            type="button"
+                            className="detail-dd-item"
+                            disabled={Boolean(openedFromBattle)}
+                            title={openedFromBattle ? '战斗进行中不可寄存，请等本局结束后再寄存' : '寄存至大木博士寄放箱，释放随身球盒名额'}
+                            onClick={() => {
+                              setPetActionMenuOpen(false);
+                              if (onDepositPet(p.id)) {
+                                onNavigateMode('party');
+                              }
+                            }}
+                          >
+                            <span>📦</span>
+                            <span>{openedFromBattle ? '寄存 (战后开放)' : '寄存到大木处'}</span>
+                          </button>
+                        )}
                         {save.pets.length > 1 &&
                           (confirmReleaseId === p.id ? (
                             <button

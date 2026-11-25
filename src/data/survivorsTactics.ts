@@ -10,7 +10,15 @@ export type SurvivorSkillId =
   | 'shadow_star'
   | 'dragon_pulse'
   | 'swift_volley'
-  | 'heal_bell';
+  | 'heal_bell'
+  | 'ice_beam'
+  | 'aura_sphere'
+  | 'sacred_fire'
+  | 'earthquake'
+  | 'psychic_nova'
+  | 'moonblast'
+  | 'dark_ruin'
+  | 'solar_beam';
 
 export interface SurvivorSkillMeta {
   id: SurvivorSkillId;
@@ -113,6 +121,94 @@ export const SURVIVOR_SKILLS: Record<SurvivorSkillId, SurvivorSkillMeta> = {
     baseCd: 3.4,
     powerMult: 0.65,
   },
+  ice_beam: {
+    id: 'ice_beam',
+    name: '急冻光线',
+    tag: '冰霜',
+    desc: '发射极寒贯穿冰晶射线重创直线敌群并减速',
+    color: '#15aabf',
+    hex: 0x74c0fc,
+    sprite: '/sprites/items/casteliacone.png',
+    baseCd: 1.5,
+    powerMult: 1.28,
+  },
+  aura_sphere: {
+    id: 'aura_sphere',
+    name: '波导功夫弹',
+    tag: '格斗',
+    desc: '凝聚气功波导弹必中强敌并引发震荡气浪',
+    color: '#228be6',
+    hex: 0x4dabf7,
+    sprite: '/sprites/items/focus-band.png',
+    baseCd: 1.32,
+    powerMult: 1.38,
+  },
+  sacred_fire: {
+    id: 'sacred_fire',
+    name: '神圣之火',
+    tag: '圣焰',
+    desc: '召唤七彩圣焰天降轰击目标引发范围灼烧',
+    color: '#e03131',
+    hex: 0xff6b6b,
+    sprite: '/sprites/items/charcoal.png',
+    baseCd: 1.85,
+    powerMult: 1.56,
+  },
+  earthquake: {
+    id: 'earthquake',
+    name: '大地岩震',
+    tag: '震击',
+    desc: '重踏大地掀起 360° 岩石冲击波击退四周敌人',
+    color: '#d97724',
+    hex: 0xf08c00,
+    sprite: '/sprites/items/everstone.png',
+    baseCd: 2.15,
+    powerMult: 1.35,
+  },
+  psychic_nova: {
+    id: 'psychic_nova',
+    name: '精神强念',
+    tag: '超能',
+    desc: '释放多道粉色念力脉冲穿透敌阵打击高危目标',
+    color: '#e64980',
+    hex: 0xf783ac,
+    sprite: '/sprites/items/scope-lens.png',
+    baseCd: 1.6,
+    powerMult: 1.24,
+  },
+  moonblast: {
+    id: 'moonblast',
+    name: '月亮之力',
+    tag: '妖精',
+    desc: '召唤月华星辰爆弹重创强敌并微幅回复体力',
+    color: '#cc5de8',
+    hex: 0xe599f7,
+    sprite: '/sprites/items/sweet-heart.png',
+    baseCd: 1.55,
+    powerMult: 1.26,
+  },
+  dark_ruin: {
+    id: 'dark_ruin',
+    name: '灾厄暗斩',
+    tag: '恶系',
+    desc: '扇形挥出三道穿透暗黑裂空斩撕裂前排敌群',
+    color: '#495057',
+    hex: 0x862e9c,
+    sprite: '/sprites/items/black-glasses.png',
+    baseCd: 1.68,
+    powerMult: 1.44,
+  },
+  solar_beam: {
+    id: 'solar_beam',
+    name: '日光束',
+    tag: '蓄能',
+    desc: '汇聚耀眼翠绿太阳光柱直线贯通全场超高爆发',
+    color: '#2f9e44',
+    hex: 0x8ce99a,
+    sprite: '/sprites/items/miracle-seed.png',
+    baseCd: 1.92,
+    powerMult: 1.52,
+  },
 };
 
 export const ALL_SURVIVOR_SKILL_IDS = Object.keys(SURVIVOR_SKILLS) as SurvivorSkillId[];
@@ -122,22 +218,23 @@ export function getDefaultSkillsForElement(
 ): [SurvivorSkillId, SurvivorSkillId, SurvivorSkillId, SurvivorSkillId] {
   switch (element) {
     case 'electric':
-      return ['thunderbolt', 'swift_volley', 'dragon_pulse', 'heal_bell'];
+      return ['thunderbolt', 'swift_volley', 'aura_sphere', 'heal_bell'];
     case 'fire':
-      return ['fireball', 'dragon_pulse', 'swift_volley', 'shadow_star'];
+      return ['fireball', 'sacred_fire', 'dragon_pulse', 'earthquake'];
     case 'grass':
-      return ['razor_leaf', 'heal_bell', 'water_pulse', 'swift_volley'];
+      return ['razor_leaf', 'solar_beam', 'heal_bell', 'earthquake'];
     case 'water':
-      return ['water_pulse', 'swift_volley', 'heal_bell', 'dragon_pulse'];
+      return ['water_pulse', 'ice_beam', 'swift_volley', 'heal_bell'];
     case 'ghost':
+      return ['shadow_star', 'dark_ruin', 'psychic_nova', 'moonblast'];
     case 'psychic':
-      return ['shadow_star', 'thunderbolt', 'dragon_pulse', 'heal_bell'];
+      return ['psychic_nova', 'aura_sphere', 'moonblast', 'thunderbolt'];
     case 'fairy':
-      return ['heal_bell', 'shadow_star', 'swift_volley', 'thunderbolt'];
+      return ['moonblast', 'heal_bell', 'psychic_nova', 'swift_volley'];
     case 'dragon':
-      return ['dragon_pulse', 'fireball', 'thunderbolt', 'swift_volley'];
+      return ['dragon_pulse', 'sacred_fire', 'ice_beam', 'earthquake'];
     default:
-      return ['swift_volley', 'water_pulse', 'fireball', 'heal_bell'];
+      return ['aura_sphere', 'swift_volley', 'earthquake', 'heal_bell'];
   }
 }
 

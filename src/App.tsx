@@ -33,6 +33,7 @@ import {
   captureBossPet,
   cleanPoop,
   createInitialSave,
+  depositPetToStorage,
   equipAccessory,
   feedPet,
   getActivePet,
@@ -55,6 +56,7 @@ import {
   tickPet,
   tickStamina,
   toggleSleep,
+  withdrawPetFromStorage,
   type ActionOutcome,
   type BattleResultPayload,
   type SurvivorsResultPayload,
@@ -146,6 +148,7 @@ export function App() {
     sound.setBgm(save.bgmEnabled, save.bgmVolume);
     sound.setMuted(save.muted);
     sound.setCry(save.cryEnabled ?? true, save.cryVolume ?? 80);
+    sound.setPikachuCryVariant(save.prefs?.pikachuCryVariant ?? 'soft_voice');
     sound.setCombatSfx(save.combatSfxEnabled ?? true);
     persistSave(save);
   }, [save]);
@@ -279,7 +282,9 @@ export function App() {
   const handlePat = useCallback(() => {
     if (!activePet || lcdMode !== 'home') return;
     const outcome = patPet(save, activePet.id);
-    if (applyOutcome(outcome, 'happy')) {
+    // Avoid clashing harsh 8-bit square chime directly over the Pokémon's voice cry
+    const patSfx = (save.cryEnabled ?? true) ? undefined : 'happy';
+    if (applyOutcome(outcome, patSfx)) {
       sound.playCry(getPokemonCryId(activePet.species, activePet.level));
       setPatSeq((s) => s + 1);
       triggerAnim('patting', 1100);
@@ -683,6 +688,32 @@ export function App() {
     [save, applyOutcome],
   );
 
+  const handleDepositPet = useCallback(
+    (petId: string): boolean => {
+      if (managerFromBattle) {
+        sound.play('error');
+        showSpeech('战斗进行中无法寄存，请结束本局后再寄存到大木博士处！');
+        return false;
+      }
+      const outcome = depositPetToStorage(save, petId);
+      return applyOutcome(outcome, 'confirm', false);
+    },
+    [save, managerFromBattle, applyOutcome, showSpeech],
+  );
+
+  const handleWithdrawPet = useCallback(
+    (petId: string): boolean => {
+      if (managerFromBattle) {
+        sound.play('error');
+        showSpeech('战斗进行中无法从大木博士寄放箱取出宝可梦！');
+        return false;
+      }
+      const outcome = withdrawPetFromStorage(save, petId);
+      return applyOutcome(outcome, 'confirm', false);
+    },
+    [save, managerFromBattle, applyOutcome, showSpeech],
+  );
+
   const handleReleasePetsBatch = useCallback(
     (petIds: string[]) => {
       const outcome = releasePetsBatch(save, petIds);
@@ -759,6 +790,7 @@ export function App() {
       sound.setBgm(next.bgmEnabled, next.bgmVolume);
       sound.setMuted(next.muted);
       sound.setCry(next.cryEnabled ?? true, next.cryVolume ?? 80);
+      sound.setPikachuCryVariant(nextPrefs?.pikachuCryVariant ?? 'soft_voice');
       sound.setCombatSfx(next.combatSfxEnabled ?? true);
       return next;
     });
@@ -1141,6 +1173,8 @@ export function App() {
               focusedDetailPetId={focusedDetailPetId}
               captureReveal={captureReveal}
               worldMapData={worldMapData}
+              isFullscreen={isFullscreen}
+              onToggleFullscreen={handleHubToggleFullscreen}
               onNavigateMode={(next) => {
                 sound.play('cursor');
                 setLcdMode(next);
@@ -1179,6 +1213,8 @@ export function App() {
               onPullGachaTen={handlePullGachaTen}
               onReleasePet={handleReleasePet}
               onReleasePetsBatch={handleReleasePetsBatch}
+              onDepositPet={handleDepositPet}
+              onWithdrawPet={handleWithdrawPet}
               onUpdateSettings={handleUpdateSettings}
               onUpdateMeta={handleUpdateMeta}
               onUpdatePetConfig={handleUpdatePetConfig}

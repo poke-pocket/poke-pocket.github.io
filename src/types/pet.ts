@@ -356,6 +356,8 @@ export interface GamePrefs {
   bossAlerts: boolean;
   showDamageNumbers: boolean;
   showComboCounter: boolean;
+  // Audio
+  pikachuCryVariant?: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw';
   // Graphics & Performance
   graphicsQuality: GraphicsQualityMode;
   powerSaver: boolean;
@@ -374,6 +376,7 @@ export const DEFAULT_GAME_PREFS: GamePrefs = {
   language: 'zh',
   masterVolume: 80,
   muteOnBlur: true,
+  pikachuCryVariant: 'soft_voice',
   hudScale: 100,
   hudOpacity: 100,
   bossBarOpacity: 100,
@@ -418,6 +421,7 @@ export interface GameSave {
   maxStamina: number;
   lastStaminaAt: number;
   pets: PetRecord[];
+  storedPets?: PetRecord[];
   activePetId: string | null;
   discoveredSpecies: SpeciesId[];
   inventory: Record<FoodId, number>;

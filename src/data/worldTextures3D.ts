@@ -2983,12 +2983,74 @@ export function sampleAnimatedFrame(sheet: AnimatedSpriteSheet3D, timeSec: numbe
  * - Dramatic stratified sandstone/earth rock cliff walls with crisp horizontal strata & overhangs
  * - Organic winding sandy forest trail instead of rigid grid highways
  */
+/**
+ * Minecraft-style Continuous World-Space Multi-Biome Field (Temperature × Moisture × Elevation):
+ * - Near spawn (r < 34m), keeps the chosen starting `baseBiome` pure.
+ * - Exploring outward smoothly transitions across connected Snow Mountains, Golden Deserts,
+ *   Volcanic Lava Peaks, Tropical Coasts, and Lush Forests with zero seams!
+ */
+export const BIOME_ORDER_LIST: BiomeId[] = [
+  'verdant_forest',
+  'rocky_desert',
+  'storm_coast',
+  'sky_glacier',
+  'cinnabar_isle',
+];
+
+function biomeClimateTargets(biome: BiomeId): [number, number] {
+  switch (biome) {
+    case 'sky_glacier':
+      return [0.12, 0.55];
+    case 'rocky_desert':
+      return [0.85, 0.16];
+    case 'cinnabar_isle':
+      return [0.92, 0.72];
+    case 'storm_coast':
+      return [0.48, 0.88];
+    default:
+      return [0.46, 0.48];
+  }
+}
+
+export function getSeamlessBiomeAt3D(
+  wx: number,
+  wz: number,
+  wy: number,
+  baseBiome: BiomeId,
+): BiomeId {
+  // High alpine mountain summits naturally receive snow caps (except fiery volcano start zone)
+  const dist = Math.hypot(wx, wz);
+  const spawnBlend = Math.max(0, Math.min(1, (dist - 30) / 36));
+  const [baseT, baseM] = biomeClimateTargets(baseBiome);
+
+  // Macro Minecraft-like 2D climate waves (~125m biome patches)
+  const rawT =
+    0.5 +
+    0.36 * Math.sin(wx * 0.022 + wz * 0.014 + 0.6) +
+    0.22 * Math.cos(wx * 0.011 - wz * 0.025 + 1.4);
+  const rawM =
+    0.5 +
+    0.36 * Math.cos(wx * 0.019 - wz * 0.017 + 2.1) +
+    0.22 * Math.sin(wx * 0.013 + wz * 0.024 - 0.8);
+
+  const temp = baseT * (1 - spawnBlend) + Math.max(0, Math.min(1, rawT)) * spawnBlend;
+  const moist = baseM * (1 - spawnBlend) + Math.max(0, Math.min(1, rawM)) * spawnBlend;
+
+  if (wy > 7.4 && temp < 0.72) return 'sky_glacier';
+  if (temp < 0.29) return 'sky_glacier';
+  if (temp > 0.73 && moist >= 0.46) return 'cinnabar_isle';
+  if (temp > 0.67 && moist < 0.46) return 'rocky_desert';
+  if (moist > 0.7 && wy < 2.6) return 'storm_coast';
+  return 'verdant_forest';
+}
+
 export function createSculptedTerrainMaterial(
   biome: BiomeId,
   texSet: BiomeTextureSet,
   sectorSize: number,
 ): THREE.ShaderMaterial {
   const pal = BIOME_PALETTES[biome];
+  const [baseT, baseM] = biomeClimateTargets(biome);
   return new THREE.ShaderMaterial({
     uniforms: {
       uGroundTex: { value: texSet.ground },
@@ -2996,6 +3058,7 @@ export function createSculptedTerrainMaterial(
       uRoadTex: { value: texSet.road },
       uFogColor: { value: new THREE.Color(pal.fogHex) },
       uGrassLipColor: { value: new THREE.Color(pal.groundColors[2]) },
+      uBaseClimate: { value: new THREE.Vector2(baseT, baseM) },
       uFogNear: { value: 64.0 },
       uFogFar: { value: 156.0 },
       uSectorSize: { value: sectorSize },
@@ -3020,6 +3083,7 @@ export function createSculptedTerrainMaterial(
       uniform sampler2D uRoadTex;
       uniform vec3 uFogColor;
       uniform vec3 uGrassLipColor;
+      uniform vec2 uBaseClimate;
       uniform float uFogNear;
       uniform float uFogFar;
       uniform float uSectorSize;
@@ -3032,45 +3096,107 @@ export function createSculptedTerrainMaterial(
       void main() {
         vec3 n = normalize(vWorldNormal);
 
-        // Multi-scale vibrant sunny meadow grass with sweeping sun-dappled hills
+        // Preserve crisp pixel-art texel micro-detail from ground & cliff sheets
         vec2 groundUv = vWorldPos.xz * 0.24;
-        vec3 grassCol = texture2D(uGroundTex, groundUv).rgb;
+        vec3 baseTexCol = texture2D(uGroundTex, groundUv).rgb;
+        float texLuma = clamp(dot(baseTexCol, vec3(0.3, 0.59, 0.11)) / 0.56, 0.72, 1.24);
         float meadowPatch = sin(vWorldPos.x * 0.09) * cos(vWorldPos.z * 0.09) * 0.5 + 0.5;
-        grassCol *= mix(0.92, 1.12, meadowPatch);
+
+        // Minecraft-style world-space Temperature × Moisture × Elevation biome blending!
+        float distSpawn = length(vWorldPos.xz);
+        float spawnBlend = smoothstep(26.0, 62.0, distSpawn);
+        float rawT = clamp(
+          0.5 +
+          0.36 * sin(vWorldPos.x * 0.022 + vWorldPos.z * 0.014 + 0.6) +
+          0.22 * cos(vWorldPos.x * 0.011 - vWorldPos.z * 0.025 + 1.4),
+          0.0, 1.0
+        );
+        float rawM = clamp(
+          0.5 +
+          0.36 * cos(vWorldPos.x * 0.019 - vWorldPos.z * 0.017 + 2.1) +
+          0.22 * sin(vWorldPos.x * 0.013 + vWorldPos.z * 0.024 - 0.8),
+          0.0, 1.0
+        );
+        float temp = mix(uBaseClimate.x, rawT, spawnBlend);
+        float moist = mix(uBaseClimate.y, rawM, spawnBlend);
+
+        // Smooth organic biome weights (Snow Mountain, Golden Desert, Lava Volcano, Tropical Coast, Emerald Forest)
+        float wSnow = clamp(
+          (1.0 - smoothstep(0.22, 0.36, temp)) +
+          smoothstep(6.2, 8.6, vWorldPos.y) * (1.0 - smoothstep(0.66, 0.80, temp)),
+          0.0, 1.0
+        );
+        float wVolcano = smoothstep(0.68, 0.80, temp) * smoothstep(0.42, 0.54, moist);
+        float wDesert = smoothstep(0.62, 0.75, temp) * (1.0 - smoothstep(0.40, 0.52, moist));
+        float wCoast = smoothstep(0.64, 0.78, moist) * (1.0 - smoothstep(1.2, 3.2, vWorldPos.y)) * (1.0 - wSnow) * (1.0 - wVolcano);
+        float wForest = max(0.05, 1.0 - clamp(wSnow + wVolcano + wDesert + wCoast, 0.0, 1.0));
+        float wSum = wForest + wDesert + wSnow + wVolcano + wCoast;
+        wForest /= wSum; wDesert /= wSum; wSnow /= wSum; wVolcano /= wSum; wCoast /= wSum;
+
+        // Distinct stylized pixel palettes for each interconnected biome!
+        vec3 forestGround = vec3(0.40, 0.77, 0.34) * texLuma * mix(0.92, 1.12, meadowPatch);
+        vec3 desertGround = vec3(0.92, 0.78, 0.45) * texLuma * mix(0.94, 1.08, meadowPatch);
+        vec3 snowGround   = vec3(0.92, 0.96, 1.00) * mix(0.92, 1.06, texLuma);
+        vec3 coastGround  = vec3(0.90, 0.84, 0.56) * texLuma;
+        // Glowing molten magma veins inside dark obsidian volcanic ground!
+        float lavaNoise = sin(vWorldPos.x * 0.45 + sin(vWorldPos.z * 0.38) * 1.4) * cos(vWorldPos.z * 0.42);
+        float lavaCrack = smoothstep(0.76, 0.94, abs(lavaNoise));
+        vec3 volcanoGround = mix(vec3(0.20, 0.17, 0.21) * texLuma, vec3(1.0, 0.36, 0.08), lavaCrack * 0.92);
+
+        vec3 grassCol =
+          forestGround * wForest +
+          desertGround * wDesert +
+          snowGround * wSnow +
+          volcanoGround * wVolcano +
+          coastGround * wCoast;
+
+        // Keep starting biome exact near spawn
+        grassCol = mix(baseTexCol * mix(0.92, 1.12, meadowPatch), grassCol, smoothstep(18.0, 44.0, distSpawn));
 
         vec3 roadCol = texture2D(uRoadTex, vWorldPos.xz * 0.26).rgb;
 
-        // Crisp triplanar stratified sandstone-brick cliff walls (Bold contrast against sunny grass!)
+        // Crisp triplanar stratified cliff walls tinted per local biome!
         vec2 cliffUvX = vec2(vWorldPos.z * 0.28, vWorldPos.y * 0.58);
         vec2 cliffUvZ = vec2(vWorldPos.x * 0.28, vWorldPos.y * 0.58);
         float blendX = abs(n.x) / (abs(n.x) + abs(n.z) + 0.0001);
-        vec3 cliffCol = mix(
+        vec3 rawCliff = mix(
           texture2D(uCliffTex, cliffUvZ).rgb,
           texture2D(uCliffTex, cliffUvX).rgb,
           blendX
         );
+        float cliffLuma = clamp(dot(rawCliff, vec3(0.3, 0.59, 0.11)) / 0.46, 0.65, 1.25);
+        vec3 biomeCliff =
+          vec3(0.68, 0.50, 0.34) * cliffLuma * wForest +
+          vec3(0.78, 0.46, 0.26) * cliffLuma * wDesert +
+          vec3(0.56, 0.70, 0.85) * cliffLuma * wSnow +
+          mix(vec3(0.22, 0.18, 0.23) * cliffLuma, vec3(1.0, 0.34, 0.06), lavaCrack * 0.75) * wVolcano +
+          vec3(0.74, 0.66, 0.48) * cliffLuma * wCoast;
+        vec3 cliffCol = mix(rawCliff, biomeCliff, smoothstep(18.0, 44.0, distSpawn));
+
         // Emphasize horizontal terrace strata bands (2.1m per stacked cliff tier)
         float strataBand = fract((vWorldPos.y - 1.8) / 2.1);
         float strataShadow = mix(0.84, 1.10, smoothstep(0.08, 0.78, strataBand));
         cliffCol *= strataShadow;
 
-        // Subtle organic sandy footpath following low meadows (never flattens cliffs!)
+        // Subtle organic sandy footpath following low meadows
         float trailX = sin(vWorldPos.z * 0.042) * 8.5;
         float trailZ = cos(vWorldPos.x * 0.042) * 8.5;
         float dTrail = min(abs(vWorldPos.x - trailX), abs(vWorldPos.z - trailZ));
         float roadMask = (1.0 - smoothstep(1.5, 2.7, dTrail)) * smoothstep(2.0, 0.2, abs(vWorldPos.y));
-        vec3 flatCol = mix(grassCol, roadCol, roadMask * 0.85);
+        vec3 flatCol = mix(grassCol, roadCol, roadMask * 0.82);
 
-        // Crisp sandstone cliff reveal on all stepped risers (n.y < 0.87) + bright sunlit grass overhang rim!
+        // Crisp cliff reveal on stepped risers + biome-tinted top overhang rim!
         float cliffMask = 1.0 - smoothstep(0.68, 0.88, n.y);
         float rimLip = smoothstep(0.68, 0.82, n.y) * (1.0 - smoothstep(0.84, 0.94, n.y));
         vec3 albedo = mix(flatCol, cliffCol, cliffMask);
-        albedo = mix(albedo, uGrassLipColor * 1.04, rimLip * 0.65);
+        vec3 lipCol = mix(uGrassLipColor, grassCol, smoothstep(18.0, 44.0, distSpawn));
+        albedo = mix(albedo, lipCol * 1.05, rimLip * 0.62);
 
-        // Bright sunny stylized daylight shading + soft hill elevation lift
+        // Bright sunny stylized daylight shading + soft hill elevation lift (+ self-lit volcano magma)
         float ndl = max(dot(n, uSunDir), 0.0);
         float elevLift = mix(0.88, 1.10, clamp((vWorldPos.y + 4.0) / 16.0, 0.0, 1.0));
         vec3 lit = albedo * (0.76 + 0.34 * ndl) * elevLift;
+        lit += vec3(0.32, 0.09, 0.01) * lavaCrack * wVolcano;
 
         float fogFactor = smoothstep(uFogNear, uFogFar, vFogDepth);
         vec3 finalCol = mix(lit, uFogColor, fogFactor);

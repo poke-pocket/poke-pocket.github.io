@@ -2075,8 +2075,8 @@ export function captureBossPet(
   if (save.pets.length >= MAX_PET_SLOTS) {
     return {
       ok: false,
-      save: { ...save, coins: save.coins + 80 },
-      message: '精灵球盒已满，霸主化作 +80 稀有金币奖励！',
+      save,
+      message: `精灵球盒已满（${MAX_PET_SLOTS}/${MAX_PET_SLOTS}），无法捕捉！请先放生或等战斗结束后寄存到大木博士处。`,
     };
   }
   const taken = save.pets.map((p) => p.name);
@@ -2113,5 +2113,58 @@ export function captureBossPet(
       ...(nextMeta ? { meta: nextMeta } : {}),
     },
     message: `成功收服霸主【${caughtName} Lv.${newPet.level}】入盒！`,
+  };
+}
+
+/** Deposit a Pokémon into Professor Oak's PC Storage (ONLY allowed outside live combat!) */
+export function depositPetToStorage(save: GameSave, petId: string, now = Date.now()): ActionOutcome {
+  if (save.pets.length <= 1) {
+    return { ok: false, save, message: '随身球盒至少需保留 1 只同行宝可梦！' };
+  }
+  const target = save.pets.find((p) => p.id === petId);
+  if (!target) return { ok: false, save, message: '未找到该宝可梦' };
+  const nextPets = save.pets.filter((p) => p.id !== petId);
+  const nextStored = [...(save.storedPets ?? []), target];
+  const nextActiveId = save.activePetId === petId ? (nextPets[0]?.id ?? null) : save.activePetId;
+  const diary = addDiary(
+    save,
+    target,
+    'pokeball',
+    `将「${target.name} (Lv.${target.level})」寄存到了大木博士的宝可梦寄放箱。`,
+    now,
+  );
+  return {
+    ok: true,
+    save: {
+      ...save,
+      pets: nextPets,
+      storedPets: nextStored,
+      activePetId: nextActiveId,
+      diary,
+    },
+    message: `📦 已将「${target.name}」寄存至大木博士寄放箱！`,
+  };
+}
+
+/** Withdraw a Pokémon from Professor Oak's PC Storage back into the active Pokéball Box */
+export function withdrawPetFromStorage(save: GameSave, petId: string): ActionOutcome {
+  if (save.pets.length >= MAX_PET_SLOTS) {
+    return {
+      ok: false,
+      save,
+      message: `随身球盒已满（${MAX_PET_SLOTS}/${MAX_PET_SLOTS}），请先放生或寄存其他精灵再取出！`,
+    };
+  }
+  const stored = save.storedPets ?? [];
+  const target = stored.find((p) => p.id === petId);
+  if (!target) return { ok: false, save, message: '寄放箱中未找到该宝可梦' };
+  return {
+    ok: true,
+    save: {
+      ...save,
+      pets: [...save.pets, target],
+      storedPets: stored.filter((p) => p.id !== petId),
+    },
+    message: `📤 已将「${target.name}」从寄放箱取回随身球盒！`,
   };
 }

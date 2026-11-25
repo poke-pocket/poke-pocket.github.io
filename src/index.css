@@ -17191,3 +17191,334 @@ body,
     font-size: 12px;
   }
 }
+
+/* =========================================================================
+   SETTINGS OVERLAP FIX, LEFT KEYS/GAMEPAD TABS, PIKACHU CRY AUDITION PICKER,
+   SINGLE-ROW HUB DOCK + LOWER HUB ANCHOR, SQUARE GUARDIAN TILES & PORTRAIT DIFFICULTY
+   ========================================================================= */
+
+/* 1. Fix Settings card title + subtitle overlap */
+.settings-card-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.audio-track-hint {
+  display: block;
+  font-size: 9.5px;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+/* 2. Pikachu Cry Audition Picker inside Settings -> Audio */
+.pika-cry-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.pika-cry-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #f5f1e4;
+  border: 1.5px solid #161420;
+}
+
+.pika-cry-opt.is-active {
+  background: #fff3bf;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.pika-cry-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pika-cry-info strong {
+  font-size: 10.5px;
+  color: #161420;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pika-cry-info small {
+  font-size: 9px;
+  color: #495057;
+}
+
+.pika-cry-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* 3. Settings -> Keys Left Vertical Sub-Tabs (Gamepad tab appears only when connected!) */
+.keys-split-shell {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-height: 0;
+}
+
+.keys-side-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 68px;
+  flex-shrink: 0;
+}
+
+.keys-side-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 4px;
+  background: #ede6d1;
+  border: 2px solid #161420;
+  color: #161420;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.keys-side-tab strong {
+  font-size: 10px;
+}
+
+.keys-side-tab.active {
+  background: #ffe066;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.keys-main-pane {
+  flex: 1;
+  min-width: 0;
+}
+
+.gamepad-guide-box.is-tab-pane {
+  margin-top: 0;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.gamepad-map-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 10px;
+  margin-top: 8px;
+}
+
+.gamepad-map-grid > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 7px;
+  background: #fffdf5;
+  border: 1.5px solid #161420;
+  font-size: 10px;
+}
+
+.gamepad-map-grid > div b {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #161420;
+  white-space: nowrap;
+}
+
+.gamepad-map-grid > div span {
+  color: #495057;
+  text-align: right;
+}
+
+/* 4. Hub Layout: Always Single-Row 4-Tile Core Dock + Always-Visible More + Shifted Slightly Lower */
+.pkb-hub-body {
+  margin-top: auto !important;
+  margin-bottom: 10px !important;
+  align-items: flex-end !important;
+}
+
+.pkb-dock-row.is-single-row {
+  display: grid !important;
+  gap: 8px;
+  width: 100%;
+}
+
+.pkb-more-btn.is-always-visible {
+  display: inline-flex !important;
+}
+
+/* 5. Map Select Guardians: Crisp Non-Wrapping Square Backpack-Style Tiles with Bottom-Right Name Tag */
+.pkb-guard-chain {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap !important;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pkb-guard-chain::-webkit-scrollbar {
+  display: none;
+}
+
+.pkb-guard-tile {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fffdf5;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  overflow: hidden;
+}
+
+.pkb-guard-tile.is-sanctuary {
+  margin-left: auto;
+  background: #d3f9d8;
+  border-color: #161420;
+}
+
+.pkb-guard-tile-img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  transform: translateY(-4px);
+}
+
+.pkb-guard-tile-name {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  max-width: calc(100% - 4px);
+  padding: 0 3px;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #161420;
+  background: rgba(255, 253, 245, 0.92);
+  border: 1px solid rgba(22, 20, 32, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkb-guard-tile.is-sanctuary .pkb-guard-tile-name {
+  background: rgba(211, 249, 216, 0.94);
+  color: #1b4332;
+}
+
+/* 6. Map Select Difficulty: Horizontal 3-Column Row in Portrait / Compact Viewports */
+.pkb-diff-compact-badge,
+.pkb-diff-compact-note {
+  display: none;
+}
+
+@media (max-width: 900px), (orientation: portrait) {
+  .pkb-diff-list {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  .pkb-diff-btn {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+    padding: 7px 6px !important;
+    text-align: center;
+  }
+
+  .pkb-diff-full-desc {
+    display: none !important;
+  }
+
+  .pkb-diff-compact-badge {
+    display: block;
+    font-size: 9px;
+    opacity: 0.9;
+  }
+
+  .pkb-diff-compact-note {
+    display: block;
+    margin-top: 4px;
+    padding: 4px 8px;
+    font-size: 10px;
+    color: #495057;
+    background: #f5f1e4;
+    border: 1.5px solid #c9c3b4;
+    text-align: center;
+  }
+
+  .pkb-guard-tile {
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+  }
+
+  .pkb-guard-tile-img {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* 7. Pokéball Box Storage Switcher & Battle-Locked Notice */
+.party-storage-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.party-storage-notice {
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7f1d1d;
+  background: #ffe3e3;
+  border: 1.5px solid #c92a2a;
+}
+
+.party-storage-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  background: #fffdf5;
+  border: 1.5px solid #161420;
+  text-align: center;
+}
+
+.party-storage-card strong {
+  font-size: 10px;
+  color: #161420;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.party-storage-card small {
+  font-size: 9px;
+  color: #495057;
+}
