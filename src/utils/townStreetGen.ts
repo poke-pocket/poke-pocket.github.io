@@ -134,8 +134,9 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     junctions.push({ x: jx, z: jz, width: size, depth: size, rotY, kind });
   };
 
-  // Core 8-Lane Cardinal Grand Boulevards radiating from Grand Civic Plaza (r = 32m -> 124m)
-  // PLUS Smooth 26m Tapered Transitions (46m -> 22m) from r = 124m -> 150m to meet Inter-City 4-Lane Expressways seamlessly!
+  // Core 8-Lane Cardinal Grand Boulevards radiating seamlessly from UNDER the Grand Civic Plaza rim (r = 27m -> 57m, then 103m -> 124m)
+  // Trimmed cleanly at each 46m intersection pad edge (r = 80 ± 23m) so ZERO curb-skirt triangles ever clip across crosswalks!
+  // PLUS Smooth 26m Tapered Gateway Transitions (r = 124m -> 150m: 46m 8-lane -> 22m 4-lane expressway!)
   const cardinals: { dx: number; dz: number; ang: number }[] = [
     { dx: 1, dz: 0, ang: 0 },
     { dx: -1, dz: 0, ang: Math.PI },
@@ -144,14 +145,14 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   ];
   const midNodes: { x: number; z: number; ang: number }[] = [];
   for (const c of cardinals) {
-    // Inner 8-lane boulevard (32 -> 80)
-    addSeg(cx + c.dx * 32, cz + c.dz * 32, cx + c.dx * 80, cz + c.dz * 80, 46, 46, 'arterial');
+    // Inner 8-lane boulevard (starts at r=27 tucked neatly beneath the r=32.5m circular stone plaza, ends flush at intersection edge r=57!)
+    addSeg(cx + c.dx * 27, cz + c.dz * 27, cx + c.dx * 57, cz + c.dz * 57, 46, 46, 'arterial');
     midNodes.push({ x: cx + c.dx * 80, z: cz + c.dz * 80, ang: c.ang });
-    // Outer 8-lane boulevard (80 -> 124)
-    addSeg(cx + c.dx * 80, cz + c.dz * 80, cx + c.dx * 124, cz + c.dz * 124, 46, 46, 'arterial');
+    // Outer 8-lane boulevard (starts flush at outer intersection edge r=103 -> r=124!)
+    addSeg(cx + c.dx * 103, cz + c.dz * 103, cx + c.dx * 124, cz + c.dz * 124, 46, 46, 'arterial');
     // Smooth Tapered Gateway Transition (124 -> 150: smoothly narrows 46m 8-lane -> 22m 4-lane expressway!)
     addSeg(cx + c.dx * 124, cz + c.dz * 124, cx + c.dx * 150, cz + c.dz * 150, 46, 22, 'street');
-    addJunction(cx + c.dx * 80, cz + c.dz * 80, 46.4, -c.ang, 'cross');
+    addJunction(cx + c.dx * 80, cz + c.dz * 80, 46.2, -c.ang, 'cross');
   }
 
   // 2. Real-World City-Specific Secondary Road Networks, Ring Roads & Angled Y-Forks!

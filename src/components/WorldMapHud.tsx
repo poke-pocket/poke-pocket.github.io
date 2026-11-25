@@ -124,7 +124,37 @@ export function generateRegionalPois(): WorldPoi[] {
   return [...townPois, ...basePois, ...lakePois];
 }
 
-/** Paints Inter-Town Highways, Village/Town Plazas, Cross-Streets, Railways & Town Name Labels onto any 2D Map Canvas! */
+/** Helper: draw a tapered road trapezoid polygon from (x1,z1,wStart) to (x2,z2,wEnd) in map screen space! */
+function traceTaperedRoadPoly(
+  ctx: CanvasRenderingContext2D,
+  a: { sx: number; sy: number },
+  b: { sx: number; sy: number },
+  wStartPx: number,
+  wEndPx: number,
+) {
+  const dx = b.sx - a.sx;
+  const dy = b.sy - a.sy;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.01) return;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const hs = wStartPx * 0.5;
+  const he = wEndPx * 0.5;
+  ctx.beginPath();
+  ctx.moveTo(a.sx + nx * hs, a.sy + ny * hs);
+  ctx.lineTo(b.sx + nx * he, b.sy + ny * he);
+  ctx.lineTo(b.sx - nx * he, b.sy - ny * he);
+  ctx.lineTo(a.sx - nx * hs, a.sy - ny * hs);
+  ctx.closePath();
+}
+
+/**
+ * REALISTIC TWO-PASS VECTOR CARTOGRAPHY (Google Maps / 高德地图 style!):
+ * - Pass 1 draws ALL dark road & plaza casings first (ZERO ugly black semicircular seams cutting across intersections!)
+ * - Pass 2 draws merged asphalt/boulevard fills, exact tapered lane transitions (widthStart -> widthEnd), green central medians, circular Grand Plazas & fountains
+ * - Pass 3 draws Inter-City High-Speed Rail / Metro corridors + Station Nodes + Expressway Route Shields
+ * - Pass 4 draws 2.5D shaded rotated building footprints + crisp POI badges (🏥🏪🏨🍜🗼)
+ */
 function paintRoadsAndTownsOnMap(
   ctx: CanvasRenderingContext2D,
   toScreen: (wx: number, wz: number) => { sx: number; sy: number },
@@ -133,32 +163,67 @@ function paintRoadsAndTownsOnMap(
 ) {
   if (getActiveGeoTerrainOrigin()) return;
 
+  const invScale = 1 / Math.max(0.1, unitsPerPx);
+  const casingExtra = detailed ? 2.4 : 1.2;
+  const layouts = WORLD_TOWNS_3D.map((t) => ({ town: t, layout: generateTownLayout(t) }));
+
   ctx.save();
-  // 1. Inter-Town Highways (Dark curb casing + warm asphalt + dashed center line)
-  const hwyPx = Math.max(detailed ? 4 : 2.5, Math.min(18, 7.4 / Math.max(0.1, unitsPerPx)));
-  ctx.lineCap = 'round';
+  ctx.lineCap = 'butt';
   ctx.lineJoin = 'round';
+
+  // ==================== PASS 1: UNIFIED DARK ROAD & PLAZA CASINGS (Zero internal intersection lines!) ====================
+  ctx.fillStyle = '#475569';
+  ctx.strokeStyle = '#475569';
+
+  // 1A. Inter-City Expressways casing
+  const hwyW = Math.max(detailed ? 4.5 : 2.6, 22.0 * invScale);
   for (const [ax, az, bx, bz] of WORLD_ROAD_SEGMENTS_3D) {
     const a = toScreen(ax, az);
     const b = toScreen(bx, bz);
-    ctx.strokeStyle = '#3c424f';
-    ctx.lineWidth = hwyPx + 2;
-    ctx.beginPath();
-    ctx.moveTo(a.sx, a.sy);
-    ctx.lineTo(b.sx, b.sy);
-    ctx.stroke();
+    traceTaperedRoadPoly(ctx, a, b, hwyW + casingExtra, hwyW + casingExtra);
+    ctx.fill();
+  }
 
-    ctx.strokeStyle = '#d9cfb8';
-    ctx.lineWidth = hwyPx;
+  // 1B. City Streets (exact tapered trapezoids!), Junction Pads & Grand Central Plazas casing
+  for (const { town, layout } of layouts) {
+    for (const st of layout.streets) {
+      const a = toScreen(st.x1, st.z1);
+      const b = toScreen(st.x2, st.z2);
+      const ws = Math.max(detailed ? 2.4 : 1.4, (st.widthStart ?? st.width) * invScale);
+      const we = Math.max(detailed ? 2.4 : 1.4, (st.widthEnd ?? st.width) * invScale);
+      traceTaperedRoadPoly(ctx, a, b, ws + casingExtra, we + casingExtra);
+      ctx.fill();
+    }
+    for (const jn of layout.junctions) {
+      const jp = toScreen(jn.x, jn.z);
+      const jw = Math.max(detailed ? 3.5 : 2.0, jn.width * invScale) + casingExtra;
+      ctx.save();
+      ctx.translate(jp.sx, jp.sy);
+      ctx.rotate(-jn.rotY);
+      ctx.fillRect(-jw * 0.5, -jw * 0.5, jw, jw);
+      ctx.restore();
+    }
+    // Grand Central Circular Plaza casing (r = 32.5m)
+    const c = toScreen(town.x, town.z);
+    const pR = Math.max(detailed ? 6 : 3.5, 32.5 * invScale) + casingExtra * 0.6;
     ctx.beginPath();
-    ctx.moveTo(a.sx, a.sy);
-    ctx.lineTo(b.sx, b.sy);
-    ctx.stroke();
+    ctx.arc(c.sx, c.sy, pR, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-    if (detailed) {
-      ctx.strokeStyle = '#8b8372';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([5, 5]);
+  // ==================== PASS 2: MERGED ROAD FILLS, TAPERS, GREEN MEDIANS & PLAZAS ====================
+  // 2A. Inter-City Expressways (Golden-amber Google Maps highway style + crisp center lane dashes!)
+  for (const [ax, az, bx, bz] of WORLD_ROAD_SEGMENTS_3D) {
+    const a = toScreen(ax, az);
+    const b = toScreen(bx, bz);
+    ctx.fillStyle = '#ffcb57';
+    traceTaperedRoadPoly(ctx, a, b, hwyW, hwyW);
+    ctx.fill();
+
+    if (detailed && hwyW >= 5) {
+      ctx.strokeStyle = '#fff9db';
+      ctx.lineWidth = Math.max(1, hwyW * 0.08);
+      ctx.setLineDash([6, 6]);
       ctx.beginPath();
       ctx.moveTo(a.sx, a.sy);
       ctx.lineTo(b.sx, b.sy);
@@ -167,118 +232,224 @@ function paintRoadsAndTownsOnMap(
     }
   }
 
-  // 1B. Inter-City High-Speed Rail & Metro Network (classic dashed railway line connecting all 5 world cities!)
-  for (const [ax, az, bx, bz] of WORLD_RAIL_SEGMENTS_3D) {
-    const a = toScreen(ax, az);
-    const b = toScreen(bx, bz);
-    ctx.strokeStyle = '#181a24';
-    ctx.lineWidth = Math.max(2.4, 4.4 / Math.max(0.1, unitsPerPx));
+  // 2B. City Street Network (All fills merge seamlessly with ZERO black end-cap seams!)
+  for (const { town, layout } of layouts) {
+    // Draw Alleys -> Collector Streets -> 8-Lane Boulevards -> Junction Pads -> Central Plaza in clean hierarchy order
+    const orderedStreets = [
+      ...layout.streets.filter((s) => s.kind === 'alley'),
+      ...layout.streets.filter((s) => s.kind === 'street'),
+      ...layout.streets.filter((s) => s.kind === 'arterial'),
+    ];
+    for (const st of orderedStreets) {
+      const a = toScreen(st.x1, st.z1);
+      const b = toScreen(st.x2, st.z2);
+      const ws = Math.max(detailed ? 2.4 : 1.4, (st.widthStart ?? st.width) * invScale);
+      const we = Math.max(detailed ? 2.4 : 1.4, (st.widthEnd ?? st.width) * invScale);
+
+      // Wide sidewalk shoulder tint on boulevards & collectors when zoomed in
+      if (detailed && st.kind !== 'alley' && ws >= 8) {
+        ctx.fillStyle = '#e8e2d5';
+        traceTaperedRoadPoly(ctx, a, b, ws, we);
+        ctx.fill();
+        ctx.fillStyle = st.kind === 'arterial' ? '#ffd97d' : '#f8f5ec';
+        traceTaperedRoadPoly(ctx, a, b, ws * 0.78, we * 0.78);
+        ctx.fill();
+      } else {
+        ctx.fillStyle =
+          st.kind === 'arterial' ? '#ffd97d' : st.kind === 'street' ? '#f8f5ec' : '#e5dfd2';
+        traceTaperedRoadPoly(ctx, a, b, ws, we);
+        ctx.fill();
+      }
+
+      // Lush Green Central Median Strip down 8-Lane Boulevards!
+      if (st.kind === 'arterial' && ws >= 9) {
+        ctx.fillStyle = '#40c057';
+        traceTaperedRoadPoly(ctx, a, b, Math.max(1.6, ws * 0.12), Math.max(1.6, we * 0.12));
+        ctx.fill();
+      }
+    }
+
+    // Seamless Junction Fill Pads (completely merges cross-roads & T-forks!)
+    for (const jn of layout.junctions) {
+      const jp = toScreen(jn.x, jn.z);
+      const jw = Math.max(detailed ? 3.5 : 2.0, jn.width * invScale);
+      ctx.save();
+      ctx.translate(jp.sx, jp.sy);
+      ctx.rotate(-jn.rotY);
+      ctx.fillStyle = jn.width >= 40 ? '#ffd97d' : '#f8f5ec';
+      ctx.fillRect(-jw * 0.5, -jw * 0.5, jw, jw);
+      ctx.restore();
+    }
+
+    // Grand Central Circular Plaza (Stone terrace + green park ring + shimmering blue fountain dot!)
+    const c = toScreen(town.x, town.z);
+    const pR = Math.max(detailed ? 6 : 3.5, 32.5 * invScale);
+    ctx.fillStyle = '#efeae0';
+    ctx.beginPath();
+    ctx.arc(c.sx, c.sy, pR, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (pR >= 7) {
+      ctx.strokeStyle = '#d4cbb8';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(c.sx, c.sy, pR * 0.78, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Central marble fountain turquoise water icon!
+      ctx.fillStyle = '#3bc9db';
+      ctx.beginPath();
+      ctx.arc(c.sx, c.sy, Math.max(2.2, pR * 0.22), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+
+  // ==================== PASS 3: INTER-CITY & URBAN HIGH-SPEED RAIL / METRO NETWORK ====================
+  const drawRailLine = (x1: number, z1: number, x2: number, z2: number, wBase: number) => {
+    const a = toScreen(x1, z1);
+    const b = toScreen(x2, z2);
+    ctx.strokeStyle = '#2b303a';
+    ctx.lineWidth = Math.max(2.2, wBase * invScale);
     ctx.beginPath();
     ctx.moveTo(a.sx, a.sy);
     ctx.lineTo(b.sx, b.sy);
     ctx.stroke();
 
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = Math.max(1.2, 2.0 / Math.max(0.1, unitsPerPx));
+    ctx.strokeStyle = '#f8f9fa';
+    ctx.lineWidth = Math.max(1.1, wBase * 0.48 * invScale);
     ctx.setLineDash([5, 5]);
     ctx.beginPath();
     ctx.moveTo(a.sx, a.sy);
     ctx.lineTo(b.sx, b.sy);
     ctx.stroke();
     ctx.setLineDash([]);
+  };
+
+  for (const [ax, az, bx, bz] of WORLD_RAIL_SEGMENTS_3D) {
+    drawRailLine(ax, az, bx, bz, 5.2);
+  }
+  for (const { layout } of layouts) {
+    for (const rl of layout.rail) {
+      drawRailLine(rl.x1, rl.z1, rl.x2, rl.z2, 4.6);
+    }
   }
 
-  // 2. Organic Procedural Street-Graph Towns (Real branching streets, alleys, railways & rotated building lots — ZERO circular disc!)
-  for (const t of WORLD_TOWNS_3D) {
-    const layout = generateTownLayout(t);
-    const c = toScreen(t.x, t.z);
-
-    // 2A. Town Streets & Side Alleys
-    for (const st of layout.streets) {
-      const a = toScreen(st.x1, st.z1);
-      const b = toScreen(st.x2, st.z2);
-      const wPx = Math.max(detailed ? 2.2 : 1.4, st.width / Math.max(0.1, unitsPerPx));
-      ctx.strokeStyle = '#3b4252';
-      ctx.lineWidth = wPx + (detailed ? 1.8 : 0.8);
-      ctx.beginPath();
-      ctx.moveTo(a.sx, a.sy);
-      ctx.lineTo(b.sx, b.sy);
-      ctx.stroke();
-
-      ctx.strokeStyle = st.kind === 'arterial' ? '#d8ceb7' : st.kind === 'street' ? '#c8bea6' : '#b7ad96';
-      ctx.lineWidth = wPx;
-      ctx.beginPath();
-      ctx.moveTo(a.sx, a.sy);
-      ctx.lineTo(b.sx, b.sy);
-      ctx.stroke();
-    }
-
-    // 2B. Curved Railway Corridor (classic black & white rail dashes!)
-    for (const rl of layout.rail) {
-      const a = toScreen(rl.x1, rl.z1);
-      const b = toScreen(rl.x2, rl.z2);
-      ctx.strokeStyle = '#181a24';
-      ctx.lineWidth = Math.max(2.2, 3.6 / Math.max(0.1, unitsPerPx));
-      ctx.beginPath();
-      ctx.moveTo(a.sx, a.sy);
-      ctx.lineTo(b.sx, b.sy);
-      ctx.stroke();
-
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = Math.max(1.0, 1.8 / Math.max(0.1, unitsPerPx));
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(a.sx, a.sy);
-      ctx.lineTo(b.sx, b.sy);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    // 2C. Actual Street-Aligned Building Footprints (Rotated rectangles color-coded by facility!)
+  // ==================== PASS 4: 2.5D SHADED BUILDING FOOTPRINTS & FACILITY ICONS ====================
+  for (const { town, layout } of layouts) {
     for (const lot of layout.lots) {
       const lp = toScreen(lot.x, lot.z);
-      const bw = Math.max(detailed ? 4 : 2.5, lot.width / Math.max(0.1, unitsPerPx));
-      const bd = Math.max(detailed ? 3.5 : 2.2, lot.depth / Math.max(0.1, unitsPerPx));
+      const bw = Math.max(detailed ? 4 : 2.4, lot.width * invScale);
+      const bd = Math.max(detailed ? 3.5 : 2.1, lot.depth * invScale);
       ctx.save();
       ctx.translate(lp.sx, lp.sy);
       ctx.rotate(-lot.rotY);
+
+      // Soft 2.5D southeast architectural cast shadow (Apple Maps / 高德地图 style!)
+      if (detailed && bw >= 5) {
+        ctx.fillStyle = 'rgba(22, 26, 36, 0.28)';
+        ctx.fillRect(-bw / 2 + 2.2, -bd / 2 + 2.2, bw, bd);
+      }
+
       ctx.fillStyle =
         lot.kind === 'pokemon_center'
-          ? '#fa5252'
+          ? '#ff6b6b'
           : lot.kind === 'poke_mart'
-            ? '#228be6'
+            ? '#339af0'
             : lot.kind === 'hotel'
-              ? '#f08c00'
+              ? '#f59f00'
               : lot.kind === 'restaurant'
-                ? '#fd7e14'
+                ? '#ff922b'
                 : lot.kind === 'landmark'
-                  ? '#ae3ec9'
-                  : '#c98a5b';
-      ctx.strokeStyle = '#181a24';
-      ctx.lineWidth = detailed ? 1.2 : 0.7;
+                  ? '#be4bdb'
+                  : '#d8c5b0';
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = detailed ? 1.0 : 0.6;
       ctx.fillRect(-bw / 2, -bd / 2, bw, bd);
       ctx.strokeRect(-bw / 2, -bd / 2, bw, bd);
+
+      // Subtle inner roof highlight bevel
+      if (detailed && bw >= 9) {
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.fillRect(-bw / 2 + 1.5, -bd / 2 + 1.5, bw - 3, Math.max(2, bd * 0.35));
+      }
       ctx.restore();
+
+      // Tiny crisp facility badge on flagship buildings when zoomed in!
+      if (detailed && bw >= 11 && lot.kind !== 'house') {
+        const sym =
+          lot.kind === 'pokemon_center'
+            ? '🏥'
+            : lot.kind === 'poke_mart'
+              ? '🏪'
+              : lot.kind === 'hotel'
+                ? '🏨'
+                : lot.kind === 'restaurant'
+                  ? '🍜'
+                  : '🗼';
+        ctx.font = `${Math.min(13, Math.max(9, Math.round(bw * 0.45)))}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(sym, lp.sx, lp.sy);
+      }
     }
 
-    // 2D. Crisp Town Name Banner above town center
+    // High-Speed Rail Station Badge
     if (detailed) {
+      const stP = toScreen(layout.stationX, layout.stationZ);
+      ctx.fillStyle = '#1864ab';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(stP.sx, stP.sy, 5.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Crisp City Name Banner right above Central Plaza!
+      const c = toScreen(town.x, town.z);
       ctx.font = 'bold 11px monospace';
-      const label = `🏘 ${t.name}`;
-      const tw = ctx.measureText(label).width + 10;
+      const label = `🏙️ ${town.name}`;
+      const tw = ctx.measureText(label).width + 12;
       const lx = Math.round(c.sx - tw / 2);
-      const ly = Math.round(c.sy - 26);
-      ctx.fillStyle = 'rgba(20, 22, 34, 0.9)';
-      ctx.fillRect(lx, ly, tw, 16);
+      const ly = Math.round(c.sy - 28);
+      ctx.fillStyle = 'rgba(18, 22, 34, 0.92)';
+      ctx.fillRect(lx, ly, tw, 17);
       ctx.strokeStyle = '#ffd43b';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(lx, ly, tw, 16);
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(lx, ly, tw, 17);
       ctx.fillStyle = '#fff9db';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(label, c.sx, ly + 8.5);
+      ctx.fillText(label, c.sx, ly + 8.8);
     }
   }
+
+  // ==================== PASS 5: EXPRESSWAY ROUTE SHIELDS (G2 京沪 / G15 沪广 / 沪东 / 沪西) ====================
+  if (detailed) {
+    const shields: { x: number; z: number; code: string }[] = [
+      { x: 0, z: -485, code: 'G2 京沪高速' },
+      { x: 0, z: 145, code: 'G15 沪广高速' },
+      { x: 310, z: -210, code: 'G40 沪东跨海' },
+      { x: -310, z: -210, code: 'G50 沪京西线' },
+    ];
+    ctx.font = 'bold 9px monospace';
+    for (const sh of shields) {
+      const sp = toScreen(sh.x, sh.z);
+      const tw = ctx.measureText(sh.code).width + 8;
+      ctx.fillStyle = '#2b8a3e';
+      ctx.fillRect(Math.round(sp.sx - tw / 2), Math.round(sp.sy - 7), tw, 14);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(sp.sx - tw / 2), Math.round(sp.sy - 7), tw, 14);
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(sh.code, sp.sx, sp.sy + 0.5);
+    }
+  }
+
   ctx.restore();
 }
 
@@ -974,10 +1145,14 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
           onClick={handleCanvasClick}
         />
 
-        {/* Top-Left Floating Region & Coords Chip */}
+        {/* Top-Left Floating Region / City & Coords Chip */}
         <div className="lcd-map-float-tl">
           <PixelItemImg src="/sprites/items/poke-radar.png" size={14} />
-          <strong>{regionName}</strong>
+          <strong>
+            {WORLD_TOWNS_3D.find(
+              (t) => Math.hypot(snapshot.px - t.x, snapshot.pz - t.z) < t.plazaRadius + 10,
+            )?.name ?? regionName}
+          </strong>
           {(() => {
             const g = worldToGeo(snapshot.px, snapshot.pz);
             if (g) {

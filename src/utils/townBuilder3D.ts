@@ -1256,11 +1256,17 @@ function createPlazaFountain(fountains: THREE.Object3D[]): THREE.Group {
   finial.position.y = 5.65;
   g.add(lowerPed, midBowl, midWater, upperPed, topBowl, finial);
 
-  // Graceful animated central water jet + 4 cascading water arcs into the main basin!
+  // Delicate animated sparkling water jets rising directly from the upper bowl + 4 graceful cascading arcs!
   const jetGroup = new THREE.Group();
-  const crownSpray = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.65, 1.35, 8), foamMat);
-  crownSpray.position.y = 6.35;
-  jetGroup.add(crownSpray);
+  const innerSpray = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.34, 0.95, 8), foamMat);
+  innerSpray.position.y = 5.42;
+  jetGroup.add(innerSpray);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const droplet = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6), foamMat);
+    droplet.position.set(Math.cos(a) * 0.48, 5.75 + (i % 2) * 0.25, Math.sin(a) * 0.48);
+    jetGroup.add(droplet);
+  }
   for (let i = 0; i < 4; i++) {
     const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
     const arc = new THREE.Mesh(new THREE.TorusGeometry(1.55, 0.11, 6, 12, Math.PI * 0.65), foamMat);
@@ -1723,13 +1729,19 @@ export function buildProceduralTown3D(
     }
   }
 
-  // 1B. Clean Cities: Skylines Asphalt Intersection Pads with Zebra Crosswalks (terrain-conforming 4x4 grid -> ZERO floating edges!)
+  // 1B. Clean Cities: Skylines Asphalt Intersection Pads with Zebra Crosswalks + Real 3D Traffic Lights (红绿灯)!
   const junctionMat = new THREE.MeshLambertMaterial({
     map: tex.junctionAsphalt,
     polygonOffset: true,
     polygonOffsetFactor: -4,
     polygonOffsetUnits: -4,
   });
+  const signalPoleMat = new THREE.MeshLambertMaterial({ color: 0x343a40 });
+  const signalBoxMat = new THREE.MeshLambertMaterial({ color: 0x1b1f26 });
+  const redLightMat = new THREE.MeshBasicMaterial({ color: 0xff4d4f });
+  const amberLightMat = new THREE.MeshBasicMaterial({ color: 0xffd43b });
+  const greenLightMat = new THREE.MeshBasicMaterial({ color: 0x51cf66 });
+
   for (const jn of layout.junctions) {
     const padGeo = new THREE.PlaneGeometry(jn.width, jn.depth, 4, 4);
     padGeo.rotateX(-Math.PI / 2);
@@ -1747,6 +1759,35 @@ export function buildProceduralTown3D(
     const pad = new THREE.Mesh(padGeo, junctionMat);
     pad.receiveShadow = true;
     group.add(pad);
+
+    // Mount sleek 3D Traffic Signals at corners of major 8-lane boulevard intersections!
+    if (jn.width >= 40) {
+      const off = jn.width * 0.47;
+      for (const [cxS, czS] of [
+        [-off, -off],
+        [off, off],
+      ]) {
+        const wx = jn.x + cxS * cosR + czS * sinR;
+        const wz = jn.z - cxS * sinR + czS * cosR;
+        const sig = new THREE.Group();
+        sig.position.set(wx - centerX, localGroundY(wx, wz) + 0.15, wz - centerZ);
+        sig.rotation.y = Math.atan2(-cxS, -czS);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 6.2, 6), signalPoleMat);
+        pole.position.y = 3.1;
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 3.6), signalPoleMat);
+        arm.position.set(0, 6.0, 1.7);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.65, 1.45, 0.45), signalBoxMat);
+        head.position.set(0, 5.55, 3.2);
+        const rL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), redLightMat);
+        rL.position.set(0, 5.95, 3.44);
+        const yL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), amberLightMat);
+        yL.position.set(0, 5.55, 3.44);
+        const gL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), greenLightMat);
+        gL.position.set(0, 5.15, 3.44);
+        sig.add(pole, arm, head, rL, yL, gL);
+        group.add(sig);
+      }
+    }
   }
 
   // Grand Spacious Civic Square / Central Plaza (r = 32.5m!) matching the 8-Lane Metropolis Boulevards!
@@ -2155,6 +2196,7 @@ export function buildProceduralTown3D(
     targetWidth: 9.4,
     addInkEdges: true,
   });
+  const streetLampBulbMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
   for (const lamp of layout.streetLamps) {
     void mountGlbModel(group, '/models/town/roads/lamp-curved.glb', {
       x: lamp.x - centerX,
@@ -2163,6 +2205,11 @@ export function buildProceduralTown3D(
       rotY: lamp.rotY,
       targetWidth: 2.5,
       addInkEdges: true,
+      onMounted: (wrapper, h) => {
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), streetLampBulbMat);
+        bulb.position.set(0, h * 0.92, 0.72);
+        wrapper.add(bulb);
+      },
     });
   }
 
