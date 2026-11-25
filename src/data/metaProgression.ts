@@ -1,5 +1,6 @@
 import type { BiomeId } from './worldTextures3D';
 import type { DifficultyId, SurvivorSkillId } from './survivorsTactics';
+import type { WorldTourState } from './worldTour';
 
 export type LabUpgradeId =
   | 'training'
@@ -689,6 +690,8 @@ export interface MetaProgressState {
   // Saved Battle Squad Presets (Switch & Edit 3 Saved Teams!)
   squadPresets?: SquadPreset[];
   activeSquadIdx?: number;
+  // Real-World GPS & Pixel World Tour Mode
+  worldTour?: WorldTourState;
   // Bounties
   dailyKey: string;
   dailyStreak: number;

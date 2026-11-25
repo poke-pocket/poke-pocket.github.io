@@ -55,6 +55,8 @@ import {
   type Pmd8DirSheet3D,
 } from '../data/pmdSprites3D';
 import type { FacingDir } from '../data/overworldTiles';
+import { DEFAULT_WORLD_TOUR_STATE } from '../data/worldTour';
+import { WorldMapOverlay, type WorldLaunchPayload } from './WorldMapOverlay';
 import {
   DEFAULT_GAME_PREFS,
   DEFAULT_TRAINER_PROFILE,
@@ -346,7 +348,7 @@ interface LevelChoice {
   passiveId?: 'speed' | 'heal' | 'atk';
 }
 
-type ArenaScreenPhase = 'hub' | 'map_select' | 'playing';
+type ArenaScreenPhase = 'hub' | 'map_select' | 'world_map' | 'playing';
 
 const MAX_FOLLOWERS = 6;
 const RECRUIT_POOL: { species: SpeciesId; name: string; color: string }[] = [
@@ -724,8 +726,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     }, 165);
   };
 
-  // Multi-Layer Flow: Main Hub -> Map Select -> Live 3D Playing
+  // Multi-Layer Flow: Main Hub -> Map Select / World Map Tour -> Live 3D Playing
   const [phase, setPhase] = useState<ArenaScreenPhase>('hub');
+  const [activeWorldRun, setActiveWorldRun] = useState<WorldLaunchPayload | null>(null);
   const [selectedBiome, setSelectedBiome] = useState<BiomeId>('verdant_forest');
   const [gameMode, setGameMode] = useState<SurvivorsGameMode>('story');
   const [difficultyId, setDifficultyId] = useState<DifficultyId>('normal');
@@ -1055,7 +1058,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   });
   const bannerTimerRef = useRef<number | null>(null);
 
-  const regionMeta = MAP_REGIONS.find((m) => m.id === selectedBiome) ?? MAP_REGIONS[0];
+  const baseRegionMeta = MAP_REGIONS.find((m) => m.id === selectedBiome) ?? MAP_REGIONS[0];
+  const regionMeta = activeWorldRun
+    ? {
+        ...baseRegionMeta,
+        name: activeWorldRun.isGymChallenge && activeWorldRun.gymName
+          ? `${activeWorldRun.cityName} · ${activeWorldRun.gymName}`
+          : `${activeWorldRun.cityName}`,
+        wildPool: activeWorldRun.wildPool,
+        bossSpecies: activeWorldRun.bossSpecies ?? baseRegionMeta.bossSpecies,
+        bossName: activeWorldRun.bossName ?? baseRegionMeta.bossName,
+        bossTrainerKey: activeWorldRun.bossTrainerKey ?? baseRegionMeta.bossTrainerKey,
+        bossTrainerName: activeWorldRun.bossTrainerName ?? baseRegionMeta.bossTrainerName,
+        targetSec: activeWorldRun.isGymChallenge ? 95 : 135,
+        rewardCoins: activeWorldRun.rewardCoins,
+      }
+    : baseRegionMeta;
   const diffMeta = DIFFICULTIES.find((d) => d.id === difficultyId) ?? DIFFICULTIES[0];
 
   const showBanner = (msg: string, ms = 2800) => {
@@ -1141,6 +1159,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         casts: f.casts,
       }))
       .sort((a, b) => b.damageDealt - a.damageDealt || b.kills - a.kills);
+    if (cleared && activeWorldRun?.isGymChallenge && activeWorldRun.cityId && onUpdateMeta) {
+      const wonCityId = activeWorldRun.cityId;
+      onUpdateMeta((prev) => {
+        const curTour = prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+        if (curTour.clearedCityGyms.includes(wonCityId)) return prev;
+        return {
+          ...prev,
+          worldTour: {
+            ...curTour,
+            clearedCityGyms: [...curTour.clearedCityGyms, wonCityId],
+          },
+        };
+      });
+    }
     return {
       payload,
       totalDamage,
@@ -5982,15 +6014,40 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   const handleLaunchRun = () => {
     sound.play('confirm');
+    setActiveWorldRun(null);
     pausedRef.current = false;
     endedRef.current = false;
     setLaunchFlashSeq((s) => s + 1);
     setPhase('playing');
     showBanner(
       gameMode === 'story'
-        ? `${regionMeta.name}（${diffMeta.label}）：击退野生群与敌方训练师，迎战 ${regionMeta.bossName}！`
-        : `${regionMeta.name} · 无尽生存（${diffMeta.label}）：右上方向有 3D 安全区！`,
+        ? `${baseRegionMeta.name}（${diffMeta.label}）：击退野生群与敌方训练师，迎战 ${baseRegionMeta.bossName}！`
+        : `${baseRegionMeta.name} · 无尽生存（${diffMeta.label}）：右上方向有 3D 安全区！`,
       3400,
+    );
+  };
+
+  const handleLaunchWorldRun = (payload: WorldLaunchPayload) => {
+    sound.play('confirm');
+    setActiveWorldRun(payload);
+    setSelectedBiome(payload.biome);
+    setGameMode(payload.isGymChallenge ? 'story' : 'endless');
+    pausedRef.current = false;
+    endedRef.current = false;
+    setRunNonce((n) => n + 1);
+    setLaunchFlashSeq((s) => s + 1);
+    setPhase('playing');
+    const buffNote =
+      payload.hotelTier === 'grand'
+        ? ' · 五星酒店增益生效！'
+        : payload.isHomeTurf
+          ? ' · GPS主场共鸣生效！'
+          : '';
+    showBanner(
+      payload.isGymChallenge
+        ? `✈ ${payload.cityName} · 挑战「${payload.gymName}」：击败 ${payload.bossName} 赢取 ${payload.gymBadgeName}！${buffNote}`
+        : `🌿 ${payload.cityName} 地区探索：高概率出没当地专属野生宝可梦！${buffNote}`,
+      3800,
     );
   };
 
@@ -6534,20 +6591,19 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 <div className="pkb-hero-subcol">
                   <button
                     type="button"
-                    className="pkb-sub-cta is-endless"
+                    className="pkb-sub-cta is-world"
                     onClick={() => {
                       sound.play('confirm');
-                      setGameMode('endless');
-                      setPhase('map_select');
+                      setPhase('world_map');
                     }}
                   >
                     <div className="pkb-unskew-inner">
                       <div className="pkb-hero-ico-box">
-                        <PixelItemImg src="/sprites/items/vs-seeker.png" size={46} />
+                        <PixelItemImg src="/sprites/items/town-map.png" size={44} />
                       </div>
                       <div>
-                        <strong>{tr(lang, 'endlessMode')}</strong>
-                        <small>{tr(lang, 'endlessModeSub')}</small>
+                        <strong>世界巡礼</strong>
+                        <small>GPS老家 · 航线住宿 · 全球道馆</small>
                       </div>
                     </div>
                     <kbd className="px-keycap on-hero">2</kbd>
@@ -6562,7 +6618,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   >
                     <div className="pkb-unskew-inner">
                       <div className="pkb-hero-ico-box">
-                        <PixelItemImg src="/sprites/items/soothe-bell.png" size={46} />
+                        <PixelItemImg src="/sprites/items/soothe-bell.png" size={44} />
                       </div>
                       <div>
                         <strong>{tr(lang, 'pokemonManager')}</strong>
@@ -6927,6 +6983,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             />
           )}
         </div>
+      )}
+
+      {/* =====================================================================
+          LAYER 1.5: PIXELATED REAL WORLD MAP & GPS TOUR OVERLAY
+         ===================================================================== */}
+      {phase === 'world_map' && (
+        <WorldMapOverlay
+          coins={save.coins}
+          meta={meta}
+          onUpdateMeta={(updater, coinDelta) => onUpdateMeta?.(updater, coinDelta)}
+          onLaunchWorldRun={handleLaunchWorldRun}
+          onClose={() => {
+            sound.play('cancel');
+            setPhase('hub');
+          }}
+        />
       )}
 
       {/* =====================================================================
