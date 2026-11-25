@@ -249,8 +249,8 @@ export const HERO_ROSTER: HeroDef[] = [
   {
     id: 'red',
     name: '赤红',
-    title: '关都冠军继承者',
-    bio: '均衡型指挥官，擅长鼓舞全队爆发攻速与精准精灵球震荡打击。',
+    title: '新手训练师',
+    bio: '满怀热忱出发的新手训练师，擅长鼓舞全队爆发攻速与精准精灵球震荡打击。',
     unlockCost: 0,
     avatarSprite: '/sprites/heroes/hero-red-avatar.png',
     tintHex: 0xffffff,
@@ -258,7 +258,7 @@ export const HERO_ROSTER: HeroDef[] = [
     baseHpBonus: 0,
     baseSpeedBonus: 0,
     baseAtkBonus: 0.05,
-    evolutionTitles: ['真新镇旅人', '关都王牌指挥', '传奇冠军形态'],
+    evolutionTitles: ['新手训练师', '王牌指挥官', '传奇冠军形态'],
     skills: [
       {
         id: 'red_command',

@@ -32,12 +32,22 @@ export interface TownBuildingLot {
   doorZ: number;
 }
 
+export interface TownJunctionNode {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  rotY: number;
+  kind: 'cross' | 'tee';
+}
+
 export interface GeneratedTownLayout {
   townId: string;
   townName: string;
   centerX: number;
   centerZ: number;
   streets: TownStreetSeg[];
+  junctions: TownJunctionNode[];
   rail: TownStreetSeg[];
   lots: TownBuildingLot[];
   plazaX: number;
@@ -85,13 +95,13 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const cz = anchor.z;
 
   const streets: TownStreetSeg[] = [];
+  const junctions: TownJunctionNode[] = [];
   const rail: TownStreetSeg[] = [];
 
-  // 1. Primary Organic Arterial Spine (2 gently bending halves passing through town center!)
-  const baseHeading = (rng() - 0.5) * 0.36; // slight organic orientation per town
-  const bendA = (rng() - 0.5) * 0.28;
-  const bendB = (rng() - 0.5) * 0.28;
-
+  // 1. Cities: Skylines Grand Metropolis Road Hierarchy (proportionally scaled to 8-Lane Boulevards!):
+  // - Main 8-Lane Grand Boulevards with Central Green Median & Wide Sidewalks (width = 24.0m)
+  // - Secondary 4-Lane Collector Avenues with Sidewalks & Tree Verges (width = 14.0m)
+  // - Cozy Pedestrian Cobblestone Alleys (width = 7.6m)
   const addChain = (
     sx: number,
     sz: number,
@@ -109,66 +119,84 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     for (let i = 0; i < steps; i++) {
       const nx = x + Math.cos(a) * segLen;
       const nz = z + Math.sin(a) * segLen;
+      // Keep every street strictly inside the city's expansive plateau (r <= 96m, well inside plazaRadius 112m!)
+      if (Math.hypot(nx - cx, nz - cz) > 96) break;
       streets.push({ x1: x, z1: z, x2: nx, z2: nz, width, kind });
       x = nx;
       z = nz;
-      a += bendPerStep + (rng() - 0.5) * 0.14;
+      a += bendPerStep;
       nodes.push({ x, z, angle: a });
     }
     return nodes;
   };
 
-  // East & West arterial arms radiating from central junction
-  const eastNodes = addChain(cx, cz, baseHeading, 3, 20, bendA * 0.5, 8.6, 'arterial');
-  const westNodes = addChain(cx, cz, baseHeading + Math.PI, 3, 20, bendB * 0.5, 8.6, 'arterial');
+  // Straight 8-Lane Cardinal Boulevards radiating cleanly from the Grand Central Plaza edge (r = 22m -> 94m)!
+  const eastNodes = addChain(cx + 22, cz, 0, 2, 36, 0, 24.0, 'arterial');
+  const westNodes = addChain(cx - 22, cz, Math.PI, 2, 36, 0, 24.0, 'arterial');
+  const southNodes = addChain(cx, cz + 22, Math.PI * 0.5, 2, 36, 0, 24.0, 'arterial');
+  const northNodes = addChain(cx, cz - 22, -Math.PI * 0.5, 2, 36, 0, 24.0, 'arterial');
 
-  // North & South main cross-avenues (South arm aims cleanly toward incoming highway!)
-  const southNodes = addChain(cx, cz, Math.PI * 0.5 + (rng() - 0.5) * 0.12, 3, 19, (rng() - 0.5) * 0.1, 8.2, 'arterial');
-  const northNodes = addChain(cx, cz, -Math.PI * 0.5 + (rng() - 0.5) * 0.16, 2, 18, (rng() - 0.5) * 0.14, 7.6, 'arterial');
-
-  // 2. Branching Secondary Residential Streets & Alleys (organic T-junctions & cul-de-sacs!)
+  // 2. Branching Secondary 4-Lane Collector Avenues & Pedestrian Alleys (strictly orthogonal 90° T-junctions -> clean Skylines connections!)
   const branchAnchors = [
     { node: eastNodes[1], dir: 1 },
-    { node: eastNodes[2], dir: -1 },
+    { node: eastNodes[1], dir: -1 },
     { node: westNodes[1], dir: -1 },
-    { node: westNodes[2], dir: 1 },
+    { node: westNodes[1], dir: 1 },
     { node: southNodes[1], dir: 1 },
     { node: southNodes[1], dir: -1 },
-    { node: southNodes[2], dir: 1 },
     { node: northNodes[1], dir: -1 },
+    { node: northNodes[1], dir: 1 },
   ];
 
+  const addedJunctionKeys = new Set<string>();
   for (let bi = 0; bi < branchAnchors.length; bi++) {
-    const { node, dir } = branchAnchors[bi];
-    const turnAng = node.angle + dir * (Math.PI * 0.5 + (rng() - 0.5) * 0.22);
-    const len = 15 + rng() * 6;
-    const subSteps = bi % 3 === 0 ? 2 : 1;
+    const entry = branchAnchors[bi];
+    if (!entry.node) continue;
+    const { node, dir } = entry;
+    const turnAng = node.angle + dir * (Math.PI * 0.5);
+    const len = 30 + Math.round(rng() * 8);
     const isAlley = bi % 3 === 2;
+    const roadW = isAlley ? 7.6 : 14.0;
+    // Start the side road right outside the 8-lane boulevard curb edge (12.0m) so the T-junction pad joins them with ZERO overlap!
+    const startOff = 12.0;
+    const sx = node.x + Math.cos(turnAng) * startOff;
+    const sz = node.z + Math.sin(turnAng) * startOff;
     addChain(
-      node.x,
-      node.z,
+      sx,
+      sz,
       turnAng,
-      subSteps,
+      1,
       len,
-      (rng() - 0.5) * 0.2,
-      isAlley ? 4.4 : 6.0,
+      0,
+      roadW,
       isAlley ? 'alley' : 'street',
     );
+    const jKey = `${Math.round(node.x)}_${Math.round(node.z)}`;
+    if (!addedJunctionKeys.has(jKey)) {
+      addedJunctionKeys.add(jKey);
+      junctions.push({
+        x: node.x,
+        z: node.z,
+        width: 24.4,
+        depth: 24.4,
+        rotY: -node.angle,
+        kind: 'tee',
+      });
+    }
   }
 
-  // 3. Curved Tangential Railway Line skirting the northern edge of town!
-  const railCenterZ = cz - 42;
-  const railAngle = baseHeading * 0.6;
-  let rx = cx - Math.cos(railAngle) * 54;
-  let rz = railCenterZ - Math.sin(railAngle) * 54;
-  let ra = railAngle - 0.12;
+  // 3. Gently Curved High-Speed Railway Corridor inside the northern district (z = cz - 72, span ±64m -> max r ≈ 96m < plazaRadius 112m!)
+  const railCenterZ = cz - 72;
+  let rx = cx - 64;
+  let rz = railCenterZ;
+  let ra = -0.05;
   for (let i = 0; i < 6; i++) {
-    const nrx = rx + Math.cos(ra) * 18;
-    const nrz = rz + Math.sin(ra) * 18;
-    rail.push({ x1: rx, z1: rz, x2: nrx, z2: nrz, width: 4.5, kind: 'rail' });
+    const nrx = rx + Math.cos(ra) * 21.5;
+    const nrz = rz + Math.sin(ra) * 21.5;
+    rail.push({ x1: rx, z1: rz, x2: nrx, z2: nrz, width: 5.5, kind: 'rail' });
     rx = nrx;
     rz = nrz;
-    ra += 0.048;
+    ra += 0.02;
   }
 
   // Station sits neatly beside the middle of the rail line
@@ -177,10 +205,10 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const stationZ = (midRail.z1 + midRail.z2) * 0.5;
   const stationRotY = -Math.atan2(midRail.z2 - midRail.z1, midRail.x2 - midRail.x1);
 
-  // Bus/Tram stop along the West arterial curb
+  // Bus/Tram stop along the West boulevard curb
   const busSeg = westNodes[1];
   const busX = busSeg.x;
-  const busZ = busSeg.z + 5.2;
+  const busZ = busSeg.z + 13.5;
   const busRotY = -busSeg.angle;
 
   // 4. Automatic Curbside Lot Subdivision (walks both curbs of every street, rejects overlaps!)
@@ -199,8 +227,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     for (const rl of rail) {
       if (distToSeg(lx, lz, rl.x1, rl.z1, rl.x2, rl.z2) < 6.5 + radius * 0.5) return true;
     }
-    // Reject if too close to central junction fountain
-    if (Math.hypot(lx - cx, lz - cz) < 8.5 + radius * 0.4) return true;
+    // Reject if overlapping the Grand Central Civic Plaza (r = 23m)
+    if (Math.hypot(lx - cx, lz - cz) < 24.5 + radius * 0.5) return true;
     // Reject if overlapping any already placed building lot
     for (const ex of lots) {
       const exR = Math.hypot(ex.width * 0.5, ex.depth * 0.5) * 0.88;
@@ -242,17 +270,17 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       });
     }
 
-    const stepsAlong = Math.max(1, Math.floor(len / 13));
+    const stepsAlong = Math.max(1, Math.floor(len / 15.5));
     for (let k = 0; k < stepsAlong; k++) {
       const t = (k + 0.5) / stepsAlong;
       const mx = st.x1 + dx * t;
       const mz = st.z1 + dz * t;
       for (const side of [-1, 1]) {
-        const setback = st.width * 0.5 + 7.2;
+        const setback = st.width * 0.5 + 9.2;
         const lx = mx + nx * side * setback;
         const lz = mz + nz * side * setback;
-        const doorX = mx + nx * side * (st.width * 0.5 + 1.8);
-        const doorZ = mz + nz * side * (st.width * 0.5 + 1.8);
+        const doorX = mx + nx * side * (st.width * 0.5 + 2.0);
+        const doorZ = mz + nz * side * (st.width * 0.5 + 2.0);
         // Face toward the street! (Three.js +Z forward faces (-nx*side, -nz*side))
         const rotY = Math.atan2(-nx * side, -nz * side);
         candidates.push({
@@ -270,13 +298,13 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
 
   candidates.sort((a, b) => a.distFromCenter - b.distFromCenter);
 
-  // Assign Civic Flagship Lots first (Pokémon Center, Poké Mart, Hotel, Restaurant, Iconic Landmark!)
+  // Assign Grand Human-Scale Civic Flagship Lots first (Pokémon Center, Poké Mart, Hotel, Restaurant, Iconic Landmark!)
   const civicQueue: { kind: TownLotKind; w: number; d: number; walkable?: boolean }[] = [
-    { kind: 'pokemon_center', w: 15.6, d: 12.6, walkable: true },
-    { kind: 'poke_mart', w: 14.2, d: 11.6, walkable: true },
-    { kind: 'hotel', w: 14.0, d: 11.4 },
-    { kind: 'restaurant', w: 13.0, d: 10.6 },
-    ...(anchor.landmarkCityId ? [{ kind: 'landmark' as TownLotKind, w: 11.0, d: 11.0 }] : []),
+    { kind: 'pokemon_center', w: 19.6, d: 16.0, walkable: true },
+    { kind: 'poke_mart', w: 18.2, d: 14.8, walkable: true },
+    { kind: 'hotel', w: 18.0, d: 14.6 },
+    { kind: 'restaurant', w: 16.6, d: 13.6 },
+    ...(anchor.landmarkCityId ? [{ kind: 'landmark' as TownLotKind, w: 13.0, d: 13.0 }] : []),
   ];
 
   let lotCounter = 0;
@@ -301,12 +329,12 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     }
   }
 
-  // Fill remaining organic street-side slots with 12–15 diverse Residential Houses!
+  // Fill remaining organic street-side slots with spacious Residential Houses!
   let houseCount = 0;
   for (const cand of candidates) {
-    if (houseCount >= 14) break;
-    const hw = 10.8 + (houseCount % 3) * 1.1;
-    const hd = 9.4 + (houseCount % 2) * 0.9;
+    if (houseCount >= 12) break;
+    const hw = 13.8 + (houseCount % 3) * 1.1;
+    const hd = 11.8 + (houseCount % 2) * 0.9;
     if (isTooCloseToRoadOrLot(cand.x, cand.z, hw * 0.5, hd * 0.5)) continue;
     lots.push({
       id: `${anchor.id}_house_${houseCount}`,
@@ -335,6 +363,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     centerX: cx,
     centerZ: cz,
     streets,
+    junctions,
     rail,
     lots,
     plazaX: cx,

@@ -24,8 +24,10 @@ import {
   WORLD_SECTOR_SIZE,
   WORLD_TOWNS_3D,
   getDefaultSkillsForElement,
+  getRawNaturalTerrainHeight3D,
   getTerrainHeight3D,
   getUnlockedSkillSlotCount,
+  getWalkableSurfaceHeight3D,
   isOnInterTownRoad3D,
   type DifficultyId,
   type LiveRunTacticsBridge,
@@ -113,6 +115,8 @@ import { sound } from '../utils/sound';
 import {
   buildInterTownRoadNetwork3D,
   buildProceduralTown3D,
+  computeCameraWallClipT,
+  isInsideBuildingInterior,
   resolveTownWallCollisions,
   setBuildingExteriorOpacity,
   type ProceduralTownInstance,
@@ -1365,6 +1369,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     capturedBoss: { species: SpeciesId; name: string; level: number } | null;
     storyBossSpawned: boolean;
     endlessBossTimer: number;
+    wildStaySec: number;
+    wildZoneAnchorX: number;
+    wildZoneAnchorZ: number;
+    guardianWaveCount: number;
     nextId: number;
     dmgPops: { id: number; wx: number; wy: number; wz: number; text: string; color: string; life: number }[];
   } | null>(null);
@@ -2075,7 +2083,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   // Mobile Back / Swipe-Back coordination with App.tsx
   const arenaHasCloseableLayer =
-    phase !== 'hub' || hubModal !== 'none' || profileOpen || squadEditorOpen || shopOpen;
+    phase !== 'hub' || hubModal !== 'none' || profileOpen || squadEditorOpen || shopOpen || inRunTownShopOpen;
 
   useEffect(() => {
     onBackLayerActiveChange?.(arenaHasCloseableLayer);
@@ -2084,6 +2092,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   useEffect(() => {
     if (!onRegisterBackHandler) return;
     const handler = (): boolean => {
+      if (inRunTownShopOpen) {
+        sound.play('cancel');
+        setInRunTownShopOpen(false);
+        return true;
+      }
       if (shopOpen) {
         closeShopModal();
         return phase !== 'hub';
@@ -2135,6 +2148,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     profileOpen,
     squadEditorOpen,
     shopOpen,
+    inRunTownShopOpen,
     resultSummary,
     pet.id,
   ]);
@@ -2264,7 +2278,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const townsGroup = new THREE.Group();
     scene.add(townsGroup);
     if (!getActiveGeoTerrainOrigin()) {
-      const roadNetGroup = buildInterTownRoadNetwork3D((x, z) => getTerrainHeight3D(x, z));
+      const roadNetGroup = buildInterTownRoadNetwork3D(
+        (x, z) => getTerrainHeight3D(x, z),
+        (x, z) => getRawNaturalTerrainHeight3D(x, z),
+      );
       townsGroup.add(roadNetGroup);
     }
     const proceduralTowns: ProceduralTownInstance[] = WORLD_TOWNS_3D.map((spec) => {
@@ -3182,7 +3199,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       trainersDefeated: 0,
       capturedBoss: null,
       storyBossSpawned: false,
-      endlessBossTimer: 55,
+      endlessBossTimer: 180,
+      wildStaySec: 0,
+      wildZoneAnchorX: startPx,
+      wildZoneAnchorZ: startPz,
+      guardianWaveCount: 0,
       nextId: 1,
       dmgPops: [],
     };
@@ -3968,7 +3989,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       const url = isTrainer ? opts!.trainerSprite! : stageAsset.static;
       const animGif = isTrainer ? undefined : stageAsset.animated;
       const worldScale = isTrainer
-        ? 2.55
+        ? 2.35
         : getPokemonWorldScale3D(species, stage, qMeta.scaleMult * (isBoss ? 1.2 : 1.0));
       const { sprite, shadow, animSheet, backAnimSheet, pmdSheet } = createSpriteEntity(
         url,
@@ -4869,19 +4890,19 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const moveSpeed = 7.6 * sim.speedMult;
           const nextPx = sim.px + worldMx * moveSpeed * dt;
           const nextPz = sim.pz + worldMz * moveSpeed * dt;
-          const nextGroundY = getTerrainHeight3D(nextPx, nextPz);
+          const nextGroundY = getWalkableSurfaceHeight3D(nextPx, nextPz);
           const enteringDeepWater = nextGroundY < WATER_LEVEL_3D - 0.14;
           if (enteringDeepWater && !hasWaterSurfer) {
             if (surfWarnCdRef.current <= 0 && mLen > 0.1) {
               surfWarnCdRef.current = 3.5;
               sound.play('error');
-              showBanner('🌊 前方是深水湖泊！队伍中携带水系宝可梦（杰尼龟 / 可达鸭）即可冲浪渡水作战！', 3200);
+              showBanner('🌊 前方是深水湖泊！走桥梁可自由通行，或携带水系宝可梦冲浪渡水！', 3200);
             }
           } else if (nextGroundY <= sim.py + 1.45) {
             sim.px = nextPx;
             sim.pz = nextPz;
           }
-          const rawGroundY = getTerrainHeight3D(sim.px, sim.pz);
+          const rawGroundY = getWalkableSurfaceHeight3D(sim.px, sim.pz);
           const surfingNow = rawGroundY < WATER_LEVEL_3D - 0.1 && hasWaterSurfer;
           const groundY = surfingNow ? WATER_LEVEL_3D + 0.12 : rawGroundY;
           surfRingMesh.visible = surfingNow;
@@ -4964,6 +4985,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           let closestTownPoint: TownInteractPoint | null = null;
           let closestTownDist = 999;
           let activeTownNow: ProceduralTownInstance | null = null;
+          let activeInteriorIdNow: string | null = null;
           for (const town of proceduralTowns) {
             if (town.trainGroup && town.trainBaseX !== undefined) {
               town.trainGroup.position.x = town.trainBaseX + Math.sin(windClock * 0.28) * 6.5;
@@ -4981,19 +5003,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               activeTownNow = town;
             }
             if (distToTown < town.safeRadius + 10) {
-              // Player wall collision (walkable U-shaped doorways stay open!)
+              // Player wall collision (solid 4-sided walls, enter strictly through the Front Doorway!)
               const pPos = { x: sim.px, z: sim.pz };
               resolveTownWallCollisions(pPos, 0.85, town.colliders);
               sim.px = pPos.x;
               sim.pz = pPos.z;
 
-              // Walkable Building Interiors: Smooth cutaway transparent roof when player steps inside!
+              // Walkable Building Interiors: Smooth cutaway transparent roof ONLY when player walks inside via the doorway!
               for (const bInt of town.interiors) {
-                const inside =
-                  sim.px >= bInt.bounds.minX &&
-                  sim.px <= bInt.bounds.maxX &&
-                  sim.pz >= bInt.bounds.minZ &&
-                  sim.pz <= bInt.bounds.maxZ;
+                const inside = isInsideBuildingInterior(sim.px, sim.pz, bInt);
+                if (inside) activeInteriorIdNow = bInt.id;
                 const targetAlpha = inside ? 0.14 : 1.0;
                 if (Math.abs(bInt.cutawayAlpha - targetAlpha) > 0.015) {
                   bInt.cutawayAlpha += (targetAlpha - bInt.cutawayAlpha) * Math.min(1, dt * 10);
@@ -5383,62 +5402,77 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
           }
 
-          // 2C. Story Guardian Boss OR Endless Boss (Substantial, Multi-Phase Boss Fight!)
-          if (gameMode === 'story' && !sim.storyBossSpawned && sim.elapsed >= regionMeta.targetSec) {
-            sim.storyBossSpawned = true;
-            sound.playCry(getPokemonCryId(regionMeta.bossSpecies, 25));
-            if (prefsRef.current.screenShake) shakeRef.current = Math.max(shakeRef.current, 0.5);
-            const bx = sim.px + 16;
-            const bz = sim.pz - 12;
-            const storyBossHp = Math.round(
-              (2600 + sim.baseAtk * 16 + sim.followers.length * 420) * regionMult * diffMeta.enemyHpMult,
-            );
-            spawnEnemy3D(
-              bx,
-              bz,
-              regionMeta.bossSpecies,
-              storyBossHp,
-              4.35,
-              Math.round(24 * regionMult * diffMeta.enemyDmgMult),
-              { isBoss: true },
-            );
-            const trInfo = ENEMY_TRAINER_ROSTER.find((t) => t.key === regionMeta.bossTrainerKey);
-            if (trInfo) {
-              spawnEnemy3D(
-                bx + 2.8,
-                bz + 2.2,
-                regionMeta.bossSpecies,
-                Math.round((680 + sim.elapsed * 4.5) * regionMult * diffMeta.enemyHpMult),
-                4.0,
-                Math.round(18 * regionMult * diffMeta.enemyDmgMult),
-                {
-                  isTrainer: true,
-                  trainerSprite: trInfo.sprite,
-                  trainerName: regionMeta.bossTrainerName,
-                },
+          // 2C. Wilderness Zone-Stay Escalating Guardians!
+          // Zero guardians in peaceful cities; staying in a wilderness area long enough summons progressively stronger guardians
+          // on an escalating interval schedule: 3 min -> 6 min -> 9 min -> 15 min -> 22 min -> 30 min -> 40 min -> 50 min -> 60 min!
+          const GUARDIAN_WAIT_SCHEDULE_SEC = [180, 360, 540, 900, 1320, 1800, 2400, 3000, 3600];
+          if (inTownPeaceZone) {
+            // In peaceful city: cool down wilderness stay timer & reset anchor
+            sim.wildStaySec = Math.max(0, sim.wildStaySec - dt * 1.5);
+            sim.wildZoneAnchorX = sim.px;
+            sim.wildZoneAnchorZ = sim.pz;
+          } else {
+            const driftFromAnchor = Math.hypot(sim.px - sim.wildZoneAnchorX, sim.pz - sim.wildZoneAnchorZ);
+            if (driftFromAnchor > 72) {
+              // Moved into a brand-new wilderness area: re-anchor local zone stay!
+              sim.wildZoneAnchorX = sim.px;
+              sim.wildZoneAnchorZ = sim.pz;
+              sim.wildStaySec = Math.max(0, sim.wildStaySec * 0.35);
+            } else {
+              sim.wildStaySec += dt;
+            }
+            const nextWaitSec =
+              GUARDIAN_WAIT_SCHEDULE_SEC[Math.min(sim.guardianWaveCount, GUARDIAN_WAIT_SCHEDULE_SEC.length - 1)];
+            if (sim.wildStaySec >= nextWaitSec) {
+              sim.wildStaySec = 0;
+              sim.guardianWaveCount += 1;
+              const tier = sim.guardianWaveCount;
+              const curBiomeNow = getSeamlessBiomeAt3D(sim.px, sim.pz, sim.py, selectedBiome);
+              const curBiomeMeta = MAP_REGIONS.find((r) => r.id === curBiomeNow) ?? regionMeta;
+              const pool: SpeciesId[] = [...curBiomeMeta.guardians, curBiomeMeta.bossSpecies];
+              const bossSp = pool[(tier - 1) % pool.length];
+              const tierScale = 1 + (tier - 1) * 0.55;
+              sound.playCry(getPokemonCryId(bossSp, 25));
+              if (prefsRef.current.screenShake) shakeRef.current = Math.max(shakeRef.current, 0.5);
+              const spawnAng = Math.random() * Math.PI * 2;
+              const bx = sim.px + Math.cos(spawnAng) * 18;
+              const bz = sim.pz + Math.sin(spawnAng) * 18;
+              const guardianHp = Math.round(
+                (2600 + sim.baseAtk * 16 + sim.followers.length * 420) * tierScale * regionMult * diffMeta.enemyHpMult,
               );
-            }
-            if (prefsRef.current.bossAlerts) {
-              showBanner(`！区域守护者【${regionMeta.bossName}】降临！注意躲避扇形与环形弹幕！`, 4500);
-            }
-          } else if (gameMode === 'endless') {
-            sim.endlessBossTimer -= dt;
-            if (sim.endlessBossTimer <= 0) {
-              sim.endlessBossTimer = 90;
-              const sp = regionMeta.guardians[Math.floor(Math.random() * regionMeta.guardians.length)];
-              sound.playCry(getPokemonCryId(sp, 25));
-              if (prefsRef.current.screenShake) shakeRef.current = Math.max(shakeRef.current, 0.45);
               spawnEnemy3D(
-                sim.px + 17,
-                sim.pz - 12,
-                sp,
-                Math.round((2800 + sim.elapsed * 22 + sim.followers.length * 380) * diffMeta.enemyHpMult),
-                4.4,
-                Math.round(25 * diffMeta.enemyDmgMult),
+                bx,
+                bz,
+                bossSp,
+                guardianHp,
+                Math.min(5.6, 4.2 + tier * 0.14),
+                Math.round(24 * (1 + (tier - 1) * 0.3) * regionMult * diffMeta.enemyDmgMult),
                 { isBoss: true },
               );
+              const trInfo = ENEMY_TRAINER_ROSTER[tier % ENEMY_TRAINER_ROSTER.length];
+              if (trInfo) {
+                spawnEnemy3D(
+                  bx + 2.8,
+                  bz + 2.2,
+                  bossSp,
+                  Math.round((680 + tier * 240) * regionMult * diffMeta.enemyHpMult),
+                  4.0,
+                  Math.round(18 * regionMult * diffMeta.enemyDmgMult),
+                  {
+                    isTrainer: true,
+                    trainerSprite: trInfo.sprite,
+                    trainerName: trInfo.name,
+                  },
+                );
+              }
+              const nextMins = Math.round(
+                GUARDIAN_WAIT_SCHEDULE_SEC[Math.min(tier, GUARDIAN_WAIT_SCHEDULE_SEC.length - 1)] / 60,
+              );
               if (prefsRef.current.bossAlerts) {
-                showBanner(`！无尽守护者【${SPECIES_CATALOG[sp].defaultName}】降临！击败可投球收服！`, 3600);
+                showBanner(
+                  `⚠️ 野外深度停留触发 · 第 ${tier} 阶守护者【${SPECIES_CATALOG[bossSp].defaultName}】现身！（击败可收服，下一阶间隔 ${nextMins} 分钟）`,
+                  4500,
+                );
               }
             }
           }
@@ -5542,8 +5576,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 (f.species === 'charmander' && f.stage === 'adult');
               const candFx = f.x + f.vx * dt;
               const candFz = f.z + f.vz * dt;
-              const candFy = getTerrainHeight3D(candFx, candFz);
-              const inWaterNow = getTerrainHeight3D(f.x, f.z) < WATER_LEVEL_3D - 0.08;
+              const candFy = getWalkableSurfaceHeight3D(candFx, candFz);
+              const inWaterNow = getWalkableSurfaceHeight3D(f.x, f.z) < WATER_LEVEL_3D - 0.08;
               const candInWater = candFy < WATER_LEVEL_3D - 0.08;
               if (!isWaterOrFly && candInWater && !inWaterNow && distToRed < leashMax * 0.85) {
                 // Land Pokémon prefers to stay dry along the bank instead of casually stepping into the lake!
@@ -5561,7 +5595,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 f.x = fPos.x;
                 f.z = fPos.z;
               }
-              const rawFy = getTerrainHeight3D(f.x, f.z);
+              const rawFy = getWalkableSurfaceHeight3D(f.x, f.z);
               f.y =
                 rawFy < WATER_LEVEL_3D - 0.05
                   ? isWaterOrFly
@@ -5681,8 +5715,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 (f.species === 'charmander' && f.stage === 'adult');
               const candFx = f.x + f.vx * dt;
               const candFz = f.z + f.vz * dt;
-              const candFy = getTerrainHeight3D(candFx, candFz);
-              const inWaterNow = getTerrainHeight3D(f.x, f.z) < WATER_LEVEL_3D - 0.08;
+              const candFy = getWalkableSurfaceHeight3D(candFx, candFz);
+              const inWaterNow = getWalkableSurfaceHeight3D(f.x, f.z) < WATER_LEVEL_3D - 0.08;
               const candInWater = candFy < WATER_LEVEL_3D - 0.08;
               if (!isWaterOrFly && candInWater && !inWaterNow && distToRed < leashMax * 0.85) {
                 // Land Pokémon prefers to stay dry along the bank instead of casually stepping into the lake!
@@ -5700,7 +5734,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 f.x = fPos.x;
                 f.z = fPos.z;
               }
-              const rawFy = getTerrainHeight3D(f.x, f.z);
+              const rawFy = getWalkableSurfaceHeight3D(f.x, f.z);
               f.y =
                 rawFy < WATER_LEVEL_3D - 0.05
                   ? isWaterOrFly
@@ -6037,7 +6071,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
             if (en.isAquatic) {
               // Amphibious Water Pokémon (Squirtle/Blastoise, Psyduck) thrive BOTH in lakes AND freely walk on dry land!
-              const enRawY = getTerrainHeight3D(en.x, en.z);
+              const enRawY = getWalkableSurfaceHeight3D(en.x, en.z);
               const currentlyInWater = enRawY < WATER_LEVEL_3D + 0.05;
               if (currentlyInWater) {
                 en.waterJumpTimer = (en.waterJumpTimer ?? 2.2) - dt;
@@ -6059,7 +6093,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             } else if (en.aggroed) {
               const candX = en.x + (dx / dist) * en.speed * dt;
               const candZ = en.z + (dz / dist) * en.speed * dt;
-              const candY = getTerrainHeight3D(candX, candZ);
+              const candY = getWalkableSurfaceHeight3D(candX, candZ);
               const isWaterOrFlyEn =
                 SPECIES_CATALOG[en.species].element === 'water' ||
                 en.species === 'gastly' ||
@@ -6081,7 +6115,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               if (pDist > 0.25) {
                 const nX = en.x + (pdx / pDist) * en.speed * 0.35 * dt;
                 const nZ = en.z + (pdz / pDist) * en.speed * 0.35 * dt;
-                if (getTerrainHeight3D(nX, nZ) >= WATER_LEVEL_3D + 0.06) {
+                if (getWalkableSurfaceHeight3D(nX, nZ) >= WATER_LEVEL_3D + 0.06) {
                   en.x = nX;
                   en.z = nZ;
                 }
@@ -6098,7 +6132,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
 
-            const rawEnY = getTerrainHeight3D(en.x, en.z);
+            const rawEnY = getWalkableSurfaceHeight3D(en.x, en.z);
             const enInLake = rawEnY < WATER_LEVEL_3D + 0.05;
             const jumpArc =
               en.isAquatic && enInLake && (en.waterJumpTimer ?? 3) > 2.0
@@ -6540,21 +6574,40 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             if (sim.dmgPops[i].life <= 0) sim.dmgPops.splice(i, 1);
           }
 
-          // Standard PC 3D Wide-Angle Perspective Camera (Strong 近大远小 depth + 1:1 Orbit + Terrain Clamp!)
+          // Standard PC 3D Wide-Angle Perspective Camera (Strong 近大远小 depth + 1:1 Orbit + Solid Wall Spring-Arm Occlusion!)
           camPivotRef.current.lerp(
             new THREE.Vector3(sim.px, sim.py + 1.55, sim.pz),
             Math.min(1, dt * 14),
           );
           camSmoothZoomRef.current +=
             (camOrbitRef.current.zoom - camSmoothZoomRef.current) * Math.min(1, dt * 12);
-          const baseDist = (camPresetRef.current === 'close' ? 7.8 : 10.4) * camSmoothZoomRef.current;
+          const interiorZoomFactor = activeInteriorIdNow ? 0.72 : 1.0;
+          const baseDist = (camPresetRef.current === 'close' ? 7.8 : 10.4) * camSmoothZoomRef.current * interiorZoomFactor;
           const yaw = camOrbitRef.current.yaw;
           const pitch = camOrbitRef.current.pitch;
           const horiz = Math.cos(pitch) * baseDist;
-          const camX = camPivotRef.current.x + Math.sin(yaw) * horiz;
-          const camZ = camPivotRef.current.z + Math.cos(yaw) * horiz;
-          const desiredCamY = camPivotRef.current.y + Math.sin(pitch) * baseDist;
-          const groundUnderCam = getTerrainHeight3D(camX, camZ);
+          const rawCamX = camPivotRef.current.x + Math.sin(yaw) * horiz;
+          const rawCamZ = camPivotRef.current.z + Math.cos(yaw) * horiz;
+          const rawCamY = camPivotRef.current.y + Math.sin(pitch) * baseDist;
+
+          // Spring-Arm Wall Occlusion: if a solid town wall sits between player and camera, pull camera lens inward cleanly!
+          const wallClipT = activeTownNow
+            ? computeCameraWallClipT(
+                camPivotRef.current.x,
+                camPivotRef.current.y,
+                camPivotRef.current.z,
+                rawCamX,
+                rawCamY,
+                rawCamZ,
+                activeTownNow.group.position.y,
+                activeTownNow.colliders,
+                activeInteriorIdNow,
+              )
+            : 1.0;
+          const camX = camPivotRef.current.x + (rawCamX - camPivotRef.current.x) * wallClipT;
+          const camZ = camPivotRef.current.z + (rawCamZ - camPivotRef.current.z) * wallClipT;
+          const desiredCamY = camPivotRef.current.y + (rawCamY - camPivotRef.current.y) * wallClipT;
+          const groundUnderCam = getWalkableSurfaceHeight3D(camX, camZ);
           const shakeAmp =
             prefsRef.current.screenShake && shakeRef.current > 0
               ? shakeRef.current * (prefsRef.current.shakeIntensity / 100) * 0.55
@@ -7326,7 +7379,6 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const xpPct = Math.min(100, Math.round((hud.xp / hud.xpNeed) * 100));
   const hpPct = Math.min(100, Math.round((hud.hp / hud.maxHp) * 100));
   const minStr = `${Math.floor(hud.elapsedSec / 60)}:${String(hud.elapsedSec % 60).padStart(2, '0')}`;
-  const storyRemSec = Math.max(0, regionMeta.targetSec - hud.elapsedSec);
 
   // Publish live tactics bridge so the Handheld Console renders Tactics natively!
   useEffect(() => {
@@ -8254,7 +8306,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     <span className="pkb-type-pill" style={{ backgroundColor: '#c92a2a' }}>火山</span>
                   </div>
                   <p>
-                    单一连续的无限随机大世界：向任意方向漫游即可自然跨越五大生态与随机拼装的城镇（出生点北侧即「真新小镇」，可进入宝可梦中心治疗、友好商店购物或乘车巡礼）。当前天气：{liveWeather.summary}（{liveWeather.buffText}）。
+                    单一连续的无限大世界：默认出发点位于「上海市」南郊，向北即入上海市中心（含东方明珠、宝可梦中心、友好商店与高铁站），沿四方公路可跨桥穿洞远行至北京、广州、东京、京都。当前天气：{liveWeather.summary}（{liveWeather.buffText}）。
                   </p>
                 </div>
 
@@ -8604,14 +8656,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     </div>
                     <div className="top-deck-center">
                       <PixelItemImg src="/sprites/items/poke-ball.png" size={16} />
-                      <strong>
-                        {gameMode === 'story'
-                          ? storyRemSec > 0
-                            ? `${Math.floor(storyRemSec / 60)}:${String(storyRemSec % 60).padStart(2, '0')}`
-                            : '守护者降临!'
-                          : minStr}
-                      </strong>
-                      <small>{gameMode === 'story' ? '距离守护者' : '无尽讨伐'}</small>
+                      <strong>{minStr}</strong>
+                      <small>
+                        {WORLD_TOWNS_3D.find(
+                          (t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6,
+                        )?.name ?? '野外探索'}
+                      </small>
                     </div>
                     <div className="top-deck-wing is-right">
                       <span className="top-trainer-tag" style={{ borderColor: activeTag.color, color: activeTag.color }}>

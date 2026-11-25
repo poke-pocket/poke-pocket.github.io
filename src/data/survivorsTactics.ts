@@ -440,26 +440,26 @@ export interface WorldTownAnchor3D {
 }
 
 /**
- * Natural dry-land villages & towns anchored across the infinite seamless 3D world.
- * getTerrainHeight3D smoothly levels a terraced dry highland plateau around each town
- * so ZERO buildings ever spawn in water or float off sloped terrain!
+ * Iconic real-world cities anchored far apart across the infinite seamless 3D world.
+ * Default starting city right north of spawn is 上海市 (with 东方明珠)!
+ * getTerrainHeight3D smoothly levels a wide terraced dry plateau (plazaRadius + 18m)
+ * around each city so ZERO buildings, streets, or railway tracks ever dangle into lakes!
  */
 export const WORLD_TOWNS_3D: WorldTownAnchor3D[] = [
-  { id: 'town_pallet', name: '真新村镇', x: 0, z: -72, seed: 101, plazaRadius: 56, plateauY: 1.85, landmarkCityId: 'shanghai' },
-  { id: 'town_viridian', name: '常磐商业镇', x: 148, z: 18, seed: 202, plazaRadius: 52, plateauY: 2.35, landmarkCityId: 'tokyo' },
-  { id: 'town_cerulean', name: '华蓝水岸城', x: -146, z: -22, seed: 303, plazaRadius: 54, plateauY: 1.95, landmarkCityId: 'guangzhou' },
-  { id: 'town_celadon', name: '玉虹古都', x: 38, z: 156, seed: 404, plazaRadius: 54, plateauY: 2.65, landmarkCityId: 'beijing' },
-  { id: 'town_vermilion', name: '枯叶樱花镇', x: -124, z: 148, seed: 505, plazaRadius: 52, plateauY: 2.05, landmarkCityId: 'kyoto' },
+  { id: 'city_shanghai', name: '上海市', x: 0, z: -148, seed: 101, plazaRadius: 112, plateauY: 1.95, landmarkCityId: 'shanghai' },
+  { id: 'city_beijing', name: '北京市', x: 0, z: -560, seed: 202, plazaRadius: 112, plateauY: 2.65, landmarkCityId: 'beijing' },
+  { id: 'city_guangzhou', name: '广州市', x: 0, z: 320, seed: 303, plazaRadius: 112, plateauY: 1.95, landmarkCityId: 'guangzhou' },
+  { id: 'city_tokyo', name: '东京市', x: 460, z: -148, seed: 404, plazaRadius: 112, plateauY: 2.15, landmarkCityId: 'tokyo' },
+  { id: 'city_kyoto', name: '京都市', x: -460, z: -148, seed: 505, plazaRadius: 112, plateauY: 2.25, landmarkCityId: 'kyoto' },
 ];
 
-/** Road segments connecting Spawn Gate and all 5 Villages/Towns into a continuous highway network! */
+/** Clean cardinal expressway network plugging directly into each city's outer 8-lane avenue gates (±92m) */
 export const WORLD_ROAD_SEGMENTS_3D: [number, number, number, number][] = [
-  [0, 6, 0, -72],            // Spawn meadow -> 真新村镇
-  [0, -72, 148, 18],         // 真新村镇 <-> 常磐商业镇
-  [0, -72, -146, -22],       // 真新村镇 <-> 华蓝水岸城
-  [148, 18, 38, 156],        // 常磐商业镇 <-> 玉虹古都
-  [-146, -22, -124, 148],    // 华蓝水岸城 <-> 枯叶樱花镇
-  [38, 156, -124, 148],      // 玉虹古都 <-> 枯叶樱花镇
+  [0, 14, 0, -56],            // 出发点南郊 -> 上海市南门大道
+  [0, -240, 0, -468],         // 上海市北门 <-> 北京市南门
+  [0, 14, 0, 228],            // 出发点南郊 <-> 广州市北门
+  [92, -148, 368, -148],      // 上海市东门 <-> 东京市西门
+  [-92, -148, -368, -148],    // 上海市西门 <-> 京都市东门
 ];
 
 /** Distance from point (px, pz) to segment (ax, az)-(bx, bz) */
@@ -472,74 +472,108 @@ function distPointToSeg2D(px: number, pz: number, ax: number, az: number, bx: nu
   return Math.hypot(px - (ax + t * vx), pz - (az + t * vz));
 }
 
-export function isOnInterTownRoad3D(wx: number, wz: number, halfWidth = 5.4): boolean {
+export function getNearestRoadDist3D(wx: number, wz: number): number {
+  let best = 9999;
   for (let i = 0; i < WORLD_ROAD_SEGMENTS_3D.length; i++) {
     const [ax, az, bx, bz] = WORLD_ROAD_SEGMENTS_3D[i];
-    if (distPointToSeg2D(wx, wz, ax, az, bx, bz) < halfWidth) return true;
+    const d = distPointToSeg2D(wx, wz, ax, az, bx, bz);
+    if (d < best) best = d;
   }
-  return false;
+  return best;
 }
 
-export function getTerrainHeight3D(wx: number, wz: number): number {
-  // Real-Earth DEM heightfield when exploring in World Tour mode!
-  const geoElev = sampleGeoTerrainHeight3D(wx, wz);
-  if (geoElev !== null) {
-    return geoElev;
-  }
+export function isOnInterTownRoad3D(wx: number, wz: number, halfWidth = 7.4): boolean {
+  return getNearestRoadDist3D(wx, wz) < halfWidth;
+}
 
-  // 1. Inigo Quilez organic domain warping so shorelines, valleys & ridges curve naturally!
-  const qx = fbm2D(wx * 0.011 + 3.1, wz * 0.011 - 2.4, 3) * 26.0;
-  const qz = fbm2D(wx * 0.011 - 7.8, wz * 0.011 + 5.2, 3) * 26.0;
+export const BRIDGE_DECK_Y_3D = WATER_LEVEL_3D + 0.92;
+export const MOUNTAIN_TUNNEL_TRIGGER_Y = 5.2;
+export const MOUNTAIN_TUNNEL_FLOOR_Y = 4.35;
+
+/** Natural procedural terrain height BEFORE carving mountain tunnel passes (used to detect where tunnels arch over roads!) */
+export function getRawNaturalTerrainHeight3D(wx: number, wz: number): number {
+  const geoElev = sampleGeoTerrainHeight3D(wx, wz);
+  if (geoElev !== null) return geoElev;
+
+  // Gentle, broad continental landforms (smoother transitions so hills roll naturally!)
+  const qx = fbm2D(wx * 0.0075 + 3.1, wz * 0.0075 - 2.4, 3) * 28.0;
+  const qz = fbm2D(wx * 0.0075 - 7.8, wz * 0.0075 + 5.2, 3) * 28.0;
   const sx = wx + qx;
   const sz = wz + qz;
 
-  // 2. Channel A: Macro Continentalness (organic lake basins -> plains -> highlands)
-  const cont = fbm2D(sx * 0.013 + 12.4, sz * 0.013 - 8.7, 4) * 2.1;
+  const cont = fbm2D(sx * 0.009 + 12.4, sz * 0.009 - 8.7, 4) * 2.0;
+  const hills = fbm2D(sx * 0.018 - 4.3, sz * 0.018 + 19.1, 3) * 1.35;
+  const ridge = ridgedFbm2D(sx * 0.011 + 23.0, sz * 0.011 - 14.5, 4);
 
-  // 3. Channel B: Gentle Rolling Hills & Micro Undulation
-  const hills = fbm2D(sx * 0.025 - 4.3, sz * 0.025 + 19.1, 3) * 1.6;
-
-  // 4. Channel C: Ridged Mountain Chains (only rises smoothly in mountain belts!)
-  const ridge = ridgedFbm2D(sx * 0.014 + 23.0, sz * 0.014 - 14.5, 4);
-
-  // Smooth spawn sanctuary (radius ~22m around origin stays dry welcoming rolling meadow)
   const spawnDist = Math.hypot(wx, wz);
-  const spawnDry = 1.0 - smoothstep(10.0, 24.0, spawnDist);
+  const spawnDry = 1.0 - smoothstep(14.0, 32.0, spawnDist);
 
-  // Calibrated natural geographic distribution:
-  // ~17% organic irregular lakes, coves & bays (-2.5m .. 0.0m)
-  // ~49% gentle walkable emerald plains & gradual hills (+0.2m .. +5.2m)
-  // ~34% scenic sweeping mountain ranges & ridges (+5.2m .. +13.2m)
   const lakeMask = 1.0 - smoothstep(-0.68, -0.32, cont);
-  const mountainMask = smoothstep(0.22, 0.72, cont);
+  const mountainMask = smoothstep(0.26, 0.76, cont);
 
   let elev =
     1.65 +
-    cont * 2.6 +
-    hills * 0.95 +
-    mountainMask * (ridge * 6.8 + 1.2) -
+    cont * 2.45 +
+    hills * 0.85 +
+    mountainMask * (ridge * 6.6 + 1.2) -
     lakeMask * 2.4;
 
-  // Softly floor lakebed depth around -2.5m so shorelines stay natural & gradual
   if (elev < 0) elev = Math.max(-2.5, elev * 0.65);
 
   if (spawnDry > 0) {
-    const gentleMeadow = 1.15 + hills * 0.42;
+    const gentleMeadow = 1.2 + hills * 0.35;
     elev = elev * (1.0 - spawnDry) + Math.max(elev, gentleMeadow) * spawnDry;
   }
 
-  // Smoothly terrace dry, level plateau pads under every World Town (guaranteed above water, smooth hill blend!)
   for (let i = 0; i < WORLD_TOWNS_3D.length; i++) {
     const t = WORLD_TOWNS_3D[i];
     const d = Math.hypot(wx - t.x, wz - t.z);
-    const outerR = t.plazaRadius + 14;
+    const outerR = t.plazaRadius + 20;
     if (d < outerR) {
-      const blend = 1.0 - smoothstep(t.plazaRadius - 1, outerR, d);
-      elev = elev * (1.0 - blend) + t.plateauY * blend;
+      const zoneMask = 1.0 - smoothstep(t.plazaRadius - 4, outerR, d);
+      // Keep the central civic square (r < 18m) gently level, while letting surrounding city streets
+      // roll naturally over hillsides & slopes (only lifting underwater basins safely onto dry ground!)
+      const plazaFlat = (1.0 - smoothstep(14, 24, d)) * 0.88;
+      const hillsideSmooth = zoneMask * 0.36;
+      const dryElev = Math.max(elev, WATER_LEVEL_3D + 0.95);
+      const safeElev = elev * (1.0 - zoneMask) + dryElev * zoneMask;
+      const blend = Math.max(plazaFlat, hillsideSmooth);
+      elev = safeElev * (1.0 - blend) + t.plateauY * blend;
+    }
+  }
+  return elev;
+}
+
+export function getTerrainHeight3D(wx: number, wz: number): number {
+  let elev = getRawNaturalTerrainHeight3D(wx, wz);
+
+  // When an inter-town highway cuts through a tall mountain (elev > 5.0), smoothly carve a walkable tunnel roadbed!
+  if (!sampleGeoTerrainHeight3D(wx, wz) && elev > MOUNTAIN_TUNNEL_FLOOR_Y + 0.35) {
+    const roadDist = getNearestRoadDist3D(wx, wz);
+    if (roadDist < 11.5) {
+      const cut = 1.0 - smoothstep(6.4, 11.5, roadDist);
+      elev = elev * (1.0 - cut) + Math.min(elev, MOUNTAIN_TUNNEL_FLOOR_Y) * cut;
     }
   }
 
   return elev;
+}
+
+/** Walkable surface height for Player, Followers & Enemies: elevates smoothly onto Bridge Decks when crossing over lakes! */
+export function getWalkableSurfaceHeight3D(wx: number, wz: number): number {
+  const ground = getTerrainHeight3D(wx, wz);
+  if (!sampleGeoTerrainHeight3D(wx, wz)) {
+    const roadDist = getNearestRoadDist3D(wx, wz);
+    if (roadDist < 7.2 && ground < BRIDGE_DECK_Y_3D) {
+      // Smooth approach ramp from shoreline right onto the elevated wooden bridge deck (always safely dry above WATER_LEVEL_3D!)
+      if (ground <= WATER_LEVEL_3D + 0.25) {
+        return BRIDGE_DECK_Y_3D;
+      }
+      const rampT = 1.0 - smoothstep(WATER_LEVEL_3D + 0.25, BRIDGE_DECK_Y_3D, ground);
+      return ground * (1 - rampT) + BRIDGE_DECK_Y_3D * rampT;
+    }
+  }
+  return ground;
 }
 
 /** Deterministically discover distinct organic lake centers from the live procedural heightfield! */
@@ -780,11 +814,11 @@ export const ENEMY_TRAINER_ROSTER: {
   sprite: string;
   guardSpecies: SpeciesId;
 }[] = [
-  { key: 'tr_youngster', name: '短裤小子', sprite: '/sprites/trainers/youngster.png', guardSpecies: 'meowth' },
-  { key: 'tr_lass', name: '迷你裙少女', sprite: '/sprites/trainers/lass.png', guardSpecies: 'jigglypuff' },
-  { key: 'tr_brock', name: '馆主 小刚', sprite: '/sprites/trainers/brock.png', guardSpecies: 'munchlax' },
-  { key: 'tr_misty', name: '馆主 小霞', sprite: '/sprites/trainers/misty.png', guardSpecies: 'psyduck' },
-  { key: 'tr_blue', name: '劲敌 小茂', sprite: '/sprites/trainers/blue.png', guardSpecies: 'eevee' },
-  { key: 'tr_ltsurge', name: '馆主 马志士', sprite: '/sprites/trainers/ltsurge.png', guardSpecies: 'pikachu' },
-  { key: 'tr_erika', name: '馆主 莉佳', sprite: '/sprites/trainers/erika.png', guardSpecies: 'bulbasaur' },
+  { key: 'tr_youngster', name: '短裤小子', sprite: '/sprites/trainers/youngster-ow.png', guardSpecies: 'meowth' },
+  { key: 'tr_lass', name: '迷你裙少女', sprite: '/sprites/trainers/lass-ow.png', guardSpecies: 'jigglypuff' },
+  { key: 'tr_brock', name: '馆主 小刚', sprite: '/sprites/trainers/brock-ow.png', guardSpecies: 'munchlax' },
+  { key: 'tr_misty', name: '馆主 小霞', sprite: '/sprites/trainers/misty-ow.png', guardSpecies: 'psyduck' },
+  { key: 'tr_blue', name: '劲敌 小茂', sprite: '/sprites/trainers/blue-ow.png', guardSpecies: 'eevee' },
+  { key: 'tr_ltsurge', name: '馆主 马志士', sprite: '/sprites/trainers/ltsurge-ow.png', guardSpecies: 'pikachu' },
+  { key: 'tr_erika', name: '馆主 莉佳', sprite: '/sprites/trainers/erika-ow.png', guardSpecies: 'bulbasaur' },
 ];

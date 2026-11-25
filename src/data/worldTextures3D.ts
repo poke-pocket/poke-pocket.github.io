@@ -3018,29 +3018,28 @@ export function getSeamlessBiomeAt3D(
   wy: number,
   baseBiome: BiomeId,
 ): BiomeId {
-  // High alpine mountain summits naturally receive snow caps (except fiery volcano start zone)
+  // Vast Minecraft-style macro regions (~700-950m continental biomes, wide gentle transitions!)
   const dist = Math.hypot(wx, wz);
-  const spawnBlend = Math.max(0, Math.min(1, (dist - 30) / 36));
+  const spawnBlend = Math.max(0, Math.min(1, (dist - 140) / 150));
   const [baseT, baseM] = biomeClimateTargets(baseBiome);
 
-  // Macro Minecraft-like 2D climate waves (~125m biome patches)
   const rawT =
     0.5 +
-    0.36 * Math.sin(wx * 0.022 + wz * 0.014 + 0.6) +
-    0.22 * Math.cos(wx * 0.011 - wz * 0.025 + 1.4);
+    0.34 * Math.sin(wx * 0.0040 + wz * 0.0026 + 0.6) +
+    0.22 * Math.cos(wx * 0.0021 - wz * 0.0044 + 1.4);
   const rawM =
     0.5 +
-    0.36 * Math.cos(wx * 0.019 - wz * 0.017 + 2.1) +
-    0.22 * Math.sin(wx * 0.013 + wz * 0.024 - 0.8);
+    0.34 * Math.cos(wx * 0.0036 - wz * 0.0030 + 2.1) +
+    0.22 * Math.sin(wx * 0.0024 + wz * 0.0042 - 0.8);
 
   const temp = baseT * (1 - spawnBlend) + Math.max(0, Math.min(1, rawT)) * spawnBlend;
   const moist = baseM * (1 - spawnBlend) + Math.max(0, Math.min(1, rawM)) * spawnBlend;
 
-  if (wy > 7.4 && temp < 0.72) return 'sky_glacier';
-  if (temp < 0.29) return 'sky_glacier';
-  if (temp > 0.73 && moist >= 0.46) return 'cinnabar_isle';
-  if (temp > 0.67 && moist < 0.46) return 'rocky_desert';
-  if (moist > 0.7 && wy < 2.6) return 'storm_coast';
+  if (wy > 10.4 && temp < 0.68) return 'sky_glacier';
+  if (temp < 0.25) return 'sky_glacier';
+  if (temp > 0.77 && moist >= 0.48) return 'cinnabar_isle';
+  if (temp > 0.71 && moist < 0.48) return 'rocky_desert';
+  if (moist > 0.73 && wy < 2.2) return 'storm_coast';
   return 'verdant_forest';
 }
 
@@ -3102,34 +3101,34 @@ export function createSculptedTerrainMaterial(
         float texLuma = clamp(dot(baseTexCol, vec3(0.3, 0.59, 0.11)) / 0.56, 0.72, 1.24);
         float meadowPatch = sin(vWorldPos.x * 0.09) * cos(vWorldPos.z * 0.09) * 0.5 + 0.5;
 
-        // Minecraft-style world-space Temperature × Moisture × Elevation biome blending!
+        // Vast Minecraft-style continental Temperature × Moisture × Elevation biome blending (~750m+ macro regions!)
         float distSpawn = length(vWorldPos.xz);
-        float spawnBlend = smoothstep(26.0, 62.0, distSpawn);
+        float spawnBlend = smoothstep(140.0, 290.0, distSpawn);
         float rawT = clamp(
           0.5 +
-          0.36 * sin(vWorldPos.x * 0.022 + vWorldPos.z * 0.014 + 0.6) +
-          0.22 * cos(vWorldPos.x * 0.011 - vWorldPos.z * 0.025 + 1.4),
+          0.34 * sin(vWorldPos.x * 0.0040 + vWorldPos.z * 0.0026 + 0.6) +
+          0.22 * cos(vWorldPos.x * 0.0021 - vWorldPos.z * 0.0044 + 1.4),
           0.0, 1.0
         );
         float rawM = clamp(
           0.5 +
-          0.36 * cos(vWorldPos.x * 0.019 - vWorldPos.z * 0.017 + 2.1) +
-          0.22 * sin(vWorldPos.x * 0.013 + vWorldPos.z * 0.024 - 0.8),
+          0.34 * cos(vWorldPos.x * 0.0036 - vWorldPos.z * 0.0030 + 2.1) +
+          0.22 * sin(vWorldPos.x * 0.0024 + vWorldPos.z * 0.0042 - 0.8),
           0.0, 1.0
         );
         float temp = mix(uBaseClimate.x, rawT, spawnBlend);
         float moist = mix(uBaseClimate.y, rawM, spawnBlend);
 
-        // Smooth organic biome weights (Snow Mountain, Golden Desert, Lava Volcano, Tropical Coast, Emerald Forest)
+        // Gentle, wide transition bands between macro biomes (zero harsh grass->snow->lava jumps!)
         float wSnow = clamp(
-          (1.0 - smoothstep(0.22, 0.36, temp)) +
-          smoothstep(6.2, 8.6, vWorldPos.y) * (1.0 - smoothstep(0.66, 0.80, temp)),
+          (1.0 - smoothstep(0.18, 0.34, temp)) +
+          smoothstep(9.2, 12.0, vWorldPos.y) * (1.0 - smoothstep(0.62, 0.76, temp)),
           0.0, 1.0
         );
-        float wVolcano = smoothstep(0.68, 0.80, temp) * smoothstep(0.42, 0.54, moist);
-        float wDesert = smoothstep(0.62, 0.75, temp) * (1.0 - smoothstep(0.40, 0.52, moist));
-        float wCoast = smoothstep(0.64, 0.78, moist) * (1.0 - smoothstep(1.2, 3.2, vWorldPos.y)) * (1.0 - wSnow) * (1.0 - wVolcano);
-        float wForest = max(0.05, 1.0 - clamp(wSnow + wVolcano + wDesert + wCoast, 0.0, 1.0));
+        float wVolcano = smoothstep(0.72, 0.86, temp) * smoothstep(0.44, 0.58, moist);
+        float wDesert = smoothstep(0.66, 0.80, temp) * (1.0 - smoothstep(0.42, 0.56, moist));
+        float wCoast = smoothstep(0.66, 0.82, moist) * (1.0 - smoothstep(1.0, 2.8, vWorldPos.y)) * (1.0 - wSnow) * (1.0 - wVolcano);
+        float wForest = max(0.08, 1.0 - clamp(wSnow + wVolcano + wDesert + wCoast, 0.0, 1.0));
         float wSum = wForest + wDesert + wSnow + wVolcano + wCoast;
         wForest /= wSum; wDesert /= wSum; wSnow /= wSum; wVolcano /= wSum; wCoast /= wSum;
 
@@ -3150,8 +3149,8 @@ export function createSculptedTerrainMaterial(
           volcanoGround * wVolcano +
           coastGround * wCoast;
 
-        // Keep starting biome exact near spawn
-        grassCol = mix(baseTexCol * mix(0.92, 1.12, meadowPatch), grassCol, smoothstep(18.0, 44.0, distSpawn));
+        // Keep vast emerald heartland coherent around starting area & Pallet Village
+        grassCol = mix(baseTexCol * mix(0.92, 1.12, meadowPatch), grassCol, smoothstep(90.0, 180.0, distSpawn));
 
         vec3 roadCol = texture2D(uRoadTex, vWorldPos.xz * 0.26).rgb;
 
