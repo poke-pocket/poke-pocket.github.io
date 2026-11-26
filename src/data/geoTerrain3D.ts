@@ -635,38 +635,38 @@ export function classifyRealEarthPixelColor(
  * Format: [lat, lng, radiusKm, peakLiftUnits]
  */
 const REAL_REGIONAL_HILLS: [number, number, number, number][] = [
-  // 上海松江九峰 & 西郊丘陵群 (就在上海西南青浦/松江 31.04°N–31.12°N, 121.10°E–121.21°E!)
-  [31.096, 121.196, 3.2, 26.0], // 西佘山 & 东佘山 (上海最高天然山峰!)
-  [31.076, 121.152, 2.8, 23.0], // 天马山 (护珠斜塔山峰)
-  [31.082, 121.182, 2.2, 19.0], // 辰山
-  [31.042, 121.118, 2.6, 17.5], // 小昆山
-  [31.112, 121.162, 2.1, 15.0], // 凤凰山 / 厍公山
-  [30.735, 121.345, 2.0, 13.5], // 金山岛 / 查山
+  // 上海松江九峰 & 西郊丘陵群 (可自然徒步攀登的秀丽山坡!)
+  [31.096, 121.196, 4.2, 16.5], // 西佘山 & 东佘山
+  [31.076, 121.152, 3.6, 14.5], // 天马山
+  [31.082, 121.182, 3.0, 12.0], // 辰山
+  [31.042, 121.118, 3.4, 11.5], // 小昆山
+  [31.112, 121.162, 2.8, 10.0], // 凤凰山 / 厍公山
+  [30.735, 121.345, 2.6, 9.0],  // 金山岛 / 查山
   // 苏锡常与杭嘉湖江南名山
-  [31.392, 120.952, 2.6, 18.5], // 昆山玉峰山
-  [31.265, 120.495, 4.5, 38.0], // 苏州穹窿山・天平山・灵岩山
-  [31.338, 120.575, 2.2, 16.0], // 苏州虎丘山
-  [31.542, 120.218, 4.0, 36.0], // 无锡惠山・锡山
-  [30.618, 119.865, 7.2, 68.0], // 莫干山脉 (719m)
-  [30.340, 119.430, 9.5, 115.0], // 天目山脉 (1506m)
-  [30.245, 120.102, 4.6, 44.0], // 杭州北高峰・飞来峰・玉皇山
-  [32.068, 118.852, 5.2, 52.0], // 南京紫金山 (钟山 448m)
-  // 全国与东亚著名高山地标
-  [36.256, 117.101, 9.5, 128.0], // 五岳独尊・泰山 (1545m)
-  [30.133, 118.165, 10.5, 145.0], // 黄山光明顶・莲花峰 (1864m)
-  [29.558, 115.988, 8.8, 118.0], // 庐山汉阳峰 (1474m)
-  [36.185, 120.625, 7.5, 92.0],  // 青岛崂山 (1132m)
-  [26.062, 119.395, 5.8, 72.0],  // 福州鼓山 (925m)
-  [29.545, 106.605, 5.2, 54.0],  // 重庆南山・歌乐山
-  [39.992, 116.188, 6.2, 58.0],  // 北京香山・西山 (575m)
-  [23.182, 113.298, 5.0, 45.0],  // 广州白云山 (382m)
-  [22.576, 114.215, 5.8, 78.0],  // 深圳梧桐山 (944m)
-  [22.502, 113.918, 3.2, 32.0],  // 深圳南山 (336m)
-  [22.275, 114.145, 3.8, 56.0],  // 香港太平山 (552m)
-  [22.352, 114.188, 4.0, 50.0],  // 香港狮子山 (495m)
-  [25.170, 121.555, 6.8, 92.0],  // 台北阳明山・七星山 (1120m)
-  [35.065, 135.838, 5.5, 66.0],  // 京都比叡山・大文字山 (848m)
-  [35.361, 138.727, 11.5, 165.0], // 富士山主峰锥体增强 (3776m)
+  [31.392, 120.952, 3.4, 13.0], // 昆山玉峰山
+  [31.265, 120.495, 5.8, 24.0], // 苏州穹窿山・天平山・灵岩山
+  [31.338, 120.575, 3.0, 11.5], // 苏州虎丘山
+  [31.542, 120.218, 5.0, 22.0], // 无锡惠山・锡山
+  [30.618, 119.865, 9.5, 42.0], // 莫干山脉 (719m)
+  [30.340, 119.430, 13.0, 68.0], // 天目山脉 (1506m)
+  [30.245, 120.102, 6.2, 28.0], // 杭州北高峰・飞来峰・玉皇山
+  [32.068, 118.852, 6.8, 32.0], // 南京紫金山 (钟山 448m)
+  // 全国与东亚著名高山地标 (宽阔山脚 + 可徒步缓坡脊线!)
+  [36.256, 117.101, 13.5, 76.0], // 五岳独尊・泰山 (1545m)
+  [30.133, 118.165, 14.5, 84.0], // 黄山光明顶・莲花峰 (1864m)
+  [29.558, 115.988, 12.0, 70.0], // 庐山汉阳峰 (1474m)
+  [36.185, 120.625, 10.5, 56.0], // 青岛崂山 (1132m)
+  [26.062, 119.395, 8.2, 46.0],  // 福州鼓山 (925m)
+  [29.545, 106.605, 7.2, 34.0],  // 重庆南山・歌乐山
+  [39.992, 116.188, 8.5, 38.0],  // 北京香山・西山 (575m)
+  [23.182, 113.298, 6.8, 28.0],  // 广州白云山 (382m)
+  [22.576, 114.215, 8.2, 48.0],  // 深圳梧桐山 (944m)
+  [22.502, 113.918, 4.5, 21.0],  // 深圳南山 (336m)
+  [22.275, 114.145, 5.5, 34.0],  // 香港太平山 (552m)
+  [22.352, 114.188, 5.5, 32.0],  // 香港狮子山 (495m)
+  [25.170, 121.555, 9.2, 56.0],  // 台北阳明山・七星山 (1120m)
+  [35.065, 135.838, 7.5, 42.0],  // 京都比叡山・大文字山 (848m)
+  [35.361, 138.727, 16.5, 112.0], // 富士山主峰 (3776m)
 ];
 
 function sampleRegionalHillLift3D(lat: number, lng: number): number {
@@ -721,15 +721,13 @@ function sculptCountrysideRelief3D(wx: number, wz: number): number {
   return rollingHills + terracedKnoll + localSlope;
 }
 
-/** Sharp 3D alpine ridgelines & rocky spurs for real mountains (`> 90m`), restoring steep crests smoothed by 300m Z9 DEM tiles! */
+/** Smooth, broad walkable mountain shoulders (`<= 28°` grade, zero unwalkable knife-edge spikes!) */
 function sculptAlpineMountainRidges3D(wx: number, wz: number, meters: number): number {
-  if (meters <= 90) return 0;
-  const strength = smoothstepLocal(90, 950, meters);
-  const r1 = 1.0 - Math.abs(Math.sin(wx * 0.014 + wz * 0.011 + Math.cos(wz * 0.008) * 1.4));
-  const r2 = 1.0 - Math.abs(Math.cos(wx * 0.027 - wz * 0.022 + Math.sin(wx * 0.012) * 1.1));
-  const r3 = 1.0 - Math.abs(Math.sin(wx * 0.052 + wz * 0.046));
-  const ridge = Math.pow(r1, 1.8) * 18.5 + Math.pow(r2, 1.9) * 9.5 + r3 * 3.2;
-  return ridge * strength;
+  if (meters <= 110) return 0;
+  const strength = smoothstepLocal(110, 1100, meters);
+  const s1 = Math.sin(wx * 0.0085 + wz * 0.0068 + 0.9) * 0.5 + 0.5;
+  const s2 = Math.cos(wx * 0.0135 - wz * 0.0112 + 1.7) * 0.5 + 0.5;
+  return (s1 * 6.5 + s2 * 3.5) * strength;
 }
 
 function microSculpt(wx: number, wz: number): number {
@@ -842,33 +840,33 @@ export function sampleGeoTerrainHeight3D(
     elev = Math.max(-2.45, -0.58 + Math.min(0, meters) * 0.055) + micro * 0.05;
     if (elev > -0.42) elev = -0.45;
   } else if (meters <= 45) {
-    // 1. Real Coastal Plains, River Terraces & Low Knolls (`0.8..45m` -> `0.65..8.2u` + countryside relief + named peaks)
+    // 1. Real Coastal Plains, River Terraces & Low Knolls (`0.8..45m` -> `0.65..6.8u`)
     const clampedM = Math.max(0.8, meters);
-    const demSlopeLift = Math.pow((clampedM - 0.8) / 44.2, 0.85) * 7.55;
-    elev = 0.65 + demSlopeLift + countrysideRelief + namedHillLift;
+    const demSlopeLift = Math.pow((clampedM - 0.8) / 44.2, 0.88) * 6.15;
+    elev = 0.65 + demSlopeLift + countrysideRelief * 0.72 + namedHillLift;
   } else if (meters <= 260) {
-    // 2. Real Hills & Low Mountains (`45..260m` -> `8.2..36.5u` + ridge sculpt + named peaks, e.g. 佘山/虎丘/玉皇山)
+    // 2. Walkable Hills & Low Mountains (`45..260m` -> `6.8..24.5u` + gentle ridge shoulders)
     const tHill = (meters - 45) / 215;
     const ridgeLift = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, meters);
     elev = Math.max(
-      3.0,
-      8.2 + Math.pow(tHill, 0.88) * 28.3 + countrysideRelief * 0.8 + ridgeLift + namedHillLift,
+      2.5,
+      6.8 + Math.pow(tHill, 0.9) * 17.7 + countrysideRelief * 0.55 + ridgeLift + namedHillLift * 0.65,
     );
   } else if (meters <= 1200) {
-    // 3. Medium-High Mountain Ranges (`260..1200m` -> `36.5..124.0u`, e.g. 紫金山/太平山/香山/莫干山/梧桐山/阳明山!)
+    // 3. Walkable Medium-High Mountain Ranges (`260..1200m` -> `24.5..76.0u`)
     const tMt = (meters - 260) / 940;
     const ridgeLift = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, meters);
     elev = Math.max(
-      24.0,
-      36.5 + Math.pow(tMt, 0.86) * 87.5 + ridgeLift + micro * 0.9 + namedHillLift,
+      16.0,
+      24.5 + Math.pow(tMt, 0.88) * 51.5 + ridgeLift + micro * 0.55 + namedHillLift * 0.55,
     );
   } else {
-    // 4. Grand Towering Mountains & Alpine Snow Peaks (`1200..5500m+` -> `124.0..315.0u`, e.g. 泰山/黄山/富士山/秦岭/横断雪山!)
+    // 4. Grand Walkable Mountains & Alpine Snow Peaks (`1200..5500m+` -> `76.0..188.0u`)
     const tHigh = Math.min(1, (meters - 1200) / 3800);
-    const ridgeLift = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, meters) * 1.25;
+    const ridgeLift = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, meters);
     elev = Math.max(
-      95.0,
-      124.0 + Math.pow(tHigh, 0.78) * 191.0 + ridgeLift + micro * 1.35 + namedHillLift,
+      60.0,
+      76.0 + Math.pow(tHigh, 0.82) * 112.0 + ridgeLift + micro * 0.8 + namedHillLift * 0.5,
     );
   }
 

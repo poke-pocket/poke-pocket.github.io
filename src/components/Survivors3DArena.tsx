@@ -19,7 +19,7 @@ import { DEFAULT_GAME_PREFS, DEFAULT_TRAINER_PROFILE, type CameraFollowMode, typ
 import { HERO_ROSTER, LAB_UPGRADES, computeMetaCombatBonuses, countClaimableBounties, ensureFreshMetaProgress, getHeroDef, getLabUpgradeCost, getSkinDef, rerollBountySlot, type HeroId, type LabUpgradeId, type MetaProgressState } from '../data/metaProgression';
 import { type AppLang } from '../data/i18n';
 import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
-import { SCENIC_MOUNTAIN_SPOTS, type LiveMapSnapshot, type ScenicMountainSpot } from './WorldMapHud';
+import { type LiveMapSnapshot, type ScenicMountainSpot } from './WorldMapHud';
 import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { BGM_TRACK_LABELS, sound, type BgmTrackId } from '../utils/sound';
 import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
@@ -738,30 +738,6 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       window.removeEventListener('appinstalled', onInstalled);
     };
   }, []);
-
-  // One-time live teleport into Mount Huangshan scenic foothill valley (`30.036°N, 118.165°E`) whether starting from Hub or Playing!
-  useEffect(() => {
-    try {
-      const tourKey = 'pocket_paw_mountain_tour_once_v2';
-      if (window.localStorage.getItem(tourKey) !== 'huangshan_vista_done') {
-        if (phase !== 'playing') {
-          setActiveCareSessionFlag(true);
-          setPhase('playing');
-          return;
-        }
-        const defaultSpot = SCENIC_MOUNTAIN_SPOTS[0]; // 黄山 · 汤口仰望光明顶 (1864m)
-        if (defaultSpot) {
-          const timer = window.setTimeout(() => {
-            window.localStorage.setItem(tourKey, 'huangshan_vista_done');
-            teleportGeoSpotRef.current(defaultSpot);
-          }, 120);
-          return () => window.clearTimeout(timer);
-        }
-      }
-    } catch {
-      // ignore storage restrictions
-    }
-  }, [phase]);
 
   const reorderBattleFollowers = (fromIdx: number, toIdx: number) => {
     const sim = simRef.current;
@@ -2026,7 +2002,6 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     playerShadow.rotation.x = -Math.PI / 2;
     scene.add(playerShadow);
 
-    const { emoteKinds, heroEmoteSprite, petEmoteSprite, previewSprites } = setupHubWildlifeDiorama3D({ createSpriteEntity, phase, regionMeta, scene });
     // Initialize Active Simulation State (Integrating Lab Upgrades + Active Hero + Pet Enhance/Pinned Skills!)
     const mb = metaBonusesRef.current;
     setRerollsLeft(1 + mb.rerolls);
@@ -2094,20 +2069,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       attachFollowerMeshes(f);
     });
 
-    // Start cleanly on the sunlit Puxi Promenade beside People's Square Park,
-    // OR resume the player's exact last saved world coordinates (`lat, lng` / `x, z`)!
+    // Resume the player's exact last saved world coordinates (`lat, lng` / `x, z`) in BOTH Hub preview AND Playing!
     let startPx = -22;
     let startPz = 12;
     let startFacing = 0;
     const hasInitialWaterSurfer = initialFollowers.some(
       (f) => SPECIES_CATALOG[f.species].element === 'water',
     );
-    if (phase === 'playing') {
+    {
       const cp = loadWorldCheckpoint();
       const geoOrigin = getActiveGeoTerrainOrigin();
       if (cp) {
         if (geoOrigin && cp.mode === 'geo') {
           if (cp.lat !== undefined && cp.lng !== undefined) {
+            prefetchGeoDetailAround(cp.lat, cp.lng);
             const wp = geoToWorld(cp.lat, cp.lng, geoOrigin);
             if (wp) {
               startPx = wp.x;
@@ -2155,6 +2130,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       }
     }
     const startPy = Math.max(WATER_LEVEL_3D + 0.12, getWalkableSurfaceHeight3D(startPx, startPz));
+    const { emoteKinds, heroEmoteSprite, petEmoteSprite, previewSprites } = setupHubWildlifeDiorama3D({
+      anchorX: startPx,
+      anchorZ: startPz,
+      createSpriteEntity,
+      phase,
+      regionMeta,
+      scene,
+    });
     initialFollowers.forEach((f, idx) => {
       const ang = (idx * Math.PI * 2) / Math.max(1, initialFollowers.length) + 0.6;
       f.x = startPx + Math.cos(ang) * 2.4;
@@ -2638,7 +2621,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
         // Scenic Elevated Panoramic 3D Diorama Overlook during Hub & Map Select (Living Hero, Camera-Facing Squad, Meadow & Flying Wild Pokémon!)
         if (phase !== 'playing') {
-          renderHubDioramaFrame3D({ applyLiveSolarAtmosphere, camera, dt, emoteKinds, externalPausedRef, heroEmoteSprite, heroFrames, horizonBackdrop, metaRef, now, petEmoteSprite, phase, playerShadow, playerSprite, playerSpriteMat, previewSprites, renderer, scene, sim, syncFloraBillboards, waterMat, worldMapOpenRef });
+          renderHubDioramaFrame3D({ applyLiveSolarAtmosphere, camera, dt, emoteKinds, externalPausedRef, geoHighwayStreamer, heroEmoteSprite, heroFrames, horizonBackdrop, metaRef, now, petEmoteSprite, phase, playerShadow, playerSprite, playerSpriteMat, previewSprites, renderer, scene, sim, syncFloraBillboards, updateWorldAround, waterMat, worldMapOpenRef });
           rafId = window.requestAnimationFrame(animate);
           return;
         }

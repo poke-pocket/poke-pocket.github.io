@@ -8,7 +8,10 @@ import { type SpeciesId } from '../../types/pet';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function setupHubWildlifeDiorama3D(rawCtx: Record<string, any>) {
-  const { createSpriteEntity, phase, regionMeta, scene } = rawCtx as ArenaSharedCtx;
+  const { anchorX = 0, anchorZ = 0, createSpriteEntity, phase, regionMeta, scene } = rawCtx as ArenaSharedCtx & {
+    anchorX?: number;
+    anchorZ?: number;
+  };
     // 6. Living Kanto Wildlife Diorama (Hub / Map Select):
     //    - Majestic linear sky flybys (HUGE Charizard & Dragonite crossing the horizon — NO overhead circling!)
     //    - Wild Pokémon strolling along the actual dirt roads
@@ -67,8 +70,8 @@ export function setupHubWildlifeDiorama3D(rawCtx: Record<string, any>) {
         const { sprite, shadow, animSheet, pmdSheet } = createSpriteEntity(asset.static, sc, asset.animated);
         const onEastWest = i % 2 === 0;
         const laneOffset = (i % 4 < 2 ? -1.9 : 1.9);
-        const bx = onEastWest ? 0 : laneOffset;
-        const bz = onEastWest ? laneOffset : 0;
+        const bx = anchorX + (onEastWest ? 0 : laneOffset);
+        const bz = anchorZ + (onEastWest ? laneOffset : 0);
         scene.add(sprite, shadow);
         previewSprites.push({
           sprite,
@@ -92,8 +95,8 @@ export function setupHubWildlifeDiorama3D(rawCtx: Record<string, any>) {
         const sp = showcaseSpecies[(i + 3) % showcaseSpecies.length];
         const ang = (i * Math.PI * 2) / 6 + 0.45;
         const rad = 8.5 + (i % 3) * 4.5;
-        const bx = Math.cos(ang) * rad;
-        const bz = Math.sin(ang) * rad;
+        const bx = anchorX + Math.cos(ang) * rad;
+        const bz = anchorZ + Math.sin(ang) * rad;
         if (getTerrainHeight3D(bx, bz) < WATER_LEVEL_3D + 0.25) continue;
         const stg: 'baby' | 'teen' | 'adult' = i % 3 === 0 ? 'teen' : 'baby';
         const asset = SPECIES_CATALOG[sp].stageSprites[stg];
@@ -122,7 +125,9 @@ export function setupHubWildlifeDiorama3D(rawCtx: Record<string, any>) {
         { x: -4.2, z: -13.5, dex: '51', sc: 2.25 },
       ];
       burrowSpots.forEach((bs, bi) => {
-        if (getTerrainHeight3D(bs.x, bs.z) < WATER_LEVEL_3D + 0.3) return;
+        const bwx = anchorX + bs.x;
+        const bwz = anchorZ + bs.z;
+        if (getTerrainHeight3D(bwx, bwz) < WATER_LEVEL_3D + 0.3) return;
         const url = `/sprites/pokemon/${bs.dex}.png`;
         const { sprite, shadow, animSheet, pmdSheet } = createSpriteEntity(url, bs.sc);
         shadow.scale.setScalar(bs.sc * 0.42);
@@ -133,31 +138,33 @@ export function setupHubWildlifeDiorama3D(rawCtx: Record<string, any>) {
           animSheet,
           pmdSheet,
           kind: 'burrow',
-          baseX: bs.x,
-          baseZ: bs.z,
+          baseX: bwx,
+          baseZ: bwz,
           phase: bi * 1.7,
           scale: bs.sc,
         });
       });
 
-      // D. Aquatic Wildlife Leaping & Swimming in Real Organic Lakes (Magikarp #129, HUGE Gyarados #130, Lapras #131)!
+      // D. Aquatic Wildlife Leaping & Swimming in Real Organic Lakes around `(anchorX, anchorZ)`!
       const lakeWaterSpots: { x: number; z: number }[] = [];
       for (const lk of LAKE_BASINS_3D) {
-        if (getTerrainHeight3D(lk.cx, lk.cz) < WATER_LEVEL_3D - 0.25) {
+        if (Math.hypot(lk.cx - anchorX, lk.cz - anchorZ) < 70 && getTerrainHeight3D(lk.cx, lk.cz) < WATER_LEVEL_3D - 0.25) {
           lakeWaterSpots.push({ x: lk.cx, z: lk.cz });
         }
       }
-      // Also scan near-horizon organic lakes within 55m so leaping water Pokémon are clearly visible!
+      // Scan near-horizon water within 55m of `(anchorX, anchorZ)` so leaping water Pokémon appear in nearby rivers/lakes!
       for (let gz = -48; gz <= 48; gz += 6) {
         for (let gx = -48; gx <= 48; gx += 6) {
-          if (getTerrainHeight3D(gx, gz) < WATER_LEVEL_3D - 0.35) {
-            if (lakeWaterSpots.every((s) => Math.hypot(s.x - gx, s.z - gz) > 10)) {
-              lakeWaterSpots.push({ x: gx, z: gz });
+          const wx = anchorX + gx;
+          const wz = anchorZ + gz;
+          if (getTerrainHeight3D(wx, wz) < WATER_LEVEL_3D - 0.35) {
+            if (lakeWaterSpots.every((s) => Math.hypot(s.x - wx, s.z - wz) > 10)) {
+              lakeWaterSpots.push({ x: wx, z: wz });
             }
           }
         }
       }
-      lakeWaterSpots.sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
+      lakeWaterSpots.sort((a, b) => Math.hypot(a.x - anchorX, a.z - anchorZ) - Math.hypot(b.x - anchorX, b.z - anchorZ));
       const aquaSpecs: { dex: '129' | '130' | '131'; kind: 'water_leap' | 'water_swim'; sc: number; jumpH: number }[] = [
         { dex: '129', kind: 'water_leap', sc: 2.25, jumpH: 3.4 }, // Magikarp leaping high!
         { dex: '130', kind: 'water_leap', sc: 5.5, jumpH: 4.4 },  // HUGE Gyarados breaching!
@@ -211,8 +218,8 @@ export function setupHubWildlifeDiorama3D(rawCtx: Record<string, any>) {
           animSheet,
           pmdSheet,
           kind: 'flyby',
-          baseX: 0,
-          baseZ: fl.laneZ,
+          baseX: anchorX,
+          baseZ: anchorZ + fl.laneZ,
           dirX: fl.dirX,
           dirZ: fl.dirZ,
           span: 74,
