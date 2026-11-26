@@ -10,10 +10,18 @@ import { PixelIcon, PixelItemImg } from '../PixelSprite';
 import { TrimmedSpriteImg } from '../TrimmedSpriteImg';
 import { ArenaTownSocialAndBusOverlay } from './ArenaTownSocialAndBusOverlay';
 
+function formatHudDistance(distM: number): string {
+  if (!Number.isFinite(distM) || distM <= 0) return '0 m';
+  if (distM < 1000) return `${Math.max(1, Math.round(distM))} m`;
+  if (distM < 10000) return `${(distM / 1000).toFixed(2)} km`;
+  if (distM < 100000) return `${(distM / 1000).toFixed(1)} km`;
+  return `${Math.round(distM / 1000)} km`;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, cycleRideMode, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, landRideMode, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, playerAltitudeM, prefs, regionMeta, reorderBattleFollowers, resetVirtualPad, resultModal, rideMode, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, cycleRideMode, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, landRideMode, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, playerAltitudeM, prefs, regionMeta, reorderBattleFollowers, resetVirtualPad, resultModal, rideMode, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
   const isBgmOn = Boolean(save.bgmEnabled && !save.muted && save.bgmVolume > 0 && (prefs.masterVolume ?? 80) > 0);
   return (
     <>
@@ -52,7 +60,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   </span>
                   <PixelItemImg src={ind.icon} size={15} />
                   <strong>{ind.label}</strong>
-                  <em>{ind.distM}m</em>
+                  <em>{formatHudDistance(ind.distM)}</em>
                 </div>
               ))}
             </div>
@@ -126,69 +134,101 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               })()}
             </div>
 
-            {/* Top-Center: Left/Center = Open Map; Right = Dedicated Day/Night Time & Ecological Spawn Almanac! */}
+            {/* Top-Center: Left/Center = Open Map; Right = Dedicated Day/Night Time & Ecological Spawn Almanac + Integrated Live Auto-Navigation Distance Strip! */}
             <div className="hud-col-center">
               <div className="surv-top-status-deck">
-                <div
-                  className="top-deck-wing is-left"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
-                    sound.play('confirm');
-                    if (adventureStyle === 'vampire_rogue') toggleWorldMap();
-                    else setWorldMapOpen(true);
-                  }}
-                  title="点击打开地图（关闭后直接返回当前游戏）"
-                >
-                  <strong>{adventureStyle === 'vampire_rogue' ? '随机秘境' : '真实地球'}</strong>
-                  <div className="top-deck-sub">
-                    <span
-                      className="top-weather-chip"
-                      style={{ backgroundColor: liveWeather.accentColor }}
-                      title={`${liveWeather.summary} · ${liveWeather.buffText}\n点击打开地图`}
-                    >
-                      {liveWeather.emoji} {liveWeather.label} {liveWeather.tempC}°C
+                <div className="surv-top-status-main">
+                  <div
+                    className="top-deck-wing is-left"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => {
+                      sound.play('confirm');
+                      if (adventureStyle === 'vampire_rogue') toggleWorldMap();
+                      else setWorldMapOpen(true);
+                    }}
+                    title="点击打开地图（关闭后直接返回当前游戏）"
+                  >
+                    <strong>{adventureStyle === 'vampire_rogue' ? '随机秘境' : '真实地球'}</strong>
+                    <div className="top-deck-sub">
+                      <span
+                        className="top-weather-chip"
+                        style={{ backgroundColor: liveWeather.accentColor }}
+                        title={`${liveWeather.summary} · ${liveWeather.buffText}\n点击打开地图`}
+                      >
+                        {liveWeather.emoji} {liveWeather.label} {liveWeather.tempC}°C
+                      </span>
+                      <span className={`top-diff-tag is-${difficultyId}`}>{diffMeta.label}</span>
+                    </div>
+                  </div>
+                  <div
+                    className="top-deck-center"
+                    style={{ borderRight: '2px solid #2b2d44', cursor: 'pointer' }}
+                    onClick={() => {
+                      sound.play('confirm');
+                      toggleWorldMap();
+                    }}
+                    title="点击打开当前城市地图与自动寻路"
+                  >
+                    <PixelItemImg src="/sprites/items/poke-ball.png" size={15} />
+                    <strong>{adventureStyle === 'vampire_rogue' ? minStr : solarInfo.localTimeStr}</strong>
+                    <small>
+                      {adventureStyle === 'vampire_rogue'
+                        ? regionMeta.name
+                        : liveOverlandCity?.name ??
+                          activeWorldRun?.cityName ??
+                          WORLD_TOWNS_3D.find(
+                            (t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6,
+                          )?.name ??
+                          '野外探索'}
+                    </small>
+                  </div>
+                  <div
+                    className="top-deck-wing is-right"
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => {
+                      sound.play('confirm');
+                      setTimeAlmanacOpen(true);
+                    }}
+                    title="点击查看昼夜星象与各时段出没宝可梦生态图鉴"
+                  >
+                    <span className="top-trainer-tag" style={{ borderColor: '#ffe066', color: '#ffe066' }}>
+                      {solarInfo.phaseEmoji} {solarInfo.phaseLabel}
                     </span>
-                    <span className={`top-diff-tag is-${difficultyId}`}>{diffMeta.label}</span>
+                    <div className="top-badge-mini">
+                      <span>🌅{solarInfo.sunriseStr} · 🌇{solarInfo.sunsetStr}</span>
+                    </div>
                   </div>
                 </div>
-                <div
-                  className="top-deck-center"
-                  style={{ borderRight: '2px solid #2b2d44', cursor: 'pointer' }}
-                  onClick={() => {
-                    sound.play('confirm');
-                    toggleWorldMap();
-                  }}
-                  title="点击打开当前城市地图与自动寻路"
-                >
-                  <PixelItemImg src="/sprites/items/poke-ball.png" size={15} />
-                  <strong>{adventureStyle === 'vampire_rogue' ? minStr : solarInfo.localTimeStr}</strong>
-                  <small>
-                    {adventureStyle === 'vampire_rogue'
-                      ? regionMeta.name
-                      : liveOverlandCity?.name ??
-                        activeWorldRun?.cityName ??
-                        WORLD_TOWNS_3D.find(
-                          (t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6,
-                        )?.name ??
-                        '野外探索'}
-                  </small>
-                </div>
-                <div
-                  className="top-deck-wing is-right"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
-                    sound.play('confirm');
-                    setTimeAlmanacOpen(true);
-                  }}
-                  title="点击查看昼夜星象与各时段出没宝可梦生态图鉴"
-                >
-                  <span className="top-trainer-tag" style={{ borderColor: '#ffe066', color: '#ffe066' }}>
-                    {solarInfo.phaseEmoji} {solarInfo.phaseLabel}
-                  </span>
-                  <div className="top-badge-mini">
-                    <span>🌅{solarInfo.sunriseStr} · 🌇{solarInfo.sunsetStr}</span>
+                {autoNavActiveLabel && (
+                  <div className="surv-top-nav-strip">
+                    <div
+                      className="surv-top-nav-target"
+                      onClick={() => {
+                        sound.play('confirm');
+                        toggleWorldMap();
+                      }}
+                      title={`正在前往：${autoNavActiveLabel}（点击打开地图）`}
+                    >
+                      <span className="surv-top-nav-compass">🧭</span>
+                      <span className="surv-top-nav-name">前往「{autoNavActiveLabel}」</span>
+                    </div>
+                    <div className="surv-top-nav-right">
+                      {autoNavDistM !== null && autoNavDistM !== undefined && (
+                        <strong className="surv-top-nav-dist" title="距离目标剩余实时距离">
+                          距离 {formatHudDistance(autoNavDistM)}
+                        </strong>
+                      )}
+                      <button
+                        type="button"
+                        className="surv-top-nav-cancel"
+                        onClick={() => stopAutoNavRef.current(false)}
+                        title="停止自动寻路"
+                      >
+                        取消
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -321,19 +361,6 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 >
                   ⬇ 降落
                 </button>
-              )}
-
-              {autoNavActiveLabel && (
-                <div className="surv-autonav-active-pill" style={{ marginRight: 0 }}>
-                  <span>🧭 前往「{autoNavActiveLabel}」</span>
-                  <button
-                    type="button"
-                    onClick={() => stopAutoNavRef.current(false)}
-                    title="停止自动寻路"
-                  >
-                    取消
-                  </button>
-                </div>
               )}
             </div>
           </div>

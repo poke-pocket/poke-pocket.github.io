@@ -1681,10 +1681,18 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       }
     }
 
-    // Unlimited User-Placed Custom Pins — crisp standalone pixel pushpin icon only (fixed screen size, tip anchored at sx/sy!)
-    pins.forEach((pin) => {
+    // Unlimited User-Placed Custom Pins — crisp standalone pixel pushpin icon + live distance tag!
+    const fmtPinDist = (dM: number) =>
+      dM < 1000
+        ? `${Math.max(1, Math.round(dM))}m`
+        : dM < 10000
+          ? `${(dM / 1000).toFixed(2)}km`
+          : dM < 100000
+            ? `${(dM / 1000).toFixed(1)}km`
+            : `${Math.round(dM / 1000)}km`;
+    pins.forEach((pin, pinIdx) => {
       const { sx, sy } = toScreen(pin.x, pin.z);
-      if (sx < -16 || sx > W + 16 || sy < -20 || sy > H + 16) return;
+      if (sx < -36 || sx > W + 36 || sy < -24 || sy > H + 24) return;
       const px = Math.round(sx);
       const py = Math.round(sy);
       // Ground shadow dot at pin tip
@@ -1707,6 +1715,20 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ctx.fillRect(px - 3, py - 14, 2, 2);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(px - 3, py - 14, 1, 1);
+      // Distance pill right below pin tip
+      const pinDistTxt = fmtPinDist(Math.hypot(pin.x - snapshot.px, pin.z - snapshot.pz));
+      const isLatestPin = pinIdx === pins.length - 1;
+      ctx.font = 'bold 8.5px "PingFang SC", "Microsoft YaHei", monospace';
+      const ptw = Math.ceil(ctx.measureText(pinDistTxt).width) + 8;
+      ctx.fillStyle = 'rgba(22, 20, 32, 0.92)';
+      ctx.fillRect(Math.round(px - ptw / 2), py + 4, ptw, 12);
+      ctx.strokeStyle = isLatestPin ? '#ffd43b' : '#ffa8a8';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(Math.round(px - ptw / 2), py + 4, ptw, 12);
+      ctx.fillStyle = isLatestPin ? '#ffe066' : '#fff5f5';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(pinDistTxt, px, py + 10.5);
     });
 
     // Live Entities (icon-only for Boss, crisp fixed-size pixel dots for followers/trainers/wild)
@@ -1887,13 +1909,23 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ctx.fill();
       ctx.restore();
 
-      ctx.fillStyle = '#161420';
-      ctx.fillRect(Math.round(ex - 22), Math.round(ey + 9), 44, 12);
-      ctx.fillStyle = '#ffe066';
+      const heroOffTxt = `主角 ${
+        distM < 1000
+          ? `${distM}m`
+          : distM < 10000
+            ? `${(distM / 1000).toFixed(2)}km`
+            : distM < 100000
+              ? `${(distM / 1000).toFixed(1)}km`
+              : `${Math.round(distM / 1000)}km`
+      }`;
       ctx.font = 'bold 8px monospace';
+      const htw = Math.max(44, Math.ceil(ctx.measureText(heroOffTxt).width) + 8);
+      ctx.fillStyle = '#161420';
+      ctx.fillRect(Math.round(ex - htw / 2), Math.round(ey + 9), htw, 12);
+      ctx.fillStyle = '#ffe066';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`主角 ${distM}m`, ex, ey + 15);
+      ctx.fillText(heroOffTxt, ex, ey + 15);
     }
   }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick, isInteracting, showLiveStreetTiles]);
 
@@ -2132,44 +2164,55 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
         </div>
 
         {/* Quick 1-Click Auto-Walk to Latest Custom Map Pin! */}
-        {pins.length > 0 && data.onAutoWalkTo && (
-          <div
-            style={{
-              position: 'absolute',
-              left: '50%',
-              bottom: 10,
-              transform: 'translateX(-50%)',
-              zIndex: 18,
-              display: 'flex',
-              gap: 6,
-            }}
-          >
-            <button
-              type="button"
-              className="lcd-map-float-btn is-active"
+        {pins.length > 0 && data.onAutoWalkTo && (() => {
+          const latestPin = pins[pins.length - 1];
+          const pinDistM = Math.hypot(latestPin.x - snapshot.px, latestPin.z - snapshot.pz);
+          const pinDistStr =
+            pinDistM < 1000
+              ? `${Math.max(1, Math.round(pinDistM))} m`
+              : pinDistM < 10000
+                ? `${(pinDistM / 1000).toFixed(2)} km`
+                : pinDistM < 100000
+                  ? `${(pinDistM / 1000).toFixed(1)} km`
+                  : `${Math.round(pinDistM / 1000)} km`;
+          return (
+            <div
               style={{
-                background: '#ffd43b',
-                color: '#161420',
-                fontWeight: 900,
-                padding: '5px 12px',
-              }}
-              onClick={() => {
-                const targetPin = pins[pins.length - 1];
-                sound.play('confirm');
-                // Close map modal IMMEDIATELY on this paint frame, then kick off instant heading + async A*!
-                (onDismissTo3D ?? onClose)?.();
-                const tx = targetPin.x;
-                const tz = targetPin.z;
-                const lbl = `地图标点 (${Math.round(tx)}, ${Math.round(tz)})`;
-                window.requestAnimationFrame(() => {
-                  data.onAutoWalkTo?.(tx, tz, lbl);
-                });
+                position: 'absolute',
+                left: '50%',
+                bottom: 10,
+                transform: 'translateX(-50%)',
+                zIndex: 18,
+                display: 'flex',
+                gap: 6,
               }}
             >
-              🧭 自动寻路至最新标点
-            </button>
-          </div>
-        )}
+              <button
+                type="button"
+                className="lcd-map-float-btn is-active"
+                style={{
+                  background: '#ffd43b',
+                  color: '#161420',
+                  fontWeight: 900,
+                  padding: '5px 12px',
+                }}
+                onClick={() => {
+                  sound.play('confirm');
+                  // Close map modal IMMEDIATELY on this paint frame, then kick off instant heading + async A*!
+                  (onDismissTo3D ?? onClose)?.();
+                  const tx = latestPin.x;
+                  const tz = latestPin.z;
+                  const lbl = `地图标点 (${Math.round(tx)}, ${Math.round(tz)})`;
+                  window.requestAnimationFrame(() => {
+                    data.onAutoWalkTo?.(tx, tz, lbl);
+                  });
+                }}
+              >
+                🧭 自动寻路至最新标点 · 距离 {pinDistStr}
+              </button>
+            </div>
+          );
+        })()}
 
         {/* Bottom-Left Retro Pixel Compass Rose + Live Zoom Scale */}
         <div className="wm-compass-rose is-lcd" aria-label="指南针">
@@ -2244,49 +2287,61 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
               <>
                 <div className="lcd-map-side-head">⛰️ 名山景区直达 (一键传送看山)</div>
                 <div className="lcd-map-poi-list">
-                  {SCENIC_MOUNTAIN_SPOTS.map((sp) => (
-                    <div key={sp.id} style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}>
-                      <button
-                        type="button"
-                        className="lcd-map-poi-btn"
-                        style={{ flex: 1, minWidth: 0 }}
-                        title={sp.subLabel}
-                        onClick={() => {
-                          const wp = geoToWorld(sp.lat, sp.lng, geoOrigin);
-                          if (wp) {
-                            sound.play('cursor');
-                            setPan({ x: wp.x - snapshot.px, z: wp.z - snapshot.pz });
-                            setZoom(0.02);
-                            setDrawerOpen(false);
-                          }
-                        }}
-                      >
-                        <span className="lcd-map-poi-lbl">{sp.label}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="lcd-map-poi-btn"
-                        style={{
-                          width: 'auto',
-                          flex: '0 0 auto',
-                          flexShrink: 0,
-                          justifyContent: 'center',
-                          padding: '0 8px',
-                          background: '#69db7c',
-                          color: '#161420',
-                          fontWeight: 900,
-                        }}
-                        title={`立即传送至 ${sp.label} (${sp.subLabel})`}
-                        onClick={() => {
-                          sound.play('confirm');
-                          (onDismissTo3D ?? onClose)?.();
-                          data.onTeleportGeoSpot?.(sp);
-                        }}
-                      >
-                        传送
-                      </button>
-                    </div>
-                  ))}
+                  {SCENIC_MOUNTAIN_SPOTS.map((sp) => {
+                    const spWp = geoToWorld(sp.lat, sp.lng, geoOrigin);
+                    const spDistM = spWp ? Math.hypot(spWp.x - snapshot.px, spWp.z - snapshot.pz) : null;
+                    const spDistStr =
+                      spDistM === null
+                        ? ''
+                        : spDistM < 1000
+                          ? `${Math.max(1, Math.round(spDistM))}m`
+                          : spDistM < 10000
+                            ? `${(spDistM / 1000).toFixed(1)}km`
+                            : `${Math.round(spDistM / 1000)}km`;
+                    return (
+                      <div key={sp.id} style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}>
+                        <button
+                          type="button"
+                          className="lcd-map-poi-btn"
+                          style={{ flex: 1, minWidth: 0 }}
+                          title={sp.subLabel}
+                          onClick={() => {
+                            if (spWp) {
+                              sound.play('cursor');
+                              setPan({ x: spWp.x - snapshot.px, z: spWp.z - snapshot.pz });
+                              setZoom(0.02);
+                              setDrawerOpen(false);
+                            }
+                          }}
+                        >
+                          <span className="lcd-map-poi-lbl">{sp.label}</span>
+                          {spDistStr && <em>{spDistStr}</em>}
+                        </button>
+                        <button
+                          type="button"
+                          className="lcd-map-poi-btn"
+                          style={{
+                            width: 'auto',
+                            flex: '0 0 auto',
+                            flexShrink: 0,
+                            justifyContent: 'center',
+                            padding: '0 8px',
+                            background: '#69db7c',
+                            color: '#161420',
+                            fontWeight: 900,
+                          }}
+                          title={`立即传送至 ${sp.label} (${sp.subLabel})`}
+                          onClick={() => {
+                            sound.play('confirm');
+                            (onDismissTo3D ?? onClose)?.();
+                            data.onTeleportGeoSpot?.(sp);
+                          }}
+                        >
+                          传送
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -2317,7 +2372,15 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                             <PixelItemImg src={item.icon} size={13} />
                           </span>
                           <span className="lcd-map-poi-lbl">{item.label}</span>
-                          <em>{distM}m</em>
+                          <em>
+                            {distM < 1000
+                              ? `${Math.max(1, distM)}m`
+                              : distM < 10000
+                                ? `${(distM / 1000).toFixed(2)}km`
+                                : distM < 100000
+                                  ? `${(distM / 1000).toFixed(1)}km`
+                                  : `${Math.round(distM / 1000)}km`}
+                          </em>
                         </button>
                         <button
                           type="button"

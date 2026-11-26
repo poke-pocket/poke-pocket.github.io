@@ -348,6 +348,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     z: number;
   }
   const [autoNavActiveLabel, setAutoNavActiveLabel] = useState<string | null>(null);
+  const [autoNavDistM, setAutoNavDistM] = useState<number | null>(null);
+  const lastNavDistSyncMsRef = useRef(0);
   const [autoNavTargets, setAutoNavTargets] = useState<AutoNavTargetItem[]>([]);
   const autoNavTargetsRef = useRef<AutoNavTargetItem[]>([]);
   autoNavTargetsRef.current = autoNavTargets;
@@ -1960,10 +1962,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
     syncAutoNavTargets();
 
+    const formatNavMeterDist = (dM: number) =>
+      dM < 1000
+        ? `${Math.max(1, Math.round(dM))} m`
+        : dM < 10000
+          ? `${(dM / 1000).toFixed(2)} km`
+          : dM < 100000
+            ? `${(dM / 1000).toFixed(1)} km`
+            : `${Math.round(dM / 1000)} km`;
+
     stopAutoNavRef.current = (silent = false) => {
       if (autoNavRef.current) {
         autoNavRef.current = null;
         setAutoNavActiveLabel(null);
+        setAutoNavDistM(null);
         autoNavTrailGroup.visible = false;
         if (!silent) {
           sound.play('cancel');
@@ -2010,9 +2022,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         planningJob,
         hasRemainingHorizon: false,
       };
+      const initDistM = Math.max(1, Math.round(Math.hypot(x - curSim.px, z - curSim.pz)));
+      lastNavDistSyncMsRef.current = performance.now();
+      setAutoNavDistM(initDistM);
       setAutoNavActiveLabel(`${label} · 路线规划中…`);
       rebuildAutoNavTrailVisuals(curSim.px, curSim.pz, kickoffWaypoints, 0);
-      showBanner(`🧭 已出发前往「${label}」（边走边规划精细路线，按 WASD 可随时接管）`, 2400);
+      showBanner(`🧭 已出发前往「${label}」· 距目标 ${formatNavMeterDist(initDistM)}（按 WASD 可随时接管）`, 2400);
     };
 
     // 2C. Live 3D Weather Particle System (Rain Streaks / Falling Snowflakes synced to real GPS/city weather!)
@@ -2789,9 +2804,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           if (mLen > 0.08 && navNow) {
             autoNavRef.current = null;
             setAutoNavActiveLabel(null);
+            setAutoNavDistM(null);
             autoNavTrailGroup.visible = false;
             showBanner('🕹️ 已切换为手动移动控制', 1400);
           } else if (navNow && mLen <= 0.08) {
+            const airNav = rideModeRef.current === 'fly' || rideModeRef.current === 'jet';
             // Advance background time-sliced A* pathfinder (~2.2ms budget, 60fps zero-stutter!) while walking!
             if (navNow.planningJob) {
               const planned = navNow.planningJob.step(2.2);
@@ -2803,7 +2820,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 setAutoNavActiveLabel(navNow.label);
                 rebuildAutoNavTrailVisuals(sim.px, sim.pz, navNow.waypoints, navNow.idx);
               }
-            } else if (navNow.hasRemainingHorizon && navNow.waypoints.length >= 2) {
+            } else if (!airNav && navNow.hasRemainingHorizon && navNow.waypoints.length >= 2) {
               // Rolling-Horizon Refresh for multi-km journeys: seamlessly plan next 500m ahead before reaching horizon end!
               const horizonWp = navNow.waypoints[navNow.waypoints.length - 2];
               const finalGoalDist = Math.hypot(navNow.goalX - sim.px, navNow.goalZ - sim.pz);
@@ -2832,23 +2849,32 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
             const curWp = navNow.waypoints[navNow.idx];
             const distToFinal = Math.hypot(navNow.goalX - sim.px, navNow.goalZ - sim.pz);
-            if (!curWp || distToFinal < 1.45) {
+            if (now - lastNavDistSyncMsRef.current >= 120) {
+              lastNavDistSyncMsRef.current = now;
+              const roundedDist = Math.max(0, Math.round(distToFinal));
+              setAutoNavDistM((prev) => (prev === roundedDist ? prev : roundedDist));
+            }
+            const arriveRadius = airNav ? 10 : 1.45;
+            if ((!airNav && !curWp) || distToFinal < arriveRadius) {
               const arrivedLabel = navNow.label;
               autoNavRef.current = null;
               setAutoNavActiveLabel(null);
+              setAutoNavDistM(null);
               autoNavTrailGroup.visible = false;
               sound.play('confirm');
               showBanner(`✅ 已抵达「${arrivedLabel}」！`, 2400);
             } else {
-              const ndx = curWp.x - sim.px;
-              const ndz = curWp.z - sim.pz;
+              const steerX = airNav || !curWp ? navNow.goalX : curWp.x;
+              const steerZ = airNav || !curWp ? navNow.goalZ : curWp.z;
+              const ndx = steerX - sim.px;
+              const ndz = steerZ - sim.pz;
               const nd = Math.hypot(ndx, ndz) || 1;
               worldMx = ndx / nd;
               worldMz = ndz / nd;
               mLen = 1.0;
               autoNavBeaconRing.scale.setScalar(0.92 + Math.sin(sim.elapsed * 6.5) * 0.14);
               navNow.stuckTimer += dt;
-              if (navNow.stuckTimer >= 0.9) {
+              if (!airNav && navNow.stuckTimer >= 0.9) {
                 const moved = Math.hypot(sim.px - navNow.lastCheckX, sim.pz - navNow.lastCheckZ);
                 navNow.lastCheckX = sim.px;
                 navNow.lastCheckZ = sim.pz;
@@ -3587,7 +3613,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   useArenaKeyboardHotkeys({ CAM_MODE_META, activeBusStopModal, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, cycleCameraFollowMode, cycleInteractOptionRef, cycleRideMode, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, inRunTownShopOpen, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, programmaticUnlockRef, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setActiveBusStopModal, setBanishMode, setClosingLevelUp, setInRunTownShopOpen, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
   const bgmTrackLabel = BGM_TRACK_LABELS[activeBgmTrack] ?? '晴空微风 · 城镇漫步';
-  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
+  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavDistM, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
 
   return (
     <div ref={containerRef} className="world3d-stage">

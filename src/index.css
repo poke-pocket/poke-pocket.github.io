@@ -11820,11 +11820,101 @@ button.gba-status-box.is-clickable-card {
    ========================================================================= */
 .surv-top-status-deck {
   display: inline-flex;
+  flex-direction: column;
   align-items: stretch;
   background: linear-gradient(180deg, rgba(28, 30, 48, 0.95), rgba(16, 18, 30, 0.95));
   border: 2.5px solid #12101a;
   box-shadow: 4px 4px 0 rgba(9, 8, 15, 0.92), inset 0 1px 0 rgba(255, 255, 255, 0.14);
   pointer-events: auto;
+}
+
+.surv-top-status-main {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+}
+
+.surv-top-nav-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 10px;
+  background: linear-gradient(90deg, rgba(48, 40, 16, 0.95), rgba(20, 24, 38, 0.96));
+  border-top: 2px solid #2b2d44;
+  color: #fff9db;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.surv-top-nav-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.surv-top-nav-compass {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.surv-top-nav-name {
+  color: #fff3bf;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 230px;
+}
+
+.surv-top-nav-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.surv-top-nav-dist {
+  padding: 1px 7px;
+  background: rgba(255, 212, 59, 0.18);
+  border: 1.5px solid #ffd43b;
+  color: #ffe066;
+  font-size: 11.5px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.surv-top-nav-cancel {
+  padding: 1px 7px;
+  background: #ff6b6b;
+  color: #fff;
+  border: 1.5px solid #12101a;
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 1px 1px 0 #12101a;
+}
+
+.surv-top-nav-cancel:hover {
+  background: #fa5252;
+}
+
+@media (max-width: 760px) {
+  .surv-top-nav-strip {
+    padding: 3px 7px;
+    gap: 6px;
+    font-size: 10px;
+  }
+  .surv-top-nav-name {
+    max-width: 135px;
+  }
+  .surv-top-nav-dist {
+    font-size: 10.5px;
+    padding: 1px 5px;
+  }
 }
 
 .top-deck-wing {
