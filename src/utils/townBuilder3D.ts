@@ -665,85 +665,73 @@ function getGroundTex(): TownGroundTex {
     ctx.fillRect(19, 15, 10, 2);
   };
 
-  // 1. Grand 8-Lane City Boulevard with Extra-Wide Promenade Sidewalks (y=0..18, y=110..128), 4+4 Lanes & Central Green Median!
+  // 1. Grand 4-Lane City Boulevard with EXTRA-WIDE Single Lanes (~5.3m each = 2.4x Red's width!), Wide Sidewalks & Lush Central Median!
   const boulevard4Lane = makePixelTex(
     128,
     128,
     (ctx) => {
-      // Extra-Wide Paved Pedestrian Promenade Sidewalks (~6.5m each side!) with tactile paving & tile seams
+      // Wide Paved Pedestrian Sidewalks (y=0..15, y=113..128) with tactile guide strip & tile seams
       ctx.fillStyle = '#e0d8c8';
-      ctx.fillRect(0, 0, 128, 19);
-      ctx.fillRect(0, 109, 128, 19);
+      ctx.fillRect(0, 0, 128, 16);
+      ctx.fillRect(0, 112, 128, 16);
       ctx.fillStyle = '#c8bfb0';
       for (let x = 0; x < 128; x += 16) {
-        ctx.fillRect(x, 0, 1, 19);
-        ctx.fillRect(x, 109, 1, 19);
+        ctx.fillRect(x, 0, 1, 16);
+        ctx.fillRect(x, 112, 1, 16);
       }
-      ctx.fillStyle = '#f2cc5a'; // tactile pedestrian guide strip along wide sidewalk
-      ctx.fillRect(0, 9, 128, 2);
-      ctx.fillRect(0, 117, 128, 2);
+      ctx.fillStyle = '#f2cc5a';
+      ctx.fillRect(0, 7, 128, 2);
+      ctx.fillRect(0, 119, 128, 2);
       // Curb stones
       ctx.fillStyle = '#8b92a0';
-      ctx.fillRect(0, 18, 128, 2);
-      ctx.fillRect(0, 108, 128, 2);
+      ctx.fillRect(0, 15, 128, 2);
+      ctx.fillRect(0, 111, 128, 2);
 
-      // 8-Lane Asphalt Roadbed (y=20..108) with subtle tire-wear darkening, storm-drain grates, manholes & pixel lane arrows!
+      // Extra-Wide 2+2 Carriageway Asphalt (y=17..111) — each single lane is 20px (~5.3m wide!)
       ctx.fillStyle = '#4a5260';
-      ctx.fillRect(0, 20, 128, 88);
-      // Curb drop-shadow right along both gutters
+      ctx.fillRect(0, 17, 128, 94);
+      // Gutter shadows
       ctx.fillStyle = '#363d48';
-      ctx.fillRect(0, 20, 128, 2);
-      ctx.fillRect(0, 106, 128, 2);
-      // Subtle tire-wear track shading in active lanes
-      ctx.fillStyle = 'rgba(28, 32, 42, 0.16)';
-      ctx.fillRect(0, 24, 128, 3);
-      ctx.fillRect(0, 33, 128, 3);
-      ctx.fillRect(0, 83, 128, 3);
-      ctx.fillRect(0, 92, 128, 3);
+      ctx.fillRect(0, 17, 128, 2);
+      ctx.fillRect(0, 109, 128, 2);
+      // Subtle asphalt speckle
       ctx.fillStyle = '#424956';
       for (let i = 0; i < 85; i++) {
-        ctx.fillRect((i * 23) % 125, 22 + ((i * 17) % 83), 2, 1);
+        ctx.fillRect((i * 23) % 125, 19 + ((i * 17) % 88), 2, 1);
       }
-      // Crisp pixel storm-drain grates along curbs & iron manhole cover!
+      // Crisp pixel storm-drain grates along curbs & iron manhole cover
       ctx.fillStyle = '#252a33';
-      ctx.fillRect(18, 21, 7, 3);
-      ctx.fillRect(86, 104, 7, 3);
+      ctx.fillRect(18, 18, 7, 3);
+      ctx.fillRect(86, 107, 7, 3);
       ctx.fillStyle = '#6c757d';
-      ctx.fillRect(20, 21, 1, 3);
-      ctx.fillRect(22, 21, 1, 3);
-      ctx.fillRect(88, 104, 1, 3);
-      ctx.fillRect(90, 104, 1, 3);
-      // Round-pixel iron utility manhole cover
+      ctx.fillRect(20, 18, 1, 3);
+      ctx.fillRect(22, 18, 1, 3);
+      ctx.fillRect(88, 107, 1, 3);
+      ctx.fillRect(90, 107, 1, 3);
       ctx.fillStyle = '#2c323d';
-      ctx.fillRect(62, 41, 6, 6);
+      ctx.fillRect(62, 43, 6, 6);
       ctx.fillStyle = '#5c6473';
-      ctx.fillRect(63, 42, 4, 4);
+      ctx.fillRect(63, 44, 4, 4);
       ctx.fillStyle = '#2c323d';
-      ctx.fillRect(64, 43, 2, 2);
+      ctx.fillRect(64, 45, 2, 2);
 
-      // Crisp white pixel lane-direction arrows (left/right bound)
+      // Crisp white pixel lane-direction arrows centered in each wide lane
       ctx.fillStyle = 'rgba(241, 243, 245, 0.72)';
-      // Westbound arrow in upper carriageway
-      ctx.fillRect(102, 33, 8, 2);
-      ctx.fillRect(100, 32, 2, 4);
-      ctx.fillRect(98, 33, 2, 2);
-      // Eastbound arrow in lower carriageway
-      ctx.fillRect(22, 92, 8, 2);
-      ctx.fillRect(30, 91, 2, 4);
-      ctx.fillRect(32, 92, 2, 2);
+      ctx.fillRect(98, 26, 9, 2);
+      ctx.fillRect(96, 25, 2, 4);
+      ctx.fillRect(94, 26, 2, 2);
+      ctx.fillRect(22, 99, 9, 2);
+      ctx.fillRect(31, 98, 2, 4);
+      ctx.fillRect(33, 99, 2, 2);
 
-      // 4 Lanes each direction (dashed white dividers)
+      // 2 EXTRA-WIDE Lanes each direction (1 crisp dashed white lane divider per carriageway!)
       ctx.fillStyle = '#f1f3f5';
-      for (let x = 6; x < 128; x += 26) {
-        ctx.fillRect(x, 29, 14, 2);
-        ctx.fillRect(x, 38, 14, 2);
-        ctx.fillRect(x, 47, 14, 2);
-        ctx.fillRect(x, 79, 14, 2);
-        ctx.fillRect(x, 88, 14, 2);
-        ctx.fillRect(x, 97, 14, 2);
+      for (let x = 6; x < 128; x += 28) {
+        ctx.fillRect(x, 36, 15, 2);
+        ctx.fillRect(x, 90, 15, 2);
       }
 
-      // Lush Central Green Median Strip (y=57..71) with clean double yellow curbs + lush pixel grass tufts!
+      // Lush Central Green Median Strip (y=58..70) with clean double yellow curbs + pixel grass tufts!
       ctx.fillStyle = '#fcc419';
       ctx.fillRect(0, 56, 128, 2);
       ctx.fillRect(0, 70, 128, 2);
@@ -761,47 +749,41 @@ function getGroundTex(): TownGroundTex {
     1,
   );
 
-  // 2. 4-Lane Collector Avenue with Extra-Wide Sidewalks (y=0..12, y=52..64), Green Verges, 4 Lanes & Double Yellow Center Line!
+  // 2. Wide 2-Lane Collector Street (1 Extra-Wide ~5.2m Lane Each Direction + Double Yellow Centerline + Wide Sidewalks!)
   const collector2Lane = makePixelTex(
     64,
     64,
     (ctx) => {
-      // Wide Pedestrian Sidewalks (~4.5m each side!)
+      // Wide Pedestrian Sidewalks
       ctx.fillStyle = '#dfd7c6';
-      ctx.fillRect(0, 0, 64, 12);
-      ctx.fillRect(0, 52, 64, 12);
+      ctx.fillRect(0, 0, 64, 10);
+      ctx.fillRect(0, 54, 64, 10);
       ctx.fillStyle = '#c8bfb0';
       for (let x = 0; x < 64; x += 16) {
-        ctx.fillRect(x, 0, 1, 12);
-        ctx.fillRect(x, 52, 1, 12);
+        ctx.fillRect(x, 0, 1, 10);
+        ctx.fillRect(x, 54, 1, 10);
       }
-      // Roadside planting strip
+      // Roadside planting strip + curb
       ctx.fillStyle = '#40b058';
-      ctx.fillRect(0, 11, 64, 3);
-      ctx.fillRect(0, 50, 64, 3);
+      ctx.fillRect(0, 9, 64, 2);
+      ctx.fillRect(0, 53, 64, 2);
       ctx.fillStyle = '#8b93a1';
-      ctx.fillRect(0, 14, 64, 1);
-      ctx.fillRect(0, 49, 64, 1);
-      // 4-Lane Asphalt (y=15..49) with gutter shadows, asphalt speckle & roadside drain grate
+      ctx.fillRect(0, 11, 64, 1);
+      ctx.fillRect(0, 52, 64, 1);
+      // Wide 2-Lane Asphalt (y=12..52) — 19px per single lane (~5.3m wide!)
       ctx.fillStyle = '#505866';
-      ctx.fillRect(0, 15, 64, 34);
+      ctx.fillRect(0, 12, 64, 40);
       ctx.fillStyle = '#3a414d';
-      ctx.fillRect(0, 15, 64, 1);
-      ctx.fillRect(0, 48, 64, 1);
+      ctx.fillRect(0, 12, 64, 1);
+      ctx.fillRect(0, 51, 64, 1);
       ctx.fillStyle = '#474f5c';
       for (let i = 0; i < 28; i++) {
-        ctx.fillRect((i * 17) % 62, 16 + ((i * 11) % 31), 2, 1);
+        ctx.fillRect((i * 17) % 62, 14 + ((i * 11) % 35), 2, 1);
       }
       ctx.fillStyle = '#252a33';
-      ctx.fillRect(28, 16, 5, 2);
-      ctx.fillRect(12, 46, 5, 2);
-      // Dashed white lane dividers (2 lanes each side)
-      ctx.fillStyle = '#f1f3f5';
-      for (let x = 4; x < 64; x += 22) {
-        ctx.fillRect(x, 22, 11, 2);
-        ctx.fillRect(x, 40, 11, 2);
-      }
-      // Crisp double yellow center divider
+      ctx.fillRect(28, 13, 5, 2);
+      ctx.fillRect(12, 49, 5, 2);
+      // Crisp double yellow center divider (wide spacious single lane on each side!)
       ctx.fillStyle = '#ffe066';
       ctx.fillRect(0, 30, 64, 1);
       ctx.fillRect(0, 33, 64, 1);
@@ -2036,9 +2018,7 @@ export function buildProceduralTown3D(
     billboards.push(m);
   };
 
-  // 1. Cities: Skylines Grand 8-Lane Metropolis Road Hierarchy with Neat Pixel-Art Tree Medians & Verges!
-  const curbStoneMat = new THREE.MeshLambertMaterial({ color: 0xd8d0c0 });
-  const medianGrassMat = new THREE.MeshLambertMaterial({ color: 0x37a84f });
+  // 1. Wide Multi-Lane Metropolis Road Hierarchy with Dense Pixel-Art Tree + Shrub Medians & Verges!
 
   const distToSeg2D = (px: number, pz: number, x1: number, z1: number, x2: number, z2: number) => {
     const vx = x2 - x1;
@@ -2188,71 +2168,161 @@ export function buildProceduralTown3D(
     const polyOff = seg.kind === 'arterial' ? -4 : seg.kind === 'street' ? -2 : -1;
     group.add(buildStreetRibbonMesh(seg, baseY, centerX, centerZ, roadTex, getGroundHeight, liftY, polyOff));
 
-    // Neatly spaced Pixel-Art Street Trees & Bushes inside the 8-Lane Central Green Median (strictly outside plaza r >= 36m & clear of junctions!)
+    // Lush Dense Avenue Greenery: Tall Pixel Street Trees spaced every ~14m + Continuous Small Pixel Shrubs & Flowers in between!
     const segLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
     const dirX = (seg.x2 - seg.x1) / Math.max(0.01, segLen);
     const dirZ = (seg.z2 - seg.z1) / Math.max(0.01, segLen);
     const nx = -dirZ;
     const nz = dirX;
-    const angle = Math.atan2(seg.x2 - seg.x1, seg.z2 - seg.z1);
-    const midX = (seg.x1 + seg.x2) * 0.5;
-    const midZ = (seg.z1 + seg.z2) * 0.5;
-    const nearJunction = layout.junctions.some((jn) => Math.hypot(jn.x - midX, jn.z - midZ) < 25.0);
-    const distFromPlaza = Math.hypot(midX - centerX, midZ - centerZ);
+    const isNearAnyJunction = (wx: number, wz: number, rad = 20) =>
+      layout.junctions.some((jn) => Math.hypot(jn.x - wx, jn.z - wz) < rad);
 
-    if (seg.kind === 'arterial' && segLen >= 22 && !nearJunction && distFromPlaza >= 40 && !isBlockedForGreenery(midX, midZ, seg)) {
-      const mLen = Math.max(10.0, segLen - 22.0);
-      const my = localGroundY(midX, midZ) + 0.11;
-      // Low neat curb border for the central green median strip
-      const curbBox = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.16, mLen), curbStoneMat);
-      curbBox.position.set(midX - centerX, my + 0.08, midZ - centerZ);
-      curbBox.rotation.y = angle;
-      const grassBox = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.10, mLen - 0.5), medianGrassMat);
-      grassBox.position.set(midX - centerX, my + 0.17, midZ - centerZ);
-      grassBox.rotation.y = angle;
-      group.add(curbBox, grassBox);
+    if (seg.kind === 'arterial' && segLen >= 18) {
+      // A. Central Green Median: lush alternating rhythm of Tall Pixel Trees (~14m) + Dense Small Bushes/Flowers (~3.8m)!
+      const medianSteps = Math.max(3, Math.floor((segLen - 8) / 3.8));
+      for (let mi = 0; mi < medianSteps; mi++) {
+        const f = 0.08 + (medianSteps > 1 ? (mi / (medianSteps - 1)) * 0.84 : 0.42);
+        const mx = seg.x1 + dirX * (segLen * f);
+        const mz = seg.z1 + dirZ * (segLen * f);
+        if (isNearAnyJunction(mx, mz, 21) || isBlockedForGreenery(mx, mz, seg)) continue;
+        const my = localGroundY(mx, mz) + 0.14;
+        if (mi % 4 === 1) {
+          const treeTex = floraTex.treeSprites[(mi + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
+          spawnPixelGreenery(treeTex, mx - centerX, my, mz - centerZ, 5.2, 6.2);
+        } else {
+          const isFlower = mi % 4 === 3;
+          const shrubTex = isFlower
+            ? floraTex.flowers[mi % floraTex.flowers.length] ?? floraTex.flower
+            : floraTex.bushes[mi % floraTex.bushes.length] ?? floraTex.bush;
+          spawnPixelGreenery(shrubTex, mx - centerX, my, mz - centerZ, isFlower ? 1.85 : 2.15, isFlower ? 1.55 : 1.75);
+        }
+      }
 
-      // Plant neat evenly-spaced hand-drawn Pixel-Art Trees & Bushes right down the median!
-      const treeSlots = Math.max(2, Math.floor(mLen / 10));
-      for (let ti = 0; ti < treeSlots; ti++) {
-        const f = -0.4 + (treeSlots > 1 ? (ti / (treeSlots - 1)) * 0.8 : 0.4);
-        const tx = midX + dirX * (f * mLen);
-        const tz = midZ + dirZ * (f * mLen);
-        if (Math.hypot(tx - centerX, tz - centerZ) < 36 || isBlockedForGreenery(tx, tz, seg)) continue;
-        const ty = localGroundY(tx, tz) + 0.24;
-        const treeTex = floraTex.treeSprites[(ti + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
-        spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 5.4, 6.4);
-        if (ti < treeSlots - 1) {
-          const bx = tx + dirX * (mLen / (treeSlots * 2));
-          const bz = tz + dirZ * (mLen / (treeSlots * 2));
-          if (!isBlockedForGreenery(bx, bz, seg)) {
-            const bushTex = floraTex.bushes[ti % floraTex.bushes.length] ?? floraTex.bush;
-            spawnPixelGreenery(bushTex, bx - centerX, localGroundY(bx, bz) + 0.22, bz - centerZ, 2.3, 2.0);
+      // B. Both Outer Boulevard Sidewalk Verges: spaced tall shade trees + continuous small roadside shrubs!
+      const vergeOff = seg.width * 0.5 - 1.5;
+      const sideSteps = Math.max(3, Math.floor((segLen - 8) / 4.4));
+      for (let si = 0; si < sideSteps; si++) {
+        const f = 0.08 + (sideSteps > 1 ? (si / (sideSteps - 1)) * 0.84 : 0.42);
+        const sx = seg.x1 + dirX * (segLen * f);
+        const sz = seg.z1 + dirZ * (segLen * f);
+        for (const side of [-1, 1]) {
+          const tx = sx + nx * side * vergeOff;
+          const tz = sz + nz * side * vergeOff;
+          if (isNearAnyJunction(tx, tz, 22) || isBlockedForGreenery(tx, tz, seg)) continue;
+          const ty = localGroundY(tx, tz) + 0.14;
+          if (si % 3 === 1) {
+            const treeTex = floraTex.treeSprites[(si + styleIdx + (side > 0 ? 1 : 0)) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
+            spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.8, 5.8);
+          } else {
+            const bushTex = floraTex.bushes[(si + (side > 0 ? 1 : 0)) % floraTex.bushes.length] ?? floraTex.bush;
+            spawnPixelGreenery(bushTex, tx - centerX, ty, tz - centerZ, 1.85, 1.55);
           }
         }
       }
     }
 
-    // Plant neat rows of Pixel-Art Street Trees & Bushes along both green verges of 4-lane Collector Avenues!
-    if (seg.kind === 'street' && segLen >= 16) {
-      const vergeOff = seg.width * 0.5 - 2.6;
-      const treeCount = Math.max(2, Math.floor((segLen - 8) / 11));
-      for (let ti = 0; ti < treeCount; ti++) {
-        const tFrac = 0.18 + (treeCount > 1 ? (ti / (treeCount - 1)) * 0.64 : 0.32);
+    // Collector Streets: Rich alternating street trees + dense small roadside shrub hedges on BOTH sides!
+    if (seg.kind === 'street' && segLen >= 14) {
+      const vergeOff = seg.width * 0.5 - 1.5;
+      const stepCount = Math.max(3, Math.floor((segLen - 6) / 4.6));
+      for (let ti = 0; ti < stepCount; ti++) {
+        const tFrac = 0.10 + (stepCount > 1 ? (ti / (stepCount - 1)) * 0.80 : 0.4);
         const sx = seg.x1 + dirX * (segLen * tFrac);
         const sz = seg.z1 + dirZ * (segLen * tFrac);
         for (const side of [-1, 1]) {
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;
-          if (isBlockedForGreenery(tx, tz, seg)) continue;
+          if (isNearAnyJunction(tx, tz, 16) || isBlockedForGreenery(tx, tz, seg)) continue;
           const ty = localGroundY(tx, tz) + 0.14;
-          const texPick =
-            ti % 2 === 0
-              ? floraTex.treeSprites[(ti + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite
-              : floraTex.bushes[ti % floraTex.bushes.length] ?? floraTex.bush;
-          const isTree = ti % 2 === 0;
-          spawnPixelGreenery(texPick, tx - centerX, ty, tz - centerZ, isTree ? 4.6 : 2.2, isTree ? 5.4 : 1.9);
+          const isTree = ti % 3 === 0;
+          const texPick = isTree
+            ? floraTex.treeSprites[(ti + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite
+            : floraTex.bushes[ti % floraTex.bushes.length] ?? floraTex.bush;
+          spawnPixelGreenery(texPick, tx - centerX, ty, tz - centerZ, isTree ? 4.5 : 1.75, isTree ? 5.3 : 1.45);
         }
+      }
+    }
+  }
+
+  // 1A-PLUS. REAL 3D ELEVATED URBAN VIADUCT / EXPRESSWAY (城市高架快速路 — 南北高架 soaring 7.8m overhead!)
+  // Characters & ground traffic walk freely underneath the concrete T-piers while elevated express traffic cruises above!
+  const viaductArterials = layout.streets.filter(
+    (s) => !s.isBridge && s.kind === 'arterial' && Math.abs(s.z2 - s.z1) > Math.abs(s.x2 - s.x1) * 1.4,
+  );
+  if (viaductArterials.length >= 2) {
+    const pierConcreteMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xbec5cf }));
+    const viaductGuardMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x707a8a }));
+    const viaductDeckMat = new THREE.MeshLambertMaterial({ map: tex.collector2Lane });
+    const viaductLampMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
+    const VIADUCT_H = 7.8;
+    const VIADUCT_W = 13.5;
+
+    for (const vSeg of viaductArterials.slice(0, 4)) {
+      const vLen = Math.hypot(vSeg.x2 - vSeg.x1, vSeg.z2 - vSeg.z1);
+      if (vLen < 24) continue;
+      const vYaw = Math.atan2(vSeg.x2 - vSeg.x1, vSeg.z2 - vSeg.z1);
+      const vDirX = (vSeg.x2 - vSeg.x1) / vLen;
+      const vDirZ = (vSeg.z2 - vSeg.z1) / vLen;
+      const vNx = -vDirZ;
+      const vNz = vDirX;
+      const vmX = (vSeg.x1 + vSeg.x2) * 0.5 - centerX;
+      const vmZ = (vSeg.z1 + vSeg.z2) * 0.5 - centerZ;
+      const vBaseY = localGroundY((vSeg.x1 + vSeg.x2) * 0.5, (vSeg.z1 + vSeg.z2) * 0.5);
+
+      // Elevated box-girder road deck + crisp dark ink edges
+      const deckGeo = new THREE.BoxGeometry(VIADUCT_W, 0.95, vLen + 2.8);
+      const deck = new THREE.Mesh(deckGeo, [
+        pierConcreteMat,
+        pierConcreteMat,
+        viaductDeckMat,
+        pierConcreteMat,
+        pierConcreteMat,
+        pierConcreteMat,
+      ]);
+      deck.position.set(vmX, vBaseY + VIADUCT_H, vmZ);
+      deck.rotation.y = vYaw;
+      deck.castShadow = true;
+      deck.receiveShadow = true;
+      deck.add(new THREE.LineSegments(new THREE.EdgesGeometry(deckGeo, 30), INK_LINE_MAT));
+      group.add(deck);
+
+      // Sleek left & right elevated sound-barrier guardrails
+      for (const side of [-1, 1]) {
+        const gx = vmX + vNx * side * (VIADUCT_W * 0.48);
+        const gz = vmZ + vNz * side * (VIADUCT_W * 0.48);
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, vLen + 2.4), viaductGuardMat);
+        rail.position.set(gx, vBaseY + VIADUCT_H + 0.95, gz);
+        rail.rotation.y = vYaw;
+        rail.castShadow = true;
+        group.add(rail);
+      }
+
+      // Concrete T-shaped support piers spaced neatly every ~26m inside central median (ZERO sidewalk blocking!)
+      const pierCount = Math.max(1, Math.floor(vLen / 26));
+      for (let pi = 0; pi < pierCount; pi++) {
+        const f = (pi + 0.5) / pierCount;
+        const pwx = vSeg.x1 + (vSeg.x2 - vSeg.x1) * f;
+        const pwz = vSeg.z1 + (vSeg.z2 - vSeg.z1) * f;
+        if (layout.junctions.some((jn) => Math.hypot(jn.x - pwx, jn.z - pwz) < 20)) continue;
+        const py = localGroundY(pwx, pwz);
+        const pxL = pwx - centerX;
+        const pzL = pwz - centerZ;
+        const col = new THREE.Mesh(new THREE.BoxGeometry(2.1, VIADUCT_H - 0.5, 2.1), pierConcreteMat);
+        col.position.set(pxL, py + (VIADUCT_H - 0.5) * 0.5, pzL);
+        col.rotation.y = vYaw;
+        col.castShadow = true;
+        col.receiveShadow = true;
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(VIADUCT_W * 0.82, 1.0, 2.5), pierConcreteMat);
+        cap.position.set(pxL, py + VIADUCT_H - 0.85, pzL);
+        cap.rotation.y = vYaw;
+        cap.castShadow = true;
+        // Elevated dual-arm overhead streetlamp!
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 4.2, 6), viaductGuardMat);
+        pole.position.set(pxL, py + VIADUCT_H + 2.5, pzL);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), viaductLampMat);
+        bulb.position.set(pxL, py + VIADUCT_H + 4.7, pzL);
+        group.add(col, cap, pole, bulb);
+        colliders.push(makeObbCollider(pwx, pwz, 1.15, 1.15, vYaw, VIADUCT_H));
       }
     }
   }
@@ -2261,8 +2331,8 @@ export function buildProceduralTown3D(
   const junctionMat = new THREE.MeshLambertMaterial({
     map: tex.junctionAsphalt,
     polygonOffset: true,
-    polygonOffsetFactor: -6,
-    polygonOffsetUnits: -6,
+    polygonOffsetFactor: -5,
+    polygonOffsetUnits: -5,
   });
   const signalPoleMat = new THREE.MeshLambertMaterial({ color: 0x343a40 });
   const signalBoxMat = new THREE.MeshLambertMaterial({ color: 0x1b1f26 });
@@ -2281,16 +2351,17 @@ export function buildProceduralTown3D(
       const vz = posAttr.getZ(vi);
       const wx = jn.x + vx * cosR + vz * sinR;
       const wz = jn.z - vx * sinR + vz * cosR;
-      posAttr.setXYZ(vi, wx - centerX, localGroundY(wx, wz) + 0.13, wz - centerZ);
+      posAttr.setXYZ(vi, wx - centerX, localGroundY(wx, wz) + 0.135, wz - centerZ);
     }
     padGeo.computeVertexNormals();
     const pad = new THREE.Mesh(padGeo, junctionMat);
     pad.receiveShadow = true;
+    pad.renderOrder = 6;
     group.add(pad);
 
-    // Mount sleek 3D Traffic Signals at corners of major 8-lane boulevard intersections!
-    if (jn.width >= 40) {
-      const off = jn.width * 0.47;
+    // Mount sleek 3D Traffic Signals at corners of major arterial intersections!
+    if (jn.width >= 32) {
+      const off = jn.width * 0.46;
       for (const [cxS, czS] of [
         [-off, -off],
         [off, off],
@@ -2318,25 +2389,26 @@ export function buildProceduralTown3D(
     }
   }
 
-  // 1C. REAL LUSH URBAN PARKS (人民广场公园 & 世纪公园 — ZERO giant circular concrete roundabout!)
+  // 1C. REAL LUSH URBAN PARKS (Zero Z-fighting or disappearing stone tiles at ANY distance!)
+  // Uses explicit vertical height separation + renderOrder + NO aggressive polygonOffset on lower lawn layers!
+  const parkBorderMat = new THREE.MeshLambertMaterial({
+    map: tex.cobblePlaza,
+  });
   const parkLawnMat = new THREE.MeshLambertMaterial({
     color: 0x51b748,
-    polygonOffset: true,
-    polygonOffsetFactor: -6,
-    polygonOffsetUnits: -6,
   });
   const parkWalkMat = new THREE.MeshLambertMaterial({
     map: tex.cobblePlaza,
     polygonOffset: true,
-    polygonOffsetFactor: -7,
-    polygonOffsetUnits: -7,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
   });
   const pondWaterMat = new THREE.MeshLambertMaterial({
     color: 0x339af0,
     emissive: 0x1864ab,
     polygonOffset: true,
-    polygonOffsetFactor: -8,
-    polygonOffsetUnits: -8,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
   const benchWoodMat = new THREE.MeshLambertMaterial({ color: 0x9c6644 });
 
@@ -2345,38 +2417,50 @@ export function buildProceduralTown3D(
     const pz = pk.z - centerZ;
     const py = localGroundY(pk.x, pk.z);
 
-    // Park stone border + lush rectangular lawn
-    const border = new THREE.Mesh(new THREE.PlaneGeometry(pk.w + 3.2, pk.d + 3.2), parkWalkMat);
+    // Park stone border (py + 0.05) < lush lawn (py + 0.085) < cross footpaths (py + 0.125) < central plaza (py + 0.145)
+    // With clean 3.5-4cm physical elevation steps & NO polygonOffset on lawn, footpaths NEVER disappear when walking close!
+    const border = new THREE.Mesh(new THREE.PlaneGeometry(pk.w + 3.2, pk.d + 3.2), parkBorderMat);
     border.rotation.x = -Math.PI / 2;
-    border.position.set(px, py + 0.09, pz);
+    border.position.set(px, py + 0.05, pz);
     border.receiveShadow = true;
+    border.renderOrder = 1;
+
     const lawn = new THREE.Mesh(new THREE.PlaneGeometry(pk.w, pk.d), parkLawnMat);
     lawn.rotation.x = -Math.PI / 2;
-    lawn.position.set(px, py + 0.11, pz);
+    lawn.position.set(px, py + 0.085, pz);
     lawn.receiveShadow = true;
-    // Cross stone footpaths through the park
-    const pathEW = new THREE.Mesh(new THREE.PlaneGeometry(pk.w + 2, 5.2), parkWalkMat);
+    lawn.renderOrder = 2;
+
+    const pathEW = new THREE.Mesh(new THREE.PlaneGeometry(pk.w + 2.4, 5.6), parkWalkMat);
     pathEW.rotation.x = -Math.PI / 2;
     pathEW.position.set(px, py + 0.125, pz);
-    const pathNS = new THREE.Mesh(new THREE.PlaneGeometry(5.2, pk.d + 2), parkWalkMat);
+    pathEW.receiveShadow = true;
+    pathEW.renderOrder = 3;
+
+    const pathNS = new THREE.Mesh(new THREE.PlaneGeometry(5.6, pk.d + 2.4), parkWalkMat);
     pathNS.rotation.x = -Math.PI / 2;
-    pathNS.position.set(px, py + 0.125, pz);
+    pathNS.position.set(px, py + 0.13, pz);
+    pathNS.receiveShadow = true;
+    pathNS.renderOrder = 4;
     group.add(border, lawn, pathEW, pathNS);
 
     // Sparkling park pond OR refined marble civic fountain in People's Square Park!
     if (pk.hasFountain) {
       const plazaPad = new THREE.Mesh(new THREE.CircleGeometry(10.5, 24), parkWalkMat);
       plazaPad.rotation.x = -Math.PI / 2;
-      plazaPad.position.set(px, py + 0.13, pz);
+      plazaPad.position.set(px, py + 0.145, pz);
+      plazaPad.receiveShadow = true;
+      plazaPad.renderOrder = 5;
       group.add(plazaPad);
       const fountain = createPlazaFountain(fountains);
-      fountain.position.set(px, py + 0.13, pz);
+      fountain.position.set(px, py + 0.145, pz);
       group.add(fountain);
       colliders.push(makeObbCollider(pk.x, pk.z, 5.2, 5.2, 0, 6.5));
     } else if (pk.hasPond) {
       const pond = new THREE.Mesh(new THREE.CircleGeometry(11.5, 20), pondWaterMat);
       pond.rotation.x = -Math.PI / 2;
-      pond.position.set(px, py + 0.13, pz);
+      pond.position.set(px, py + 0.145, pz);
+      pond.renderOrder = 5;
       group.add(pond);
     }
 

@@ -317,6 +317,14 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     isBridge = false,
     bridgeStyle?: 'nanpu' | 'yangpu' | 'waibaidu',
   ) => {
+    // Prevent non-bridge ground streets from collapsing down into carved river channels!
+    if (!isBridge) {
+      const mx = (x1 + x2) * 0.5 - cx;
+      const mz = (z1 + z2) * 0.5 - cz;
+      if (getShanghaiRiverSignedDist(mx, mz, cleanCityId) < 1.5) {
+        return;
+      }
+    }
     streets.push({
       x1,
       z1,
@@ -355,11 +363,11 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       { id: `${anchor.id}_century_pk`, name: '世纪公园', x: cx + 138, z: cz + 46, w: 56, d: 52, hasPond: true, hasFountain: false },
     );
 
-    addPolyRoad([[-26, -182], [-18, -118], [-14, -46], [-18, 12], [-14, 72], [-12, 112], [-2, 182]], 28, 'arterial', 20);
+    addPolyRoad([[-26, -182], [-18, -118], [-14, -46], [-18, 12], [-14, 72], [-12, 112], [-2, 182]], 34, 'arterial', 26);
     // Split SW & NE diagonal arterial branches so they meet the N-S arterial cleanly with ZERO overlapping road meshes!
-    addPolyRoad([[-172, 146], [-104, 114], [-14, 72]], 26, 'arterial', 22);
-    addPolyRoad([[-14, -46], [38, -104], [96, -158]], 26, 'arterial', 18);
-    addPolyRoad([[62, -16], [92, 16], [126, 56], [168, 108], [204, 158]], 34, 'arterial', 22);
+    addPolyRoad([[-172, 146], [-104, 114], [-14, 72]], 32, 'arterial', 28);
+    addPolyRoad([[-14, -46], [38, -104], [96, -158]], 32, 'arterial', 24);
+    addPolyRoad([[62, -16], [92, 16], [126, 56], [168, 108], [204, 158]], 36, 'arterial', 26);
 
     for (const br of hydro.bridges) {
       addSeg(cx + br.x1, cz + br.z1, cx + br.x2, cz + br.z2, br.width, br.width, 'arterial', true, br.style);
@@ -460,8 +468,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       art1.push(rotPt(-12 + Math.sin(s * 0.012) * bend1, s));
       art2.push(rotPt(s, -8 + Math.cos(s * 0.013) * bend2));
     }
-    addPolyRoad(art1, 28, 'arterial', 20);
-    addPolyRoad(art2, 26, 'arterial', 18);
+    addPolyRoad(art1, 34, 'arterial', 26);
+    addPolyRoad(art2, 32, 'arterial', 24);
     // Diagonal grand avenue unique to this city
     const diagSign = rng() > 0.5 ? 1 : -1;
     addPolyRoad(
@@ -471,9 +479,9 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
         rotPt(45 * diagSign, 45),
         rotPt(155 * diagSign, 130),
       ],
-      24,
+      30,
       'arterial',
-      16,
+      22,
     );
 
     // 3. Add this city's unique cross-river bridges!
@@ -536,6 +544,51 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
         ],
       },
     );
+  }
+
+  // 6B. Auto-Detect Clean Road Intersections (Crossroads & Major Junctions) so EVERY crossing gets a crisp zebra-crosswalk pad & traffic signals!
+  const segIntersect = (
+    a: TownStreetSeg,
+    b: TownStreetSeg,
+  ): { x: number; z: number } | null => {
+    const dx1 = a.x2 - a.x1;
+    const dz1 = a.z2 - a.z1;
+    const dx2 = b.x2 - b.x1;
+    const dz2 = b.z2 - b.z1;
+    const denom = dx1 * dz2 - dz1 * dx2;
+    if (Math.abs(denom) < 1e-3) return null;
+    const t = ((b.x1 - a.x1) * dz2 - (b.z1 - a.z1) * dx2) / denom;
+    const u = ((b.x1 - a.x1) * dz1 - (b.z1 - a.z1) * dx1) / denom;
+    if (t >= -0.04 && t <= 1.04 && u >= -0.04 && u <= 1.04) {
+      return { x: a.x1 + t * dx1, z: a.z1 + t * dz1 };
+    }
+    return null;
+  };
+  const landOnlyStreets = streets.filter((s) => !s.isBridge && s.kind !== 'alley');
+  for (let i = 0; i < landOnlyStreets.length; i++) {
+    for (let j = i + 1; j < landOnlyStreets.length; j++) {
+      const a = landOnlyStreets[i];
+      const b = landOnlyStreets[j];
+      // Skip consecutive segments of the same gentle polyline
+      const aDirX = a.x2 - a.x1;
+      const aDirZ = a.z2 - a.z1;
+      const bDirX = b.x2 - b.x1;
+      const bDirZ = b.z2 - b.z1;
+      const aLen = Math.hypot(aDirX, aDirZ) || 1;
+      const bLen = Math.hypot(bDirX, bDirZ) || 1;
+      const cosAng = Math.abs((aDirX * bDirX + aDirZ * bDirZ) / (aLen * bLen));
+      if (cosAng > 0.86) continue;
+      const hit = segIntersect(a, b);
+      if (!hit) continue;
+      if (getShanghaiRiverSignedDist(hit.x - cx, hit.z - cz, cleanCityId) < 12) continue;
+      if (parks.some((pk) => Math.abs(hit.x - pk.x) < pk.w * 0.45 && Math.abs(hit.z - pk.z) < pk.d * 0.45)) continue;
+      if (junctions.some((ex) => Math.hypot(ex.x - hit.x, ex.z - hit.z) < 26)) continue;
+      const isMajor = a.kind === 'arterial' || b.kind === 'arterial';
+      const padW = isMajor ? 36 : 22;
+      const primary = a.kind === 'arterial' ? a : b;
+      const rotY = Math.atan2(primary.x2 - primary.x1, primary.z2 - primary.z1);
+      junctions.push({ x: hit.x, z: hit.z, width: padW, depth: padW, rotY, kind: 'cross' });
+    }
   }
 
   // 7. Curved High-Speed Railway Corridor across North District

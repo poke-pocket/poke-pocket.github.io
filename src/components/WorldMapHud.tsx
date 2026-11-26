@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   GEO_UNITS_PER_KM,
+  PROVINCIAL_AND_WORLD_CAPITALS,
   REAL_WORLD_CORRIDORS,
   REAL_WORLD_RIVERS,
+  classifyRealEarthPixelColor,
   geoToWorld,
   getActiveGeoTerrainOrigin,
   getProjectedGeoCities,
-  sampleGeoTerrainHeight3D,
+  sampleRealElevationMeters,
   subscribeGeoDemLoaded,
   worldToGeo,
+  type GeoDemResolution,
 } from '../data/geoTerrain3D';
 import {
   getTerrainHeight3D,
@@ -315,41 +318,95 @@ function paintRoadsAndTownsOnMap(
       return;
     }
 
-    // 0. Real-World East Asia River Systems (长江 / 黄河 / 珠江 / 钱塘江 / 黄浦江 / 松花江 / 利根川 / 淀川) underneath highways & bridges!
+    // Helper: smooth Catmull-Rom cubic spline subdivision so rivers & highways bend organically (ZERO jagged V polylines!)
+    const smoothPolyline = (raw: { sx: number; sy: number }[], segsPerSpan = 5): { sx: number; sy: number }[] => {
+      if (raw.length < 3) return raw;
+      const out: { sx: number; sy: number }[] = [];
+      for (let i = 0; i < raw.length - 1; i++) {
+        const p0 = raw[Math.max(0, i - 1)];
+        const p1 = raw[i];
+        const p2 = raw[i + 1];
+        const p3 = raw[Math.min(raw.length - 1, i + 2)];
+        for (let s = 0; s < segsPerSpan; s++) {
+          const t = s / segsPerSpan;
+          const t2 = t * t;
+          const t3 = t2 * t;
+          const sx =
+            0.5 *
+            (2 * p1.sx +
+              (-p0.sx + p2.sx) * t +
+              (2 * p0.sx - 5 * p1.sx + 4 * p2.sx - p3.sx) * t2 +
+              (-p0.sx + 3 * p1.sx - 3 * p2.sx + p3.sx) * t3);
+          const sy =
+            0.5 *
+            (2 * p1.sy +
+              (-p0.sy + p2.sy) * t +
+              (2 * p0.sy - 5 * p1.sy + 4 * p2.sy - p3.sy) * t2 +
+              (-p0.sy + 3 * p1.sy - 3 * p2.sy + p3.sy) * t3);
+          out.push({ sx, sy });
+        }
+      }
+      out.push(raw[raw.length - 1]);
+      return out;
+    };
+
+    // 0. Real-World River Systems: Catmull-Rom Smooth Natural Bends + Progressive Upstream-to-Mouth Width Tapering!
     for (const riv of REAL_WORLD_RIVERS) {
-      const pts: { sx: number; sy: number }[] = [];
+      const rawPts: { sx: number; sy: number }[] = [];
       for (const [lat, lng] of riv.points) {
         const wp = geoToWorld(lat, lng, activeGeo);
-        if (wp) pts.push(toScreen(wp.x, wp.z));
+        if (wp) rawPts.push(toScreen(wp.x, wp.z));
       }
-      if (pts.length < 2) continue;
-      const rw = Math.max(detailed ? 2.4 : 1.4, Math.min(12, riv.widthKm * GEO_UNITS_PER_KM * 0.14 * invScale));
+      if (rawPts.length < 2) continue;
+      const pts = smoothPolyline(rawPts, unitsPerPx > 60 ? 3 : 5);
+      const baseMouthW = Math.max(
+        detailed ? 1.6 : 1.0,
+        Math.min(14, riv.widthKm * GEO_UNITS_PER_KM * 0.16 * invScale),
+      );
+      const totalSegs = Math.max(1, pts.length - 1);
+
+      // Pass A: Dark riverbank casing tapering cleanly from thin source (0.28x) to wide estuary mouth (1.42x)!
       ctx.strokeStyle = '#1b4965';
-      ctx.lineWidth = rw + (detailed ? 1.8 : 0.8);
-      ctx.beginPath();
-      ctx.moveTo(pts[0].sx, pts[0].sy);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-      ctx.stroke();
-
-      ctx.strokeStyle = '#339af0';
-      ctx.lineWidth = rw;
-      ctx.beginPath();
-      ctx.moveTo(pts[0].sx, pts[0].sy);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-      ctx.stroke();
-
-      if (detailed && rw >= 3.2) {
-        ctx.strokeStyle = 'rgba(165, 216, 255, 0.72)';
-        ctx.lineWidth = Math.max(1, rw * 0.28);
+      for (let i = 0; i < totalSegs; i++) {
+        const prog = i / totalSegs;
+        const taper = 0.28 + 1.14 * Math.pow(prog, 1.15);
+        const w = Math.max(0.9, baseMouthW * taper);
+        ctx.lineWidth = w + (detailed ? Math.min(1.8, 0.7 + w * 0.22) : 0.6);
         ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.moveTo(pts[i].sx, pts[i].sy);
+        ctx.lineTo(pts[i + 1].sx, pts[i + 1].sy);
         ctx.stroke();
       }
 
-      if (detailed && unitsPerPx > 2.2) {
-        const mid = pts[Math.floor(pts.length / 2)];
-        ctx.font = 'bold 9px monospace';
+      // Pass B: Vibrant GBA river water fill tapering upstream -> mouth
+      ctx.strokeStyle = '#339af0';
+      for (let i = 0; i < totalSegs; i++) {
+        const prog = i / totalSegs;
+        const taper = 0.28 + 1.14 * Math.pow(prog, 1.15);
+        ctx.lineWidth = Math.max(0.8, baseMouthW * taper);
+        ctx.beginPath();
+        ctx.moveTo(pts[i].sx, pts[i].sy);
+        ctx.lineTo(pts[i + 1].sx, pts[i + 1].sy);
+        ctx.stroke();
+      }
+
+      // Pass C: Shimmering sunlit center highlight on wider mid/lower reaches
+      if (detailed && baseMouthW >= 2.6) {
+        ctx.strokeStyle = 'rgba(165, 216, 255, 0.72)';
+        for (let i = Math.floor(totalSegs * 0.35); i < totalSegs; i++) {
+          const prog = i / totalSegs;
+          const taper = 0.28 + 1.14 * Math.pow(prog, 1.15);
+          ctx.lineWidth = Math.max(0.7, baseMouthW * taper * 0.26);
+          ctx.beginPath();
+          ctx.moveTo(pts[i].sx, pts[i].sy);
+          ctx.lineTo(pts[i + 1].sx, pts[i + 1].sy);
+          ctx.stroke();
+        }
+      }
+
+      if (detailed && unitsPerPx > 2.2 && unitsPerPx < 160) {
+        const mid = pts[Math.floor(pts.length * 0.62)];
+        ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
         ctx.fillStyle = '#0b3d66';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -1037,7 +1094,7 @@ function paintTopographicMap(
   stepPx: number,
 ) {
   const pal = BIOME_PALETTES[biome];
-  ctx.fillStyle = pal.groundColors[1];
+  ctx.fillStyle = '#1864ab';
   ctx.fillRect(0, 0, w, h);
 
   const minDim = Math.max(1, Math.min(w, h));
@@ -1045,61 +1102,63 @@ function paintTopographicMap(
   const sampleStep = Math.max(1.2, unitsPerPx * stepPx * 0.9);
   const halfW = w / 2;
   const halfH = h / 2;
-  // When zoomed far out in Real-Earth Geo mode (e.g. viewing 250km+ region), sample the Z5 Macro DEM
-  // directly so zooming way out renders crisp continuous seas/plains/mountains with ZERO tile eviction!
-  const useGeoMacro = Boolean(getActiveGeoTerrainOrigin()) && unitsPerPx > 2.2;
-  const sampleElev = (wx: number, wz: number) =>
-    useGeoMacro ? (sampleGeoTerrainHeight3D(wx, wz, true) ?? 1.35) : getTerrainHeight3D(wx, wz);
+  const activeGeo = getActiveGeoTerrainOrigin();
+
+  // Select optimal Real-Earth DEM tier automatically from street-level (Z9) to full North-South Globe (Z2)!
+  const demRes: GeoDemResolution =
+    unitsPerPx > 95 ? 'global' : unitsPerPx > 22 ? 'world' : unitsPerPx > 2.2 ? 'macro' : 'detail';
+
   for (let py = 0; py < h; py += stepPx) {
     const wz = centerZ + (py - halfH) * unitsPerPx;
     const cellY = Math.floor(py / stepPx);
     for (let px = 0; px < w; px += stepPx) {
       const wx = centerX + (px - halfW) * unitsPerPx;
       const cellX = Math.floor(px / stepPx);
-      const elev = sampleElev(wx, wz);
-      const ex = sampleElev(wx + sampleStep, wz);
-      const ez = sampleElev(wx, wz + sampleStep);
-      const slope = Math.hypot(ex - elev, ez - elev) / sampleStep;
-      // Classic NW-sunlight cartographic hillshade relief (makes China/Japan mountain chains pop in 3D pixel relief!)
-      const hillShade = (elev - ex) * 0.8 + (elev - ez) * 0.8;
       const dither = (cellX + cellY) % 2 === 0;
 
+      if (activeGeo) {
+        const geo = worldToGeo(wx, wz, activeGeo);
+        if (!geo || geo.lat > 85.05 || geo.lat < -85.05) {
+          // Clean polar ocean edge past Top (85°N) and Bottom (-85°S) of the world map
+          ctx.fillStyle = dither ? '#0f3d6e' : '#13467d';
+          ctx.fillRect(px, py, stepPx, stepPx);
+          continue;
+        }
+        const m = sampleRealElevationMeters(geo.lat, geo.lng, demRes);
+        if (m === null) {
+          ctx.fillStyle = dither ? '#3d9946' : '#358c3e';
+          ctx.fillRect(px, py, stepPx, stepPx);
+          continue;
+        }
+        const geoE = worldToGeo(wx + sampleStep, wz, activeGeo)!;
+        const geoS = worldToGeo(wx, wz + sampleStep, activeGeo)!;
+        const geoW = worldToGeo(wx - sampleStep, wz, activeGeo)!;
+        const geoN = worldToGeo(wx, wz - sampleStep, activeGeo)!;
+        const mE = sampleRealElevationMeters(geoE.lat, geoE.lng, demRes) ?? m;
+        const mS = sampleRealElevationMeters(geoS.lat, geoS.lng, demRes) ?? m;
+        const mW = sampleRealElevationMeters(geoW.lat, geoW.lng, demRes) ?? m;
+        const mN = sampleRealElevationMeters(geoN.lat, geoN.lng, demRes) ?? m;
+        const hillShadeM = (m - mE) * 0.7 + (m - mS) * 0.7;
+        const nearOcean =
+          m <= 0.6
+            ? mE > 0.6 || mS > 0.6 || mW > 0.6 || mN > 0.6
+            : mE <= 0.6 || mS <= 0.6 || mW <= 0.6 || mN <= 0.6;
+        ctx.fillStyle = classifyRealEarthPixelColor(geo.lat, geo.lng, m, hillShadeM, nearOcean, dither);
+        ctx.fillRect(px, py, stepPx, stepPx);
+        continue;
+      }
+
+      const elev = getTerrainHeight3D(wx, wz);
+      const ex = getTerrainHeight3D(wx + sampleStep, wz);
+      const ez = getTerrainHeight3D(wx, wz + sampleStep);
+      const hillShade = (elev - ex) * 0.8 + (elev - ez) * 0.8;
       let col: string;
       if (elev < WATER_LEVEL_3D) {
-        const nearLand =
-          ex >= WATER_LEVEL_3D ||
-          ez >= WATER_LEVEL_3D ||
-          sampleElev(wx - sampleStep, wz) >= WATER_LEVEL_3D ||
-          sampleElev(wx, wz - sampleStep) >= WATER_LEVEL_3D;
-        if (nearLand) {
-          col = dither ? '#d0ebff' : '#99d6ff';
-        } else if (elev < WATER_LEVEL_3D - 1.25) {
-          col = dither ? '#1864ab' : '#1971c2';
-        } else if (elev < WATER_LEVEL_3D - 0.55) {
-          col = '#228be6';
-        } else {
-          col = (cellX + cellY) % 3 === 0 ? '#74c0fc' : '#4dabf7';
-        }
-      } else if (
-        elev < WATER_LEVEL_3D + 0.45 &&
-        (ex < WATER_LEVEL_3D ||
-          ez < WATER_LEVEL_3D ||
-          sampleElev(wx - sampleStep, wz) < WATER_LEVEL_3D ||
-          sampleElev(wx, wz - sampleStep) < WATER_LEVEL_3D)
-      ) {
-        col = dither ? '#efe0b1' : '#e4cf94';
-      } else if (elev > 9.4) {
-        // Snow-capped alpine peaks (Mount Fuji, Japanese Alps, Qinghai/Western peaks!)
-        col = hillShade < -0.15 ? '#c5dceb' : '#f1f7fc';
-      } else if (slope > 0.28 || elev > 6.8) {
-        // Directional sunlit / shadowed rocky mountain ridges
-        col = hillShade > 0.14 ? pal.cliffColors[0] : hillShade < -0.14 ? pal.cliffColors[3] : pal.cliffColors[1];
+        col = elev < WATER_LEVEL_3D - 0.8 ? '#1971c2' : '#339af0';
       } else if (elev > 4.2) {
-        col = hillShade > 0.1 ? '#70c457' : hillShade < -0.1 ? '#368d3a' : pal.groundColors[0];
-      } else if (elev > 1.85) {
-        col = hillShade > 0.08 ? '#58b849' : hillShade < -0.08 ? '#2f8236' : pal.groundColors[1];
+        col = hillShade > 0.1 ? '#70c457' : pal.groundColors[0];
       } else {
-        col = dither ? pal.groundColors[3] : '#358f3b';
+        col = dither ? pal.groundColors[1] : pal.groundColors[3];
       }
       ctx.fillStyle = col;
       ctx.fillRect(px, py, stepPx, stepPx);
@@ -1326,7 +1385,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       e.stopPropagation();
       const clampedDelta = Math.max(-180, Math.min(180, e.deltaY));
       const factor = Math.exp(-clampedDelta * 0.0022);
-      setZoom((z) => Math.max(0.004, Number((z * factor).toFixed(4))));
+      setZoom((z) => Math.max(0.00036, Math.min(20, Number((z * factor).toFixed(6)))));
     };
     cv.addEventListener('wheel', onWheelNative, { passive: false });
     return () => cv.removeEventListener('wheel', onWheelNative);
@@ -1469,10 +1528,17 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       }
     }
 
-    // Real-World Neighbor Cities Overlay (when in World Tour Geo-DEM mode, e.g. Shenzhen <-> Hong Kong!)
+    // Real-World Flagship Cities + All 34 Chinese Provincial Capitals & World Hubs (Collision-Free Labels!)
     const activeGeo = getActiveGeoTerrainOrigin();
     if (activeGeo) {
       const geoCities = getProjectedGeoCities();
+      const flagshipIds = new Set(geoCities.map((g) => g.city.id));
+      const placedLabels: { x: number; y: number; w: number; h: number }[] = [];
+      const overlapsLabel = (x: number, y: number, w: number, h: number) =>
+        placedLabels.some(
+          (b) => Math.abs(b.x - x) < (b.w + w) * 0.52 && Math.abs(b.y - y) < (b.h + h) * 0.55,
+        );
+
       for (const gc of geoCities) {
         const { sx, sy } = toScreen(gc.x, gc.z);
         if (sx < -40 || sx > W + 40 || sy < -30 || sy > H + 30) continue;
@@ -1480,24 +1546,68 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
         const cxPin = Math.round(sx);
         const cyPin = Math.round(sy);
         ctx.fillStyle = '#161420';
-        ctx.fillRect(cxPin - 6, cyPin - 6, 12, 12);
+        ctx.fillRect(cxPin - 5, cyPin - 5, 10, 10);
         ctx.fillStyle = gc.city.accentColor;
-        ctx.fillRect(cxPin - 4, cyPin - 4, 8, 8);
+        ctx.fillRect(cxPin - 3.5, cyPin - 3.5, 7, 7);
         ctx.fillStyle = '#fffdf5';
         ctx.fillRect(cxPin - 1, cyPin - 1, 2, 2);
 
-        const cityTag = distKm <= 2 ? `📍${gc.city.name}` : `${gc.city.name} ${distKm}km`;
-        ctx.font = 'bold 9px monospace';
+        const cityTag =
+          unitsPerPx > 90
+            ? gc.city.name
+            : distKm <= 2
+              ? `📍${gc.city.name}`
+              : `${gc.city.name} ${distKm}km`;
+        ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
         const tw = ctx.measureText(cityTag).width + 8;
-        ctx.fillStyle = 'rgba(22, 20, 32, 0.9)';
-        ctx.fillRect(Math.round(cxPin - tw / 2), cyPin - 20, tw, 13);
-        ctx.strokeStyle = '#ffe066';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(Math.round(cxPin - tw / 2), cyPin - 20, tw, 13);
-        ctx.fillStyle = '#ffe066';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(cityTag, cxPin, cyPin - 13);
+        if (!overlapsLabel(cxPin, cyPin - 13, tw, 13)) {
+          placedLabels.push({ x: cxPin, y: cyPin - 13, w: tw, h: 13 });
+          ctx.fillStyle = 'rgba(22, 20, 32, 0.9)';
+          ctx.fillRect(Math.round(cxPin - tw / 2), cyPin - 20, tw, 13);
+          ctx.strokeStyle = '#ffe066';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(Math.round(cxPin - tw / 2), cyPin - 20, tw, 13);
+          ctx.fillStyle = '#ffe066';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(cityTag, cxPin, cyPin - 13);
+        }
+      }
+
+      // Provincial Capitals (all 34 Chinese capitals/municipalities/SARs) + Major World Cities!
+      if (unitsPerPx > 1.2) {
+        for (const cap of PROVINCIAL_AND_WORLD_CAPITALS) {
+          if (flagshipIds.has(cap.id)) continue;
+          if (cap.tier === 'provincial' && unitsPerPx > 260) continue;
+          const wp = geoToWorld(cap.lat, cap.lng, activeGeo);
+          if (!wp) continue;
+          const { sx, sy } = toScreen(wp.x, wp.z);
+          if (sx < -30 || sx > W + 30 || sy < -20 || sy > H + 20) continue;
+          const cxPin = Math.round(sx);
+          const cyPin = Math.round(sy);
+          // Crisp pixel square capital marker (red-gold for Chinese provincial capitals, ivory-blue for world hubs)
+          ctx.fillStyle = '#161420';
+          ctx.fillRect(cxPin - 3.5, cyPin - 3.5, 7, 7);
+          ctx.fillStyle = cap.tier === 'world' ? '#74c0fc' : '#ff6b6b';
+          ctx.fillRect(cxPin - 2.5, cyPin - 2.5, 5, 5);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(cxPin - 0.5, cyPin - 0.5, 1.5, 1.5);
+
+          ctx.font = 'bold 8.5px "PingFang SC", "Microsoft YaHei", monospace';
+          const tw = ctx.measureText(cap.name).width + 6;
+          if (!overlapsLabel(cxPin, cyPin - 11, tw, 12)) {
+            placedLabels.push({ x: cxPin, y: cyPin - 11, w: tw, h: 12 });
+            ctx.fillStyle = 'rgba(20, 24, 36, 0.82)';
+            ctx.fillRect(Math.round(cxPin - tw / 2), cyPin - 17, tw, 11);
+            ctx.strokeStyle = cap.tier === 'world' ? '#a5d8ff' : '#ffd8a8';
+            ctx.lineWidth = 0.8;
+            ctx.strokeRect(Math.round(cxPin - tw / 2), cyPin - 17, tw, 11);
+            ctx.fillStyle = '#fff9db';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(cap.name, cxPin, cyPin - 11.2);
+          }
+        }
       }
     }
 
@@ -1671,7 +1781,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
               const pts = Array.from(pointersRef.current.values());
               const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
               const ratio = dist / Math.max(12, pinchRef.current.dist);
-              const nextZoom = Math.max(0.015, Math.min(8, Number((pinchRef.current.zoom * ratio).toFixed(4))));
+              const nextZoom = Math.max(0.00036, Math.min(20, Number((pinchRef.current.zoom * ratio).toFixed(6))));
               const minDim = Math.max(1, Math.min(rect.width, rect.height));
               const unitsPerPxNew = (150 / nextZoom) / minDim;
               const midSx = (pts[0].x + pts[1].x) / 2 - rect.left;
@@ -1811,7 +1921,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
           <span className="wm-rose-lbl is-w">W</span>
           <span className="wm-rose-lbl is-e">E</span>
           <span className="wm-rose-zoom">
-            ×{zoom >= 10 ? zoom.toFixed(0) : zoom.toFixed(2).replace(/\.?0+$/, '')}
+            ×{zoom >= 10 ? zoom.toFixed(0) : zoom < 0.01 ? zoom.toFixed(4).replace(/\.?0+$/, '') : zoom.toFixed(2).replace(/\.?0+$/, '')}
           </span>
         </div>
 
@@ -1822,7 +1932,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
             title="放大地图"
             onClick={() => {
               sound.play('cursor');
-              setZoom((z) => Number((z * 1.35).toFixed(4)));
+              setZoom((z) => Math.min(20, Number((z * 1.45).toFixed(6))));
             }}
           >
             +
@@ -1832,7 +1942,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
             title="缩小地图"
             onClick={() => {
               sound.play('cursor');
-              setZoom((z) => Math.max(0.004, Number((z / 1.35).toFixed(4))));
+              setZoom((z) => Math.max(0.00036, Number((z / 1.45).toFixed(6))));
             }}
           >
             −
