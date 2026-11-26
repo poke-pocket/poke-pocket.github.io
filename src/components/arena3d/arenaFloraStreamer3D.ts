@@ -511,8 +511,9 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
         const localBiomeCell = getSeamlessBiomeAt3D(wx, wz, gy, selectedBiome);
         const localTexCell = getBiomeTextures(localBiomeCell);
 
-        // 1. NATURAL WOODLAND GROVES (~9.5% of cells vs ~23% previously, with coherent grove tree species!)
+        // 1. NATURAL WOODLAND GROVES (Respects real-world ~2,650m alpine treeline `gy < 355u` so high snow summits stay clean!)
         const isTreeCell =
+          gy < 355.0 &&
           ((groveNoise > 0.45 && h < 16) || (groveNoise > -0.15 && h < 5)) &&
           (gy > 0.42 || Math.hypot(wx, wz) > 10.5);
 

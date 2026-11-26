@@ -11887,6 +11887,17 @@ button.gba-status-box.is-clickable-card {
   white-space: nowrap;
 }
 
+.surv-top-nav-eta {
+  padding: 1px 7px;
+  background: rgba(99, 230, 190, 0.16);
+  border: 1.5px solid #63e6be;
+  color: #96f2d7;
+  font-size: 11px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .surv-top-nav-cancel {
   padding: 1px 7px;
   background: #ff6b6b;
@@ -11911,8 +11922,9 @@ button.gba-status-box.is-clickable-card {
   .surv-top-nav-name {
     max-width: 135px;
   }
-  .surv-top-nav-dist {
-    font-size: 10.5px;
+  .surv-top-nav-dist,
+  .surv-top-nav-eta {
+    font-size: 10px;
     padding: 1px 5px;
   }
 }

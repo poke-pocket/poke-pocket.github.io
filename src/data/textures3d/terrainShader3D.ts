@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import {
+  getActiveGeoTerrainOrigin,
+  worldToGeo,
+  worldYToRealMeters3D,
+} from '../geoTerrain3D';
 import { BIOME_PALETTES, type BiomeId, type BiomeTextureSet } from './biomePalettesAndWater';
 
 export const BIOME_ORDER_LIST: BiomeId[] = [
@@ -8,6 +13,50 @@ export const BIOME_ORDER_LIST: BiomeId[] = [
   'sky_glacier',
   'cinnabar_isle',
 ];
+
+let realEarthBiomeModeActive = true;
+let liveSnowWeatherWeight = 0.0;
+
+/** Keeps CPU flora/spawn biome queries and GPU terrain shader uniforms synced with Real-Earth vs Rogue mode & live snow weather */
+export function syncTerrainGeoUniforms3D(
+  terrainMat: THREE.ShaderMaterial | null | undefined,
+  isRealEarthMode: boolean,
+  snowWeatherFactor = 0,
+): void {
+  realEarthBiomeModeActive = isRealEarthMode;
+  liveSnowWeatherWeight = Math.max(0, Math.min(1, snowWeatherFactor));
+  if (!terrainMat?.uniforms) return;
+  const origin = getActiveGeoTerrainOrigin();
+  if (origin && terrainMat.uniforms.uGeoOrigin?.value instanceof THREE.Vector4) {
+    const kmPerDegLng = Math.max(12, 111.32 * Math.cos((origin.originLat * Math.PI) / 180));
+    const degLatPerUnit = 1 / (origin.unitsPerKm * 111.32);
+    const degLngPerUnit = 1 / (origin.unitsPerKm * kmPerDegLng);
+    terrainMat.uniforms.uGeoOrigin.value.set(
+      origin.originLat,
+      origin.originLng,
+      degLatPerUnit,
+      degLngPerUnit,
+    );
+  }
+  if (terrainMat.uniforms.uRealEarthParams?.value instanceof THREE.Vector2) {
+    terrainMat.uniforms.uRealEarthParams.value.set(
+      isRealEarthMode && Boolean(origin) ? 1.0 : 0.0,
+      liveSnowWeatherWeight,
+    );
+  }
+}
+
+function buildInitialGeoOriginVec4(): THREE.Vector4 {
+  const origin = getActiveGeoTerrainOrigin();
+  if (!origin) return new THREE.Vector4(31.23, 121.47, 1 / (100 * 111.32), 1 / (100 * 95.18));
+  const kmPerDegLng = Math.max(12, 111.32 * Math.cos((origin.originLat * Math.PI) / 180));
+  return new THREE.Vector4(
+    origin.originLat,
+    origin.originLng,
+    1 / (origin.unitsPerKm * 111.32),
+    1 / (origin.unitsPerKm * kmPerDegLng),
+  );
+}
 
 function biomeClimateTargets(biome: BiomeId): [number, number] {
   switch (biome) {
@@ -24,13 +73,90 @@ function biomeClimateTargets(biome: BiomeId): [number, number] {
   }
 }
 
+function computeRealEarthSnowlineMeters(lat: number, nLng: number, bWarp: number): number {
+  const absLat = Math.abs(lat);
+  const inTibetanOrHengduan =
+    lat >= 26.2 + bWarp * 0.3 &&
+    lat <= 38.5 + bWarp * 0.35 &&
+    nLng >= 77.0 + bWarp * 0.4 &&
+    nLng <= 104.5 + bWarp * 0.5;
+  if (inTibetanOrHengduan) return 4050;
+  const inTianshanQilian =
+    lat >= 36.0 && lat <= 50.0 && nLng >= 72.0 && nLng <= 103.0;
+  if (inTianshanQilian) return 3450;
+  const isJapanMaritime = lat > 32 && lat < 45 && nLng > 128 && nLng < 147;
+  if (isJapanMaritime) return 2900;
+  return Math.max(1450, 3750 - Math.max(0, absLat - 33) * 110);
+}
+
 export function getSeamlessBiomeAt3D(
   wx: number,
   wz: number,
   wy: number,
   baseBiome: BiomeId,
 ): BiomeId {
-  // Vast Minecraft-style macro regions (~700-950m continental biomes, wide gentle transitions!)
+  // 1. REAL-EARTH GEOGRAPHIC BIOME CLASSIFICATION (Matches 2D Topographic Map 1:1 — zero random snow/lava on plains!)
+  const origin = realEarthBiomeModeActive ? getActiveGeoTerrainOrigin() : null;
+  if (origin) {
+    const geo = worldToGeo(wx, wz, origin);
+    if (geo) {
+      const lat = geo.lat;
+      const nLng = ((((geo.lng + 180) % 360) + 360) % 360) - 180;
+      const absLat = Math.abs(lat);
+      const realElevM = Math.max(0, worldYToRealMeters3D(wy));
+      const bWarp =
+        Math.sin(lat * 0.65 + nLng * 0.45) * 0.9 +
+        Math.cos(nLng * 0.72 - lat * 0.5) * 0.6;
+
+      // Active volcanic craters ONLY (Sakurajima, Mt. Aso, Kilauea, Etna — ~2.4km crater rim)
+      const dVolc = Math.min(
+        Math.hypot(lat - 31.585, (nLng - 130.657) * 0.85),
+        Math.hypot(lat - 32.884, (nLng - 131.084) * 0.84),
+        Math.hypot(lat - 19.406, (nLng + 155.283) * 0.94),
+        Math.hypot(lat - 37.751, (nLng - 14.993) * 0.79),
+      );
+      if (dVolc < 0.022 && realElevM > 180) {
+        return 'cinnabar_isle';
+      }
+
+      // True high-altitude snowlines, polar latitudes, or active snowfall weather
+      const snowLineM = computeRealEarthSnowlineMeters(lat, nLng, bWarp);
+      if (realElevM >= snowLineM || absLat >= 58 || liveSnowWeatherWeight >= 0.6) {
+        return 'sky_glacier';
+      }
+
+      // Real-world arid desert & Gobi basins (Taklamakan, Junggar, Gobi, Qaidam, Sahara/Arabia, Central Asia, Outback, US SW)
+      const inTaklamakan = lat >= 36.2 && lat <= 41.9 && nLng >= 75.5 && nLng <= 92.2 + bWarp * 0.5 && realElevM < 2200;
+      const inJunggar = lat >= 43.8 && lat <= 46.8 && nLng >= 84.0 && nLng <= 91.5 + bWarp * 0.5 && realElevM < 1300;
+      const inGobi = lat >= 37.6 + bWarp * 0.4 && lat <= 45.2 && nLng >= 92.2 + bWarp * 0.5 && nLng <= 109.5 + bWarp * 0.6 && realElevM < 2200;
+      const inQaidam = lat >= 35.8 && lat <= 39.2 && nLng >= 90.2 && nLng <= 98.8 + bWarp * 0.4 && realElevM < 3350;
+      const inSaharaArabia = lat >= 14.0 && lat <= 33.5 && nLng >= -17.0 && nLng <= 60.0 && realElevM < 2200;
+      const inCentralAsia = lat >= 36.5 && lat <= 47.0 && nLng >= 52.0 && nLng <= 75.5 && realElevM < 1200;
+      const inAusOutback = lat >= -31.5 && lat <= -19.0 && nLng >= 115.0 && nLng <= 142.0 && realElevM < 1200;
+      const inUsSouthwest = lat >= 27.0 && lat <= 37.5 && nLng >= -117.5 && nLng <= -103.5 && realElevM < 1900;
+      if (
+        inTaklamakan ||
+        inJunggar ||
+        inGobi ||
+        inQaidam ||
+        inSaharaArabia ||
+        inCentralAsia ||
+        inAusOutback ||
+        inUsSouthwest
+      ) {
+        return 'rocky_desert';
+      }
+
+      // Low-lying sandy beach margin right beside sea/water level
+      if (wy > -0.38 && wy < 0.68) {
+        return 'storm_coast';
+      }
+
+      return 'verdant_forest';
+    }
+  }
+
+  // 2. FANTASY SECRET REALM FALLBACK (`vampire_rogue` mode only!)
   const dist = Math.hypot(wx, wz);
   const spawnBlend = Math.max(0, Math.min(1, (dist - 140) / 150));
   const [baseT, baseM] = biomeClimateTargets(baseBiome);
@@ -47,7 +173,7 @@ export function getSeamlessBiomeAt3D(
   const temp = baseT * (1 - spawnBlend) + Math.max(0, Math.min(1, rawT)) * spawnBlend;
   const moist = baseM * (1 - spawnBlend) + Math.max(0, Math.min(1, rawM)) * spawnBlend;
 
-  if (wy > 2400.0 && temp < 0.68) return 'sky_glacier';
+  if (wy > 305.0 && temp < 0.68) return 'sky_glacier';
   if (temp < 0.25) return 'sky_glacier';
   if (temp > 0.77 && moist >= 0.48) return 'cinnabar_isle';
   if (temp > 0.71 && moist < 0.48) return 'rocky_desert';
@@ -62,6 +188,7 @@ export function createSculptedTerrainMaterial(
 ): THREE.ShaderMaterial {
   const pal = BIOME_PALETTES[biome];
   const [baseT, baseM] = biomeClimateTargets(biome);
+  const hasGeo = Boolean(getActiveGeoTerrainOrigin()) && realEarthBiomeModeActive;
   return new THREE.ShaderMaterial({
     uniforms: {
       uGroundTex: { value: texSet.ground },
@@ -70,6 +197,8 @@ export function createSculptedTerrainMaterial(
       uFogColor: { value: new THREE.Color(pal.fogHex) },
       uGrassLipColor: { value: new THREE.Color(pal.groundColors[2]) },
       uBaseClimate: { value: new THREE.Vector2(baseT, baseM) },
+      uGeoOrigin: { value: buildInitialGeoOriginVec4() },
+      uRealEarthParams: { value: new THREE.Vector2(hasGeo ? 1.0 : 0.0, liveSnowWeatherWeight) },
       uFogNear: { value: 1400.0 },
       uFogFar: { value: 14500.0 },
       uSectorSize: { value: sectorSize },
@@ -95,6 +224,8 @@ export function createSculptedTerrainMaterial(
       uniform vec3 uFogColor;
       uniform vec3 uGrassLipColor;
       uniform vec2 uBaseClimate;
+      uniform vec4 uGeoOrigin;
+      uniform vec2 uRealEarthParams;
       uniform float uFogNear;
       uniform float uFogFar;
       uniform float uSectorSize;
@@ -107,6 +238,12 @@ export function createSculptedTerrainMaterial(
       vec2 groundHash22(vec2 p) {
         p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
         return fract(sin(p) * 43758.5453123);
+      }
+
+      float geoBoxMask(float lat, float lng, float lat0, float lat1, float lng0, float lng1, float feather) {
+        float wLat = smoothstep(lat0 - feather, lat0 + feather, lat) * (1.0 - smoothstep(lat1 - feather, lat1 + feather, lat));
+        float wLng = smoothstep(lng0 - feather, lng0 + feather, lng) * (1.0 - smoothstep(lng1 - feather, lng1 + feather, lng));
+        return wLat * wLng;
       }
 
       void main() {
@@ -140,43 +277,115 @@ export function createSculptedTerrainMaterial(
         float texLuma = clamp(rawLum / 0.56, 0.76, 1.22);
         float meadowPatch = sin(vWorldPos.x * 0.055 + 1.3) * cos(vWorldPos.z * 0.062 - 0.7) * 0.5 + 0.5;
 
-        // Vast Minecraft-style continental Temperature × Moisture × Elevation biome blending (~750m+ macro regions!)
         float distSpawn = length(vWorldPos.xz);
-        float spawnBlend = smoothstep(140.0, 290.0, distSpawn);
-        float rawT = clamp(
-          0.5 +
-          0.34 * sin(vWorldPos.x * 0.0040 + vWorldPos.z * 0.0026 + 0.6) +
-          0.22 * cos(vWorldPos.x * 0.0021 - vWorldPos.z * 0.0044 + 1.4),
-          0.0, 1.0
-        );
-        float rawM = clamp(
-          0.5 +
-          0.34 * cos(vWorldPos.x * 0.0036 - vWorldPos.z * 0.0030 + 2.1) +
-          0.22 * sin(vWorldPos.x * 0.0024 + vWorldPos.z * 0.0042 - 0.8),
-          0.0, 1.0
-        );
-        float temp = mix(uBaseClimate.x, rawT, spawnBlend);
-        float moist = mix(uBaseClimate.y, rawM, spawnBlend);
+        float realElevM = vWorldPos.y <= 30.1
+          ? max(0.0, vWorldPos.y / 0.215)
+          : 140.0 + (vWorldPos.y - 30.1) / 0.13;
 
-        // 1:10 Real-Earth alpine snowline (> ~2,300m real altitude = ~305u world Y, e.g. Mt. Fuji 3,776m / 503u!)
-        float wSnow = clamp(
-          (1.0 - smoothstep(0.18, 0.34, temp)) +
-          smoothstep(305.0, 415.0, vWorldPos.y) * (1.0 - smoothstep(0.62, 0.76, temp)),
-          0.0, 1.0
-        );
-        float wVolcano = smoothstep(0.72, 0.86, temp) * smoothstep(0.44, 0.58, moist);
-        float wDesert = smoothstep(0.66, 0.80, temp) * (1.0 - smoothstep(0.42, 0.56, moist));
-        float wCoast = smoothstep(0.66, 0.82, moist) * (1.0 - smoothstep(1.0, 2.8, vWorldPos.y)) * (1.0 - wSnow) * (1.0 - wVolcano);
-        float wForest = max(0.08, 1.0 - clamp(wSnow + wVolcano + wDesert + wCoast, 0.0, 1.0));
-        float wSum = wForest + wDesert + wSnow + wVolcano + wCoast;
-        wForest /= wSum; wDesert /= wSum; wSnow /= wSum; wVolcano /= wSum; wCoast /= wSum;
+        float wSnow = 0.0;
+        float wVolcano = 0.0;
+        float wDesert = 0.0;
+        float wCoast = 0.0;
+        float wForest = 1.0;
+        float wSteppe = 0.0;
+        float graniteMountainMask = 0.0;
 
-        // Distinct stylized pixel palettes for each interconnected biome!
-        vec3 forestGround = vec3(0.40, 0.77, 0.34) * texLuma * mix(0.92, 1.12, meadowPatch);
-        vec3 desertGround = vec3(0.92, 0.78, 0.45) * texLuma * mix(0.94, 1.08, meadowPatch);
-        vec3 snowGround   = vec3(0.92, 0.96, 1.00) * mix(0.92, 1.06, texLuma);
-        vec3 coastGround  = vec3(0.90, 0.84, 0.56) * texLuma;
-        // Glowing molten magma veins inside dark obsidian volcanic ground!
+        if (uRealEarthParams.x > 0.5) {
+          // === TRUE REAL-EARTH GEOGRAPHIC CLIMATE, ALTITUDE & LATITUDE ENGINE ===
+          float lat = uGeoOrigin.x - vWorldPos.z * uGeoOrigin.z;
+          float rawLng = uGeoOrigin.y + vWorldPos.x * uGeoOrigin.w;
+          float nLng = mod(mod(rawLng + 180.0, 360.0) + 360.0, 360.0) - 180.0;
+          float absLat = abs(lat);
+          float bWarp = sin(lat * 0.65 + nLng * 0.45) * 0.9 + cos(nLng * 0.72 - lat * 0.5) * 0.6;
+
+          // 1. Real Snowlines (Tibet/Hengduan ~4050m, Tianshan ~3450m, Mt. Fuji/Japan ~2850m, Polar > 56 deg) + Live Snowfall Weather!
+          float inTibetHengduan = geoBoxMask(lat, nLng, 26.2 + bWarp * 0.3, 38.5 + bWarp * 0.35, 77.0 + bWarp * 0.4, 104.5 + bWarp * 0.5, 0.8);
+          float inTianshan = geoBoxMask(lat, nLng, 36.0, 50.0, 72.0, 103.0, 0.8);
+          float inJapan = geoBoxMask(lat, nLng, 32.0, 45.0, 128.0, 147.0, 0.6);
+          float baseSnowLineM = max(1450.0, 3750.0 - max(0.0, absLat - 33.0) * 110.0);
+          float snowLineM = mix(baseSnowLineM, 2850.0, inJapan);
+          snowLineM = mix(snowLineM, 3450.0, inTianshan);
+          snowLineM = mix(snowLineM, 4050.0, inTibetHengduan);
+
+          float altSnow = smoothstep(snowLineM - 160.0, snowLineM + 320.0, realElevM);
+          float polarSnow = smoothstep(56.0, 64.0, absLat);
+          float weatherSnow = uRealEarthParams.y * smoothstep(0.05, 0.85, vWorldPos.y);
+          wSnow = clamp(max(max(altSnow, polarSnow), weatherSnow), 0.0, 1.0);
+
+          // 2. Real Active Volcanic Craters ONLY (Sakurajima, Mt. Aso, Kilauea, Etna — zero lava in cities/plains!)
+          float dVolc = min(
+            min(length(vec2(lat - 31.585, (nLng - 130.657) * 0.85)), length(vec2(lat - 32.884, (nLng - 131.084) * 0.84))),
+            min(length(vec2(lat - 19.406, (nLng + 155.283) * 0.94)), length(vec2(lat - 37.751, (nLng - 14.993) * 0.79)))
+          );
+          wVolcano = (1.0 - smoothstep(0.012, 0.024, dVolc)) * smoothstep(180.0, 420.0, realElevM) * (1.0 - wSnow);
+
+          // 3. Real World Deserts & Gobi Basins (Taklamakan, Junggar, Gobi, Qaidam, Sahara/Arabia, Central Asia, Outback, US SW)
+          float dTaklamakan = geoBoxMask(lat, nLng, 36.2, 41.9, 75.5, 92.2 + bWarp * 0.5, 1.1) * (1.0 - smoothstep(1950.0, 2350.0, realElevM));
+          float dJunggar = geoBoxMask(lat, nLng, 43.8, 46.8, 84.0, 91.5 + bWarp * 0.5, 1.0) * (1.0 - smoothstep(1150.0, 1450.0, realElevM));
+          float dGobi = geoBoxMask(lat, nLng, 37.6 + bWarp * 0.4, 45.2, 92.2 + bWarp * 0.5, 109.5 + bWarp * 0.6, 1.3) * (1.0 - smoothstep(1950.0, 2350.0, realElevM));
+          float dQaidam = geoBoxMask(lat, nLng, 35.8, 39.2, 90.2, 98.8 + bWarp * 0.4, 0.9) * (1.0 - smoothstep(3150.0, 3500.0, realElevM));
+          float dSahara = geoBoxMask(lat, nLng, 14.0, 33.5, -17.0, 60.0, 1.5) * (1.0 - smoothstep(2000.0, 2400.0, realElevM));
+          float dCentralAsia = geoBoxMask(lat, nLng, 36.5, 47.0, 52.0, 75.5, 1.3) * (1.0 - smoothstep(1050.0, 1350.0, realElevM));
+          float dOutback = geoBoxMask(lat, nLng, -31.5, -19.0, 115.0, 142.0, 1.4) * (1.0 - smoothstep(1050.0, 1350.0, realElevM));
+          float dUsSw = geoBoxMask(lat, nLng, 27.0, 37.5, -117.5, -103.5, 1.2) * (1.0 - smoothstep(1700.0, 2050.0, realElevM));
+          wDesert = clamp(max(max(max(dTaklamakan, dJunggar), max(dGobi, dQaidam)), max(max(dSahara, dCentralAsia), max(dOutback, dUsSw))), 0.0, 1.0) * (1.0 - wSnow) * (1.0 - wVolcano);
+
+          // Semi-arid Loess Plateau & Inner Mongolia Steppe transition belt
+          wSteppe = geoBoxMask(lat, nLng, 34.5 + bWarp * 0.3, 45.5, 103.0, 115.0 + bWarp * 0.4, 1.8) * (1.0 - wDesert) * (1.0 - wSnow);
+
+          // 4. Natural Shoreline Sand Margin right along sea/lake/river water edge (< ~4m real elevation)
+          wCoast = (1.0 - smoothstep(0.22, 0.92, vWorldPos.y)) * (1.0 - wSnow) * (1.0 - wVolcano) * (1.0 - wDesert) * 0.78;
+
+          wForest = max(0.02, 1.0 - clamp(wSnow + wVolcano + wDesert + wCoast, 0.0, 1.0));
+          float wSum = wForest + wDesert + wSnow + wVolcano + wCoast;
+          wForest /= wSum; wDesert /= wSum; wSnow /= wSum; wVolcano /= wSum; wCoast /= wSum;
+          graniteMountainMask = smoothstep(550.0, 1750.0, realElevM) * (1.0 - wSnow) * (1.0 - wDesert);
+        } else {
+          // Fantasy Secret Realm Mode (vampire_rogue only)
+          float spawnBlend = smoothstep(140.0, 290.0, distSpawn);
+          float rawT = clamp(
+            0.5 +
+            0.34 * sin(vWorldPos.x * 0.0040 + vWorldPos.z * 0.0026 + 0.6) +
+            0.22 * cos(vWorldPos.x * 0.0021 - vWorldPos.z * 0.0044 + 1.4),
+            0.0, 1.0
+          );
+          float rawM = clamp(
+            0.5 +
+            0.34 * cos(vWorldPos.x * 0.0036 - vWorldPos.z * 0.0030 + 2.1) +
+            0.22 * sin(vWorldPos.x * 0.0024 + vWorldPos.z * 0.0042 - 0.8),
+            0.0, 1.0
+          );
+          float temp = mix(uBaseClimate.x, rawT, spawnBlend);
+          float moist = mix(uBaseClimate.y, rawM, spawnBlend);
+
+          wSnow = clamp(
+            (1.0 - smoothstep(0.18, 0.34, temp)) +
+            smoothstep(305.0, 415.0, vWorldPos.y) * (1.0 - smoothstep(0.62, 0.76, temp)),
+            0.0, 1.0
+          );
+          wVolcano = smoothstep(0.72, 0.86, temp) * smoothstep(0.44, 0.58, moist);
+          wDesert = smoothstep(0.66, 0.80, temp) * (1.0 - smoothstep(0.42, 0.56, moist));
+          wCoast = smoothstep(0.66, 0.82, moist) * (1.0 - smoothstep(1.0, 2.8, vWorldPos.y)) * (1.0 - wSnow) * (1.0 - wVolcano);
+          wForest = max(0.08, 1.0 - clamp(wSnow + wVolcano + wDesert + wCoast, 0.0, 1.0));
+          float wSum = wForest + wDesert + wSnow + wVolcano + wCoast;
+          wForest /= wSum; wDesert /= wSum; wSnow /= wSum; wVolcano /= wSum; wCoast /= wSum;
+        }
+
+        // Natural elevation-layered forest & meadow palette (Lush lowland emerald -> Deep montane pine -> Alpine granite/meadow!)
+        vec3 lowlandMeadow = vec3(0.40, 0.77, 0.34) * texLuma * mix(0.92, 1.12, meadowPatch);
+        vec3 montanePine   = vec3(0.28, 0.62, 0.29) * texLuma * mix(0.93, 1.08, meadowPatch);
+        vec3 alpineTundra  = vec3(0.56, 0.63, 0.44) * texLuma;
+        vec3 steppeGrass   = vec3(0.68, 0.73, 0.40) * texLuma * mix(0.94, 1.08, meadowPatch);
+        float montaneBlend = smoothstep(160.0, 950.0, realElevM);
+        float alpineBlend  = smoothstep(1650.0, 2650.0, realElevM);
+        vec3 naturalGreen  = mix(lowlandMeadow, montanePine, montaneBlend);
+        naturalGreen       = mix(naturalGreen, alpineTundra, alpineBlend);
+        vec3 forestGround  = mix(naturalGreen, steppeGrass, wSteppe * 0.75);
+
+        vec3 desertGround = vec3(0.90, 0.77, 0.46) * texLuma * mix(0.94, 1.08, meadowPatch);
+        vec3 snowGround   = vec3(0.93, 0.97, 1.00) * mix(0.92, 1.06, texLuma);
+        vec3 coastGround  = vec3(0.89, 0.83, 0.57) * texLuma;
+        // Glowing molten magma veins ONLY inside real active volcanic craters (or rogue mode)!
         float lavaNoise = sin(vWorldPos.x * 0.45 + sin(vWorldPos.z * 0.38) * 1.4) * cos(vWorldPos.z * 0.42);
         float lavaCrack = smoothstep(0.76, 0.94, abs(lavaNoise));
         vec3 volcanoGround = mix(vec3(0.20, 0.17, 0.21) * texLuma, vec3(1.0, 0.36, 0.08), lavaCrack * 0.92);
@@ -188,8 +397,9 @@ export function createSculptedTerrainMaterial(
           volcanoGround * wVolcano +
           coastGround * wCoast;
 
-        // Keep vast emerald heartland coherent around starting area & Pallet Village
-        grassCol = mix(baseTexCol * mix(0.92, 1.12, meadowPatch), grassCol, smoothstep(90.0, 180.0, distSpawn));
+        if (uRealEarthParams.x < 0.5) {
+          grassCol = mix(baseTexCol * mix(0.92, 1.12, meadowPatch), grassCol, smoothstep(90.0, 180.0, distSpawn));
+        }
 
         vec3 roadCol = texture2D(uRoadTex, vWorldPos.xz * 0.26).rgb;
 
@@ -203,13 +413,14 @@ export function createSculptedTerrainMaterial(
           blendX
         );
         float cliffLuma = clamp(dot(rawCliff, vec3(0.3, 0.59, 0.11)) / 0.46, 0.65, 1.25);
+        vec3 forestCliffCol = mix(vec3(0.68, 0.50, 0.34), vec3(0.58, 0.60, 0.63), graniteMountainMask * 0.85) * cliffLuma;
         vec3 biomeCliff =
-          vec3(0.68, 0.50, 0.34) * cliffLuma * wForest +
-          vec3(0.78, 0.46, 0.26) * cliffLuma * wDesert +
-          vec3(0.56, 0.70, 0.85) * cliffLuma * wSnow +
+          forestCliffCol * wForest +
+          vec3(0.78, 0.48, 0.28) * cliffLuma * wDesert +
+          vec3(0.62, 0.74, 0.88) * cliffLuma * wSnow +
           mix(vec3(0.22, 0.18, 0.23) * cliffLuma, vec3(1.0, 0.34, 0.06), lavaCrack * 0.75) * wVolcano +
           vec3(0.74, 0.66, 0.48) * cliffLuma * wCoast;
-        vec3 cliffCol = mix(rawCliff, biomeCliff, smoothstep(18.0, 44.0, distSpawn));
+        vec3 cliffCol = uRealEarthParams.x > 0.5 ? biomeCliff : mix(rawCliff, biomeCliff, smoothstep(18.0, 44.0, distSpawn));
 
         // Emphasize horizontal terrace strata bands (2.1m per stacked cliff tier)
         float strataBand = fract((vWorldPos.y - 1.8) / 2.1);

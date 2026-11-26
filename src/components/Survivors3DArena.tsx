@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { computeBattleStats } from '../data/battleMoves';
 import { ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getPokemonCryId, getPokemonWorldScale3D } from '../data/catalog';
 import { DEFAULT_TACTICAL_CONFIG, DIFFICULTIES, MAP_REGIONS, SURVIVOR_SKILLS, WATER_LEVEL_3D, WORLD_SECTOR_SIZE, WORLD_TOWNS_3D, clearTerrainHeightCache3D, getDefaultSkillsForElement, getRawNaturalTerrainHeight3D, getTerrainHeight3D, getUnlockedSkillSlotCount, getWalkableSurfaceHeight3D, isNearAnyRoadOrRailForFlora3D, registerActiveTownRoadLayouts3D, setWalkableBuildingFloorZones3D, type DifficultyId, type SafeZone3D, type SurvivorSkillId, type SurvivorsGameMode, type TacticalConfig } from '../data/survivorsTactics';
-import { BIOME_PALETTES, createHorizonBackdropMesh, createPixelWaterMaterial, createSculptedTerrainMaterial, getAnimatedGifTextures, getBiomeTextures, getHeroSpriteFrames, type AnimatedSpriteSheet3D, type BiomeId } from '../data/worldTextures3D';
+import { BIOME_PALETTES, createHorizonBackdropMesh, createPixelWaterMaterial, createSculptedTerrainMaterial, getAnimatedGifTextures, getBiomeTextures, getHeroSpriteFrames, syncTerrainGeoUniforms3D, type AnimatedSpriteSheet3D, type BiomeId } from '../data/worldTextures3D';
 import { computeInstantKickoffWaypoints3D, createAutoWalkPathJob3D, findForwardSpliceIndex3D, type AutoNavBuildingPortalInfo, type AutoNavWaypoint, type IncrementalAutoPathJob3D } from '../utils/autoPathfinder3D';
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
 import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
@@ -349,6 +349,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   }
   const [autoNavActiveLabel, setAutoNavActiveLabel] = useState<string | null>(null);
   const [autoNavDistM, setAutoNavDistM] = useState<number | null>(null);
+  const [autoNavEtaSec, setAutoNavEtaSec] = useState<number | null>(null);
   const lastNavDistSyncMsRef = useRef(0);
   const [autoNavTargets, setAutoNavTargets] = useState<AutoNavTargetItem[]>([]);
   const autoNavTargetsRef = useRef<AutoNavTargetItem[]>([]);
@@ -619,6 +620,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const next = order[(order.indexOf(cur) + 1) % order.length];
     rideModeRef.current = next;
     setRideMode(next);
+    lastNavDistSyncMsRef.current = 0;
     const sim = simRef.current;
     if (sim && (next === 'fly' || next === 'jet')) {
       const floorNow = getWalkableSurfaceHeight3D(sim.px, sim.pz, sim.py);
@@ -640,6 +642,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const landRideMode = () => {
     rideModeRef.current = 'walk';
     setRideMode('walk');
+    lastNavDistSyncMsRef.current = 0;
     const sim = simRef.current;
     if (sim) {
       sim.py = Math.max(WATER_LEVEL_3D + 0.14, getWalkableSurfaceHeight3D(sim.px, sim.pz));
@@ -1670,6 +1673,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     terrainGeo.rotateX(-Math.PI / 2);
     const terrainPosAttr = terrainGeo.attributes.position as THREE.BufferAttribute;
     const terrainMat = createSculptedTerrainMaterial(selectedBiome, tex, WORLD_SECTOR_SIZE);
+    syncTerrainGeoUniforms3D(
+      terrainMat,
+      adventureStyleRef.current !== 'vampire_rogue',
+      liveWeatherRef.current.kind === 'snow' ? 0.88 : 0,
+    );
     const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
     terrainMesh.receiveShadow = true;
     scene.add(terrainMesh);
@@ -1971,11 +1979,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             ? `${(dM / 1000).toFixed(1)} km`
             : `${Math.round(dM / 1000)} km`;
 
+    const getCurrentGearBaseSpeed = () => {
+      const r = rideModeRef.current;
+      if (r === 'jet') return 320;
+      if (r === 'fly') return 115;
+      if (r === 'dash') return 38;
+      return keysRef.current.has('shift') ? 22 : 8.2;
+    };
+
     stopAutoNavRef.current = (silent = false) => {
       if (autoNavRef.current) {
         autoNavRef.current = null;
         setAutoNavActiveLabel(null);
         setAutoNavDistM(null);
+        setAutoNavEtaSec(null);
         autoNavTrailGroup.visible = false;
         if (!silent) {
           sound.play('cancel');
@@ -2022,10 +2039,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         planningJob,
         hasRemainingHorizon: false,
       };
+      const rawWorldDist = Math.hypot(x - curSim.px, z - curSim.pz);
       const metersPerUnit = getActiveGeoTerrainOrigin() ? 1000 / GEO_UNITS_PER_KM : 1;
-      const initDistM = Math.max(1, Math.round(Math.hypot(x - curSim.px, z - curSim.pz) * metersPerUnit));
+      const initDistM = Math.max(1, Math.round(rawWorldDist * metersPerUnit));
+      const curSpd = Math.max(1, getCurrentGearBaseSpeed() * curSim.speedMult);
+      const initEtaSec = Math.max(1, Math.ceil(rawWorldDist / curSpd));
       lastNavDistSyncMsRef.current = performance.now();
       setAutoNavDistM(initDistM);
+      setAutoNavEtaSec(initEtaSec);
       setAutoNavActiveLabel(`${label} · 路线规划中…`);
       rebuildAutoNavTrailVisuals(curSim.px, curSim.pz, kickoffWaypoints, 0);
       showBanner(`🧭 已出发前往「${label}」· 距目标 ${formatNavMeterDist(initDistM)}（按 WASD 可随时接管）`, 2400);
@@ -2719,6 +2740,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         const renderGap = Math.max(1, now - lastRenderTs);
         lastRenderTs = now;
         fpsSmooth = fpsSmooth * 0.88 + (1000 / renderGap) * 0.12;
+        syncTerrainGeoUniforms3D(
+          terrainMat,
+          adventureStyleRef.current !== 'vampire_rogue',
+          liveWeatherRef.current.kind === 'snow' ? 0.88 : 0,
+        );
 
         if (!pausedRef.current && !externalPausedRef.current && !worldMapOpenRef.current && !inRunTownShopOpenRef.current && !endedRef.current) {
           sim.elapsed += dt;
@@ -2806,6 +2832,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             autoNavRef.current = null;
             setAutoNavActiveLabel(null);
             setAutoNavDistM(null);
+            setAutoNavEtaSec(null);
             autoNavTrailGroup.visible = false;
             showBanner('🕹️ 已切换为手动移动控制', 1400);
           } else if (navNow && mLen <= 0.08) {
@@ -2854,7 +2881,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               lastNavDistSyncMsRef.current = now;
               const metersPerUnit = activeGeoNow ? 1000 / GEO_UNITS_PER_KM : 1;
               const roundedDist = Math.max(0, Math.round(distToFinal * metersPerUnit));
+              const effMoveSpeed = Math.max(1, getCurrentGearBaseSpeed() * sim.speedMult);
+              const etaSecNow = Math.max(1, Math.ceil(distToFinal / effMoveSpeed));
               setAutoNavDistM((prev) => (prev === roundedDist ? prev : roundedDist));
+              setAutoNavEtaSec((prev) => (prev === etaSecNow ? prev : etaSecNow));
             }
             const arriveRadius = airNav ? 8 : 1.45;
             if ((!airNav && !curWp) || distToFinal < arriveRadius) {
@@ -2862,6 +2892,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               autoNavRef.current = null;
               setAutoNavActiveLabel(null);
               setAutoNavDistM(null);
+              setAutoNavEtaSec(null);
               autoNavTrailGroup.visible = false;
               sound.play('confirm');
               showBanner(`✅ 已抵达「${arrivedLabel}」！`, 2400);
@@ -3118,7 +3149,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const occludeTown =
             activeTownNow ??
             proceduralTowns.find(
-              (t) => Math.hypot(sim.px - t.centerX, sim.pz - t.centerZ) < Math.max(t.safeRadius + 60, 740),
+              (t) => Math.hypot(sim.px - t.centerX, sim.pz - t.centerZ) < Math.max(t.safeRadius + 60, 2100),
             ) ??
             null;
           const shakeAmp =
@@ -3616,7 +3647,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   useArenaKeyboardHotkeys({ CAM_MODE_META, activeBusStopModal, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, cycleCameraFollowMode, cycleInteractOptionRef, cycleRideMode, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, inRunTownShopOpen, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, programmaticUnlockRef, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setActiveBusStopModal, setBanishMode, setClosingLevelUp, setInRunTownShopOpen, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
   const bgmTrackLabel = BGM_TRACK_LABELS[activeBgmTrack] ?? '晴空微风 · 城镇漫步';
-  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavDistM, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
+  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
 
   return (
     <div ref={containerRef} className="world3d-stage">

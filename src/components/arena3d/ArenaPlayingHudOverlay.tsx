@@ -18,10 +18,24 @@ function formatHudDistance(distM: number): string {
   return `${Math.round(distM / 1000)} km`;
 }
 
+function formatHudEta(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0) return '即将抵达';
+  const s = Math.max(1, Math.round(sec));
+  if (s < 60) return `约 ${s}秒`;
+  if (s < 3600) {
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return rem > 0 ? `约 ${m}分${String(rem).padStart(2, '0')}秒` : `约 ${m}分钟`;
+  }
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  return m > 0 ? `约 ${h}小时${m}分` : `约 ${h}小时`;
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, cycleRideMode, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, landRideMode, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, playerAltitudeM, prefs, regionMeta, reorderBattleFollowers, resetVirtualPad, resultModal, rideMode, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, cycleRideMode, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, landRideMode, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, playerAltitudeM, prefs, regionMeta, reorderBattleFollowers, resetVirtualPad, resultModal, rideMode, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
   const isBgmOn = Boolean(save.bgmEnabled && !save.muted && save.bgmVolume > 0 && (prefs.masterVolume ?? 80) > 0);
   return (
     <>
@@ -217,6 +231,14 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                         <strong className="surv-top-nav-dist" title="距离目标剩余实时距离">
                           距离 {formatHudDistance(autoNavDistM)}
                         </strong>
+                      )}
+                      {autoNavEtaSec !== null && autoNavEtaSec !== undefined && (
+                        <span
+                          className="surv-top-nav-eta"
+                          title="按当前移动/骑乘档位速度实时估算的抵达耗时（按 T 切换骑乘/飞行会立即缩短）"
+                        >
+                          ⏱ {formatHudEta(autoNavEtaSec)}
+                        </span>
                       )}
                       <button
                         type="button"
