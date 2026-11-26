@@ -1357,11 +1357,6 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     if (prefDiff && prefDiff !== difficultyId) setDifficultyId(prefDiff);
   }, [save.prefs?.worldDifficulty, difficultyId]);
 
-  useEffect(() => {
-    const prefMode = save.prefs?.worldGameMode;
-    if (prefMode && phase === 'hub' && prefMode !== gameMode) setGameMode(prefMode);
-  }, [save.prefs?.worldGameMode, phase, gameMode]);
-
   // Live Real-Time Weather Sync (uses GPS Home / active World Tour city via Open-Meteo, or manual World Settings override!)
   useEffect(() => {
     let cancelled = false;
@@ -2741,7 +2736,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     liveOverlandCityRef.current = null;
     overlandCityIdRef.current = payload.cityId;
     setSelectedBiome(payload.biome);
-    setGameMode(payload.isGymChallenge ? 'story' : 'endless');
+    setGameMode('story');
     pausedRef.current = false;
     endedRef.current = false;
     setRunNonce((n) => n + 1);

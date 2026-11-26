@@ -770,37 +770,6 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                   <div className="settings-card">
                     <div className="settings-card-head is-stacked">
                       <div>
-                        <strong>默认冒险模式</strong>
-                        <small>剧情生存（城镇和平休整 + 倒下自动回出生点）或无尽讨伐（野外无限波次）</small>
-                      </div>
-                      <div className="inline-icon-row">
-                        <button
-                          type="button"
-                          className={`lcd-subtab ${(prefs.worldGameMode ?? 'story') === 'story' ? 'active' : ''}`}
-                          onClick={() => {
-                            sound.play('cursor');
-                            setPref({ worldGameMode: 'story' });
-                          }}
-                        >
-                          剧情生存（推荐）
-                        </button>
-                        <button
-                          type="button"
-                          className={`lcd-subtab ${prefs.worldGameMode === 'endless' ? 'active' : ''}`}
-                          onClick={() => {
-                            sound.play('cursor');
-                            setPref({ worldGameMode: 'endless' });
-                          }}
-                        >
-                          无尽讨伐
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="settings-card">
-                    <div className="settings-card-head is-stacked">
-                      <div>
                         <strong>世界天气与属性加成</strong>
                         <small>默认按 GPS/巡礼城市同步实时气象，也可手动切换体验各类天气加成</small>
                       </div>

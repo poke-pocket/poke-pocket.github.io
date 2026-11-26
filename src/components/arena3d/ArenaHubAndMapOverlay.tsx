@@ -258,9 +258,8 @@ export const ArenaHubAndMapOverlay: React.FC<{ ctx: Record<string, any> }> = ({ 
                   type="button"
                   className="pkb-hero-cta is-story"
                   onClick={() => {
-                    const nextMode = save.prefs?.worldGameMode ?? 'story';
                     const nextDiff = save.prefs?.worldDifficulty ?? 'normal';
-                    setGameMode(nextMode);
+                    setGameMode('story');
                     setDifficultyId(nextDiff);
                     handleLaunchRun();
                   }}
