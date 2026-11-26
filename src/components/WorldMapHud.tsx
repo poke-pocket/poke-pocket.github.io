@@ -899,6 +899,33 @@ function paintRoadsAndTownsOnMap(
             ctx.fillText(sym, lp.sx, lp.sy);
           }
         }
+
+        // 2G. Physical Intra-City Bus Stop Badges (`🚏`) on 2D Street Map!
+        if (detailed && unitsPerPx < 2.6) {
+          for (const bs of layout.busStops) {
+            const bp = toScreen(bs.shelterX, bs.shelterZ);
+            if (bp.sx < -20 || bp.sx > cw + 20 || bp.sy < -20 || bp.sy > ch + 20) continue;
+            ctx.fillStyle = '#1971c2';
+            ctx.strokeStyle = '#ffd43b';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.arc(bp.sx, bp.sy, 4.6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            if (unitsPerPx < 1.15) {
+              ctx.font = 'bold 8px "PingFang SC", "Microsoft YaHei", monospace';
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'middle';
+              ctx.fillStyle = '#fff9db';
+              const shortBs = bs.name.replace(/公交站$/, '站');
+              const tw = ctx.measureText(shortBs).width + 4;
+              ctx.fillStyle = 'rgba(20, 28, 46, 0.85)';
+              ctx.fillRect(bp.sx + 6, bp.sy - 5, tw, 10);
+              ctx.fillStyle = '#ffd43b';
+              ctx.fillText(shortBs, bp.sx + 8, bp.sy + 0.5);
+            }
+          }
+        }
       }
     }
 

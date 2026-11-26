@@ -793,12 +793,20 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
         setWorldMapOpen(true);
         return;
       }
-      if (chosen.id === 'bus_hsr' || chosen.id === 'bus_pc') {
-        const navs: { id: string; label: string; x: number; z: number }[] = autoNavTargetsRef?.current ?? [];
+      if (chosen.id === 'bus_hsr' || chosen.id === 'bus_pc' || chosen.id === 'bus_hub') {
+        const navs: { id: string; label: string; subLabel?: string; x: number; z: number }[] =
+          autoNavTargetsRef?.current ?? [];
+        const busStopsOnly = navs.filter(
+          (n) => n.id.includes('_bus_') && Math.hypot(n.x - tp.x, n.z - tp.z) < 3400,
+        );
         const match =
           chosen.id === 'bus_hsr'
-            ? navs.find((n) => n.id.includes('station'))
-            : navs.find((n) => n.id.includes('nurse') || n.id.includes('pc'));
+            ? busStopsOnly.find((n) => n.id.endsWith('_bus_hsr'))
+            : chosen.id === 'bus_hub'
+              ? busStopsOnly.find((n) => n.id.endsWith('_bus_hub')) ?? busStopsOnly[0]
+              : busStopsOnly.find(
+                  (n) => n.id.endsWith('_bus_pc') || Boolean(n.subLabel?.includes('宝可梦中心')),
+                ) ?? busStopsOnly.find((n) => n.id.endsWith('_bus_hub'));
         if (match) {
           teleportIntraCityBusRef?.current?.(match.x, match.z, match.label);
         }

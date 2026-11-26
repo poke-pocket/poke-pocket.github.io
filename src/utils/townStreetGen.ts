@@ -87,6 +87,20 @@ export interface TownJunctionNode {
   kind: 'cross' | 'tee';
 }
 
+export interface TownBusStopDef {
+  id: string;
+  name: string;
+  servesLabel: string;
+  busX: number;
+  busZ: number;
+  rotY: number;
+  shelterX: number;
+  shelterZ: number;
+  dropoffX: number;
+  dropoffZ: number;
+  hasParkedBus?: boolean;
+}
+
 export interface GeneratedTownLayout {
   townId: string;
   townName: string;
@@ -99,6 +113,7 @@ export interface GeneratedTownLayout {
   metroLines: TownMetroLine[];
   rail: TownStreetSeg[];
   lots: TownBuildingLot[];
+  busStops: TownBusStopDef[];
   plazaX: number;
   plazaZ: number;
   busX: number;
@@ -1202,86 +1217,257 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     maxDist = Math.max(maxDist, Math.hypot(l.x - cx, l.z - cz) + 18);
   }
 
-  // Re-anchor Bus Stop AFTER all buildings & parks are placed so it NEVER blocks any shop doorway or collides with walls!
-  {
-    let bestBusScore = -1e9;
+  // Build a complete, two-way Physical 3D Intra-City Bus Stop Network (`layout.busStops`):
+  // Every destination listed on the city bus board HAS its own real 3D curbside Bus Shelter (`obj_busstop.vox`) & route board!
+  const busStops: TownBusStopDef[] = [];
+
+  const tryFindCurbsideBusStopNear = (
+    targetX: number,
+    targetZ: number,
+    maxDistFromTarget: number,
+    preferArterialOnly = false,
+  ): {
+    busX: number;
+    busZ: number;
+    rotY: number;
+    shelterX: number;
+    shelterZ: number;
+    dropoffX: number;
+    dropoffZ: number;
+  } | null => {
+    let bestScore = -1e9;
+    let bestHit: {
+      busX: number;
+      busZ: number;
+      rotY: number;
+      shelterX: number;
+      shelterZ: number;
+      dropoffX: number;
+      dropoffZ: number;
+    } | null = null;
+
     for (const st of streets) {
-      if (st.isBridge || st.kind !== 'arterial') continue;
+      if (st.isBridge || st.kind === 'alley') continue;
+      if (preferArterialOnly && st.kind !== 'arterial') continue;
       const sLen = Math.hypot(st.x2 - st.x1, st.z2 - st.z1);
-      if (sLen < 44) continue;
+      if (sLen < 34) continue;
+      const midX = (st.x1 + st.x2) * 0.5;
+      const midZ = (st.z1 + st.z2) * 0.5;
+      if (Math.hypot(midX - targetX, midZ - targetZ) > maxDistFromTarget + sLen * 0.6) continue;
+
       const ux = (st.x2 - st.x1) / sLen;
       const uz = (st.z2 - st.z1) / sLen;
       const nx = -uz;
       const nz = ux;
 
-      for (const frac of [0.24, 0.76, 0.34, 0.66, 0.5]) {
+      for (const frac of [0.24, 0.38, 0.5, 0.62, 0.76]) {
         const px = st.x1 + (st.x2 - st.x1) * frac;
         const pz = st.z1 + (st.z2 - st.z1) * frac;
-        const dCenter = Math.hypot(px - cx, pz - cz);
-        if (dCenter < 24 || dCenter > 185) continue;
-        if (getShanghaiRiverSignedDist(px - cx, pz - cz, cleanCityId) < 18) continue;
-        if (junctions.some((jn) => Math.hypot(jn.x - px, jn.z - pz) < 25)) continue;
+        const distTarget = Math.hypot(px - targetX, pz - targetZ);
+        if (distTarget > maxDistFromTarget) continue;
+        if (getShanghaiRiverSignedDist(px - cx, pz - cz, cleanCityId) < 16) continue;
+        if (junctions.some((jn) => Math.hypot(jn.x - px, jn.z - pz) < 22)) continue;
 
         for (const side of [1, -1] as const) {
-          const candBusX = px + nx * side * (st.width * 0.33);
-          const candBusZ = pz + nz * side * (st.width * 0.33);
-          const shX = px + nx * side * (st.width * 0.5 + 2.4);
-          const shZ = pz + nz * side * (st.width * 0.5 + 2.4);
-          // Must not overlap any other street!
-          if (
-            streets.some(
-              (other) => other !== st && distToSeg(shX, shZ, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 2.5,
-            )
-          ) {
+          const shX = px + nx * side * (st.width * 0.5 + 1.8);
+          const shZ = pz + nz * side * (st.width * 0.5 + 1.8);
+          const candBusX = px + nx * side * Math.max(2.2, st.width * 0.5 - 2.6);
+          const candBusZ = pz + nz * side * Math.max(2.2, st.width * 0.5 - 2.6);
+          const dropX = px + nx * side * (st.width * 0.5 + 0.35);
+          const dropZ = pz + nz * side * (st.width * 0.5 + 0.35);
+
+          if (isNearAnyStreetFast(shX, shZ, 1.8, st)) continue;
+          if (busStops.some((bs) => Math.hypot(bs.shelterX - shX, bs.shelterZ - shZ) < 64)) continue;
+          if (parks.some((pk) => Math.abs(shX - pk.x) < pk.w * 0.5 + 1.6 && Math.abs(shZ - pk.z) < pk.d * 0.5 + 1.6)) {
             continue;
           }
-          // Must NEVER block any building doorway (`>= 15.5m` clearance) OR overlap any building OBB!
+
           let blockedByLot = false;
           let minDoorDist = 999;
           for (const l of lots) {
             const dd = Math.hypot(shX - l.doorX, shZ - l.doorZ);
             if (dd < minDoorDist) minDoorDist = dd;
-            if (dd < 15.5) {
+            if (dd < 14.0) {
               blockedByLot = true;
               break;
             }
+            const maxSpan = Math.max(l.width, l.depth) * 0.72 + 5.0;
+            if (Math.abs(shX - l.x) > maxSpan || Math.abs(shZ - l.z) > maxSpan) continue;
             const cosL = Math.cos(l.rotY);
             const sinL = Math.sin(l.rotY);
             const dxL = shX - l.x;
             const dzL = shZ - l.z;
             const localX = Math.abs(dxL * cosL - dzL * sinL);
             const localZ = Math.abs(dxL * sinL + dzL * cosL);
-            if (localX < l.width * 0.5 + 4.2 && localZ < l.depth * 0.5 + 4.2) {
+            if (localX < l.width * 0.5 + 4.0 && localZ < l.depth * 0.5 + 4.0) {
               blockedByLot = true;
               break;
             }
           }
           if (blockedByLot) continue;
-          // Strongly prefer park-frontage or open plaza curbsides!
+
+          const sameSideDot = (targetX - px) * (nx * side) + (targetZ - pz) * (nz * side);
           const nearPark = parks.some(
             (pk) => Math.hypot(shX - pk.x, shZ - pk.z) < Math.hypot(pk.w * 0.5, pk.d * 0.5) + 12,
           );
-          const score = (nearPark ? 80 : 0) + Math.min(35, minDoorDist) - dCenter * 0.18;
-          if (score > bestBusScore) {
-            bestBusScore = score;
-            busX = candBusX;
-            busZ = candBusZ;
-            // Encode curb side into heading (`side > 0` -> standard forward; `side < 0` -> opposite direction so right-side door faces curb!)
-            busRotY = side > 0 ? Math.atan2(ux, uz) : Math.atan2(-ux, -uz);
+          const score =
+            -distTarget * 1.15 +
+            (sameSideDot >= 0 ? 22 : 0) +
+            (st.kind === 'arterial' ? 14 : 0) +
+            (nearPark ? 24 : 0) +
+            Math.min(24, minDoorDist);
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestHit = {
+              busX: candBusX,
+              busZ: candBusZ,
+              rotY: side > 0 ? Math.atan2(ux, uz) : Math.atan2(-ux, -uz),
+              shelterX: shX,
+              shelterZ: shZ,
+              dropoffX: dropX,
+              dropoffZ: dropZ,
+            };
           }
         }
       }
     }
+    return bestHit;
+  };
+
+  // 1) Central Plaza Hub Bus Terminal (`中心广场总站` / `人民广场总站`)
+  const primaryParkForBus = parks[0];
+  const hubTargetX = primaryParkForBus?.x ?? cx - 28;
+  const hubTargetZ = primaryParkForBus?.z ?? cz + 18;
+  const hubFound =
+    tryFindCurbsideBusStopNear(hubTargetX, hubTargetZ, 185, true) ??
+    tryFindCurbsideBusStopNear(cx, cz, 220, false);
+  if (hubFound) {
+    busX = hubFound.busX;
+    busZ = hubFound.busZ;
+    busRotY = hubFound.rotY;
+    busStops.push({
+      id: 'bus_hub',
+      name: cleanCityId === 'shanghai' ? '人民广场总站' : `${anchor.name.replace(/市$/, '')}中心总站`,
+      servesLabel: `${primaryParkForBus?.name ?? '中心广场'} · 市内环线总站`,
+      ...hubFound,
+      hasParkedBus: true,
+    });
+  } else {
+    const bFwdX0 = Math.sin(busRotY);
+    const bFwdZ0 = Math.cos(busRotY);
+    const shX0 = busX - bFwdZ0 * 4.4;
+    const shZ0 = busZ + bFwdX0 * 4.4;
+    busStops.push({
+      id: 'bus_hub',
+      name: cleanCityId === 'shanghai' ? '人民广场总站' : `${anchor.name.replace(/市$/, '')}中心总站`,
+      servesLabel: '市中心广场换乘总站',
+      busX,
+      busZ,
+      rotY: busRotY,
+      shelterX: shX0,
+      shelterZ: shZ0,
+      dropoffX: (busX + shX0) * 0.5,
+      dropoffZ: (busZ + shZ0) * 0.5,
+      hasParkedBus: true,
+    });
   }
 
-  // Prune any streetlamp that would pierce the Bus Shelter roof OR stand directly in front of a shop doorway!
-  const bFwdX = Math.sin(busRotY);
-  const bFwdZ = Math.cos(busRotY);
-  const bShX = busX - bFwdZ * 4.4;
-  const bShZ = busZ + bFwdX * 4.4;
+  // 2) Dedicated Curbside Bus Stops for Flagship Facilities (or shared stop when two buildings sit on the same block < 72m!)
+  const facilityStopSpecs: {
+    kind: TownLotKind;
+    stopId: string;
+    stopName: string;
+    facilityShort: string;
+  }[] = [
+    { kind: 'pokemon_center', stopId: 'bus_pc', stopName: '宝可梦中心站', facilityShort: '宝可梦中心' },
+    { kind: 'poke_mart', stopId: 'bus_mart', stopName: '友好百货站', facilityShort: '友好百货' },
+    { kind: 'hotel', stopId: 'bus_hotel', stopName: '驿站大酒店站', facilityShort: '驿站大酒店' },
+    { kind: 'restaurant', stopId: 'bus_rest', stopName: '树果饭店站', facilityShort: '树果料理餐厅' },
+    {
+      kind: 'landmark',
+      stopId: 'bus_landmark',
+      stopName: cleanCityId === 'shanghai' ? '陆家嘴明珠站' : '城市地标站',
+      facilityShort: cleanCityId === 'shanghai' ? '东方明珠塔' : '城市地标',
+    },
+  ];
+  for (const fSpec of facilityStopSpecs) {
+    const lot = lots.find((l) => l.kind === fSpec.kind);
+    if (!lot) continue;
+    const existingNear = busStops.find((bs) => Math.hypot(bs.dropoffX - lot.doorX, bs.dropoffZ - lot.doorZ) < 72);
+    if (existingNear) {
+      if (!existingNear.servesLabel.includes(fSpec.facilityShort)) {
+        existingNear.servesLabel = `${existingNear.servesLabel} · ${fSpec.facilityShort}`;
+      }
+      if (fSpec.kind === 'pokemon_center' && existingNear.id !== 'bus_hub') {
+        existingNear.id = 'bus_pc';
+      }
+      continue;
+    }
+    const placedStop =
+      tryFindCurbsideBusStopNear(lot.doorX, lot.doorZ, 165, false) ??
+      tryFindCurbsideBusStopNear(lot.x, lot.z, 210, false);
+    if (placedStop) {
+      busStops.push({
+        id: fSpec.stopId,
+        name: fSpec.stopName,
+        servesLabel: `下车即达${fSpec.facilityShort}`,
+        ...placedStop,
+      });
+    }
+  }
+
+  // 3) Outer Scenic Park Bus Stop (e.g. 世纪公园站 / 滨水公园站) so outer districts also have two-way transit!
+  if (parks.length >= 2) {
+    const outerPark = parks[1];
+    if (!busStops.some((bs) => Math.hypot(bs.dropoffX - outerPark.x, bs.dropoffZ - outerPark.z) < 88)) {
+      const pkStop = tryFindCurbsideBusStopNear(outerPark.x, outerPark.z, 150, false);
+      if (pkStop) {
+        busStops.push({
+          id: 'bus_park',
+          name: `${outerPark.name}站`,
+          servesLabel: `下车即达${outerPark.name}`,
+          ...pkStop,
+        });
+      }
+    }
+  }
+
+  // 4) Suburban High-Speed Rail Hub Bus Terminal (`虹桥高铁站公交站` / `城郊高铁站公交站`) right in the HSR station forecourt!
+  {
+    const cosSt = Math.cos(stationRotY);
+    const sinSt = Math.sin(stationRotY);
+    // Forecourt local coords: platform spans z=[2.3..8.5], canopy ends z=9.5 -> place shelter cleanly at (x=-15.5, z=13.2) & shuttle bus at (x=-15.5, z=17.6)!
+    const toStationWorld = (lx: number, lz: number): [number, number] => [
+      stationX + lx * cosSt + lz * sinSt,
+      stationZ - lx * sinSt + lz * cosSt,
+    ];
+    const [hsrShX, hsrShZ] = toStationWorld(-15.5, 13.2);
+    const [hsrBusX, hsrBusZ] = toStationWorld(-15.5, 17.6);
+    const [hsrDropX, hsrDropZ] = toStationWorld(-15.5, 14.8);
+    // `busOut` points from `hsrBus` toward `hsrSh` (`local -Z` -> `(-sinSt, -cosSt)` -> `rotY = stationRotY - Math.PI / 2`)
+    const hsrBusRotY = stationRotY - Math.PI / 2;
+    busStops.push({
+      id: 'bus_hsr',
+      name: cleanCityId === 'shanghai' ? '虹桥高铁站公交站' : `${anchor.name.replace(/市$/, '')}高铁站公交站`,
+      servesLabel: '零距离换乘城郊高铁站（跨省高铁 / 国际航班）',
+      busX: hsrBusX,
+      busZ: hsrBusZ,
+      rotY: hsrBusRotY,
+      shelterX: hsrShX,
+      shelterZ: hsrShZ,
+      dropoffX: hsrDropX,
+      dropoffZ: hsrDropZ,
+      hasParkedBus: true,
+    });
+  }
+
+  // Prune any streetlamp that would pierce ANY Bus Shelter roof OR stand directly in front of a shop doorway!
   const filteredLamps = streetLamps.filter((lm) => {
-    if (Math.hypot(lm.x - busX, lm.z - busZ) < 9.5) return false;
-    if (Math.hypot(lm.x - bShX, lm.z - bShZ) < 7.5) return false;
+    for (const bs of busStops) {
+      if (Math.hypot(lm.x - bs.busX, lm.z - bs.busZ) < 9.5) return false;
+      if (Math.hypot(lm.x - bs.shelterX, lm.z - bs.shelterZ) < 8.0) return false;
+    }
     if (lots.some((l) => l.walkable && Math.hypot(lm.x - l.doorX, lm.z - l.doorZ) < 6.2)) return false;
     return true;
   });
@@ -1301,6 +1487,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     metroLines,
     rail,
     lots,
+    busStops,
     plazaX: primaryPark?.x ?? cx - 42,
     plazaZ: primaryPark?.z ?? cz + 8,
     busX,

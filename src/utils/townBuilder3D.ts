@@ -180,7 +180,13 @@ export function buildProceduralTown3D(
 
   const isBlockedForGreenery = (wx: number, wz: number, skipSeg: TownStreetSeg) => {
     if (getGroundHeight(wx, wz) < WATER_LEVEL_3D + 0.35) return true;
-    if (Math.hypot(wx - layout.busX, wz - layout.busZ) < 11.0) return true;
+    if (
+      layout.busStops.some(
+        (bs) => Math.hypot(wx - bs.shelterX, wz - bs.shelterZ) < 9.5 || Math.hypot(wx - bs.busX, wz - bs.busZ) < 9.5,
+      )
+    ) {
+      return true;
+    }
     if (layout.lots.some((l) => l.walkable && Math.hypot(wx - l.doorX, wz - l.doorZ) < 7.5)) return true;
     const nearStreets = tbStreetBuckets.get(`${Math.floor(wx / TB_STREET_CELL)},${Math.floor(wz / TB_STREET_CELL)}`);
     if (nearStreets) {
@@ -658,45 +664,70 @@ export function buildProceduralTown3D(
     localGroundY,
   });
 
-  // ==================== 4. REAL MAGICAVOXEL CITY BUS, SIDEWALK BUS SHELTER & .VOX STREETLAMPS ====================
-  // Curbside direction vector perpendicular to road (`busOutX, busOutZ` points from road center toward sidewalk!)
-  const busFwdX = Math.sin(layout.busRotY);
-  const busFwdZ = Math.cos(layout.busRotY);
-  const busOutX = -busFwdZ;
-  const busOutZ = busFwdX;
-  const busGroundY = localGroundY(layout.busX, layout.busZ) + 0.16;
-
-  // 1) Authentic MagicaVoxel City Transit Bus (`veh_bus.vox`) parked PARALLEL inside the curbside lane (NEVER 90° sideways!)
-  void mountVoxModel(group, '/models/vox/veh_bus.vox', {
-    x: layout.busX - centerX,
-    y: busGroundY,
-    z: layout.busZ - centerZ,
-    rotY: layout.busRotY,
-    targetSpan: 9.2,
-    emitMode: 'vehicle',
+  // ==================== 4. FULL-CITY 3D BUS STOP NETWORK (EVERY DESTINATION HAS A REAL 3D SHELTER & SIGN!) ====================
+  const busBayPadGeo = new THREE.PlaneGeometry(5.6, 12.4);
+  busBayPadGeo.rotateX(-Math.PI / 2);
+  const busBayPadMat = new THREE.MeshLambertMaterial({
+    color: 0xcbd5e1,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
-  colliders.push(makeObbCollider(layout.busX, layout.busZ, 1.45, 4.5, layout.busRotY, 3.2));
 
-  // 2) Sidewalk MagicaVoxel Bus Shelter (`obj_busstop.vox`) + `.vox` Trash Can right next to the bus door!
-  const shelterWorldX = layout.busX + busOutX * 4.4;
-  const shelterWorldZ = layout.busZ + busOutZ * 4.4;
-  const shelterY = localGroundY(shelterWorldX, shelterWorldZ) + 0.16;
-  void mountVoxModel(group, '/models/vox/obj_busstop.vox', {
-    x: shelterWorldX - centerX,
-    y: shelterY,
-    z: shelterWorldZ - centerZ,
-    rotY: layout.busRotY - Math.PI / 2,
-    targetSpan: 5.8,
+  layout.busStops.forEach((bs, bsIdx) => {
+    const bFwdX = Math.sin(bs.rotY);
+    const bFwdZ = Math.cos(bs.rotY);
+    const shelterY = localGroundY(bs.shelterX, bs.shelterZ) + 0.16;
+
+    // Paved Curbside Waiting Platform Pad under every Bus Shelter (`obj_busstop.vox`)
+    const bayPad = new THREE.Mesh(busBayPadGeo, busBayPadMat);
+    bayPad.position.set(bs.shelterX - centerX, shelterY - 0.04, bs.shelterZ - centerZ);
+    bayPad.rotation.y = bs.rotY;
+    bayPad.receiveShadow = true;
+    group.add(bayPad);
+
+    void mountVoxModel(group, '/models/vox/obj_busstop.vox', {
+      x: bs.shelterX - centerX,
+      y: shelterY,
+      z: bs.shelterZ - centerZ,
+      rotY: bs.rotY - Math.PI / 2,
+      targetSpan: 5.8,
+    });
+    spawnVoxStreetPropCluster(
+      group,
+      'trashcan',
+      bs.shelterX - centerX + bFwdX * 3.6,
+      shelterY,
+      bs.shelterZ - centerZ + bFwdZ * 3.6,
+      bs.rotY,
+      seed + 3 + bsIdx,
+    );
+
+    if (bs.hasParkedBus) {
+      const busGroundY = localGroundY(bs.busX, bs.busZ) + 0.16;
+      if (bs.id === 'bus_hsr') {
+        // Paved forecourt shuttle-bus bay right outside the Suburban HSR Terminal!
+        const forecourtRoad = new THREE.Mesh(
+          new THREE.PlaneGeometry(9.6, 18.5),
+          hubAsphaltMat,
+        );
+        forecourtRoad.rotation.x = -Math.PI / 2;
+        forecourtRoad.rotation.z = -bs.rotY;
+        forecourtRoad.position.set(bs.busX - centerX, busGroundY - 0.05, bs.busZ - centerZ);
+        forecourtRoad.receiveShadow = true;
+        group.add(forecourtRoad);
+      }
+      void mountVoxModel(group, '/models/vox/veh_bus.vox', {
+        x: bs.busX - centerX,
+        y: busGroundY,
+        z: bs.busZ - centerZ,
+        rotY: bs.rotY,
+        targetSpan: 9.2,
+        emitMode: 'vehicle',
+      });
+      colliders.push(makeObbCollider(bs.busX, bs.busZ, 1.45, 4.5, bs.rotY, 3.2));
+    }
   });
-  spawnVoxStreetPropCluster(
-    group,
-    'trashcan',
-    shelterWorldX - centerX + busFwdX * 3.6,
-    shelterY,
-    shelterWorldZ - centerZ + busFwdZ * 3.6,
-    layout.busRotY,
-    seed + 3,
-  );
 
   const streetLampPositions: { x: number; y: number; z: number }[] = [];
   const lampPoolGeo = new THREE.PlaneGeometry(10.8, 10.8);
@@ -1088,28 +1119,28 @@ export function buildProceduralTown3D(
     }
   }
 
-  interactPoints.push(
-    {
-      id: `${id}_station`,
-      townName,
-      kind: 'transit_station',
-      label: `🚄 ${townName}·城郊虹桥高铁站`,
-      hint: '乘坐高铁或航班前往全国/世界其他城市',
-      x: layout.stationX,
-      z: layout.stationZ + 4.5,
-      radius: 6.5,
-    },
-    {
-      id: `${id}_bus`,
+  interactPoints.push({
+    id: `${id}_station`,
+    townName,
+    kind: 'transit_station',
+    label: `🚄 ${townName}·城郊虹桥高铁站`,
+    hint: '乘坐高铁或航班前往全国/世界其他城市',
+    x: layout.stationX,
+    z: layout.stationZ + 4.5,
+    radius: 6.5,
+  });
+  for (const bs of layout.busStops) {
+    interactPoints.push({
+      id: `${id}_${bs.id}`,
       townName,
       kind: 'city_bus_stop',
-      label: `🚌 ${townName}·市内公交与城际巴士站`,
-      hint: '乘巴士前往市内各设施 / 火车站，或搭乘陆路客运前往周边邻城',
-      x: (layout.busX + shelterWorldX) * 0.5,
-      z: (layout.busZ + shelterWorldZ) * 0.5,
-      radius: 5.2,
-    },
-  );
+      label: `🚏 ${bs.name}`,
+      hint: bs.servesLabel,
+      x: bs.dropoffX,
+      z: bs.dropoffZ,
+      radius: 5.6,
+    });
+  }
 
   return {
     id,

@@ -234,13 +234,25 @@ export function buildInteractActionsForTarget(
       };
     }
     if (tp.kind === 'city_bus_stop') {
+      const cleanStopTitle = tp.label.replace(/^🚏\s*|^🚌\s*/, '');
+      const atHsrStop = tp.id.endsWith('_bus_hsr');
+      const atHubStop = tp.id.endsWith('_bus_hub');
+      const atPcStop = tp.id.endsWith('_bus_pc') || Boolean(tp.hint?.includes('宝可梦中心'));
+      const quickActs: InteractActionItem[] = [];
+      if (atHsrStop) {
+        quickActs.push({ id: 'bus_hub', label: '乘公交回【市中心总站】', icon: '/sprites/items/town-map.png' });
+      } else {
+        quickActs.push({ id: 'bus_hsr', label: '乘公交去【城郊高铁站站】', icon: '/sprites/items/town-map.png' });
+      }
+      if (atPcStop && !atHubStop) {
+        quickActs.push({ id: 'bus_hub', label: '乘公交回【市中心总站】', icon: '/sprites/items/soothe-bell.png' });
+      } else if (!atPcStop) {
+        quickActs.push({ id: 'bus_pc', label: '乘公交去【宝可梦中心站】', icon: '/sprites/items/potion.png' });
+      }
+      quickActs.push({ id: 'bus_board', label: '查看全城公交站点与邻城班次', icon: '/sprites/items/amulet-coin.png' });
       return {
-        speakerName: `${tp.townName} · 市内公交站`,
-        actions: [
-          { id: 'bus_hsr', label: '乘公交去【城郊高铁站】', icon: '/sprites/items/town-map.png' },
-          { id: 'bus_pc', label: '乘公交去【宝可梦中心】', icon: '/sprites/items/potion.png' },
-          { id: 'bus_board', label: '查看全部市内与邻城线路', icon: '/sprites/items/amulet-coin.png' },
-        ],
+        speakerName: `${tp.townName} · ${cleanStopTitle}`,
+        actions: quickActs,
       };
     }
     if (tp.kind === 'transit_station') {
@@ -705,10 +717,19 @@ export const ArenaTownSocialAndBusOverlay: React.FC<{ ctx: ArenaSharedCtx }> = (
             onClick={(e) => e.stopPropagation()}
           >
             {(() => {
-              const { townName } = activeBusStopModal;
-              const intraStops: { id: string; label: string; icon: string; x: number; z: number }[] = (
-                autoNavTargetsRef?.current ?? []
-              ).filter((t: { id: string }) => !t.id.includes('suite_bed') && !t.id.includes('_bus'));
+              const { townName, busX, busZ } = activeBusStopModal;
+              const intraStops: {
+                id: string;
+                label: string;
+                subLabel?: string;
+                icon: string;
+                x: number;
+                z: number;
+              }[] = (autoNavTargetsRef?.current ?? []).filter(
+                (t: { id: string; x: number; z: number }) =>
+                  t.id.includes('_bus_') && Math.hypot(t.x - busX, t.z - busZ) < 3400,
+              );
+              const curStopItem = intraStops.find((s) => Math.hypot(s.x - px, s.z - pz) < 14);
 
               const curCityId = liveOverlandCity?.id ?? activeWorldRun?.cityId ?? 'shanghai';
               const curCityObj = WORLD_CITIES.find((c) => c.id === curCityId);
@@ -744,10 +765,10 @@ export const ArenaTownSocialAndBusOverlay: React.FC<{ ctx: ArenaSharedCtx }> = (
                       <PixelItemImg src="/sprites/items/town-map.png" size={24} />
                       <div>
                         <strong style={{ fontSize: 16, color: '#ffd43b' }}>
-                          🚌 {townName} · 市内公交与陆路客运站
+                          🚏 {townName} · {curStopItem ? curStopItem.label.replace(/^🚏\s*/, '') : '市内公交与陆路客运站'}
                         </strong>
                         <div style={{ fontSize: 11.5, color: '#adb5bd' }}>
-                          市内环线免费直达本城设施与火车站 · 跨省高铁与国际航班请前往「城郊高铁站」换乘
+                          站站均设实体候车亭，下车后可随时返程或换乘 · 跨省高铁与航班请乘至「高铁站公交站」换乘
                         </div>
                       </div>
                     </div>
@@ -768,50 +789,74 @@ export const ArenaTownSocialAndBusOverlay: React.FC<{ ctx: ArenaSharedCtx }> = (
                   </div>
 
                   <div style={{ fontSize: 12.5, fontWeight: 700, color: '#74c0fc', margin: '8px 0 6px' }}>
-                    🚏 市内公交快线（当前城市位置转移 · 免费）
+                    🚏 市内双向环线公交站（仅停靠设站候车亭 · 免费双向往返）
                   </div>
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(215px, 1fr))',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(225px, 1fr))',
                       gap: 8,
-                      maxHeight: 210,
+                      maxHeight: 230,
                       overflowY: 'auto',
                       marginBottom: 12,
                     }}
                   >
                     {intraStops.map((st) => {
-                      const isStation = st.id.includes('station');
-                      const distM = Math.max(1, Math.round(Math.hypot(st.x - px, st.z - pz)));
+                      const isHsrStop = st.id.endsWith('_bus_hsr');
+                      const rawUnits = Math.hypot(st.x - px, st.z - pz);
+                      const isHere = rawUnits < 14;
+                      const distMeters = Math.max(1, Math.round(rawUnits * 10));
+                      const distLabel =
+                        distMeters >= 1000 ? `${(distMeters / 1000).toFixed(1)}km` : `${distMeters}m`;
                       return (
                         <button
                           key={st.id}
                           type="button"
+                          disabled={isHere}
                           onClick={() => {
+                            if (isHere) return;
                             closeBus();
                             teleportIntraCityBusRef?.current?.(st.x, st.z, st.label);
                           }}
                           style={{
                             display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 8,
+                            flexDirection: 'column',
+                            gap: 3,
                             padding: '9px 11px',
                             borderRadius: 8,
-                            border: isStation ? '2px solid #fcc419' : '1.5px solid #3b5bdb',
-                            background: isStation ? '#2e2918' : '#1b2640',
+                            border: isHere
+                              ? '2px solid #51cf66'
+                              : isHsrStop
+                                ? '2px solid #fcc419'
+                                : '1.5px solid #3b5bdb',
+                            background: isHere ? '#1b3626' : isHsrStop ? '#2e2918' : '#1b2640',
                             color: '#fff',
-                            cursor: 'pointer',
+                            cursor: isHere ? 'default' : 'pointer',
                             fontSize: 12.5,
                             textAlign: 'left',
+                            opacity: isHere ? 0.96 : 1,
                           }}
                         >
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {st.label}
-                          </span>
-                          <span style={{ color: isStation ? '#ffe066' : '#a5d8ff', fontSize: 11.5, flexShrink: 0 }}>
-                            {distM}m · 乘车
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, width: '100%' }}>
+                            <span style={{ fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {st.label}
+                            </span>
+                            <span
+                              style={{
+                                color: isHere ? '#69db7c' : isHsrStop ? '#ffe066' : '#a5d8ff',
+                                fontSize: 11,
+                                fontWeight: 700,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {isHere ? '📍 本站' : `${distLabel} · 乘车`}
+                            </span>
+                          </div>
+                          {st.subLabel && (
+                            <div style={{ fontSize: 10.5, color: '#adb5bd', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {st.subLabel}
+                            </div>
+                          )}
                         </button>
                       );
                     })}

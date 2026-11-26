@@ -2000,7 +2000,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           items.push({
             id: pt.id,
             label: pt.label,
-            subLabel: `${town.name} · ${meta.sub}`,
+            subLabel: pt.kind === 'city_bus_stop' && pt.hint ? pt.hint : `${town.name} · ${meta.sub}`,
             icon: meta.icon,
             x: pt.x,
             z: pt.z,
@@ -2713,30 +2713,45 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       const curSim = simRef.current;
       if (!curSim) return;
       stopAutoNavRef.current(true);
+      rideModeRef.current = 'walk';
+      setRideMode('walk');
       let destX = tx;
       let destZ = tz;
-      // If destination is inside a walk-in building, drop off cleanly on the street doorstep right outside its front entrance!
+      // If a non-bus-stop interior point was passed, snap to its nearest physical `city_bus_stop` first so EVERY ride ends at an actual 3D Bus Stop!
+      let nearestStopPt: { x: number; z: number; label: string } | null = null;
+      let nearestStopDist = Infinity;
       for (const t of proceduralTowns) {
-        const hitInt = t.interiors.find(
-          (b) => Math.hypot(tx - b.cx, tz - b.cz) < Math.max(b.halfW, b.halfD) + 1.5,
-        );
-        if (hitInt) {
-          destX = hitInt.cx + Math.sin(hitInt.rotY) * (hitInt.halfD + 4.8);
-          destZ = hitInt.cz + Math.cos(hitInt.rotY) * (hitInt.halfD + 4.8);
-          break;
+        for (const pt of t.interactPoints) {
+          if (pt.kind !== 'city_bus_stop') continue;
+          const d = Math.hypot(pt.x - tx, pt.z - tz);
+          if (d < nearestStopDist) {
+            nearestStopDist = d;
+            nearestStopPt = pt;
+          }
         }
       }
-      const gy = getWalkableSurfaceHeight3D(destX, destZ);
+      let finalStopLabel = label;
+      if (nearestStopPt && nearestStopDist <= 140) {
+        destX = nearestStopPt.x;
+        destZ = nearestStopPt.z;
+        finalStopLabel = nearestStopPt.label;
+      }
+      chunkState.x = 999999;
+      chunkState.z = 999999;
+      updateWorldAround(destX, destZ);
+      geoHighwayStreamer?.updateAround(destX, destZ, true);
+      const gy = Math.max(WATER_LEVEL_3D + 0.16, getWalkableSurfaceHeight3D(destX, destZ));
       curSim.px = destX;
       curSim.pz = destZ;
       curSim.py = gy;
       curSim.vy = 0;
+      camPivotRef.current.set(destX, gy + 1.52, destZ);
       curSim.followers.forEach((f, idx) => {
-        f.x = destX - (idx + 1) * 1.2;
-        f.z = destZ + 1.2;
-        f.y = gy;
+        const ang = (idx * Math.PI * 2) / Math.max(1, curSim.followers.length) + 0.4;
+        f.x = destX + Math.cos(ang) * 1.85;
+        f.z = destZ + Math.sin(ang) * 1.85;
+        f.y = Math.max(WATER_LEVEL_3D + 0.14, getWalkableSurfaceHeight3D(f.x, f.z));
       });
-      updateWorldAround(destX, destZ);
       const destGeo = worldToGeo(destX, destZ);
       const curOrg = getActiveGeoTerrainOrigin();
       saveWorldCheckpoint({
@@ -2751,7 +2766,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         updatedAt: Date.now(),
       });
       sound.play('levelup');
-      showBanner(`🚌 叮咚！市内公交已将你送达「${label}」门口！`, 3000);
+      showBanner(`🚌 叮咚！公交已抵达「${finalStopLabel}」候车亭，站旁可随时乘车返程或换乘其他站点！`, 3200);
     };
     const buildLevelChoices = (): LevelChoice[] => {
       const sim = simRef.current;
