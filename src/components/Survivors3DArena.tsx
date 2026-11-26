@@ -9,7 +9,7 @@ import { computeInstantKickoffWaypoints3D, createAutoWalkPathJob3D, findForwardS
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
 import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
 import { extractDexIdFromSpriteUrl, getPmd8DirSheet, type Pmd8DirSheet3D } from '../data/pmdSprites3D';
-import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGeoCities, prefetchGeoDetailAround, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded, worldToGeo, worldYToRealMeters3D } from '../data/geoTerrain3D';
+import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGeoCities, hasLocalDemCoverage, prefetchGeoDetailAround, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded, worldToGeo, worldYToRealMeters3D } from '../data/geoTerrain3D';
 import { getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { clearWorldCheckpoint, loadWorldCheckpoint, saveWorldCheckpoint, setActiveCareSessionFlag, wasActiveCareSessionOpen } from '../utils/worldCheckpoint';
 import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D';
@@ -1071,7 +1071,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     closingCapture,
   ]);
 
-  const pausedRef = useRef(true);
+  const pausedRef = useRef(!initialAutoResumePayload);
   const endedRef = useRef(false);
   const keysRef = useRef<Set<string>>(new Set());
   const jumpQueuedRef = useRef(false);
@@ -2160,7 +2160,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     weatherPoints.visible = false;
     scene.add(weatherPoints);
     let windClock = 0;
-    const { floraBillboards, syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround } = createArenaFloraStreamer3D({ chunkState, cattailMat, farTerrainGeo, farTerrainMesh, farWaterPlaneMesh, floatingLilyPads, floraGroup, isInsideAnyTownPlaza, lilyGeo, lilyMat, lotusMat, midTerrainGeo, midTerrainMesh, prefsRef, selectedBiome, terrainGeo, terrainMesh, terrainPosAttr, tex, waterPlaneMesh });
+    const { syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround } = createArenaFloraStreamer3D({ chunkState, cattailMat, farTerrainGeo, farTerrainMesh, farWaterPlaneMesh, floatingLilyPads, floraGroup, isInsideAnyTownPlaza, lilyGeo, lilyMat, lotusMat, midTerrainGeo, midTerrainMesh, prefsRef, selectedBiome, terrainGeo, terrainMesh, terrainPosAttr, tex, waterPlaneMesh });
     // 4. 3D Roadside Safe Zones (Boxy placeholder buildings temporarily removed pending custom pixel-art redesign!)
     const safeZoneMeshes = new Map<string, { group: THREE.Group; ring: THREE.Mesh }>();
     const syncSafeZones3D = (_cx: number, _cz: number) => {
@@ -2322,12 +2322,40 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       regionMeta,
       scene,
     });
+    playerSprite.position.set(startPx, startPy - 0.04, startPz);
+    playerShadow.position.set(startPx, startPy + 0.06, startPz);
+    camPivotRef.current.set(startPx, startPy + 1.52, startPz);
     initialFollowers.forEach((f, idx) => {
       const ang = (idx * Math.PI * 2) / Math.max(1, initialFollowers.length) + 0.6;
       f.x = startPx + Math.cos(ang) * 2.4;
       f.z = startPz + Math.sin(ang) * 2.4;
       f.y = Math.max(WATER_LEVEL_3D + 0.12, getWalkableSurfaceHeight3D(f.x, f.z));
+      f.sprite?.position.set(f.x, f.y - 0.04, f.z);
+      f.shadow?.position.set(f.x, f.y + 0.06, f.z);
     });
+    if (phase === 'playing') {
+      updatePhysicalCameraRig3D({
+        camera,
+        pivot: camPivotRef.current,
+        orbit: camOrbitRef.current,
+        smooth: camSmoothRef.current,
+        mode: camFollowModeRef.current,
+        px: startPx,
+        py: startPy,
+        pz: startPz,
+        worldMx: 0,
+        worldMz: 0,
+        mLen: 0,
+        mzInput: 0,
+        isDragging: false,
+        pointerLocked: false,
+        autoNavActive: false,
+        occludeTown: proceduralTowns[0] ?? null,
+        activeInterior: null,
+        shakeAmp: 0,
+        dt: 0.016,
+      });
+    }
 
     simRef.current = {
       px: startPx,
@@ -2380,12 +2408,18 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     updateWorldAround(startPx, startPz);
     geoHighwayStreamer?.updateAround(startPx, startPz, true);
 
-    // When real-Earth NASA/SRTM DEM elevation tiles finish streaming, rebuild coast-clipped city ONCE in 1:1 lockstep with 2D map!
-    let rebuiltCoastClippedTown = false;
+    // When real-Earth NASA/SRTM DEM elevation tiles finish streaming, rebuild coast-clipped coastal city AT MOST ONCE (and never tear down all flora meshes!)
+    const startCityClean = activeGeoNow?.startCityId ?? 'shanghai';
+    const hadLocalDemAtBuild = activeGeoNow
+      ? hasLocalDemCoverage(activeGeoNow.originLat, activeGeoNow.originLng) || startCityClean === 'shanghai'
+      : true;
+    let rebuiltCoastClippedTown = hadLocalDemAtBuild;
     const unsubGeoDem = subscribeGeoDemLoaded(() => {
-      chunkState.x = NaN;
-      chunkState.z = NaN;
-      if (!rebuiltCoastClippedTown && activeGeoNow) {
+      if (
+        !rebuiltCoastClippedTown &&
+        activeGeoNow &&
+        hasLocalDemCoverage(activeGeoNow.originLat, activeGeoNow.originLng)
+      ) {
         rebuiltCoastClippedTown = true;
         clearTownLayoutCache();
         for (const oldT of proceduralTowns) {
@@ -2431,15 +2465,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           town.group.position.y = getTerrainHeight3D(town.centerX, town.centerZ);
         }
       }
+      // Re-seat existing flora Y heights in ~0.2ms instead of destroying & re-creating 2,200+ flora cells!
       for (const [, entry] of placedFloraCells) {
-        for (const obj of entry.objs) floraGroup.remove(obj);
-        for (const bb of entry.bbs) floraBillboards.delete(bb);
-        for (const nid of entry.nodeIds) worldInteractNodes.delete(nid);
-        if (entry.lilies) {
-          for (const lp of entry.lilies) floatingLilyPads.delete(lp);
+        for (const obj of entry.objs) {
+          obj.position.y = getTerrainHeight3D(obj.position.x, obj.position.z) - 0.04;
         }
       }
-      placedFloraCells.clear();
       const curSim = simRef.current;
       chunkState.x = 999999;
       chunkState.z = 999999;

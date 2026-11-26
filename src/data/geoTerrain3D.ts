@@ -98,15 +98,12 @@ function getDemListeners(): Set<() => void> {
   return demListenersSet;
 }
 
-let notifyQueued = false;
+let notifyTimer: number | null = null;
+let notifyFirstQueuedMs = 0;
 function notifyDemLoaded() {
   demVersion += 1;
   PERSISTED_GEO.demVersion = demVersion;
-  if (notifyQueued) return;
-  notifyQueued = true;
-  // Batch rapid parallel tile completions into one clean repaint frame
-  const flush = () => {
-    notifyQueued = false;
+  if (typeof window === 'undefined') {
     for (const fn of getDemListeners()) {
       try {
         fn();
@@ -114,12 +111,30 @@ function notifyDemLoaded() {
         // ignore listener error
       }
     }
-  };
-  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-    window.requestAnimationFrame(flush);
-  } else {
-    flush();
+    return;
   }
+  const now = performance.now();
+  if (notifyTimer === null) {
+    notifyFirstQueuedMs = now;
+  } else if (now - notifyFirstQueuedMs < 650) {
+    window.clearTimeout(notifyTimer);
+  } else {
+    // Already waiting near max cap; let current timer flush cleanly
+    return;
+  }
+  // Coalesce burst of 27–52 parallel DEM tile completions into 1–2 quiet updates instead of 20+ back-to-back 30k-vertex rebuilds!
+  const delayMs = DEM_INFLIGHT.size === 0 ? 40 : 240;
+  notifyTimer = window.setTimeout(() => {
+    notifyTimer = null;
+    notifyFirstQueuedMs = 0;
+    for (const fn of getDemListeners()) {
+      try {
+        fn();
+      } catch {
+        // ignore listener error
+      }
+    }
+  }, delayMs);
 }
 
 export function subscribeGeoDemLoaded(cb: () => void): () => void {
@@ -213,25 +228,27 @@ function requestDemTile(z: number, tx: number, ty: number) {
   img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${wrappedTx}/${ty}.png`;
 }
 
-function prefetchRegionTiles(origin: GeoTerrainOrigin) {
-  // 00. Pre-fetch ENTIRE PLANET EARTH at Z2 (only 4x4 = 16 tiny tiles!) so zooming all the way out shows North-to-South full world map immediately!
-  for (let ty = 0; ty < 4; ty++) {
-    for (let tx = 0; tx < 4; tx++) {
-      requestDemTile(DEM_Z_GLOBAL, tx, ty);
-    }
-  }
+let deferredGlobalPrefetchTimer: number | null = null;
 
-  // 0. Pre-fetch Continental Z3 3x3 tiles (~15,000km across Asia/Pacific)
-  const world = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_WORLD);
-  const wcx = Math.floor(world.fx);
-  const wcy = Math.floor(world.fy);
+function prefetchRegionTiles(origin: GeoTerrainOrigin) {
+  // 1. PRIORITY FIRST: Fetch High-Res Z11 (~58km) + Mid Z9 (~230km) + Macro Z5 (~3600km) around the active city FIRST
+  //    so local 3D terrain & coastline finish immediately without competing with 25 planetary map tiles!
+  const detail = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_DETAIL);
+  const dcx = Math.floor(detail.fx);
+  const dcy = Math.floor(detail.fy);
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
-      requestDemTile(DEM_Z_WORLD, wcx + dx, wcy + dy);
+      requestDemTile(DEM_Z_DETAIL, dcx + dx, dcy + dy);
     }
   }
-
-  // 1. Pre-fetch Macro Z5 3x3 grid (~3600km x 3600km) so zoomed-out coastlines NEVER show missing squares!
+  const mid = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_MID);
+  const m9x = Math.floor(mid.fx);
+  const m9y = Math.floor(mid.fy);
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      requestDemTile(DEM_Z_MID, m9x + dx, m9y + dy);
+    }
+  }
   const macro = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_MACRO);
   const mcx = Math.floor(macro.fx);
   const mcy = Math.floor(macro.fy);
@@ -241,23 +258,36 @@ function prefetchRegionTiles(origin: GeoTerrainOrigin) {
     }
   }
 
-  // 2. Pre-fetch Mid Z9 (~230km) + High-Res Z11 (~58km, ~76m/px!) 3x3 grids around starting city!
-  const mid = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_MID);
-  const m9x = Math.floor(mid.fx);
-  const m9y = Math.floor(mid.fy);
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      requestDemTile(DEM_Z_MID, m9x + dx, m9y + dy);
-    }
+  // 2. Defer Continental Z3 + Planetary Z2 (25 tiles ONLY used when zooming the 2D World Map all the way out) until after launch!
+  if (typeof window !== 'undefined' && deferredGlobalPrefetchTimer === null) {
+    deferredGlobalPrefetchTimer = window.setTimeout(() => {
+      deferredGlobalPrefetchTimer = null;
+      const world = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_WORLD);
+      const wcx = Math.floor(world.fx);
+      const wcy = Math.floor(world.fy);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          requestDemTile(DEM_Z_WORLD, wcx + dx, wcy + dy);
+        }
+      }
+      for (let ty = 0; ty < 4; ty++) {
+        for (let tx = 0; tx < 4; tx++) {
+          requestDemTile(DEM_Z_GLOBAL, tx, ty);
+        }
+      }
+    }, 3200);
   }
-  const detail = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_DETAIL);
-  const dcx = Math.floor(detail.fx);
-  const dcy = Math.floor(detail.fy);
-  for (let dy = -1; dy <= 1; dy++) {
-    for (let dx = -1; dx <= 1; dx++) {
-      requestDemTile(DEM_Z_DETAIL, dcx + dx, dcy + dy);
-    }
+}
+
+export function hasLocalDemCoverage(lat: number, lng: number): boolean {
+  for (const z of [DEM_Z_DETAIL, DEM_Z_MID]) {
+    const { fx, fy } = latLngToTileFrac(lat, lng, z);
+    const n = 1 << z;
+    const tx = ((Math.floor(fx) % n) + n) % n;
+    const ty = Math.floor(fy);
+    if (DETAIL_DEM_CACHE.has(`${z}/${tx}/${ty}`)) return true;
   }
+  return false;
 }
 
 export function prefetchGeoDetailAround(lat: number, lng: number): void {

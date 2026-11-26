@@ -157,14 +157,39 @@ export function buildProceduralTown3D(
     return Math.hypot(px - (x1 + t * vx), pz - (z1 + t * vz));
   };
 
+  const TB_STREET_CELL = 64;
+  const tbStreetBuckets = new Map<string, TownStreetSeg[]>();
+  for (const st of layout.streets) {
+    const pad = st.width * 0.5 + 4.0;
+    const gx0 = Math.floor((Math.min(st.x1, st.x2) - pad) / TB_STREET_CELL);
+    const gx1 = Math.floor((Math.max(st.x1, st.x2) + pad) / TB_STREET_CELL);
+    const gz0 = Math.floor((Math.min(st.z1, st.z2) - pad) / TB_STREET_CELL);
+    const gz1 = Math.floor((Math.max(st.z1, st.z2) + pad) / TB_STREET_CELL);
+    for (let gz = gz0; gz <= gz1; gz++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        const k = `${gx},${gz}`;
+        let arr = tbStreetBuckets.get(k);
+        if (!arr) {
+          arr = [];
+          tbStreetBuckets.set(k, arr);
+        }
+        arr.push(st);
+      }
+    }
+  }
+
   const isBlockedForGreenery = (wx: number, wz: number, skipSeg: TownStreetSeg) => {
     if (getGroundHeight(wx, wz) < WATER_LEVEL_3D + 0.35) return true;
     if (Math.hypot(wx - layout.busX, wz - layout.busZ) < 11.0) return true;
     if (layout.lots.some((l) => l.walkable && Math.hypot(wx - l.doorX, wz - l.doorZ) < 7.5)) return true;
-    for (const other of layout.streets) {
-      if (other === skipSeg) continue;
-      if (distToSeg2D(wx, wz, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 1.6) {
-        return true;
+    const nearStreets = tbStreetBuckets.get(`${Math.floor(wx / TB_STREET_CELL)},${Math.floor(wz / TB_STREET_CELL)}`);
+    if (nearStreets) {
+      for (let i = 0; i < nearStreets.length; i++) {
+        const other = nearStreets[i];
+        if (other === skipSeg) continue;
+        if (distToSeg2D(wx, wz, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 1.6) {
+          return true;
+        }
       }
     }
     return false;

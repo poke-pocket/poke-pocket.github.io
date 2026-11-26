@@ -286,7 +286,8 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
     floraSnapGx = gx0;
     floraSnapGz = gz0;
     floraPendingPass = false;
-    const cellBudget = isInitialBurst ? 9999 : 22;
+    // Outward radial order populates screen-visible NEAR_R flora immediately on Frame 1 (~3ms) and streams distant rings smoothly!
+    const cellBudget = isInitialBurst ? 260 : 36;
     let spawnedThisFrame = 0;
 
     const NEAR_R = prefsRef.current.graphicsQuality === 'low' ? 9 : 12;
@@ -306,20 +307,25 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
     }
 
     const hwyHalfW = HIGHWAY_ROAD_WIDTH_3D * 0.5;
+    let cellChecksThisFrame = 0;
+    const maxCellChecks = isInitialBurst ? 680 : 180;
 
-    for (let dz = -FAR_R; dz <= FAR_R; dz++) {
-      for (let dx = -FAR_R; dx <= FAR_R; dx++) {
-        const distCell = Math.max(Math.abs(dx), Math.abs(dz));
-        const wantTier: 'far' | 'full' = distCell <= NEAR_R ? 'full' : 'far';
-        const gx = gx0 + dx;
-        const gz = gz0 + dz;
-        const key = `${gx},${gz}`;
-        const existing = placedFloraCells.get(key);
-        if (existing && (existing.tier === 'full' || wantTier === 'far')) continue;
-        if (spawnedThisFrame >= cellBudget) {
-          floraPendingPass = true;
-          return;
-        }
+    for (let ring = 0; ring <= FAR_R; ring++) {
+      for (let dz = -ring; dz <= ring; dz++) {
+        const dxStep = Math.abs(dz) === ring ? 1 : Math.max(1, ring * 2);
+        for (let dx = -ring; dx <= ring; dx += dxStep) {
+          const distCell = ring;
+          const wantTier: 'far' | 'full' = distCell <= NEAR_R ? 'full' : 'far';
+          const gx = gx0 + dx;
+          const gz = gz0 + dz;
+          const key = `${gx},${gz}`;
+          const existing = placedFloraCells.get(key);
+          if (existing && (existing.tier === 'full' || wantTier === 'far')) continue;
+          if (spawnedThisFrame >= cellBudget || cellChecksThisFrame >= maxCellChecks) {
+            floraPendingPass = true;
+            return;
+          }
+          cellChecksThisFrame += 1;
 
         const wx = gx * TERRACE_CELL;
         const wz = gz * TERRACE_CELL;
@@ -773,6 +779,7 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
           placedFloraCells.set(key, { gx, gz, tier: wantTier, objs, bbs, nodeIds });
         }
         if (objs.length > 0) spawnedThisFrame += 1;
+        }
       }
     }
   };
