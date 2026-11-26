@@ -2375,42 +2375,35 @@ export function buildProceduralTown3D(
   }
 
   const bestChainLen = bestChain.reduce((acc, s) => acc + Math.hypot(s.x2 - s.x1, s.z2 - s.z1), 0);
-  if (bestChain.length >= 4 && bestChainLen >= 90) {
+  if (bestChain.length >= 4 && bestChainLen >= 100) {
     const pierConcreteMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xbec5cf }));
     const viaductGuardMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x707a8a }));
-    const viaductDeckMat = new THREE.MeshLambertMaterial({ map: tex.collector2Lane });
+    // Rotate road texture 90° so the double-yellow centerline & lanes run LENGTHWISE along the viaduct deck!
+    const viaductDeckTex = tex.collector2Lane.clone();
+    viaductDeckTex.center.set(0.5, 0.5);
+    viaductDeckTex.rotation = Math.PI / 2;
+    viaductDeckTex.needsUpdate = true;
+    const viaductDeckMat = new THREE.MeshLambertMaterial({ map: viaductDeckTex });
     const viaductLampMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
-    const VIADUCT_H = 7.4;
-    const VIADUCT_W = 13.5;
+    const VIADUCT_H = 8.4;
+    const VIADUCT_W = 13.0;
 
-    // First segment = sloped up-ramp (0 -> VIADUCT_H), middle segments = level elevated deck, last segment = sloped down-ramp (VIADUCT_H -> 0)!
+    // Clean, level elevated expressway soaring overhead at y = +8.4m on concrete T-piers at every joint
+    // (ZERO steep downtown ski-jump ramps blocking intersections, ZERO concrete walls poking through the deck!)
     for (let ci = 0; ci < bestChain.length; ci++) {
       const vSeg = bestChain[ci];
       const vLen = Math.hypot(vSeg.x2 - vSeg.x1, vSeg.z2 - vSeg.z1);
       if (vLen < 10) continue;
       const vYaw = Math.atan2(vSeg.x2 - vSeg.x1, vSeg.z2 - vSeg.z1);
-      const vDirX = (vSeg.x2 - vSeg.x1) / vLen;
-      const vDirZ = (vSeg.z2 - vSeg.z1) / vLen;
-      const vNx = -vDirZ;
-      const vNz = vDirX;
       const vmX = (vSeg.x1 + vSeg.x2) * 0.5 - centerX;
       const vmZ = (vSeg.z1 + vSeg.z2) * 0.5 - centerZ;
       const vBaseY = localGroundY((vSeg.x1 + vSeg.x2) * 0.5, (vSeg.z1 + vSeg.z2) * 0.5);
 
-      const yStart = ci === 0 ? 0.3 : VIADUCT_H;
-      const yEnd = ci === bestChain.length - 1 ? 0.3 : VIADUCT_H;
-      const yMid = (yStart + yEnd) * 0.5;
-      const dy = yEnd - yStart;
-      const slopeLen = Math.hypot(vLen, dy);
-      const pitchX = -Math.atan2(dy, vLen);
-
       const spanGroup = new THREE.Group();
-      spanGroup.position.set(vmX, vBaseY + yMid, vmZ);
-      spanGroup.rotation.order = 'YXZ';
+      spanGroup.position.set(vmX, vBaseY + VIADUCT_H, vmZ);
       spanGroup.rotation.y = vYaw;
-      spanGroup.rotation.x = pitchX;
 
-      const deckGeo = new THREE.BoxGeometry(VIADUCT_W, 0.95, slopeLen + 2.4);
+      const deckGeo = new THREE.BoxGeometry(VIADUCT_W, 0.95, vLen + 2.4);
       const deck = new THREE.Mesh(deckGeo, [
         pierConcreteMat,
         pierConcreteMat,
@@ -2425,49 +2418,38 @@ export function buildProceduralTown3D(
       spanGroup.add(deck);
 
       for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, slopeLen + 2.0), viaductGuardMat);
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, vLen + 2.0), viaductGuardMat);
         rail.position.set(side * (VIADUCT_W * 0.48), 0.95, 0);
         rail.castShadow = true;
         spanGroup.add(rail);
       }
       group.add(spanGroup);
 
-      // Guaranteed vertical concrete support pier under EVERY elevated joint so NO slab EVER floats unsupported!
-      if (ci > 0) {
-        const pwx = vSeg.x1;
-        const pwz = vSeg.z1;
+      // Guaranteed vertical concrete T-pier supporting EVERY segment start AND the final end so ZERO slab floats unsupported!
+      const pierPts: [number, number][] = [[vSeg.x1, vSeg.z1]];
+      if (ci === bestChain.length - 1) pierPts.push([vSeg.x2, vSeg.z2]);
+      for (const [pwx, pwz] of pierPts) {
         const py = localGroundY(pwx, pwz);
         const pxL = pwx - centerX;
         const pzL = pwz - centerZ;
-        const col = new THREE.Mesh(new THREE.BoxGeometry(2.1, VIADUCT_H - 0.4, 2.1), pierConcreteMat);
-        col.position.set(pxL, py + (VIADUCT_H - 0.4) * 0.5, pzL);
+        const col = new THREE.Mesh(new THREE.BoxGeometry(2.0, VIADUCT_H - 0.45, 2.0), pierConcreteMat);
+        col.position.set(pxL, py + (VIADUCT_H - 0.45) * 0.5, pzL);
         col.rotation.y = vYaw;
         col.castShadow = true;
         col.receiveShadow = true;
-        const cap = new THREE.Mesh(new THREE.BoxGeometry(VIADUCT_W * 0.82, 1.0, 2.5), pierConcreteMat);
-        cap.position.set(pxL, py + VIADUCT_H - 0.8, pzL);
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(VIADUCT_W * 0.84, 1.0, 2.4), pierConcreteMat);
+        cap.position.set(pxL, py + VIADUCT_H - 0.82, pzL);
         cap.rotation.y = vYaw;
         cap.castShadow = true;
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 4.0, 6), viaductGuardMat);
-        pole.position.set(pxL, py + VIADUCT_H + 2.4, pzL);
-        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), viaductLampMat);
-        bulb.position.set(pxL, py + VIADUCT_H + 4.5, pzL);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 3.8, 6), viaductGuardMat);
+        pole.position.set(pxL, py + VIADUCT_H + 2.3, pzL);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.26, 6, 6), viaductLampMat);
+        bulb.position.set(pxL, py + VIADUCT_H + 4.3, pzL);
         group.add(col, cap, pole, bulb);
         if (!layout.junctions.some((jn) => Math.hypot(jn.x - pwx, jn.z - pwz) < 16)) {
-          colliders.push(makeObbCollider(pwx, pwz, 1.15, 1.15, vYaw, VIADUCT_H));
+          colliders.push(makeObbCollider(pwx, pwz, 1.1, 1.1, vYaw, VIADUCT_H));
         }
       }
-      // Solid concrete abutment block underneath ramp touch-down ends!
-      if (ci === 0 || ci === bestChain.length - 1) {
-        const ex = ci === 0 ? vSeg.x1 + vDirX * (vLen * 0.35) : vSeg.x2 - vDirX * (vLen * 0.35);
-        const ez = ci === 0 ? vSeg.z1 + vDirZ * (vLen * 0.35) : vSeg.z2 - vDirZ * (vLen * 0.35);
-        const abutment = new THREE.Mesh(new THREE.BoxGeometry(VIADUCT_W * 0.92, 2.8, vLen * 0.45), pierConcreteMat);
-        abutment.position.set(ex - centerX, localGroundY(ex, ez) + 1.2, ez - centerZ);
-        abutment.rotation.y = vYaw;
-        group.add(abutment);
-      }
-      void vNx;
-      void vNz;
     }
   }
 

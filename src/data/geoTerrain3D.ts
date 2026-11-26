@@ -370,7 +370,7 @@ const REAL_URBAN_CORES: [number, number, number][] = [
 ];
 
 /** Returns 0..1 urban built-up density on dry land at real (lat, lng) for realistic metropolitan cluster rendering! */
-function sampleUrbanClusterDensity(lat: number, lng: number): number {
+export function sampleUrbanClusterDensity(lat: number, lng: number): number {
   let maxD = 0;
   // Slight organic pixel-sprawl wobble so metropolitan footprints look organic (like real suburbs along roads!)
   const wobble = 1 + Math.sin(lat * 42 + lng * 31) * 0.14 + Math.cos(lat * 27 - lng * 48) * 0.12;
@@ -390,6 +390,16 @@ function sampleUrbanClusterDensity(lat: number, lng: number): number {
     }
   }
   return maxD;
+}
+
+/** True if real Earth (lat, lng) is buildable dry urban landmass (inside real metropolitan cluster & strictly above sea level!) */
+export function isRealUrbanDryLand(lat: number, lng: number): boolean {
+  const dens = sampleUrbanClusterDensity(lat, lng);
+  if (dens < 0.14) return false;
+  const m = sampleRealElevationMeters(lat, lng, 'macro');
+  // While Z5 DEM hasn't loaded yet, allow inner core only; once loaded, strictly clip to real dry land (> 0.9m)!
+  if (m === null) return dens > 0.35;
+  return m > 0.9;
 }
 
 /**
@@ -613,9 +623,10 @@ export function sampleGeoTerrainHeight3D(
   // Deterministic Urban Core Elevation (identical at t=0ms AND after NASA DEM loads -> ZERO road/character height desync!):
   // Carves the real S-curving Huangpu River & Suzhou Creek water channel cleanly through downtown Shanghai!
   if (!preferMacro) {
-    const cityDist = Math.hypot(wx, wz);
-    if (cityDist < 380) {
-      // Smooth river channel carving for the active city's real river!
+    const uDens = sampleUrbanClusterDensity(geo.lat, geo.lng);
+    const isDryCoast = meters === null ? Math.hypot(wx, wz) < 320 : meters > 0.9;
+    if (uDens > 0.12 && isDryCoast) {
+      // Smooth river channel carving for the active city's real river across the ENTIRE metropolitan landmass!
       const activeCityId = activeOrigin.startCityId ?? 'shanghai';
       const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
       const riverElev = -1.65;
@@ -628,12 +639,12 @@ export function sampleGeoTerrainHeight3D(
         const smoothBank = bankT * bankT * (3 - 2 * bankT);
         cityTargetY = riverElev * (1 - smoothBank) + dryCityY * smoothBank;
       }
-      if (cityDist <= 330) {
+      if (uDens >= 0.24) {
         return cityTargetY;
       }
-      const outerT = (cityDist - 330) / 50;
-      const smoothOuter = outerT * outerT * (3 - 2 * outerT);
-      elev = cityTargetY * (1 - smoothOuter) + elev * smoothOuter;
+      const blend = (uDens - 0.12) / 0.12;
+      const smoothB = blend * blend * (3 - 2 * blend);
+      elev = elev * (1 - smoothB) + cityTargetY * smoothB;
     }
   }
 

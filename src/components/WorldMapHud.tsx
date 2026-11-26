@@ -545,14 +545,14 @@ function paintRoadsAndTownsOnMap(
 
       const viewW = Math.max(ctx.canvas.width, 1200);
       const viewH = Math.max(ctx.canvas.height, 900);
-      const urbanR = Math.max(12, 325 * invScale);
+      const urbanR = Math.max(24, 720 * invScale);
       for (const rc of citiesToRender) {
         const cOrigin = toScreen(rc.x, rc.z);
         if (
-          cOrigin.sx + urbanR * 1.45 < 0 ||
-          cOrigin.sx - urbanR * 1.45 > viewW ||
-          cOrigin.sy + urbanR * 1.45 < 0 ||
-          cOrigin.sy - urbanR * 1.45 > viewH
+          cOrigin.sx + urbanR * 1.2 < 0 ||
+          cOrigin.sx - urbanR * 1.2 > viewW ||
+          cOrigin.sy + urbanR * 1.2 < 0 ||
+          cOrigin.sy - urbanR * 1.2 > viewH
         ) {
           continue;
         }
@@ -563,43 +563,13 @@ function paintRoadsAndTownsOnMap(
           x: rc.x,
           z: rc.z,
           seed: hashCitySeed(rc.id),
-          plazaRadius: 190,
+          plazaRadius: 680,
           plateauY: 1.65,
           landmarkCityId: rc.id,
         };
         const layout = generateTownLayout(cityAnchor);
-
-        // 2A. Organic Multi-Lobe Sunlit Urban Parchment Sprawl (derived from actual city blocks — ZERO sterile circle stamp!)
-        const citySeed = hashCitySeed(rc.id);
-        const citySeedRot = ((citySeed % 314) - 157) * 0.005;
-        ctx.fillStyle = '#d7c69c';
-        ctx.beginPath();
-        ctx.ellipse(cOrigin.sx, cOrigin.sy, urbanR * 0.96, urbanR * 0.86, citySeedRot, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#efe2be';
-        for (let li = 0; li < 6; li++) {
-          const ang = citySeedRot + (li / 6) * Math.PI * 2 + (((citySeed >> (li % 5)) & 7) - 3.5) * 0.08;
-          const distF = 0.24 + (((citySeed + li * 37) % 10) / 10) * 0.18;
-          const rx = cOrigin.sx + Math.cos(ang) * urbanR * distF;
-          const ry = cOrigin.sy + Math.sin(ang) * urbanR * distF;
-          const lw = urbanR * (0.52 + ((citySeed + li * 19) % 7) * 0.032);
-          const lh = urbanR * (0.44 + ((citySeed + li * 29) % 7) * 0.03);
-          ctx.beginPath();
-          ctx.ellipse(rx, ry, lw, lh, ang * 0.5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        // Subtle pixel block parcel hatching inside urban core
-        if (detailed && urbanR >= 40) {
-          ctx.strokeStyle = 'rgba(182, 160, 118, 0.28)';
-          ctx.lineWidth = 1;
-          const stepPx = Math.max(10, Math.round(28 * invScale));
-          for (let gx = -urbanR * 0.85; gx <= urbanR * 0.85; gx += stepPx) {
-            ctx.beginPath();
-            ctx.moveTo(cOrigin.sx + gx, cOrigin.sy - urbanR * 0.65);
-            ctx.lineTo(cOrigin.sx + gx, cOrigin.sy + urbanR * 0.65);
-            ctx.stroke();
-          }
-        }
+        // NO fake circular urban parchment blob! The real coastline-accurate dry-land urban landmass
+        // is already painted cleanly by paintTopographicMap (zero ocean bleed-over!).
 
         // 2B. Lush Green Urban Parks with blue ponds & pixel tree dots
         for (const pk of layout.parks) {
@@ -692,17 +662,25 @@ function paintRoadsAndTownsOnMap(
           }
         }
 
-        // 2D. Two-Pass Organic City Streets (Land streets first, then Bridges cleanly ON TOP of rivers!)
+        // 2D. Two-Pass Organic City Streets (Clean crisp road proportions across the full metropolitan landmass!)
         const landStreets = layout.streets.filter((s) => !s.isBridge);
         const bridgeStreets = layout.streets.filter((s) => s.isBridge);
+        const roadScaleW = (stW: number, isArt: boolean) => {
+          const raw = stW * invScale;
+          // At regional overview zoom (unitsPerPx > 3), keep roads crisp & slender like real Google/Apple city maps (no bloated noodles!)
+          if (unitsPerPx > 3.0) {
+            return Math.max(isArt ? 1.8 : 1.0, Math.min(isArt ? 4.8 : 2.6, raw * 0.72));
+          }
+          return Math.max(detailed ? 2.2 : 1.2, raw);
+        };
 
         ctx.strokeStyle = '#5c4b37';
         ctx.fillStyle = '#5c4b37';
         for (const st of landStreets) {
           const a = toScreen(st.x1, st.z1);
           const b = toScreen(st.x2, st.z2);
-          const w = Math.max(detailed ? 2.2 : 1.2, st.width * invScale);
-          ctx.lineWidth = w + (detailed ? 2.2 : 1.0);
+          const w = roadScaleW(st.width, st.kind === 'arterial');
+          ctx.lineWidth = w + (detailed ? (unitsPerPx > 3 ? 1.2 : 2.0) : 0.9);
           ctx.beginPath();
           ctx.moveTo(a.sx, a.sy);
           ctx.lineTo(b.sx, b.sy);
@@ -712,7 +690,7 @@ function paintRoadsAndTownsOnMap(
         for (const st of [...landStreets.filter((s) => s.kind !== 'arterial'), ...landStreets.filter((s) => s.kind === 'arterial')]) {
           const a = toScreen(st.x1, st.z1);
           const b = toScreen(st.x2, st.z2);
-          const w = Math.max(detailed ? 2.2 : 1.2, st.width * invScale);
+          const w = roadScaleW(st.width, st.kind === 'arterial');
           ctx.strokeStyle = st.kind === 'arterial' ? '#f4b942' : st.kind === 'street' ? '#fff8e6' : '#f1e7cf';
           ctx.lineWidth = w;
           ctx.beginPath();

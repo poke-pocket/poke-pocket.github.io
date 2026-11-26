@@ -1,8 +1,11 @@
 import type { WorldTownAnchor3D } from '../data/survivorsTactics';
 import {
+  GEO_UNITS_PER_KM,
   PROVINCIAL_AND_WORLD_CAPITALS,
   getLocalRealHighwayAnglesForCity,
   getLocalRealRiversForCity,
+  isRealUrbanDryLand,
+  subscribeGeoDemLoaded,
 } from '../data/geoTerrain3D';
 import { WORLD_CITIES } from '../data/worldTour';
 import { generateTensorCityRoads } from './tensorRoadGen';
@@ -189,7 +192,7 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
   const coords = lookupCityLatLng(cleanId);
 
   if (coords) {
-    const realLocal = getLocalRealRiversForCity(coords.lat, coords.lng, 380);
+    const realLocal = getLocalRealRiversForCity(coords.lat, coords.lng, 740);
     for (const rr of realLocal) {
       rivers.push({
         id: rr.id,
@@ -326,6 +329,16 @@ function distToSeg(px: number, pz: number, x1: number, z1: number, x2: number, z
 }
 
 const LAYOUT_CACHE = new Map<string, GeneratedTownLayout>();
+// Refresh coastline-clipped city layouts once real NASA/SRTM DEM tiles finish streaming in!
+let demCacheClears = 0;
+if (typeof window !== 'undefined') {
+  subscribeGeoDemLoaded(() => {
+    if (demCacheClears < 4) {
+      demCacheClears += 1;
+      LAYOUT_CACHE.clear();
+    }
+  });
+}
 
 /**
  * Procedural L-System / Branching Street-Graph + Curbside Lot-Subdivision Town Generator!
@@ -387,11 +400,21 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const parks: TownParkZone[] = [];
   const metroLines: TownMetroLine[] = [];
 
-  // ==================== 2D TENSOR FIELD + RK2 STREAMLINE + INTERSECTION SNAPPING CITY GENERATOR ====================
-  // Aligns EVERY city's boulevards, waterfront avenues, bridges & neighborhood blocks directly to its REAL river & REAL highway corridors!
+  // ==================== 2D TENSOR FIELD + RK2 STREAMLINE + REAL COASTLINE BOUNDARY CITY GENERATOR ====================
+  // Actual 3D & 2D roads, parks & buildings expand across the ENTIRE real dry-land metropolitan footprint (NEVER a tiny circle or ocean spill!)
   const cityCoords = lookupCityLatLng(cleanCityId);
   const realHighwayAngles = cityCoords ? getLocalRealHighwayAnglesForCity(cityCoords.lat, cityCoords.lng) : [];
-  // Beijing uses crisp N-S imperial axial orientation; other cities blend unique orientation with river & highway tensors!
+  const isMegacity = ['shanghai', 'beijing', 'guangzhou', 'shenzhen', 'tokyo', 'seoul', 'hangzhou', 'chengdu', 'wuhan', 'osaka'].includes(cleanCityId);
+  const cityRadius = isMegacity ? 680 : 460;
+  const kmPerDegLngLocal = cityCoords ? Math.max(12, 111.32 * Math.cos((cityCoords.lat * Math.PI) / 180)) : 95;
+  const isUrbanLandLocal = cityCoords
+    ? (lx: number, lz: number) => {
+        const lat = cityCoords.lat - lz / (GEO_UNITS_PER_KM * 111.32);
+        const lng = cityCoords.lng + lx / (GEO_UNITS_PER_KM * kmPerDegLngLocal);
+        return isRealUrbanDryLand(lat, lng);
+      }
+    : undefined;
+
   const baseGridAngle =
     cleanCityId === 'beijing'
       ? 0
@@ -402,11 +425,12 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const tensorGraph = generateTensorCityRoads({
     cityId: cleanCityId,
     seed: seedVal,
-    radius: 320,
+    radius: cityRadius,
     baseGridAngle,
     rivers: hydro.rivers,
     highwayAngles: realHighwayAngles,
     riverSignedDist: (lx, lz) => getShanghaiRiverSignedDist(lx, lz, cleanCityId),
+    isUrbanLand: isUrbanLandLocal,
   });
 
   for (const e of tensorGraph.edges) {
@@ -774,7 +798,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
 
   let houseCount = 0;
   for (const cand of candidates) {
-    if (houseCount >= 24) break;
+    if (houseCount >= 52) break;
+    if (isUrbanLandLocal && !isUrbanLandLocal(cand.x - cx, cand.z - cz)) continue;
     const hw = 15.5 + (houseCount % 3) * 1.4;
     const hd = 13.5 + (houseCount % 2) * 1.2;
     if (isTooCloseToRoadOrLot(cand.x, cand.z, hw * 0.5, hd * 0.5)) continue;

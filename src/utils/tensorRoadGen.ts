@@ -133,6 +133,8 @@ export interface TensorCityConfig {
   highwayAngles: number[];
   /** Signed distance to water (negative = inside river water) */
   riverSignedDist: (x: number, z: number) => number;
+  /** Optional real-Earth dry-land urban boundary predicate (stops roads cleanly at real ocean coastlines & suburban edge!) */
+  isUrbanLand?: (x: number, z: number) => boolean;
 }
 
 export interface TensorRoadGraphResult {
@@ -145,7 +147,11 @@ export interface TensorRoadGraphResult {
  * using 2D Tensor Field RK2 Streamline Integration + Node/Edge Proximity Snapping!
  */
 export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphResult {
-  const { radius, baseGridAngle, rivers, highwayAngles, riverSignedDist, seed } = cfg;
+  const { radius, baseGridAngle, rivers, highwayAngles, riverSignedDist, isUrbanLand, seed } = cfg;
+  const insideCity = (x: number, z: number) => {
+    if (Math.hypot(x, z) > radius + 16) return false;
+    return isUrbanLand ? isUrbanLand(x, z) : true;
+  };
 
   // Deterministic PRNG for slight natural urban variation
   let sRng = (seed * 1664525 + 1013904223) >>> 0;
@@ -319,10 +325,11 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
     kind: 'arterial' | 'street',
     stepLen: number,
     minParallelSep: number,
-    maxSteps = 16,
+    maxSteps = 28,
   ) => {
     const width = kind === 'arterial' ? 32 : 17;
-    if (riverSignedDist(sx, sz) < 6) return;
+    if (riverSignedDist(sx, sz) < 6 || !insideCity(sx, sz)) return;
+    if (edges.length >= 260) return;
 
     const streamId = nextStreamId++;
     const initField = sampleField(sx, sz);
@@ -336,10 +343,11 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
       let prevDz = initVec.z * sign;
 
       for (let step = 0; step < maxSteps; step++) {
+        if (edges.length >= 260) break;
         const next = rk2Step(cx, cz, stepLen, useMajor, prevDx, prevDz);
         const nx = next.x;
         const nz = next.z;
-        if (Math.hypot(nx, nz) > radius + 14) break;
+        if (!insideCity(nx, nz)) break;
 
         const segDx = nx - cx;
         const segDz = nz - cz;
@@ -496,9 +504,10 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
       }
     }
   }
-  // Use finer 24m RK2 steps so curves bend smoothly & organically instead of long straight chords!
-  traceStreamline(seedCx, seedCz, true, 'arterial', 24, 114, 20);
-  traceStreamline(seedCx, seedCz, false, 'arterial', 24, 114, 20);
+  // Use finer 28m RK2 steps so major boulevards curve gracefully across the ENTIRE real metropolitan landmass!
+  const artSteps = Math.max(20, Math.ceil(radius / 26));
+  traceStreamline(seedCx, seedCz, true, 'arterial', 28, 128, artSteps);
+  traceStreamline(seedCx, seedCz, false, 'arterial', 28, 128, artSteps);
 
   // 1B. Waterfront Boulevard parallel to the real river on BOTH banks (e.g. Bund + Lujiazui Riverside!)
   for (const riv of rivers.slice(0, 1)) {
@@ -515,42 +524,56 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
       for (const side of [-1, 1]) {
         const bx = mx + rnx * side * bankOff;
         const bz = mz + rnz * side * bankOff;
-        if (Math.hypot(bx, bz) < radius * 0.85 && riverSignedDist(bx, bz) > 16) {
-          traceStreamline(bx, bz, true, 'arterial', 24, 108, 18);
+        if (insideCity(bx, bz) && riverSignedDist(bx, bz) > 16) {
+          traceStreamline(bx, bz, true, 'arterial', 28, 122, artSteps);
         }
       }
     }
   }
 
-  // 1C. Outer Arterial Ring / Grand Real-Scale Curved Block Avenues (~165m apart — ZERO cramped back-to-back intersections!)
-  const outerOffs = [-165, 165];
-  for (const off of outerOffs) {
+  // 1C. Full-Metropolis Curved Arterial Grid expanding across the ENTIRE real urban coastline (Puxi, Pudong, Baoshan, Minhang, Songjiang, etc.)!
+  const ringStep = 170;
+  for (let off = -Math.floor(radius / ringStep) * ringStep; off <= radius; off += ringStep) {
+    if (Math.abs(off) < 40) continue;
     const sx1 = seedCx + Math.cos(baseGridAngle + Math.PI / 2) * off;
     const sz1 = seedCz + Math.sin(baseGridAngle + Math.PI / 2) * off;
-    if (riverSignedDist(sx1, sz1) > 18) {
-      traceStreamline(sx1, sz1, true, 'arterial', 24, 114, 18);
+    if (insideCity(sx1, sz1) && riverSignedDist(sx1, sz1) > 18) {
+      traceStreamline(sx1, sz1, true, 'arterial', 28, 132, artSteps);
     }
     const sx2 = seedCx + Math.cos(baseGridAngle) * off;
     const sz2 = seedCz + Math.sin(baseGridAngle) * off;
-    if (riverSignedDist(sx2, sz2) > 18) {
-      traceStreamline(sx2, sz2, false, 'arterial', 24, 114, 18);
+    if (insideCity(sx2, sz2) && riverSignedDist(sx2, sz2) > 18) {
+      traceStreamline(sx2, sz2, false, 'arterial', 28, 132, artSteps);
     }
   }
-
-  // ==================== PASS 2: SECONDARY COLLECTOR STREETS (Curved Spacious ~85m Neighborhood Blocks!) ====================
-  const streetSeeds: { x: number; z: number; major: boolean }[] = [];
-  for (let gx = -240; gx <= 240; gx += 96) {
-    for (let gz = -240; gz <= 240; gz += 96) {
-      if (Math.hypot(gx, gz) > radius * 0.86) continue;
-      if (riverSignedDist(gx, gz) > 22) {
-        streetSeeds.push({ x: gx + (rng() - 0.5) * 14, z: gz + (rng() - 0.5) * 14, major: (gx + gz) % 192 === 0 });
+  // Also seed outer peninsula districts (e.g., SE Pudong, NW Baoshan/Jiading, SW Songjiang) where center-projected lines might miss!
+  for (let gx = -radius + 90; gx <= radius - 90; gx += 210) {
+    for (let gz = -radius + 90; gz <= radius - 90; gz += 210) {
+      if (Math.hypot(gx, gz) < 160) continue;
+      if (insideCity(gx, gz) && riverSignedDist(gx, gz) > 20) {
+        traceStreamline(gx, gz, true, 'arterial', 28, 145, Math.ceil(artSteps * 0.7));
+        traceStreamline(gx, gz, false, 'arterial', 28, 145, Math.ceil(artSteps * 0.7));
       }
     }
   }
 
+  // ==================== PASS 2: SECONDARY COLLECTOR STREETS (Spacious ~95m Neighborhood Blocks across ALL Real Urban Land!) ====================
+  const streetSeeds: { x: number; z: number; major: boolean }[] = [];
+  const sMax = Math.min(radius - 40, 560);
+  for (let gx = -sMax; gx <= sMax; gx += 120) {
+    for (let gz = -sMax; gz <= sMax; gz += 120) {
+      if (!insideCity(gx, gz)) continue;
+      if (riverSignedDist(gx, gz) > 22) {
+        streetSeeds.push({ x: gx + (rng() - 0.5) * 16, z: gz + (rng() - 0.5) * 16, major: (gx + gz) % 240 === 0 });
+      }
+    }
+  }
+  // Sort downtown seeds first so the central core is richly detailed before outer districts!
+  streetSeeds.sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
+
   for (const ss of streetSeeds) {
-    traceStreamline(ss.x, ss.z, ss.major, 'street', 22, 74, 15);
-    traceStreamline(ss.x, ss.z, !ss.major, 'street', 22, 74, 15);
+    traceStreamline(ss.x, ss.z, ss.major, 'street', 26, 86, 14);
+    traceStreamline(ss.x, ss.z, !ss.major, 'street', 26, 86, 14);
   }
 
   // ==================== PASS 3: EXTRACT CLEAN PLANAR JUNCTION NODES (ONLY where >=2 distinct streamlines actually cross!) ====================
