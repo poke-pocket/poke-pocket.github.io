@@ -347,7 +347,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
         const next = rk2Step(cx, cz, stepLen, useMajor, prevDx, prevDz);
         const nx = next.x;
         const nz = next.z;
-        if (!insideCity(nx, nz)) break;
+        if (!insideCity(nx, nz) || !insideCity((cx + nx) * 0.5, (cz + nz) * 0.5)) break;
 
         const segDx = nx - cx;
         const segDz = nz - cz;
@@ -361,14 +361,14 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
 
         if (dMid < 2 || dEnd < 2) {
           if (kind === 'arterial') {
-            // Scan ahead along the same vector to bridge cleanly across the REAL river!
+            // Scan ahead along the same vector to bridge cleanly across the REAL river (snug riverbank-to-riverbank!)
             const uX = segDx / segLen;
             const uZ = segDz / segLen;
             let landDist = -1;
-            for (let probe = stepLen; probe <= 96; probe += 5) {
+            for (let probe = stepLen; probe <= 86; probe += 4) {
               const px = cx + uX * probe;
               const pz = cz + uZ * probe;
-              if (riverSignedDist(px, pz) > 8 && Math.hypot(px, pz) <= radius + 16) {
+              if (riverSignedDist(px, pz) > 3.5 && insideCity(px, pz)) {
                 landDist = probe;
                 break;
               }

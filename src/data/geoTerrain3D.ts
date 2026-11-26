@@ -69,7 +69,11 @@ const WORLD_DEM_CACHE = PERSISTED_GEO.worldCache;
 const MACRO_DEM_CACHE = PERSISTED_GEO.macroCache;
 const DETAIL_DEM_CACHE = PERSISTED_GEO.detailCache;
 const DEM_INFLIGHT = PERSISTED_GEO.inflight;
-const DEM_LISTENERS = new Set<() => void>();
+let demListenersSet: Set<() => void> | null = null;
+function getDemListeners(): Set<() => void> {
+  if (!demListenersSet) demListenersSet = new Set<() => void>();
+  return demListenersSet;
+}
 
 let notifyQueued = false;
 function notifyDemLoaded() {
@@ -80,7 +84,7 @@ function notifyDemLoaded() {
   // Batch rapid parallel tile completions into one clean repaint frame
   const flush = () => {
     notifyQueued = false;
-    for (const fn of DEM_LISTENERS) {
+    for (const fn of getDemListeners()) {
       try {
         fn();
       } catch {
@@ -96,9 +100,10 @@ function notifyDemLoaded() {
 }
 
 export function subscribeGeoDemLoaded(cb: () => void): () => void {
-  DEM_LISTENERS.add(cb);
+  const listeners = getDemListeners();
+  listeners.add(cb);
   return () => {
-    DEM_LISTENERS.delete(cb);
+    listeners.delete(cb);
   };
 }
 
@@ -392,14 +397,23 @@ export function sampleUrbanClusterDensity(lat: number, lng: number): number {
   return maxD;
 }
 
-/** True if real Earth (lat, lng) is buildable dry urban landmass (inside real metropolitan cluster & strictly above sea level!) */
+/** True if real Earth (lat, lng) is buildable dry urban landmass (strictly inland from ocean/estuary coastlines so ZERO roads ever spill into water!) */
 export function isRealUrbanDryLand(lat: number, lng: number): boolean {
   const dens = sampleUrbanClusterDensity(lat, lng);
-  if (dens < 0.14) return false;
+  if (dens < 0.16) return false;
   const m = sampleRealElevationMeters(lat, lng, 'macro');
-  // While Z5 DEM hasn't loaded yet, allow inner core only; once loaded, strictly clip to real dry land (> 0.9m)!
+  // While Z5 DEM hasn't loaded yet, allow inner core only; once loaded, require dry land + 2km coastal inset buffer!
   if (m === null) return dens > 0.35;
-  return m > 0.9;
+  if (m <= 1.2) return false;
+  const buf = 0.022;
+  const mN = sampleRealElevationMeters(lat + buf, lng, 'macro');
+  const mS = sampleRealElevationMeters(lat - buf, lng, 'macro');
+  const mE = sampleRealElevationMeters(lat, lng + buf, 'macro');
+  const mW = sampleRealElevationMeters(lat, lng - buf, 'macro');
+  if ((mN !== null && mN <= 0.7) || (mS !== null && mS <= 0.7) || (mE !== null && mE <= 0.7) || (mW !== null && mW <= 0.7)) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -1018,12 +1032,18 @@ export function getLocalRealRiversForCity(
   const results: { id: string; name: string; width: number; points: [number, number][] }[] = [];
 
   for (const riv of REAL_WORLD_RIVERS) {
-    // Subdivide raw GPS waypoints into fine ~20m local samples and keep contiguous stretches near the city
-    const localRaw = riv.points.map(([lat, lng]) => toLocal(lat, lng));
+    // Skip Yangtze mega-estuary inside Shanghai's local urban canal carving (it's a 12km-wide estuary north of Shanghai, not a 34m city creek!)
+    if (riv.id === 'yangtze' && Math.abs(cityLat - 31.23) < 0.35 && Math.abs(cityLng - 121.47) < 0.45) {
+      continue;
+    }
+    // Subdivide raw GPS waypoints into fine ~20m local samples and keep ONLY dry-land / inland river stretches (ZERO lines shooting into the open sea!)
+    const localRaw = riv.points.map(([lat, lng]) => ({ lat, lng, pt: toLocal(lat, lng) }));
     const dense: [number, number][] = [];
     for (let i = 0; i < localRaw.length - 1; i++) {
-      const [ax, az] = localRaw[i];
-      const [bx, bz] = localRaw[i + 1];
+      const a = localRaw[i];
+      const b = localRaw[i + 1];
+      const [ax, az] = a.pt;
+      const [bx, bz] = b.pt;
       // Quick bounding box rejection
       if (
         Math.min(ax, bx) > maxRadius + 80 ||
@@ -1039,6 +1059,10 @@ export function getLocalRealRiversForCity(
         const t = s / steps;
         const px = ax + (bx - ax) * t;
         const pz = az + (bz - az) * t;
+        const sLat = a.lat + (b.lat - a.lat) * t;
+        const sLng = a.lng + (b.lng - a.lng) * t;
+        const elevM = sampleRealElevationMeters(sLat, sLng, 'macro');
+        if (elevM !== null && elevM <= 0.6) continue;
         if (Math.hypot(px, pz) <= maxRadius) {
           if (dense.length === 0 || Math.hypot(px - dense[dense.length - 1][0], pz - dense[dense.length - 1][1]) > 14) {
             dense.push([Math.round(px), Math.round(pz)]);

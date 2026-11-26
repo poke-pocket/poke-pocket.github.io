@@ -667,11 +667,14 @@ function paintRoadsAndTownsOnMap(
         const bridgeStreets = layout.streets.filter((s) => s.isBridge);
         const roadScaleW = (stW: number, isArt: boolean) => {
           const raw = stW * invScale;
-          // At regional overview zoom (unitsPerPx > 3), keep roads crisp & slender like real Google/Apple city maps (no bloated noodles!)
-          if (unitsPerPx > 3.0) {
-            return Math.max(isArt ? 1.8 : 1.0, Math.min(isArt ? 4.8 : 2.6, raw * 0.72));
+          // At regional overview zoom (unitsPerPx > 3), keep roads crisp & slender like real city maps (no bloated noodles!)
+          if (unitsPerPx > 7.5) {
+            return Math.max(isArt ? 1.3 : 0.75, Math.min(isArt ? 3.1 : 1.7, raw * 0.54));
           }
-          return Math.max(detailed ? 2.2 : 1.2, raw);
+          if (unitsPerPx > 3.0) {
+            return Math.max(isArt ? 1.6 : 0.9, Math.min(isArt ? 4.0 : 2.2, raw * 0.64));
+          }
+          return Math.max(detailed ? 2.0 : 1.1, raw);
         };
 
         ctx.strokeStyle = '#5c4b37';
@@ -2049,8 +2052,11 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                               type="button"
                               className="lcd-map-poi-btn"
                               style={{
+                                width: 'auto',
                                 flex: '0 0 auto',
-                                padding: '0 7px',
+                                flexShrink: 0,
+                                justifyContent: 'center',
+                                padding: '0 8px',
                                 background: '#fff3bf',
                                 color: '#212529',
                                 fontWeight: 700,

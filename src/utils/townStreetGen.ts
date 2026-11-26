@@ -203,8 +203,8 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
     }
     // For Shanghai, add Suzhou Creek joining the REAL Huangpu River cleanly at its real confluence!
     if (cleanId === 'shanghai' && rivers.length > 0) {
-      const hp = rivers[0];
-      // Find the point on the real Huangpu River closest to z = -22 (Waibaidu confluence north of Bund)
+      const hp = rivers.find((r) => r.id === 'huangpu_macro') ?? rivers[0];
+      // Find the point on the real Huangpu River closest to z = -26 (Waibaidu confluence north of Bund)
       let confPt = hp.points[Math.floor(hp.points.length * 0.5)];
       let bestD = 9999;
       for (const p of hp.points) {
@@ -265,7 +265,7 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
       const len = Math.hypot(bx - ax, bz - az) || 1;
       const nx = -(bz - az) / len;
       const nz = (bx - ax) / len;
-      const halfSpan = riv.width * 0.68 + 18;
+      const halfSpan = riv.width * 0.5 + 8.5;
       const x1 = Math.round(mx - nx * halfSpan);
       const z1 = Math.round(mz - nz * halfSpan);
       const x2 = Math.round(mx + nx * halfSpan);
@@ -329,11 +329,15 @@ function distToSeg(px: number, pz: number, x1: number, z1: number, x2: number, z
 }
 
 const LAYOUT_CACHE = new Map<string, GeneratedTownLayout>();
-// Refresh coastline-clipped city layouts once real NASA/SRTM DEM tiles finish streaming in!
+// Lazily subscribe after module init (avoids circular ESM TDZ with geoTerrain3D.ts)
+// so coastline-clipped city layouts refresh once real NASA/SRTM DEM tiles finish streaming in!
 let demCacheClears = 0;
-if (typeof window !== 'undefined') {
+let demSubscribed = false;
+function ensureDemCacheSubscription() {
+  if (demSubscribed || typeof window === 'undefined') return;
+  demSubscribed = true;
   subscribeGeoDemLoaded(() => {
-    if (demCacheClears < 4) {
+    if (demCacheClears < 6) {
       demCacheClears += 1;
       LAYOUT_CACHE.clear();
     }
@@ -346,6 +350,7 @@ if (typeof window !== 'undefined') {
  * T-junctions, alleys, tangent railway) with 14–18 street-aligned building lots!
  */
 export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayout {
+  ensureDemCacheSubscription();
   const cached = LAYOUT_CACHE.get(anchor.id);
   if (cached) return cached;
 
@@ -732,9 +737,23 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     const nz = ux;
 
     if (si % 2 === 0) {
-      const lampX = (st.x1 + st.x2) * 0.5 + nx * (st.width * 0.5 + 1.2);
-      const lampZ = (st.z1 + st.z2) * 0.5 + nz * (st.width * 0.5 + 1.2);
-      if (getShanghaiRiverSignedDist(lampX - cx, lampZ - cz, cleanCityId) > 4) {
+      const lampX = (st.x1 + st.x2) * 0.5 + nx * (st.width * 0.5 + 1.4);
+      const lampZ = (st.z1 + st.z2) * 0.5 + nz * (st.width * 0.5 + 1.4);
+      const clearOfOtherStreets = !streets.some(
+        (other) => other !== st && distToSeg(lampX, lampZ, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 1.4,
+      );
+      const clearOfJunctions = !junctions.some(
+        (jn) => Math.hypot(lampX - jn.x, lampZ - jn.z) < Math.max(jn.width, jn.depth) * 0.58 + 2.5,
+      );
+      const clearOfParks = !parks.some(
+        (pk) => Math.abs(lampX - pk.x) < pk.w * 0.5 + 2 && Math.abs(lampZ - pk.z) < pk.d * 0.5 + 2,
+      );
+      if (
+        clearOfOtherStreets &&
+        clearOfJunctions &&
+        clearOfParks &&
+        getShanghaiRiverSignedDist(lampX - cx, lampZ - cz, cleanCityId) > 4
+      ) {
         streetLamps.push({ x: lampX, z: lampZ, rotY: Math.atan2(nx, nz) });
       }
     }

@@ -5094,13 +5094,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
             const distToTown = Math.hypot(sim.px - town.centerX, sim.pz - town.centerZ);
+            const collisionRadius = Math.max(town.safeRadius + 60, 740);
             if (distToTown < town.safeRadius) {
               activeTownNow = town;
             }
-            if (distToTown < town.safeRadius + 10) {
-              // Player wall collision (solid 4-sided walls, enter strictly through the Front Doorway!)
+            if (distToTown < collisionRadius) {
+              // Player wall collision across the ENTIRE expanded metropolitan landmass (NEVER clip into any building!)
               const pPos = { x: sim.px, z: sim.pz };
-              resolveTownWallCollisions(pPos, 0.85, town.colliders);
+              resolveTownWallCollisions(pPos, 0.92, town.colliders);
               sim.px = pPos.x;
               sim.pz = pPos.z;
 
@@ -5494,16 +5495,34 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
           }
 
-          // 2B. Spawn Enemy Trainers (Calmer spacing + 1 elite guard!)
+          // 2B. Spawn Enemy Trainers STRICTLY on dry land (NEVER submerged inside rivers or ocean!)
           sim.timers.trainer -= dt;
           if (sim.timers.trainer <= 0) {
             sim.timers.trainer = difficultyId === 'nightmare' ? 32 : 44;
             const tr = ENEMY_TRAINER_ROSTER[sim.trainerWaveIdx % ENEMY_TRAINER_ROSTER.length];
             sim.trainerWaveIdx += 1;
-            const ang = Math.random() * Math.PI * 2;
-            const tx = sim.px + Math.cos(ang) * 20;
-            const tz = sim.pz + Math.sin(ang) * 20;
-            if (!nearbyZones.some((z) => Math.hypot(tx - z.x, tz - z.z) < z.radius + 2)) {
+            let tx = 0;
+            let tz = 0;
+            let foundDrySpot = false;
+            const baseAng = Math.random() * Math.PI * 2;
+            for (let attempt = 0; attempt < 10; attempt++) {
+              const ang = baseAng + (attempt * Math.PI * 2) / 10;
+              const candX = sim.px + Math.cos(ang) * (20 + (attempt % 2) * 6);
+              const candZ = sim.pz + Math.sin(ang) * (20 + (attempt % 2) * 6);
+              const gy = getTerrainHeight3D(candX, candZ);
+              const gyGuard = getTerrainHeight3D(candX + 2.2, candZ + 1.4);
+              if (
+                gy >= WATER_LEVEL_3D + 0.45 &&
+                gyGuard >= WATER_LEVEL_3D + 0.45 &&
+                !nearbyZones.some((z) => Math.hypot(candX - z.x, candZ - z.z) < z.radius + 2)
+              ) {
+                tx = candX;
+                tz = candZ;
+                foundDrySpot = true;
+                break;
+              }
+            }
+            if (foundDrySpot) {
               const guardHp = Math.round((190 + sim.elapsed * 2.8) * regionMult * diffMeta.enemyHpMult);
               spawnEnemy3D(
                 tx,
@@ -6708,8 +6727,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const rawCamZ = camPivotRef.current.z + Math.cos(yaw) * horiz;
           const rawCamY = camPivotRef.current.y + Math.sin(pitch) * baseDist;
 
-          // Spring-Arm Wall Occlusion: if a solid town wall sits between player and camera, pull camera lens inward cleanly!
-          const wallClipT = activeTownNow
+          // Spring-Arm Wall Occlusion: check nearest town within 740m so walls & piers NEVER clip the camera!
+          const occludeTown =
+            activeTownNow ??
+            proceduralTowns.find((t) => Math.hypot(sim.px - t.centerX, sim.pz - t.centerZ) < Math.max(t.safeRadius + 60, 740)) ??
+            null;
+          const wallClipT = occludeTown
             ? computeCameraWallClipT(
                 camPivotRef.current.x,
                 camPivotRef.current.y,
@@ -6717,8 +6740,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 rawCamX,
                 rawCamY,
                 rawCamZ,
-                activeTownNow.group.position.y,
-                activeTownNow.colliders,
+                occludeTown.group.position.y,
+                occludeTown.colliders,
                 activeInteriorIdNow,
               )
             : 1.0;
@@ -6751,7 +6774,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           if (sim.lastSeamlessBiome !== curBiomeAtPlayer) {
             const prevBiome = sim.lastSeamlessBiome;
             sim.lastSeamlessBiome = curBiomeAtPlayer;
-            if (prevBiome && phase === 'playing') {
+            // Suppress rural wilderness biome toasts while walking inside a city!
+            if (prevBiome && phase === 'playing' && !activeTownNow && !occludeTown) {
               const biomeAnnounce: Record<BiomeId, string> = {
                 verdant_forest: '🌲 踏入「青翠森林 · 阳光原野」地带',
                 rocky_desert: '🏜️ 踏入「岩石沙漠 · 金沙峡谷」地带',
@@ -6969,6 +6993,21 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               const spName = SPECIES_CATALOG[en.species].stageNames[en.stage] ?? SPECIES_CATALOG[en.species].defaultName;
               const qMeta = MONSTER_QUALITY_META[en.quality];
               if (inView) {
+                // Hide floating nameplates when occluded behind solid town buildings or walls!
+                const occludedByWall =
+                  occludeTown &&
+                  computeCameraWallClipT(
+                    camera.position.x,
+                    camera.position.y,
+                    camera.position.z,
+                    en.x,
+                    en.y + 1.8,
+                    en.z,
+                    occludeTown.group.position.y,
+                    occludeTown.colliders,
+                    activeInteriorIdNow,
+                  ) < 0.92;
+                if (occludedByWall) continue;
                 const koCountdown =
                   en.knockedOut && !en.isBoss && en.koTimer !== undefined
                     ? ` (${Math.ceil(en.koTimer)}s)`
@@ -7679,7 +7718,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             document.pointerLockElement !== canvasRef.current
           ) {
             try {
-              canvasRef.current?.requestPointerLock?.();
+              const plRes = canvasRef.current?.requestPointerLock?.() as unknown as Promise<void> | undefined;
+              if (plRes && typeof plRes.catch === 'function') {
+                plRes.catch(() => {
+                  // fallback drag orbit remains active seamlessly
+                });
+              }
             } catch {
               // fallback drag orbit remains active seamlessly
             }

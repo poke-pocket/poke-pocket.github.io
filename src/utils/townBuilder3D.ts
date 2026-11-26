@@ -253,9 +253,9 @@ export function computeCameraWallClipT(
   activeInteriorId?: string | null,
 ): number {
   if (colliders.length === 0) return 1.0;
-  const pad = 0.72;
-  const steps = 14;
-  for (let s = 2; s <= steps; s++) {
+  const pad = 0.82;
+  const steps = 16;
+  for (let s = 1; s <= steps; s++) {
     const t = s / steps;
     const px = ox + (cx - ox) * t;
     const py = oy + (cy - oy) * t;
@@ -278,7 +278,7 @@ export function computeCameraWallClipT(
         hit = px > box.minX - pad && px < box.maxX + pad && pz > box.minZ - pad && pz < box.maxZ + pad;
       }
       if (hit) {
-        return Math.max(0.24, (s - 1.2) / steps);
+        return Math.max(0.28, (s - 1.15) / steps);
       }
     }
   }
@@ -1975,8 +1975,8 @@ function buildStreetRibbonMesh(
   const dirZ = (seg.z2 - seg.z1) / Math.max(0.01, dist);
   const wStart = seg.widthStart ?? seg.width;
   const wEnd = seg.widthEnd ?? seg.width;
-  // Extend ribbon slightly past each endpoint to seal angled polyline miter joints (ZERO grass V-slivers at road bends!)
-  const endPad = Math.min(2.6, Math.max(wStart, wEnd) * 0.12);
+  // Tighter miter endPad (0.65m) seals gentle bends cleanly WITHOUT poking grey concrete sidewalk slabs into intersecting lanes!
+  const endPad = Math.min(0.65, Math.max(wStart, wEnd) * 0.03);
   const sx1 = seg.x1 - dirX * endPad;
   const sz1 = seg.z1 - dirZ * endPad;
   const sx2 = seg.x2 + dirX * endPad;
@@ -2195,28 +2195,29 @@ export function buildProceduralTown3D(
           }
         }
 
-        // Bridge piers & Nanpu/Yangpu iconic cable-stayed towers + fan cables!
-        for (const frac of [-0.32, 0, 0.32]) {
+        // Bridge piers & Nanpu/Yangpu iconic cable-stayed towers + fan cables kept strictly INSIDE the river span (never cutting across onshore crosswalks!)
+        for (const frac of [-0.24, 0, 0.24]) {
           const px = rx + bDirX * (bLen * frac);
           const pz = rz + bDirZ * (bLen * frac);
           const pier = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.85, 5.2, 8), pierMat);
           pier.position.set(px, deckY - 2.6, pz);
           group.add(pier);
           if (seg.bridgeStyle !== 'waibaidu' && Math.abs(frac) > 0.1) {
-            const pylon = new THREE.Mesh(new THREE.BoxGeometry(1.05, 17.5, 1.05), railMat);
-            pylon.position.set(px, deckY + 8.7, pz);
+            const pylon = new THREE.Mesh(new THREE.BoxGeometry(1.05, 16.0, 1.05), railMat);
+            pylon.position.set(px, deckY + 8.0, pz);
             pylon.castShadow = true;
             group.add(pylon);
-            // Fan stay-cables descending from pylon top to bridge deck!
-            for (const cSpan of [-0.24, -0.14, 0.14, 0.24]) {
-              const targetX = px + bDirX * (bLen * cSpan);
-              const targetZ = pz + bDirZ * (bLen * cSpan);
+            // Fan stay-cables descending cleanly onto the bridge deck itself (bounded within [-0.46..+0.46] of bLen!)
+            for (const cSpan of [-0.18, -0.10, 0.10, 0.18]) {
+              const clampedFrac = Math.max(-0.46, Math.min(0.46, frac + cSpan));
+              const targetX = rx + bDirX * (bLen * clampedFrac);
+              const targetZ = rz + bDirZ * (bLen * clampedFrac);
               const dx = targetX - px;
               const dz = targetZ - pz;
-              const dy = -15.6;
+              const dy = -14.2;
               const cLen = Math.hypot(dx, dy, dz);
               const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, cLen, 4), cableMat);
-              cable.position.set((px + targetX) * 0.5, deckY + 16.4 + dy * 0.5, (pz + targetZ) * 0.5);
+              cable.position.set((px + targetX) * 0.5, deckY + 14.8 + dy * 0.5, (pz + targetZ) * 0.5);
               cable.quaternion.setFromUnitVectors(
                 new THREE.Vector3(0, 1, 0),
                 new THREE.Vector3(dx, dy, dz).normalize(),
@@ -2240,11 +2241,11 @@ export function buildProceduralTown3D(
           group.add(cross);
         }
       } else {
-        for (const f of [-0.32, 0.32]) {
+        for (const f of [-0.24, 0.24]) {
           const cxB = bMidX + bDirX * (bLen * f);
           const czB = bMidZ + bDirZ * (bLen * f);
           const tie = new THREE.Mesh(new THREE.BoxGeometry(seg.width, 0.9, 0.9), railMat);
-          tie.position.set(cxB, deckY + 15.8, czB);
+          tie.position.set(cxB, deckY + 14.4, czB);
           tie.rotation.y = bYaw;
           group.add(tie);
         }
@@ -2258,11 +2259,11 @@ export function buildProceduralTown3D(
         : seg.kind === 'street'
           ? tex.collector2Lane
           : tex.alleyCobble;
-    // Crisp layered road elevations (+0.05 / +0.075 / +0.10 + micro-stagger) so intersecting segments NEVER Z-fight,
-    // while characters walking at ground + 0.16 ALWAYS stand squarely ON TOP of every road & crosswalk!
-    const microStagger = (segIdx % 7) * 0.002;
-    const liftY = (seg.kind === 'arterial' ? 0.10 : seg.kind === 'street' ? 0.075 : 0.05) + microStagger;
-    const polyOff = seg.kind === 'arterial' ? -4 : seg.kind === 'street' ? -2 : -1;
+    // Crisp layered road elevations (+0.045 / +0.072 / +0.098 + 3mm stagger) so intersecting segments NEVER Z-fight,
+    // while junction crosswalk pads sit cleanly above at +0.155 so dashed lines NEVER bleed through zebra stripes!
+    const microStagger = (segIdx % 11) * 0.003;
+    const liftY = (seg.kind === 'arterial' ? 0.098 : seg.kind === 'street' ? 0.072 : 0.045) + microStagger;
+    const polyOff = seg.kind === 'arterial' ? -3 : seg.kind === 'street' ? -2 : -1;
     group.add(buildStreetRibbonMesh(seg, baseY, centerX, centerZ, roadTex, getGroundHeight, liftY, polyOff));
 
     // Lush Dense Avenue Greenery: Tall Pixel Street Trees spaced every ~14m + Continuous Small Pixel Shrubs & Flowers in between!
@@ -2375,9 +2376,20 @@ export function buildProceduralTown3D(
   }
 
   const bestChainLen = bestChain.reduce((acc, s) => acc + Math.hypot(s.x2 - s.x1, s.z2 - s.z1), 0);
+  const bridgeSegs = layout.streets.filter((s) => s.isBridge);
   if (bestChain.length >= 4 && bestChainLen >= 100) {
-    const pierConcreteMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xbec5cf }));
-    const viaductGuardMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x707a8a }));
+    // Architectural sunlit light-grey concrete with subtle neutral emissive so HemisphereLight's green ground bounce NEVER turns viaduct undersides dark green!
+    const pierConcreteMat = applyPixelArtArchShader(
+      new THREE.MeshLambertMaterial({ color: 0xcfd6e0, emissive: 0x3a404a, emissiveIntensity: 0.72 }),
+    );
+    const viaductUnderMat = new THREE.MeshLambertMaterial({
+      color: 0xb8c1ce,
+      emissive: 0x454c58,
+      emissiveIntensity: 0.78,
+    });
+    const viaductGuardMat = applyPixelArtArchShader(
+      new THREE.MeshLambertMaterial({ color: 0x768294, emissive: 0x1e222a, emissiveIntensity: 0.4 }),
+    );
     // Rotate road texture 90° so the double-yellow centerline & lanes run LENGTHWISE along the viaduct deck!
     const viaductDeckTex = tex.collector2Lane.clone();
     viaductDeckTex.center.set(0.5, 0.5);
@@ -2386,29 +2398,32 @@ export function buildProceduralTown3D(
     const viaductDeckMat = new THREE.MeshLambertMaterial({ map: viaductDeckTex });
     const viaductLampMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
     const VIADUCT_H = 8.4;
-    const VIADUCT_W = 13.0;
+    const VIADUCT_W = 12.6;
 
-    // Clean, level elevated expressway soaring overhead at y = +8.4m on concrete T-piers at every joint
-    // (ZERO steep downtown ski-jump ramps blocking intersections, ZERO concrete walls poking through the deck!)
+    // Clean, level elevated expressway soaring overhead at y = +8.4m on concrete T-piers placed STRICTLY on boulevard medians (NEVER inside intersections or colliding with river bridges!)
     for (let ci = 0; ci < bestChain.length; ci++) {
       const vSeg = bestChain[ci];
       const vLen = Math.hypot(vSeg.x2 - vSeg.x1, vSeg.z2 - vSeg.z1);
-      if (vLen < 10) continue;
+      if (vLen < 12) continue;
+      const wMidX = (vSeg.x1 + vSeg.x2) * 0.5;
+      const wMidZ = (vSeg.z1 + vSeg.z2) * 0.5;
+      // Never collide with river bridges / cable-stayed towers!
+      if (bridgeSegs.some((br) => distToSeg2D(wMidX, wMidZ, br.x1, br.z1, br.x2, br.z2) < 28)) continue;
       const vYaw = Math.atan2(vSeg.x2 - vSeg.x1, vSeg.z2 - vSeg.z1);
-      const vmX = (vSeg.x1 + vSeg.x2) * 0.5 - centerX;
-      const vmZ = (vSeg.z1 + vSeg.z2) * 0.5 - centerZ;
-      const vBaseY = localGroundY((vSeg.x1 + vSeg.x2) * 0.5, (vSeg.z1 + vSeg.z2) * 0.5);
+      const vmX = wMidX - centerX;
+      const vmZ = wMidZ - centerZ;
+      const vBaseY = localGroundY(wMidX, wMidZ);
 
       const spanGroup = new THREE.Group();
       spanGroup.position.set(vmX, vBaseY + VIADUCT_H, vmZ);
       spanGroup.rotation.y = vYaw;
 
-      const deckGeo = new THREE.BoxGeometry(VIADUCT_W, 0.95, vLen + 2.4);
+      const deckGeo = new THREE.BoxGeometry(VIADUCT_W, 0.95, vLen + 1.2);
       const deck = new THREE.Mesh(deckGeo, [
         pierConcreteMat,
         pierConcreteMat,
         viaductDeckMat,
-        pierConcreteMat,
+        viaductUnderMat,
         pierConcreteMat,
         pierConcreteMat,
       ]);
@@ -2418,37 +2433,33 @@ export function buildProceduralTown3D(
       spanGroup.add(deck);
 
       for (const side of [-1, 1]) {
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, vLen + 2.0), viaductGuardMat);
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, vLen + 1.0), viaductGuardMat);
         rail.position.set(side * (VIADUCT_W * 0.48), 0.95, 0);
         rail.castShadow = true;
         spanGroup.add(rail);
       }
       group.add(spanGroup);
 
-      // Guaranteed vertical concrete T-pier supporting EVERY segment start AND the final end so ZERO slab floats unsupported!
-      const pierPts: [number, number][] = [[vSeg.x1, vSeg.z1]];
-      if (ci === bestChain.length - 1) pierPts.push([vSeg.x2, vSeg.z2]);
-      for (const [pwx, pwz] of pierPts) {
-        const py = localGroundY(pwx, pwz);
-        const pxL = pwx - centerX;
-        const pzL = pwz - centerZ;
-        const col = new THREE.Mesh(new THREE.BoxGeometry(2.0, VIADUCT_H - 0.45, 2.0), pierConcreteMat);
-        col.position.set(pxL, py + (VIADUCT_H - 0.45) * 0.5, pzL);
+      // Place concrete T-pier cleanly at the MIDPOINT of each span (on the boulevard's green center median — NEVER inside road intersections!)
+      const pierClearOfJunction = !layout.junctions.some((jn) => Math.hypot(jn.x - wMidX, jn.z - wMidZ) < 17);
+      if (pierClearOfJunction && getGroundHeight(wMidX, wMidZ) > WATER_LEVEL_3D + 0.3) {
+        const py = localGroundY(wMidX, wMidZ);
+        const col = new THREE.Mesh(new THREE.BoxGeometry(1.9, VIADUCT_H - 0.5, 1.9), pierConcreteMat);
+        col.position.set(vmX, py + (VIADUCT_H - 0.5) * 0.5, vmZ);
         col.rotation.y = vYaw;
         col.castShadow = true;
         col.receiveShadow = true;
-        const cap = new THREE.Mesh(new THREE.BoxGeometry(VIADUCT_W * 0.84, 1.0, 2.4), pierConcreteMat);
-        cap.position.set(pxL, py + VIADUCT_H - 0.82, pzL);
+        // Symmetrical centered crossbeam cap snugly narrower than deck width (NEVER overhangs!)
+        const cap = new THREE.Mesh(new THREE.BoxGeometry(VIADUCT_W * 0.76, 0.9, 1.9), pierConcreteMat);
+        cap.position.set(vmX, py + VIADUCT_H - 0.88, vmZ);
         cap.rotation.y = vYaw;
         cap.castShadow = true;
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 3.8, 6), viaductGuardMat);
-        pole.position.set(pxL, py + VIADUCT_H + 2.3, pzL);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 3.6, 6), viaductGuardMat);
+        pole.position.set(vmX, py + VIADUCT_H + 2.2, vmZ);
         const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.26, 6, 6), viaductLampMat);
-        bulb.position.set(pxL, py + VIADUCT_H + 4.3, pzL);
+        bulb.position.set(vmX, py + VIADUCT_H + 4.1, vmZ);
         group.add(col, cap, pole, bulb);
-        if (!layout.junctions.some((jn) => Math.hypot(jn.x - pwx, jn.z - pwz) < 16)) {
-          colliders.push(makeObbCollider(pwx, pwz, 1.1, 1.1, vYaw, VIADUCT_H));
-        }
+        colliders.push(makeObbCollider(wMidX, wMidZ, 1.1, 1.1, vYaw, VIADUCT_H));
       }
     }
   }
@@ -2457,17 +2468,20 @@ export function buildProceduralTown3D(
   const junctionMat = new THREE.MeshLambertMaterial({
     map: tex.junctionAsphalt,
     polygonOffset: true,
-    polygonOffsetFactor: -5,
-    polygonOffsetUnits: -5,
+    polygonOffsetFactor: -6,
+    polygonOffsetUnits: -6,
   });
   const signalPoleMat = new THREE.MeshLambertMaterial({ color: 0x343a40 });
   const signalBoxMat = new THREE.MeshLambertMaterial({ color: 0x1b1f26 });
   const redLightMat = new THREE.MeshBasicMaterial({ color: 0xff4d4f });
-  const amberLightMat = new THREE.MeshBasicMaterial({ color: 0xffd43b });
+  const redOffMat = new THREE.MeshBasicMaterial({ color: 0x38191b });
+  const amberOffMat = new THREE.MeshBasicMaterial({ color: 0x362d16 });
   const greenLightMat = new THREE.MeshBasicMaterial({ color: 0x51cf66 });
+  const greenOffMat = new THREE.MeshBasicMaterial({ color: 0x17331e });
 
-  for (const jn of layout.junctions) {
-    const padGeo = new THREE.PlaneGeometry(jn.width, jn.depth, 4, 4);
+  for (let ji = 0; ji < layout.junctions.length; ji++) {
+    const jn = layout.junctions[ji];
+    const padGeo = new THREE.PlaneGeometry(jn.width, jn.depth, 6, 6);
     padGeo.rotateX(-Math.PI / 2);
     const posAttr = padGeo.attributes.position as THREE.BufferAttribute;
     const cosR = Math.cos(jn.rotY);
@@ -2477,21 +2491,22 @@ export function buildProceduralTown3D(
       const vz = posAttr.getZ(vi);
       const wx = jn.x + vx * cosR + vz * sinR;
       const wz = jn.z - vx * sinR + vz * cosR;
-      posAttr.setXYZ(vi, wx - centerX, localGroundY(wx, wz) + 0.135, wz - centerZ);
+      posAttr.setXYZ(vi, wx - centerX, localGroundY(wx, wz) + 0.155, wz - centerZ);
     }
     padGeo.computeVertexNormals();
     const pad = new THREE.Mesh(padGeo, junctionMat);
     pad.receiveShadow = true;
-    pad.renderOrder = 6;
+    pad.renderOrder = 8;
     group.add(pad);
 
-    // Mount sleek 3D Traffic Signals at corners of major arterial intersections!
+    // Mount sleek 3D Traffic Signals at corners of major arterial intersections (only ONE active bulb lit per head — realistic green/red phases!)
     if (jn.width >= 32) {
-      const off = jn.width * 0.46;
-      for (const [cxS, czS] of [
-        [-off, -off],
-        [off, off],
-      ]) {
+      const off = jn.width * 0.48;
+      const corners: [number, number, boolean][] = [
+        [-off, -off, ji % 2 === 0],
+        [off, off, ji % 2 !== 0],
+      ];
+      for (const [cxS, czS, isGreenPhase] of corners) {
         const wx = jn.x + cxS * cosR + czS * sinR;
         const wz = jn.z - cxS * sinR + czS * cosR;
         const sig = new THREE.Group();
@@ -2503,11 +2518,11 @@ export function buildProceduralTown3D(
         arm.position.set(0, 6.0, 1.7);
         const head = new THREE.Mesh(new THREE.BoxGeometry(0.65, 1.45, 0.45), signalBoxMat);
         head.position.set(0, 5.55, 3.2);
-        const rL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), redLightMat);
+        const rL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), isGreenPhase ? redOffMat : redLightMat);
         rL.position.set(0, 5.95, 3.44);
-        const yL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), amberLightMat);
+        const yL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), amberOffMat);
         yL.position.set(0, 5.55, 3.44);
-        const gL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), greenLightMat);
+        const gL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), isGreenPhase ? greenLightMat : greenOffMat);
         gL.position.set(0, 5.15, 3.44);
         sig.add(pole, arm, head, rL, yL, gL);
         group.add(sig);
@@ -3063,11 +3078,21 @@ export function buildProceduralTown3D(
     });
   }
 
-  // 5. LIVE CITY LIFE: Dynamically Routed Cruising Pixel-Shaded Taxis on THIS City's Real Dry Avenues & Bridges!
+  // 5. LIVE CITY LIFE: Dynamically Routed Cruising Pixel-Shaded Taxis STRICTLY on Dry Land Avenues (NEVER submerged in rivers!)
   const carColors = [0x3bc9db, 0xffd43b, 0xfa5252, 0xf8f9fa, 0x339af0, 0x51cf66];
   const carConfigs: { axis: 'x' | 'z'; laneOffset: number; dir: 1 | -1; minC: number; maxC: number; start: number; spd: number }[] = [];
+  const isRouteDryLand = (axis: 'x' | 'z', laneOff: number, minC: number, maxC: number) => {
+    for (let k = 0; k <= 4; k++) {
+      const c = minC + ((maxC - minC) * k) / 4;
+      const wx = axis === 'x' ? centerX + c : centerX + laneOff;
+      const wz = axis === 'z' ? centerZ + c : centerZ + laneOff;
+      if (getGroundHeight(wx, wz) < WATER_LEVEL_3D + 0.55) return false;
+    }
+    return true;
+  };
   for (const seg of layout.streets) {
     if (carConfigs.length >= 6) break;
+    if (seg.isBridge) continue;
     const dxS = seg.x2 - seg.x1;
     const dzS = seg.z2 - seg.z1;
     const lenS = Math.hypot(dxS, dzS);
@@ -3080,7 +3105,7 @@ export function buildProceduralTown3D(
       const avgX = (seg.x1 + seg.x2) * 0.5 - centerX + dir * 3.8;
       const minZ = Math.min(seg.z1, seg.z2) - centerZ + 6;
       const maxZ = Math.max(seg.z1, seg.z2) - centerZ - 6;
-      if (maxZ - minZ > 32) {
+      if (maxZ - minZ > 32 && isRouteDryLand('z', avgX, minZ, maxZ)) {
         carConfigs.push({
           axis: 'z',
           laneOffset: avgX,
@@ -3095,7 +3120,7 @@ export function buildProceduralTown3D(
       const avgZ = (seg.z1 + seg.z2) * 0.5 - centerZ + dir * 3.6;
       const minX = Math.min(seg.x1, seg.x2) - centerX + 6;
       const maxX = Math.max(seg.x1, seg.x2) - centerX - 6;
-      if (maxX - minX > 32) {
+      if (maxX - minX > 32 && isRouteDryLand('x', avgZ, minX, maxX)) {
         carConfigs.push({
           axis: 'x',
           laneOffset: avgZ,
@@ -3283,7 +3308,7 @@ export function buildProceduralTown3D(
     name: townName,
     centerX,
     centerZ,
-    safeRadius: layout.boundingRadius,
+    safeRadius: Math.max(layout.boundingRadius + 30, 340),
     group,
     interactPoints,
     colliders,
