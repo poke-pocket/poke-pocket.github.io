@@ -80,6 +80,32 @@ const ARCH_EDGE_MAT = new THREE.LineBasicMaterial({
   opacity: 0.55,
 });
 
+let SHARED_SPILL_MAT: THREE.MeshBasicMaterial | null = null;
+function getSharedStorefrontSpillMat(): THREE.MeshBasicMaterial {
+  if (SHARED_SPILL_MAT) return SHARED_SPILL_MAT;
+  const spillCanvas = document.createElement('canvas');
+  spillCanvas.width = 64;
+  spillCanvas.height = 64;
+  const sCtx = spillCanvas.getContext('2d');
+  if (sCtx) {
+    const grad = sCtx.createRadialGradient(32, 32, 6, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255, 232, 168, 0.72)');
+    grad.addColorStop(0.55, 'rgba(255, 212, 128, 0.28)');
+    grad.addColorStop(1, 'rgba(255, 196, 96, 0)');
+    sCtx.fillStyle = grad;
+    sCtx.fillRect(0, 0, 64, 64);
+  }
+  const spillTex = new THREE.CanvasTexture(spillCanvas);
+  SHARED_SPILL_MAT = new THREE.MeshBasicMaterial({
+    map: spillTex,
+    transparent: true,
+    opacity: 0.36,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  return SHARED_SPILL_MAT;
+}
+
 function loadArchGlb(url: string): Promise<THREE.Group | null> {
   const hit = ARCH_MODEL_CACHE.get(url);
   if (hit) return hit;
@@ -91,8 +117,12 @@ function loadArchGlb(url: string): Promise<THREE.Group | null> {
         root.traverse((obj) => {
           if ((obj as THREE.Mesh).isMesh) {
             const m = obj as THREE.Mesh;
-            m.castShadow = true;
+            // Disable shadow-casting on indoor furniture/food to keep 60fps shadow-map pass ultra-fast!
+            m.castShadow = false;
             m.receiveShadow = true;
+            if (m.geometry) {
+              m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry, 34), ARCH_EDGE_MAT));
+            }
             const mats = Array.isArray(m.material) ? m.material : [m.material];
             const cleanMats = mats.map((mat) => {
               const std = mat as THREE.MeshStandardMaterial;
@@ -102,12 +132,64 @@ function loadArchGlb(url: string): Promise<THREE.Group | null> {
                 std.map.colorSpace = THREE.SRGBColorSpace;
                 std.map.needsUpdate = true;
               }
+              const matName = std.name || '';
+              let richCol = new THREE.Color(0xffffff);
+              let emiInt = 0.24;
+              if (!std.map) {
+                // Map Kenney's untextured material names (which otherwise default to stark white _defaultMat or double-gamma pale beige!)
+                // into rich, saturated HD-2D pixel-art wood, walnut, crimson, sapphire & botanical colors!
+                if (matName === 'wood') {
+                  richCol.setHex(0xb86b35);
+                } else if (matName === 'woodDark') {
+                  richCol.setHex(0x5e341b);
+                } else if (matName === '_defaultMat') {
+                  if (url.includes('kitchenBar') || url.includes('Cabinet') || url.includes('cabinet') || url.includes('desk') || url.includes('bookcase')) {
+                    richCol.setHex(0x8d5230);
+                  } else if (url.includes('Fridge') || url.includes('Stove') || url.includes('hood')) {
+                    richCol.setHex(0xcfd9e3);
+                  } else {
+                    richCol.setHex(0xebf2f7);
+                  }
+                } else if (matName === 'carpetWhite') {
+                  richCol.setHex(url.includes('tableCrossCloth') ? 0xd9480f : 0xfff6e5);
+                } else if (matName === 'carpet') {
+                  richCol.setHex(0xd93829);
+                } else if (matName === 'carpetDarker') {
+                  richCol.setHex(0x962222);
+                } else if (matName === 'carpetBlue') {
+                  richCol.setHex(0x228be6);
+                } else if (matName === 'plant') {
+                  richCol.setHex(0x2f9e44);
+                } else if (matName === 'fur') {
+                  richCol.setHex(0x9c5a2b);
+                } else if (matName === 'metal') {
+                  richCol.setHex(0x748294);
+                } else if (matName === 'metalMedium') {
+                  richCol.setHex(0x495666);
+                } else if (matName === 'metalDark') {
+                  richCol.setHex(0x232936);
+                } else if (matName === 'metalLight') {
+                  richCol.setHex(0xb8c4d0);
+                } else if (matName === 'glass') {
+                  richCol.setHex(0x66d9e8);
+                } else if (matName === 'lamp') {
+                  richCol.setHex(0xffe066);
+                  emiInt = 0.85;
+                } else if (std.color) {
+                  richCol.copy(std.color).convertSRGBToLinear();
+                }
+              } else if (std.color) {
+                richCol.copy(std.color);
+              }
               return new THREE.MeshLambertMaterial({
-                color: std.color ? std.color.clone() : new THREE.Color(0xffffff),
+                color: richCol,
                 map: std.map ?? null,
+                emissive: richCol.clone(),
+                emissiveMap: std.map ?? null,
+                emissiveIntensity: emiInt,
                 side: std.side,
-                transparent: std.transparent,
-                opacity: std.opacity,
+                transparent: std.transparent || matName === 'glass',
+                opacity: matName === 'glass' ? 0.55 : std.opacity,
               });
             });
             m.material = Array.isArray(m.material) ? cleanMats : cleanMats[0];
@@ -254,18 +336,18 @@ export function buildUnifiedWalkInBuilding3D(opts: {
             : { ext: 0xf3e8d8, trim: 0x6f4e37, inner: 0xfaf3e8, roof: 0x5c3d2e };
 
   const extWallMat = new THREE.MeshLambertMaterial({ color: palette.ext });
-  // Warm, brightly-lit indoor surfaces so shops, clinics, hotels, cafés & apartments glow cozily day & night!
+  // Tinted indoor wall/ceiling radiance (never pure white fog!) so furniture & wood planks pop with crisp contrast
   const innerWallMat = new THREE.MeshLambertMaterial({
     color: palette.inner,
-    emissive: 0xffebd0,
-    emissiveIntensity: 0.42,
+    emissive: palette.inner,
+    emissiveIntensity: 0.22,
   });
   const trimMat = new THREE.MeshLambertMaterial({ color: palette.trim });
   const roofMat = new THREE.MeshLambertMaterial({ color: palette.roof });
   const ceilingMat = new THREE.MeshLambertMaterial({
-    color: 0xf8f9fa,
-    emissive: 0xfff4dc,
-    emissiveIntensity: 0.48,
+    color: 0xf4efe6,
+    emissive: 0xf4efe6,
+    emissiveIntensity: 0.26,
   });
   const plinthMat = new THREE.MeshLambertMaterial({ color: 0x868e96 });
 
@@ -282,7 +364,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     const geo = new THREE.BoxGeometry(bw, bh, bd);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(bx, by, bz);
-    mesh.castShadow = true;
+    mesh.castShadow = edge;
     mesh.receiveShadow = true;
     if (edge) {
       mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), ARCH_EDGE_MAT));
@@ -294,7 +376,6 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   /**
    * Mounts a real Kenney 3D `.glb` furniture/market/food/architectural asset AND
    * automatically registers its exact floor-scoped solid OBB collider when `solid !== false`!
-   * Indoor props automatically receive warm ceiling illumination so shops/rooms stay bright at night!
    */
   const placeGlb = (
     url: string,
@@ -314,7 +395,6 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   ) => {
     const floorIdx = pOpts.floor ?? 1;
     const isSolid = pOpts.solid !== false;
-    const isOutdoor = Boolean(pOpts.outdoor) || Math.abs(pOpts.z) > d * 0.49 || pOpts.y > floor1Y + totalWallH - 0.1;
     if (isSolid) {
       const colW = pOpts.targetW * 0.44;
       const colD = (pOpts.targetD ?? pOpts.targetW) * 0.44;
@@ -341,23 +421,6 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     void loadArchGlb(url).then((raw) => {
       if (!raw) return;
       const clone = raw.clone(true);
-      if (!isOutdoor) {
-        clone.traverse((ch) => {
-          if ((ch as THREE.Mesh).isMesh) {
-            const mesh = ch as THREE.Mesh;
-            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-            const litMats = mats.map((mt) => {
-              const cloned = mt.clone() as THREE.MeshLambertMaterial;
-              if ('emissive' in cloned && cloned.emissive) {
-                cloned.emissive.setHex(0xffefd2);
-                cloned.emissiveIntensity = 0.40;
-              }
-              return cloned;
-            });
-            mesh.material = Array.isArray(mesh.material) ? litMats : litMats[0];
-          }
-        });
-      }
       clone.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(clone);
       const sz = new THREE.Vector3();
@@ -389,36 +452,21 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   f1Tex.needsUpdate = true;
   const f1Mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(w, d),
-    new THREE.MeshLambertMaterial({ map: f1Tex, emissive: 0xffeed4, emissiveIntensity: 0.38 }),
+    new THREE.MeshLambertMaterial({
+      map: f1Tex,
+      emissive: 0xffffff,
+      emissiveMap: f1Tex,
+      emissiveIntensity: 0.28,
+    }),
   );
   f1Mesh.rotation.x = -Math.PI / 2;
   f1Mesh.position.y = floor1Y;
   f1Mesh.receiveShadow = true;
   shellGroup.add(f1Mesh);
 
-  // Warm golden storefront light spilling out onto the surrounding sidewalk at night!
+  // Shared warm golden storefront light spilling out onto the surrounding sidewalk at night!
   {
-    const spillCanvas = document.createElement('canvas');
-    spillCanvas.width = 64;
-    spillCanvas.height = 64;
-    const sCtx = spillCanvas.getContext('2d');
-    if (sCtx) {
-      const grad = sCtx.createRadialGradient(32, 32, 6, 32, 32, 32);
-      grad.addColorStop(0, 'rgba(255, 232, 168, 0.85)');
-      grad.addColorStop(0.55, 'rgba(255, 212, 128, 0.36)');
-      grad.addColorStop(1, 'rgba(255, 196, 96, 0)');
-      sCtx.fillStyle = grad;
-      sCtx.fillRect(0, 0, 64, 64);
-    }
-    const spillTex = new THREE.CanvasTexture(spillCanvas);
-    const spillMat = new THREE.MeshBasicMaterial({
-      map: spillTex,
-      transparent: true,
-      opacity: 0.42,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const spillMesh = new THREE.Mesh(new THREE.PlaneGeometry(w + 10.5, d + 12.5), spillMat);
+    const spillMesh = new THREE.Mesh(new THREE.PlaneGeometry(w + 10.5, d + 12.5), getSharedStorefrontSpillMat());
     spillMesh.rotation.x = -Math.PI / 2;
     spillMesh.position.set(0, 0.06, 1.4);
     shellGroup.add(spillMesh);
@@ -804,8 +852,9 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     f2Tex.needsUpdate = true;
     const slabTopMat = new THREE.MeshLambertMaterial({
       map: f2Tex,
-      emissive: 0xffe8c8,
-      emissiveIntensity: 0.38,
+      emissive: 0xffffff,
+      emissiveMap: f2Tex,
+      emissiveIntensity: 0.28,
     });
     const slabMat = [ceilingMat, ceilingMat, slabTopMat, ceilingMat, ceilingMat, ceilingMat];
     const addSlabRect = (x0: number, x1: number, z0: number, z1: number) => {

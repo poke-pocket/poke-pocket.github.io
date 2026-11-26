@@ -603,6 +603,16 @@ function paintRoadsAndTownsOnMap(
           return Math.max(detailed ? 1.8 : 1.0, raw * 0.82);
         };
 
+        const cw = ctx.canvas.width;
+        const ch = ctx.canvas.height;
+        const inSegView = (a: { sx: number; sy: number }, b: { sx: number; sy: number }) =>
+          !(
+            (a.sx < -24 && b.sx < -24) ||
+            (a.sx > cw + 24 && b.sx > cw + 24) ||
+            (a.sy < -24 && b.sy < -24) ||
+            (a.sy > ch + 24 && b.sy > ch + 24)
+          );
+
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.strokeStyle = '#64748b';
@@ -610,6 +620,7 @@ function paintRoadsAndTownsOnMap(
         for (const st of landStreets) {
           const a = toScreen(st.x1, st.z1);
           const b = toScreen(st.x2, st.z2);
+          if (!inSegView(a, b)) continue;
           const w = roadScaleW(st.width, st.kind === 'arterial');
           ctx.lineWidth = w + (detailed ? (unitsPerPx > 2 ? 0.9 : 1.5) : 0.7);
           ctx.beginPath();
@@ -621,6 +632,7 @@ function paintRoadsAndTownsOnMap(
         for (const st of [...landStreets.filter((s) => s.kind !== 'arterial'), ...landStreets.filter((s) => s.kind === 'arterial')]) {
           const a = toScreen(st.x1, st.z1);
           const b = toScreen(st.x2, st.z2);
+          if (!inSegView(a, b)) continue;
           const w = roadScaleW(st.width, st.kind === 'arterial');
           ctx.strokeStyle = st.kind === 'arterial' ? '#f6b93b' : '#ffffff';
           ctx.lineWidth = w;
@@ -688,6 +700,7 @@ function paintRoadsAndTownsOnMap(
         // 2F. Dense Urban Buildings, Skyscrapers & Landmarks (Exact Rect / Cylinder / Flatiron-Triangle Footprints!)
         for (const lot of layout.lots) {
           const lp = toScreen(lot.x, lot.z);
+          if (lp.sx < -36 || lp.sx > cw + 36 || lp.sy < -36 || lp.sy > ch + 36) continue;
           const bw = Math.max(2.0, lot.width * invScale);
           const bd = Math.max(2.0, lot.depth * invScale);
           const lShape = lot.shape ?? 'rect';

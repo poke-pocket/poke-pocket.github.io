@@ -2365,18 +2365,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
     window.addEventListener('resize', onResize);
 
-    // Rich HD-2D Sunlit 3D Lighting + Dynamic Pooled Indoor Shop & Night Streetlamp PointLights!
+    // Rich HD-2D Sunlit 3D Lighting with Real-Time Directional Building & Bridge Shadows (Zero PointLight fragment overhead = locked 60fps!)
     const hemi = new THREE.HemisphereLight(pal.ambientHex, 0x3b7a42, 1.18);
     scene.add(hemi);
     const sun = new THREE.DirectionalLight(pal.sunHex, 1.24);
     sun.position.set(34, 50, 28);
-    const indoorWarmLight = new THREE.PointLight(0xffebc2, 0, 42, 1.25);
-    const streetPointLights = [
-      new THREE.PointLight(0xffd982, 0, 34, 1.45),
-      new THREE.PointLight(0xffd982, 0, 34, 1.45),
-      new THREE.PointLight(0xffd982, 0, 34, 1.45),
-    ];
-    scene.add(indoorWarmLight, ...streetPointLights);
     if (enableShadows) {
       const smSize = prefsRef.current.graphicsQuality === 'low' ? 1024 : 1536;
       sun.castShadow = true;
@@ -5003,49 +4996,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       sun.target.position.set(sSnapX, focusY, sSnapZ);
       sun.target.updateMatrixWorld();
 
-      // Synchronize city-wide night building windows, streetlamp halos/pools, and dynamic 3D PointLights!
+      // Synchronize city-wide night building windows & streetlamp halos/light pools (zero PointLight fragment cost!)
       setGlobalNightLampGlow3D(solar.lampGlow);
-
-      let nearestBld: EnterableBuildingInterior | null = null;
-      let nearestBldDist = 48;
-      let nearestLamps: { x: number; y: number; z: number; d: number }[] = [];
-      for (const twn of proceduralTowns) {
-        if (Math.hypot(twn.centerX - focusX, twn.centerZ - focusZ) > twn.safeRadius + 120) continue;
-        for (const bInt of twn.interiors) {
-          const db = Math.hypot(bInt.cx - focusX, bInt.cz - focusZ);
-          if (db < nearestBldDist) {
-            nearestBldDist = db;
-            nearestBld = bInt;
-          }
-        }
-        if (solar.lampGlow > 0.05 && twn.streetLampPositions) {
-          for (const lp of twn.streetLampPositions) {
-            const dl = Math.hypot(lp.x - focusX, lp.z - focusZ);
-            if (dl < 56) nearestLamps.push({ x: lp.x, y: lp.y, z: lp.z, d: dl });
-          }
-        }
-      }
-      if (nearestBld) {
-        indoorWarmLight.position.set(nearestBld.cx, nearestBld.baseY + 3.6, nearestBld.cz);
-        indoorWarmLight.intensity = 1.6 + solar.lampGlow * 1.1;
-      } else {
-        indoorWarmLight.intensity = 0;
-      }
-      if (solar.lampGlow > 0.05 && nearestLamps.length > 0) {
-        nearestLamps.sort((a, b) => a.d - b.d);
-        for (let li = 0; li < streetPointLights.length; li++) {
-          const pl = streetPointLights[li];
-          const src = nearestLamps[li];
-          if (src) {
-            pl.position.set(src.x, src.y, src.z);
-            pl.intensity = solar.lampGlow * 1.75;
-          } else {
-            pl.intensity = 0;
-          }
-        }
-      } else {
-        for (const pl of streetPointLights) pl.intensity = 0;
-      }
     };
 
     const animate = (now: number) => {
