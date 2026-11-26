@@ -56,6 +56,16 @@ function makeGridTensor(theta: number, weight = 1): Tensor2D {
   };
 }
 
+function makeRadialTensor(dx: number, dz: number, weight = 1): Tensor2D {
+  const lenSq = dx * dx + dz * dz;
+  if (lenSq < 1e-4) return { a: 0, b: 0 };
+  // Symmetric radial tensor: eigenvectors align radially & tangentially (creates authentic curved ring roads & sweeping avenues!)
+  return {
+    a: ((dx * dx - dz * dz) / lenSq) * weight,
+    b: ((2 * dx * dz) / lenSq) * weight,
+  };
+}
+
 function majorEigenvector(t: Tensor2D): Vec2 {
   const len = Math.hypot(t.a, t.b);
   if (len < 1e-6) return { x: 1, z: 0 };
@@ -144,24 +154,53 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
     return sRng / 0xffffffff;
   };
 
+  // Place 2 organic radial/ring-road tensor attractors unique to this city (creates sweeping real-city curves like Zhongshan Ring Road & Bund bends!)
+  const hub1Ang = rng() * Math.PI * 2;
+  const hub1X = Math.cos(hub1Ang) * (75 + rng() * 55);
+  const hub1Z = Math.sin(hub1Ang) * (75 + rng() * 55);
+  const hub2X = -hub1X * 0.85 + (rng() - 0.5) * 60;
+  const hub2Z = -hub1Z * 0.85 + (rng() - 0.5) * 60;
+
   // Sample blended 2D symmetric tensor field T(x, z):
-  // - Base city orientation grid (dominant inland)
-  // - Real river tangent alignment (dominant within 95m of any real river so boulevards hug the waterfront!)
-  // - Real incoming highway orientation near outer city ring
+  // - Base city orientation grid (gentle foundation)
+  // - Sweeping organic sinusoidal terrain/district bend field (±28° natural curvature -> roads curve gracefully instead of ruler-straight lines!)
+  // - Radial/ring-road hubs (authentic urban ring-road sweeping turns!)
+  // - Real river tangent alignment (dominant near riverbanks -> waterfront boulevards hug the real river!)
   const sampleField = (x: number, z: number): Tensor2D => {
     let a = 0;
     let b = 0;
-    const baseT = makeGridTensor(baseGridAngle, 1.0);
+    // Beijing preserves stronger axial grid; coastal/river metropolises (Shanghai, Hangzhou, Tokyo, etc.) bend more organically!
+    const gridWeight = cfg.cityId === 'beijing' ? 1.15 : 0.62;
+    const baseT = makeGridTensor(baseGridAngle, gridWeight);
     a += baseT.a;
     b += baseT.b;
 
-    // Subtle organic terrain/district warp so streets aren't ruler-straight clones
-    const warpAng = baseGridAngle + Math.sin(x * 0.012 + seed * 0.7) * 0.14 + Math.cos(z * 0.012 - seed * 0.4) * 0.12;
-    const warpT = makeGridTensor(warpAng, 0.55);
+    // Sweeping low-frequency organic curve field (creates graceful S-curves & natural urban avenue turns!)
+    const warpAng =
+      baseGridAngle +
+      Math.sin(x * 0.0085 + z * 0.0045 + seed * 0.7) * 0.42 +
+      Math.cos(z * 0.009 - x * 0.005 - seed * 0.4) * 0.34;
+    const warpT = makeGridTensor(warpAng, 0.95);
     a += warpT.a;
     b += warpT.b;
 
-    // River-hugging tensor influence (strongest near real riverbanks -> creates authentic Bund / riverside avenues!)
+    // Localized radial/ring tensor hubs (smoothly curving ring avenues around district centers!)
+    const d1 = Math.hypot(x - hub1X, z - hub1Z);
+    if (d1 > 22 && d1 < 210) {
+      const rw1 = Math.exp(-Math.pow((d1 - 105) / 85, 2)) * 0.78;
+      const rt1 = makeRadialTensor(x - hub1X, z - hub1Z, rw1);
+      a += rt1.a;
+      b += rt1.b;
+    }
+    const d2 = Math.hypot(x - hub2X, z - hub2Z);
+    if (d2 > 22 && d2 < 200) {
+      const rw2 = Math.exp(-Math.pow((d2 - 95) / 80, 2)) * 0.62;
+      const rt2 = makeRadialTensor(x - hub2X, z - hub2Z, rw2);
+      a += rt2.a;
+      b += rt2.b;
+    }
+
+    // River-hugging tensor influence (strongest near real riverbanks -> creates authentic Bund / riverside curved avenues!)
     let bestRivDist = 9999;
     let bestRivAngle = baseGridAngle;
     for (const riv of rivers) {
@@ -175,8 +214,8 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
         }
       }
     }
-    if (bestRivDist < 115) {
-      const w = Math.pow(1 - bestRivDist / 115, 1.6) * 2.6;
+    if (bestRivDist < 140) {
+      const w = Math.pow(1 - bestRivDist / 140, 1.4) * 3.1;
       const rivT = makeGridTensor(bestRivAngle, w);
       a += rivT.a;
       b += rivT.b;
@@ -184,12 +223,12 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
 
     // Incoming real highway corridor pull in outer urban belt
     const rCenter = Math.hypot(x, z);
-    if (highwayAngles.length > 0 && rCenter > 65) {
+    if (highwayAngles.length > 0 && rCenter > 90) {
       const ptAng = Math.atan2(z, x);
       for (const hAng of highwayAngles) {
         const dAng = Math.atan2(Math.sin(ptAng - hAng), Math.cos(ptAng - hAng));
-        if (Math.abs(dAng) < 0.55) {
-          const hw = (1 - Math.abs(dAng) / 0.55) * Math.min(1.4, (rCenter - 65) / 60);
+        if (Math.abs(dAng) < 0.6) {
+          const hw = (1 - Math.abs(dAng) / 0.6) * Math.min(1.4, (rCenter - 90) / 80);
           const ht = makeGridTensor(hAng, hw);
           a += ht.a;
           b += ht.b;
@@ -424,8 +463,9 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
       }
     }
   }
-  traceStreamline(seedCx, seedCz, true, 'arterial', 42, 118, 12);
-  traceStreamline(seedCx, seedCz, false, 'arterial', 42, 118, 12);
+  // Use finer 24m RK2 steps so curves bend smoothly & organically instead of long straight chords!
+  traceStreamline(seedCx, seedCz, true, 'arterial', 24, 114, 20);
+  traceStreamline(seedCx, seedCz, false, 'arterial', 24, 114, 20);
 
   // 1B. Waterfront Boulevard parallel to the real river on BOTH banks (e.g. Bund + Lujiazui Riverside!)
   for (const riv of rivers.slice(0, 1)) {
@@ -443,28 +483,28 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
         const bx = mx + rnx * side * bankOff;
         const bz = mz + rnz * side * bankOff;
         if (Math.hypot(bx, bz) < radius * 0.85 && riverSignedDist(bx, bz) > 16) {
-          traceStreamline(bx, bz, true, 'arterial', 42, 112, 11);
+          traceStreamline(bx, bz, true, 'arterial', 24, 108, 18);
         }
       }
     }
   }
 
-  // 1C. Outer Arterial Ring / Grand Real-Scale Block Avenues (~165m apart — ZERO cramped back-to-back intersections!)
+  // 1C. Outer Arterial Ring / Grand Real-Scale Curved Block Avenues (~165m apart — ZERO cramped back-to-back intersections!)
   const outerOffs = [-165, 165];
   for (const off of outerOffs) {
     const sx1 = seedCx + Math.cos(baseGridAngle + Math.PI / 2) * off;
     const sz1 = seedCz + Math.sin(baseGridAngle + Math.PI / 2) * off;
     if (riverSignedDist(sx1, sz1) > 18) {
-      traceStreamline(sx1, sz1, true, 'arterial', 42, 118, 11);
+      traceStreamline(sx1, sz1, true, 'arterial', 24, 114, 18);
     }
     const sx2 = seedCx + Math.cos(baseGridAngle) * off;
     const sz2 = seedCz + Math.sin(baseGridAngle) * off;
     if (riverSignedDist(sx2, sz2) > 18) {
-      traceStreamline(sx2, sz2, false, 'arterial', 42, 118, 11);
+      traceStreamline(sx2, sz2, false, 'arterial', 24, 114, 18);
     }
   }
 
-  // ==================== PASS 2: SECONDARY COLLECTOR STREETS (Spacious ~85m Real-Scale Neighborhood Blocks!) ====================
+  // ==================== PASS 2: SECONDARY COLLECTOR STREETS (Curved Spacious ~85m Neighborhood Blocks!) ====================
   const streetSeeds: { x: number; z: number; major: boolean }[] = [];
   for (let gx = -240; gx <= 240; gx += 96) {
     for (let gz = -240; gz <= 240; gz += 96) {
@@ -476,8 +516,8 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
   }
 
   for (const ss of streetSeeds) {
-    traceStreamline(ss.x, ss.z, ss.major, 'street', 36, 76, 9);
-    traceStreamline(ss.x, ss.z, !ss.major, 'street', 36, 76, 9);
+    traceStreamline(ss.x, ss.z, ss.major, 'street', 22, 74, 15);
+    traceStreamline(ss.x, ss.z, !ss.major, 'street', 22, 74, 15);
   }
 
   // ==================== PASS 3: EXTRACT CLEAN PLANAR JUNCTION NODES (Minimum 56m spacing -> ZERO colliding crosswalks!) ====================
