@@ -1577,9 +1577,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(pal.skyHex);
-    scene.fog = new THREE.Fog(pal.fogHex, 105, 250);
+    scene.fog = new THREE.Fog(pal.fogHex, 175, 520);
 
-    const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.35, 285);
+    const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.35, 760);
     camera.position.set(0, 4.8, 10.5);
 
     const onResize = () => {
@@ -1617,9 +1617,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const horizonBackdrop = createHorizonBackdropMesh(selectedBiome);
     scene.add(horizonBackdrop);
 
-    // 1. GRAND CONTINUOUS TOPOGRAPHIC HILLS, OPEN PLAINS & REAL DISTANT MOUNTAINS (288m cached heightfield terrain!)
-    const TERRAIN_SIZE = 288;
-    const TERRAIN_SEGS = prefsRef.current.graphicsQuality === 'low' ? 72 : 96;
+    // 1. GRAND CONTINUOUS TOPOGRAPHIC HILLS, OPEN PLAINS & REAL DISTANT MOUNTAINS (544u = 27.2km × 27.2km live 3D terrain!)
+    const TERRAIN_SIZE = 544;
+    const TERRAIN_SEGS = prefsRef.current.graphicsQuality === 'low' ? 84 : 112;
     const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGS, TERRAIN_SEGS);
     terrainGeo.rotateX(-Math.PI / 2);
     const terrainPosAttr = terrainGeo.attributes.position as THREE.BufferAttribute;

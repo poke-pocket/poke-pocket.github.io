@@ -47,7 +47,7 @@ export function getSeamlessBiomeAt3D(
   const temp = baseT * (1 - spawnBlend) + Math.max(0, Math.min(1, rawT)) * spawnBlend;
   const moist = baseM * (1 - spawnBlend) + Math.max(0, Math.min(1, rawM)) * spawnBlend;
 
-  if (wy > 10.4 && temp < 0.68) return 'sky_glacier';
+  if (wy > 155.0 && temp < 0.68) return 'sky_glacier';
   if (temp < 0.25) return 'sky_glacier';
   if (temp > 0.77 && moist >= 0.48) return 'cinnabar_isle';
   if (temp > 0.71 && moist < 0.48) return 'rocky_desert';
@@ -70,8 +70,8 @@ export function createSculptedTerrainMaterial(
       uFogColor: { value: new THREE.Color(pal.fogHex) },
       uGrassLipColor: { value: new THREE.Color(pal.groundColors[2]) },
       uBaseClimate: { value: new THREE.Vector2(baseT, baseM) },
-      uFogNear: { value: 86.0 },
-      uFogFar: { value: 215.0 },
+      uFogNear: { value: 175.0 },
+      uFogFar: { value: 510.0 },
       uSectorSize: { value: sectorSize },
       uSunDir: { value: new THREE.Vector3(0.54, 0.78, 0.44).normalize() },
     },
@@ -158,10 +158,10 @@ export function createSculptedTerrainMaterial(
         float temp = mix(uBaseClimate.x, rawT, spawnBlend);
         float moist = mix(uBaseClimate.y, rawM, spawnBlend);
 
-        // Gentle, wide transition bands between macro biomes (zero harsh grass->snow->lava jumps!)
+        // Gentle, wide transition bands between macro biomes (true high-alpine snowline >145u so forested hills stay lush green!)
         float wSnow = clamp(
           (1.0 - smoothstep(0.18, 0.34, temp)) +
-          smoothstep(9.2, 12.0, vWorldPos.y) * (1.0 - smoothstep(0.62, 0.76, temp)),
+          smoothstep(145.0, 195.0, vWorldPos.y) * (1.0 - smoothstep(0.62, 0.76, temp)),
           0.0, 1.0
         );
         float wVolcano = smoothstep(0.72, 0.86, temp) * smoothstep(0.44, 0.58, moist);
@@ -425,7 +425,7 @@ export function createHorizonBackdropMesh(biome: BiomeId): THREE.Group {
     depthWrite: false,
   });
 
-  const skyDome = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 24), skyMat);
+  const skyDome = new THREE.Mesh(new THREE.SphereGeometry(680, 32, 24), skyMat);
   skyDome.renderOrder = -20;
   group.add(skyDome);
 
