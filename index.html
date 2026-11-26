@@ -12,9 +12,151 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <style>
+      html, body { margin: 0; padding: 0; background: #14121d; overflow: hidden; }
+      #pokeball-boot-curtain {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        pointer-events: auto;
+        overflow: hidden;
+        font-family: "PingFang SC", "Microsoft YaHei", monospace, sans-serif;
+      }
+      #pokeball-boot-curtain.is-opening {
+        pointer-events: none;
+      }
+      #pokeball-boot-curtain .pb-boot-top,
+      #pokeball-boot-curtain .pb-boot-bottom {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 50%;
+        will-change: transform;
+        transition: transform 0.5s cubic-bezier(0.32, 0, 0.2, 1);
+      }
+      #pokeball-boot-curtain .pb-boot-top {
+        top: 0;
+        background: linear-gradient(180deg, #ff4d4d 0%, #e03131 62%, #c92a2a 100%);
+        border-bottom: 9px solid #14121d;
+        box-sizing: border-box;
+        box-shadow: inset 0 -10px 0 rgba(0, 0, 0, 0.14);
+      }
+      #pokeball-boot-curtain .pb-boot-sheen {
+        position: absolute;
+        top: 22px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(360px, 68vw);
+        height: 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.24);
+      }
+      #pokeball-boot-curtain .pb-boot-socket {
+        position: absolute;
+        left: 50%;
+        bottom: -9px;
+        transform: translateX(-50%);
+        width: 108px;
+        height: 54px;
+        background: #14121d;
+        border-radius: 54px 54px 0 0;
+      }
+      #pokeball-boot-curtain .pb-boot-bottom {
+        bottom: 0;
+        background: linear-gradient(180deg, #ffffff 0%, #f1f3f5 72%, #dee2e6 100%);
+        border-top: 9px solid #14121d;
+        box-sizing: border-box;
+        box-shadow: inset 0 10px 0 rgba(255, 255, 255, 0.75);
+      }
+      #pokeball-boot-curtain .pb-boot-clasp {
+        position: absolute;
+        left: 50%;
+        top: -54px;
+        transform: translateX(-50%);
+        width: 108px;
+        height: 108px;
+        border-radius: 50%;
+        background: #14121d;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 6px 0 rgba(20, 18, 29, 0.24);
+      }
+      #pokeball-boot-curtain .pb-boot-ring {
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        background: linear-gradient(180deg, #ffffff 0%, #e9ecef 100%);
+        border: 4px solid #14121d;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #pokeball-boot-curtain .pb-boot-core {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        border: 3.5px solid #14121d;
+        box-sizing: border-box;
+        background: #ff6b6b;
+        box-shadow: 0 0 16px rgba(255, 107, 107, 0.85), inset 0 3px 0 rgba(255, 255, 255, 0.65);
+        animation: pbBootPulse 0.9s ease-in-out infinite alternate;
+      }
+      #pokeball-boot-curtain.is-ready .pb-boot-core {
+        animation: none;
+        background: #63e6be;
+        box-shadow: 0 0 22px rgba(99, 230, 190, 0.95), inset 0 3px 0 #ffffff;
+      }
+      #pokeball-boot-curtain .pb-boot-label {
+        position: absolute;
+        left: 50%;
+        top: 70px;
+        transform: translateX(-50%);
+        padding: 5px 14px;
+        background: #14121d;
+        color: #ffe066;
+        border: 2.5px solid #14121d;
+        box-shadow: 3px 3px 0 rgba(20, 18, 29, 0.25);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 1px;
+        white-space: nowrap;
+      }
+      #pokeball-boot-curtain.is-opening .pb-boot-top {
+        transform: translate3d(0, -114%, 0);
+      }
+      #pokeball-boot-curtain.is-opening .pb-boot-bottom {
+        transform: translate3d(0, calc(100% + 76px), 0);
+      }
+      @keyframes pbBootPulse {
+        0% { transform: scale(0.94); background: #ff8787; box-shadow: 0 0 10px rgba(255, 107, 107, 0.55), inset 0 3px 0 rgba(255,255,255,0.65); }
+        100% { transform: scale(1.05); background: #fa5252; box-shadow: 0 0 22px rgba(250, 82, 82, 0.95), inset 0 3px 0 rgba(255,255,255,0.8); }
+      }
+    </style>
   </head>
   <body>
+    <div id="pokeball-boot-curtain" aria-label="正在加载游戏">
+      <div class="pb-boot-top">
+        <div class="pb-boot-sheen"></div>
+        <div class="pb-boot-socket"></div>
+      </div>
+      <div class="pb-boot-bottom">
+        <div class="pb-boot-clasp">
+          <div class="pb-boot-ring">
+            <div class="pb-boot-core"></div>
+          </div>
+        </div>
+        <div class="pb-boot-label">POKé POCKET · 正在构筑世界…</div>
+      </div>
+    </div>
     <div id="root"></div>
+    <script>
+      window.setTimeout(function () {
+        var el = document.getElementById('pokeball-boot-curtain');
+        if (el) { el.classList.add('is-opening'); window.setTimeout(function () { el.remove(); }, 600); }
+      }, 6500);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

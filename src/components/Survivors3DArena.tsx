@@ -19,6 +19,7 @@ import { DEFAULT_GAME_PREFS, DEFAULT_TRAINER_PROFILE, type CameraFollowMode, typ
 import { HERO_ROSTER, LAB_UPGRADES, computeMetaCombatBonuses, countClaimableBounties, ensureFreshMetaProgress, getHeroDef, getLabUpgradeCost, getSkinDef, rerollBountySlot, type HeroId, type LabUpgradeId, type MetaProgressState } from '../data/metaProgression';
 import { type AppLang } from '../data/i18n';
 import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
+import { PokeballShutterOverlay, dismissInitialBootPokeballCurtain, type PokeballShutterState } from './PokeballShutterOverlay';
 import { type LiveMapSnapshot, type ScenicMountainSpot } from './WorldMapHud';
 import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { BGM_TRACK_LABELS, sound, type BgmTrackId } from '../utils/sound';
@@ -307,8 +308,47 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     }, 165);
   };
 
-  // Multi-Layer Flow: Main Hub -> Map Select -> Live 3D Playing (Global World Map & Time Almanac are non-destructive overlays returning to caller!)
-  const [phase, setPhase] = useState<ArenaScreenPhase>('hub');
+  // Multi-Layer Flow: Main Hub -> Map Select -> Live 3D Playing (Auto-resumes directly into Playing on F5 without double-building Hub!)
+  const [initialAutoResumePayload] = useState<WorldLaunchPayload | null>(() => {
+    if (!wasActiveCareSessionOpen()) return null;
+    const savedCp = loadWorldCheckpoint();
+    if (!savedCp) return null;
+    const wt = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+    const activeId = (savedCp.mode === 'geo' && savedCp.cityId) || wt.currentCityId || 'shanghai';
+    const city =
+      WORLD_CITIES.find((c) => c.id === activeId) ??
+      WORLD_CITIES.find((c) => c.id === 'shanghai') ??
+      WORLD_CITIES[0];
+    const cityName = `${city.name}市`.replace(/市市$/, '市');
+    setActiveGeoTerrainOrigin({
+      originLat: city.lat,
+      originLng: city.lng,
+      startCityId: city.id,
+      startCityName: cityName,
+      unitsPerKm: GEO_UNITS_PER_KM,
+    });
+    return {
+      cityId: city.id,
+      cityName,
+      gymName: city.gymName,
+      gymBadgeName: city.gymBadgeName,
+      biome: city.biome,
+      wildPool: city.wildPool,
+      bossSpecies: city.gymBossSpecies,
+      bossName: city.gymBossTitle,
+      bossTrainerKey: city.gymTrainerKey,
+      bossTrainerName: city.gymLeaderName,
+      regionalSkinId: city.regionalSkinId,
+      rewardCoins: city.rewardCoins,
+      originLat: city.lat,
+      originLng: city.lng,
+      isGymChallenge: false,
+      isHomeTurf: true,
+      hotelTier: wt.stayHotelTier ?? null,
+    };
+  });
+
+  const [phase, setPhase] = useState<ArenaScreenPhase>(() => (initialAutoResumePayload ? 'playing' : 'hub'));
   const [worldMapOpen, setWorldMapOpen] = useState(false);
   const worldMapOpenRef = useRef(false);
   worldMapOpenRef.current = worldMapOpen;
@@ -323,11 +363,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   );
   const solarInfoRef = useRef<SolarDayNightState>(solarInfo);
   solarInfoRef.current = solarInfo;
-  const [activeWorldRun, setActiveWorldRun] = useState<WorldLaunchPayload | null>(null);
+  const [activeWorldRun, setActiveWorldRun] = useState<WorldLaunchPayload | null>(initialAutoResumePayload);
   const [liveOverlandCity, setLiveOverlandCity] = useState<WorldCityDef | null>(null);
   const liveOverlandCityRef = useRef<WorldCityDef | null>(null);
-  const overlandCityIdRef = useRef<string | null>(null);
-  const [selectedBiome, setSelectedBiome] = useState<BiomeId>('verdant_forest');
+  const overlandCityIdRef = useRef<string | null>(initialAutoResumePayload?.cityId ?? null);
+  const [selectedBiome, setSelectedBiome] = useState<BiomeId>(initialAutoResumePayload?.biome ?? 'verdant_forest');
   const [gameMode, setGameMode] = useState<SurvivorsGameMode>('story');
   const [difficultyId, setDifficultyId] = useState<DifficultyId>('normal');
   const [camPreset, setCamPreset] = useState<'wide' | 'close'>('wide');
@@ -719,7 +759,52 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, externalPaused, levelChoices, shopOpen, resultSummary, captureOffer, captureCutscene]);
   const [runNonce, setRunNonce] = useState(0);
-  const [launchFlashSeq, setLaunchFlashSeq] = useState(0);
+  const [pokeballShutter, setPokeballShutter] = useState<PokeballShutterState>({
+    stage: 'idle',
+    label: '',
+  });
+  const shutterBusyRef = useRef(false);
+  const on3DSceneReadyRef = useRef<(() => void) | null>(null);
+
+  /**
+   * Closes the Red-and-White Poké Ball shutter at locked 60fps FIRST, runs heavy 3D scene construction
+   * strictly behind the closed shutter, waits for live WebGL frames to paint, then smoothly slides open!
+   */
+  const runWithPokeballShutter = (label: string, performHeavyWork: () => void) => {
+    if (shutterBusyRef.current) return;
+    shutterBusyRef.current = true;
+    setPokeballShutter({ stage: 'closing', label });
+
+    window.setTimeout(() => {
+      setPokeballShutter({ stage: 'holding', label });
+      // Wait 2 paint frames so the fully closed Poké Ball is guaranteed on-screen before heavy JS runs!
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          const holdStartedAt = performance.now();
+          let opened = false;
+          const finishOpen = () => {
+            if (opened) return;
+            opened = true;
+            on3DSceneReadyRef.current = null;
+            const elapsedHold = performance.now() - holdStartedAt;
+            const remainHold = Math.max(80, 220 - elapsedHold);
+            window.setTimeout(() => {
+              sound.play('cursor');
+              setPokeballShutter({ stage: 'opening', label });
+              window.setTimeout(() => {
+                shutterBusyRef.current = false;
+                setPokeballShutter({ stage: 'idle', label: '' });
+              }, 540);
+            }, remainHold);
+          };
+          on3DSceneReadyRef.current = finishOpen;
+          // Safety fallback in case tab is backgrounded or external overlay pauses rendering
+          window.setTimeout(finishOpen, 1100);
+          performHeavyWork();
+        });
+      });
+    }, 285);
+  };
   // Bidirectional exit animation flags so modals & overlays animate OUT cleanly before unmounting!
   const [closingMapSelect, setClosingMapSelect] = useState(false);
   const [closingShop, setClosingShop] = useState(false);
@@ -2860,6 +2945,21 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       setGlobalNightLampGlow3D(solar.lampGlow);
     };
 
+    // Pre-compile shaders once up front behind the Poké Ball curtain so Frame 1 never stutters on shader link!
+    try {
+      renderer.compile(scene, camera);
+    } catch {
+      // ignore shader precompile warning
+    }
+    let scenePaintedFrames = 0;
+    const mark3DFramePainted = () => {
+      scenePaintedFrames += 1;
+      if (scenePaintedFrames === 2) {
+        dismissInitialBootPokeballCurtain();
+        on3DSceneReadyRef.current?.();
+      }
+    };
+
     const animate = (now: number) => {
       const dt = Math.min(0.05, (now - lastTs) / 1000);
       lastTs = now;
@@ -2875,6 +2975,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         // Scenic Elevated Panoramic 3D Diorama Overlook during Hub & Map Select (Living Hero, Camera-Facing Squad, Meadow & Flying Wild Pokémon!)
         if (phase !== 'playing') {
           renderHubDioramaFrame3D({ applyLiveSolarAtmosphere, camera, dt, emoteKinds, externalPausedRef, geoHighwayStreamer, heroEmoteSprite, heroFrames, horizonBackdrop, metaRef, now, petEmoteSprite, phase, playerShadow, playerSprite, playerSpriteMat, previewSprites, renderer, scene, sim, syncFloraBillboards, updateWorldAround, waterMat, worldMapOpenRef });
+          mark3DFramePainted();
           rafId = window.requestAnimationFrame(animate);
           return;
         }
@@ -3343,6 +3444,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           stepArenaCaptureCinema3D({ addFollowerToRun, buildResultSummary, camera, captureFinishRef, damageEnemy3D, diffMeta, dt, endedRef, gameMode, horizonBackdrop, maxFollowersRef, now, onCaptureBoss, onShowCaptureInHandheld, pausedRef, pet, regionMeta, save, scene, setCaptureCutscene, setResultSummary, sim, spawnGlowFlash, spawnGroundDecalWave, spawnPixelParticles, syncFloraBillboards, vfxAtlas, waterMat });
         }
         renderer.render(scene, camera);
+        mark3DFramePainted();
       }
       rafId = window.requestAnimationFrame(animate);
     };
@@ -3435,13 +3537,19 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     );
   };
 
-  // Auto-resume straight back into 3D Playing at exact saved coordinates across F5 browser refreshes!
+  // Show resume toast once if initial mount auto-resumed into Playing
   const didAutoResumeRef = useRef(false);
   useEffect(() => {
     if (didAutoResumeRef.current) return;
     didAutoResumeRef.current = true;
-    if (wasActiveCareSessionOpen() && loadWorldCheckpoint()) {
-      handleLaunchRun();
+    if (initialAutoResumePayload) {
+      const cp = loadWorldCheckpoint();
+      if (cp?.lat !== undefined && cp?.lng !== undefined) {
+        showBanner(
+          `📍 已继续回到上次探索位置（${cp.lat.toFixed(2)}°N, ${cp.lng.toFixed(2)}°E）！`,
+          3600,
+        );
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -3450,71 +3558,76 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const handleLaunchRandomRogueRun = (explicitBiome?: BiomeId) => {
     sound.play('confirm');
     setWorldMapOpen(false);
-    setAdventureStyle('vampire_rogue');
-    adventureStyleRef.current = 'vampire_rogue';
-    setActiveGeoTerrainOrigin(null);
-    setActiveWorldRun(null);
-    setLiveOverlandCity(null);
-    liveOverlandCityRef.current = null;
-    overlandCityIdRef.current = null;
     const pickedRegion = explicitBiome
       ? MAP_REGIONS.find((r) => r.id === explicitBiome) ?? MAP_REGIONS[0]
       : MAP_REGIONS[Math.floor(Math.random() * MAP_REGIONS.length)];
-    setSelectedBiome(pickedRegion.id);
-    setGameMode('endless');
-    pausedRef.current = false;
-    endedRef.current = false;
-    setRunNonce((n) => n + 1);
-    setLaunchFlashSeq((s) => s + 1);
-    setPhase('playing');
-    showBanner(
-      `🎲 随机冒险模式 · 已降临【${pickedRegion.name}】！迎战潮水般涌来的宝可梦群，拾取经验结晶升级进化！`,
-      4200,
-    );
+    runWithPokeballShutter(`正在开启「${pickedRegion.name}」秘境…`, () => {
+      setAdventureStyle('vampire_rogue');
+      adventureStyleRef.current = 'vampire_rogue';
+      setActiveGeoTerrainOrigin(null);
+      setActiveWorldRun(null);
+      setLiveOverlandCity(null);
+      liveOverlandCityRef.current = null;
+      overlandCityIdRef.current = null;
+      setSelectedBiome(pickedRegion.id);
+      setGameMode('endless');
+      pausedRef.current = false;
+      endedRef.current = false;
+      setRunNonce((n) => n + 1);
+      setPhase('playing');
+      showBanner(
+        `🎲 随机冒险模式 · 已降临【${pickedRegion.name}】！迎战潮水般涌来的宝可梦群，拾取经验结晶升级进化！`,
+        4200,
+      );
+    });
   };
 
   const handleLaunchWorldRun = (payload: WorldLaunchPayload, resetCheckpointToCity = false) => {
     sound.play('confirm');
     setWorldMapOpen(false);
-    if (resetCheckpointToCity || payload.isGymChallenge) {
-      clearWorldCheckpoint();
-    }
-    const resumedCp = !resetCheckpointToCity && !payload.isGymChallenge ? loadWorldCheckpoint() : null;
-    const nextStyle = payload.isGymChallenge ? 'vampire_rogue' : 'care_world';
-    setAdventureStyle(nextStyle);
-    adventureStyleRef.current = nextStyle;
-    setActiveGeoTerrainOrigin({
-      originLat: payload.originLat,
-      originLng: payload.originLng,
-      startCityId: payload.cityId,
-      startCityName: payload.cityName,
-      unitsPerKm: GEO_UNITS_PER_KM,
+    const shutterTitle = payload.isGymChallenge
+      ? `正在前往「${payload.gymName}」…`
+      : `正在进入「${payload.cityName}」…`;
+    runWithPokeballShutter(shutterTitle, () => {
+      if (resetCheckpointToCity || payload.isGymChallenge) {
+        clearWorldCheckpoint();
+      }
+      const resumedCp = !resetCheckpointToCity && !payload.isGymChallenge ? loadWorldCheckpoint() : null;
+      const nextStyle = payload.isGymChallenge ? 'vampire_rogue' : 'care_world';
+      setAdventureStyle(nextStyle);
+      adventureStyleRef.current = nextStyle;
+      setActiveGeoTerrainOrigin({
+        originLat: payload.originLat,
+        originLng: payload.originLng,
+        startCityId: payload.cityId,
+        startCityName: payload.cityName,
+        unitsPerKm: GEO_UNITS_PER_KM,
+      });
+      setActiveWorldRun(payload);
+      setLiveOverlandCity(null);
+      liveOverlandCityRef.current = null;
+      overlandCityIdRef.current = payload.cityId;
+      setSelectedBiome(payload.biome);
+      setGameMode('story');
+      pausedRef.current = false;
+      endedRef.current = false;
+      setRunNonce((n) => n + 1);
+      setPhase('playing');
+      const buffNote =
+        payload.hotelTier === 'grand'
+          ? ' · 五星增益生效'
+          : payload.isHomeTurf
+            ? ' · 主场共鸣生效'
+            : '';
+      showBanner(
+        payload.isGymChallenge
+          ? `✈ ${payload.cityName} · 挑战「${payload.gymName}」：击败 ${payload.bossName} 赢取 ${payload.gymBadgeName}！${buffNote}`
+          : resumedCp?.lat !== undefined && resumedCp?.lng !== undefined
+            ? `📍 已继续回到上次探索位置（${resumedCp.lat.toFixed(2)}°N, ${resumedCp.lng.toFixed(2)}°E）！${buffNote}`
+            : `🌍 ${payload.cityName} 真实地形已加载：可沿主干道与丘陵探索，甚至徒步跨越邻城！${buffNote}`,
+        4200,
+      );
     });
-    setActiveWorldRun(payload);
-    setLiveOverlandCity(null);
-    liveOverlandCityRef.current = null;
-    overlandCityIdRef.current = payload.cityId;
-    setSelectedBiome(payload.biome);
-    setGameMode('story');
-    pausedRef.current = false;
-    endedRef.current = false;
-    setRunNonce((n) => n + 1);
-    setLaunchFlashSeq((s) => s + 1);
-    setPhase('playing');
-    const buffNote =
-      payload.hotelTier === 'grand'
-        ? ' · 五星增益生效'
-        : payload.isHomeTurf
-          ? ' · 主场共鸣生效'
-          : '';
-    showBanner(
-      payload.isGymChallenge
-        ? `✈ ${payload.cityName} · 挑战「${payload.gymName}」：击败 ${payload.bossName} 赢取 ${payload.gymBadgeName}！${buffNote}`
-        : resumedCp?.lat !== undefined && resumedCp?.lng !== undefined
-          ? `📍 已继续回到上次探索位置（${resumedCp.lat.toFixed(2)}°N, ${resumedCp.lng.toFixed(2)}°E）！${buffNote}`
-          : `🌍 ${payload.cityName} 真实地形已加载：可沿主干道与丘陵探索，甚至徒步跨越邻城！${buffNote}`,
-      4200,
-    );
   };
 
   fastTravelCityRef.current = (cityId: string) => {
@@ -3915,10 +4028,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         </>
       )}
 
-      {/* Arcade Diagonal Shutter Transition Flash when Launching 3D Adventure! */}
-      {launchFlashSeq > 0 && (
-        <div key={launchFlashSeq} className="world3d-launch-wipe" aria-hidden="true" />
-      )}
+      {/* Iconic Red-and-White Poké Ball Clasp Shutter Loading Transition! */}
+      <PokeballShutterOverlay state={pokeballShutter} />
     </div>
   );
 };

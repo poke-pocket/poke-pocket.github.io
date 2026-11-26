@@ -8914,14 +8914,216 @@ button:disabled {
   animation: modalPopArcade 0.22s cubic-bezier(0.22, 1.18, 0.36, 1) both;
 }
 
-/* Kinetic Diagonal Arcade Shutter Flash on Launching 3D Run! */
-.world3d-launch-wipe {
+/* Iconic Red-and-White Poké Ball Clasp Loading Shutter (GPU-Composited 60fps Close -> Build 3D -> Open!) */
+.pb-shutter-overlay {
   position: fixed;
   inset: 0;
-  z-index: 95;
+  z-index: 9999;
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.pb-shutter-overlay.is-opening {
   pointer-events: none;
-  background: linear-gradient(115deg, #161420 0%, #ffe066 48%, #fffdf5 52%, #161420 100%);
-  animation: worldLaunchShutter 0.48s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+.pb-shutter-half {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 50%;
+  box-sizing: border-box;
+  will-change: transform;
+}
+
+.pb-shutter-half.is-top {
+  top: 0;
+  background: linear-gradient(180deg, #ff4d4d 0%, #e03131 62%, #c92a2a 100%);
+  border-bottom: 9px solid #14121d;
+  box-shadow: inset 0 -10px 0 rgba(0, 0, 0, 0.15);
+}
+
+.pb-top-sheen {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(360px, 68vw);
+  height: 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.pb-top-socket {
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  transform: translateX(-50%);
+  width: 108px;
+  height: 54px;
+  background: #14121d;
+  border-radius: 54px 54px 0 0;
+}
+
+.pb-shutter-half.is-bottom {
+  bottom: 0;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f3f5 72%, #dee2e6 100%);
+  border-top: 9px solid #14121d;
+  box-shadow: inset 0 10px 0 rgba(255, 255, 255, 0.78);
+}
+
+.pb-center-clasp {
+  position: absolute;
+  left: 50%;
+  top: -54px;
+  transform: translateX(-50%);
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  background: #14121d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 0 rgba(20, 18, 29, 0.24);
+}
+
+.pb-btn-ring {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffffff 0%, #e9ecef 100%);
+  border: 4px solid #14121d;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pb-btn-core {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3.5px solid #14121d;
+  box-sizing: border-box;
+  background: #ff6b6b;
+  box-shadow:
+    0 0 16px rgba(255, 107, 107, 0.85),
+    inset 0 3px 0 rgba(255, 255, 255, 0.68);
+  animation: pbShutterCorePulse 0.65s ease-in-out infinite alternate;
+}
+
+.pb-shutter-overlay.is-opening .pb-btn-core {
+  animation: none;
+  background: #63e6be;
+  box-shadow:
+    0 0 22px rgba(99, 230, 190, 0.95),
+    inset 0 3px 0 #ffffff;
+}
+
+.pb-shutter-label {
+  position: absolute;
+  left: 50%;
+  top: 70px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 14px;
+  background: #14121d;
+  color: #ffe066;
+  border: 2.5px solid #14121d;
+  box-shadow: 3px 3px 0 rgba(20, 18, 29, 0.25);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+}
+
+.pb-shutter-label .pb-dots {
+  font-style: normal;
+  animation: pbDotsBlink 0.9s steps(3, end) infinite;
+}
+
+.pb-shutter-overlay.is-closing .pb-shutter-half.is-top {
+  animation: pbTopSlamShut 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.pb-shutter-overlay.is-closing .pb-shutter-half.is-bottom {
+  animation: pbBottomSlamShut 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.pb-shutter-overlay.is-holding .pb-shutter-half.is-top,
+.pb-shutter-overlay.is-holding .pb-shutter-half.is-bottom {
+  transform: translate3d(0, 0, 0);
+}
+
+.pb-shutter-overlay.is-opening .pb-shutter-half.is-top {
+  animation: pbTopSlideOpen 0.46s cubic-bezier(0.32, 0, 0.2, 1) 0.06s forwards;
+}
+
+.pb-shutter-overlay.is-opening .pb-shutter-half.is-bottom {
+  animation: pbBottomSlideOpen 0.46s cubic-bezier(0.32, 0, 0.2, 1) 0.06s forwards;
+}
+
+@keyframes pbTopSlamShut {
+  0% { transform: translate3d(0, -114%, 0); }
+  82% { transform: translate3d(0, 0, 0); }
+  92% { transform: translate3d(0, -4px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes pbBottomSlamShut {
+  0% { transform: translate3d(0, calc(100% + 76px), 0); }
+  82% { transform: translate3d(0, 0, 0); }
+  92% { transform: translate3d(0, 4px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes pbTopSlideOpen {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(0, -114%, 0); }
+}
+
+@keyframes pbBottomSlideOpen {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(0, calc(100% + 76px), 0); }
+}
+
+@keyframes pbShutterCorePulse {
+  0% { transform: scale(0.93); background: #ff8787; }
+  100% { transform: scale(1.06); background: #fa5252; }
+}
+
+@keyframes pbDotsBlink {
+  0% { opacity: 0.3; }
+  50% { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+
+@media (max-width: 640px) {
+  .pb-top-socket {
+    width: 88px;
+    height: 44px;
+    border-radius: 44px 44px 0 0;
+  }
+  .pb-center-clasp {
+    top: -44px;
+    width: 88px;
+    height: 88px;
+  }
+  .pb-btn-ring {
+    width: 62px;
+    height: 62px;
+  }
+  .pb-btn-core {
+    width: 34px;
+    height: 34px;
+  }
+  .pb-shutter-label {
+    top: 56px;
+    font-size: 11px;
+    padding: 4px 11px;
+  }
 }
 
 @keyframes overlayBackdropIn {
