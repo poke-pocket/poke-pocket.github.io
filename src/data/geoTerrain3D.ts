@@ -332,23 +332,42 @@ export function classifyRealEarthPixelColor(
     return hillShadeMeters < -45 ? '#d0e2f0' : '#f4f9fc';
   }
 
-  // 3. True Latitude & Region-Aware Permanent Snowline in REAL METERS!
-  // On the dry rain-shadow Qinghai-Tibet Plateau (average elevation 4,300-4,900m!), vast areas are ALPINE GRASSLAND —
-  // real permanent glacier snowline there is ~5,550m (Himalayas, Kunlun, Nyenchen Tanglha, Karakoram peaks ONLY!).
-  const inTibetanPlateau = lat >= 27.2 && lat <= 38.2 && nLng >= 77.0 && nLng <= 103.5;
-  const isJapanMaritime = lat > 32 && lat < 45 && nLng > 128 && nLng < 147;
-  const snowlineM = inTibetanPlateau
-    ? 5550
-    : isJapanMaritime
-      ? 3550
-      : absLat < 28
-        ? 5000
-        : absLat < 45
-          ? 4500 - (absLat - 28) * 18
-          : Math.max(1650, 4190 - (absLat - 45) * 95);
+  // Smooth organic regional boundary perturbation (eliminates straight vertical/horizontal biome seams!)
+  const bWarp = Math.sin(lat * 0.65 + nLng * 0.45) * 0.9 + Math.cos(nLng * 0.72 - lat * 0.5) * 0.6;
+  const ridgeRelief = Math.abs(hillShadeMeters);
 
-  if (meters >= snowlineM) {
-    return hillShadeMeters < -80 ? '#c4d8e8' : '#f2f8fc';
+  // 3. True Relief-Aware Snow-Capped Mountain Ranges!
+  // - Flat Tibetan Plateau grasslands (4,200-4,900m flat!) stay lush green/golden alpine grassland.
+  // - Steep high peaks & iconic snow-capped mountain chains (West Sichuan Gongga/Siguniang/Hengduan, NW Yunnan Yulong/Meili,
+  //   Himalayas, Nyenchen Tanglha, Kunlun, Tianshan, Qilian & Mt. Fuji!) light up as crisp white snow ridges!
+  const inTibetanPlateau =
+    lat >= 27.2 + bWarp * 0.35 &&
+    lat <= 38.2 + bWarp * 0.35 &&
+    nLng >= 77.0 + bWarp * 0.4 &&
+    nLng <= 103.6 + bWarp * 0.65;
+  const inSichuanYunnanAlps =
+    lat >= 26.2 + bWarp * 0.3 &&
+    lat <= 33.8 + bWarp * 0.3 &&
+    nLng >= 97.5 + bWarp * 0.4 &&
+    nLng <= 104.2 + bWarp * 0.4;
+  const isJapanMaritime = lat > 32 && lat < 45 && nLng > 128 && nLng < 147;
+
+  const isSnowPeak =
+    // Extreme Himalayan / Kunlun / Karakoram / Tanggula glacier peaks (>5050m anywhere)
+    meters >= 5050 ||
+    // Steep alpine mountain ridges on the Tibetan Plateau & Kunlun/Himalayas (>4350m with real mountain relief -> keeps flat grasslands green!)
+    (inTibetanPlateau && meters >= 4350 && ridgeRelief >= 115) ||
+    // Iconic West Sichuan & NW Yunnan snow mountains (贡嘎/四姑娘山/稻城/玉龙雪山/梅里雪山/哈巴雪山: >3750m with ridge relief or >4250m)
+    (inSichuanYunnanAlps && (meters >= 4250 || (meters >= 3750 && ridgeRelief >= 95))) ||
+    // Tianshan / Altai / Qilian / Northern Xinjiang linear snow peaks (>3400m with mountain relief or >3950m)
+    (lat >= 38.0 && lat <= 50.0 && nLng >= 72.0 && nLng <= 103.0 && (meters >= 3950 || (meters >= 3350 && ridgeRelief >= 90))) ||
+    // Mt. Fuji & Japanese Alps (>3200m in maritime Japan)
+    (isJapanMaritime && meters >= 3200) ||
+    // High-latitude sub-arctic mountain snowlines
+    (absLat >= 45 && meters >= Math.max(1650, 4050 - (absLat - 45) * 95));
+
+  if (isSnowPeak) {
+    return hillShadeMeters < -75 ? '#c4d8e8' : '#f2f8fc';
   }
 
   // 4. Sandy Beaches along real coastlines
@@ -356,11 +375,11 @@ export function classifyRealEarthPixelColor(
     return dither ? '#efe0b1' : '#e4cf94';
   }
 
-  // 5. Real-World Deserts & Gobi Basins (Taklamakan, Gurbantünggüt, Badain Jaran/Gobi, Qaidam, Sahara, Arabia, Central Asia, Outback, SW USA)
-  const inTaklamakan = lat >= 36.2 && lat <= 41.9 && nLng >= 75.5 && nLng <= 92.2 && meters < 2100;
-  const inJunggarDesert = lat >= 43.8 && lat <= 46.8 && nLng >= 84.0 && nLng <= 91.5 && meters < 1200;
-  const inGobiDesert = lat >= 37.6 && lat <= 45.2 && nLng >= 92.2 && nLng <= 109.5 && meters < 2100;
-  const inQaidam = lat >= 35.8 && lat <= 39.2 && nLng >= 90.2 && nLng <= 98.8 && meters < 3350;
+  // 5. Real-World Deserts & Gobi Basins (with organic wavy edges!)
+  const inTaklamakan = lat >= 36.2 && lat <= 41.9 && nLng >= 75.5 && nLng <= 92.2 + bWarp * 0.5 && meters < 2100;
+  const inJunggarDesert = lat >= 43.8 && lat <= 46.8 && nLng >= 84.0 && nLng <= 91.5 + bWarp * 0.5 && meters < 1200;
+  const inGobiDesert = lat >= 37.6 + bWarp * 0.4 && lat <= 45.2 && nLng >= 92.2 + bWarp * 0.5 && nLng <= 109.5 + bWarp * 0.6 && meters < 2100;
+  const inQaidam = lat >= 35.8 && lat <= 39.2 && nLng >= 90.2 && nLng <= 98.8 + bWarp * 0.4 && meters < 3350;
   const inSaharaArabia = lat >= 14.0 && lat <= 33.5 && nLng >= -17.0 && nLng <= 60.0 && meters < 2200;
   const inCentralAsiaDesert = lat >= 36.5 && lat <= 47.0 && nLng >= 52.0 && nLng <= 75.5 && meters < 1100;
   const inAusOutback = lat >= -31.5 && lat <= -19.0 && nLng >= 115.0 && nLng <= 142.0 && meters < 1200;
@@ -377,28 +396,31 @@ export function classifyRealEarthPixelColor(
     return dither ? '#d1ba82' : '#c4aa74';
   }
 
-  // 6. Real Qinghai-Tibet Plateau Biomes (Mostly LUSH ALPINE GRASSLANDS & HIGHLAND MEADOWS, NOT snow!)
+  // 6. Real Qinghai-Tibet Plateau Biomes (Lush Grasslands across flat basins, rocky ridges on steep slopes!)
   if (inTibetanPlateau && meters >= 2600) {
     if (meters < 4150) {
-      // Eastern Tibet, Ruoergai, Qinghai Lake & Yarlung valleys: vibrant lush green plateau grassland!
       if (hillShadeMeters > 75) return '#84c462';
       if (hillShadeMeters < -75) return '#4b823f';
       return dither ? '#6eb054' : '#60a34a';
     }
-    if (meters < 4950) {
-      // Naqu & Changtang vast plateau grasslands: natural golden-emerald alpine steppe grass!
+    if (meters < 4850) {
       if (hillShadeMeters > 80) return '#a9bf6b';
       if (hillShadeMeters < -80) return '#6c8044';
       return dither ? '#8ea858' : '#7f994d';
     }
-    // 4950..5550m: rocky high alpine passes & mountain tundra below glacier snowline
     if (hillShadeMeters > 85) return '#b8ab86';
     if (hillShadeMeters < -85) return '#6b6352';
     return dither ? '#998e70' : '#877e63';
   }
 
-  // 7. Loess Plateau (黄土高原) & Dry Inner Mongolia Steppe (内蒙古草原)
-  const inLoessPlateau = lat >= 34.4 && lat <= 40.4 && nLng >= 103.5 && nLng <= 113.8 && meters > 650 && meters < 2400;
+  // 7. Loess Plateau (黄土高原 — organic boundary!) & Dry Inner Mongolia Steppe (内蒙古草原)
+  const inLoessPlateau =
+    lat >= 34.4 + bWarp * 0.4 &&
+    lat <= 40.4 + bWarp * 0.4 &&
+    nLng >= 103.6 + bWarp * 0.65 &&
+    nLng <= 113.8 + bWarp * 0.6 &&
+    meters > 650 &&
+    meters < 2400;
   const inSteppe =
     (lat >= 40.4 && lat <= 49.5 && nLng >= 108.5 && nLng <= 121.0) ||
     (lat >= 45.0 && lat <= 54.0 && nLng >= 45.0 && nLng <= 108.5 && meters < 1400);

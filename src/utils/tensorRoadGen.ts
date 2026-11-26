@@ -255,13 +255,22 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
     return { x: x + k2.x * stepLen, z: z + k2.z * stepLen };
   };
 
-  const edges: TensorRoadEdge[] = [];
-  const nodes: { x: number; z: number; degree: number; hasArterial: boolean; rotY: number }[] = [];
+  const edges: (TensorRoadEdge & { streamId: number })[] = [];
+  const nodes: { x: number; z: number; streamIds: Set<number>; degree: number; hasArterial: boolean; rotY: number }[] = [];
+  let nextStreamId = 1;
 
-  const registerNode = (x: number, z: number, isArterial: boolean, rotY: number, snapRad = 12): { x: number; z: number } => {
+  const registerNode = (
+    x: number,
+    z: number,
+    streamId: number,
+    isArterial: boolean,
+    rotY: number,
+    snapRad = 12,
+  ): { x: number; z: number } => {
     for (const nd of nodes) {
       if (Math.hypot(nd.x - x, nd.z - z) < snapRad) {
         nd.degree += 1;
+        nd.streamIds.add(streamId);
         if (isArterial) {
           nd.hasArterial = true;
           nd.rotY = rotY;
@@ -269,7 +278,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
         return { x: nd.x, z: nd.z };
       }
     }
-    nodes.push({ x, z, degree: 1, hasArterial: isArterial, rotY });
+    nodes.push({ x, z, streamIds: new Set([streamId]), degree: 1, hasArterial: isArterial, rotY });
     return { x, z };
   };
 
@@ -279,6 +288,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
     x2: number,
     z2: number,
     minParallelDist: number,
+    selfStreamId: number,
   ): boolean => {
     const mx = (x1 + x2) * 0.5;
     const mz = (z1 + z2) * 0.5;
@@ -286,6 +296,8 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
     const vz = z2 - z1;
     const vLen = Math.hypot(vx, vz) || 1;
     for (const ex of edges) {
+      // CRITICAL: NEVER reject a streamline against its OWN previous segments!
+      if (ex.streamId === selfStreamId) continue;
       const res = distToSegmentWithClosest(mx, mz, ex.x1, ex.z1, ex.x2, ex.z2);
       if (res.dist < minParallelDist) {
         const dot = Math.abs((vx * res.tx + vz * res.tz) / vLen);
@@ -312,8 +324,10 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
     const width = kind === 'arterial' ? 32 : 17;
     if (riverSignedDist(sx, sz) < 6) return;
 
+    const streamId = nextStreamId++;
     const initField = sampleField(sx, sz);
     const initVec = useMajor ? majorEigenvector(initField) : minorEigenvector(initField);
+    const createdInStream: (TensorRoadEdge & { streamId: number })[] = [];
 
     for (const sign of [1, -1] as const) {
       let cx = sx;
@@ -363,7 +377,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
               if (!dupBridge) {
                 const style =
                   landDist < 42 ? 'waibaidu' : edges.filter((e) => e.isBridge).length % 2 === 0 ? 'nanpu' : 'yangpu';
-                edges.push({
+                const brEdge: TensorRoadEdge & { streamId: number } = {
                   x1: cx,
                   z1: cz,
                   x2: bx,
@@ -372,9 +386,12 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
                   kind: 'arterial',
                   isBridge: true,
                   bridgeStyle: style,
-                });
-                registerNode(cx, cz, true, rotY, 10);
-                registerNode(bx, bz, true, rotY, 10);
+                  streamId,
+                };
+                edges.push(brEdge);
+                createdInStream.push(brEdge);
+                registerNode(cx, cz, streamId, true, rotY, 10);
+                registerNode(bx, bz, streamId, true, rotY, 10);
                 cx = bx;
                 cz = bz;
                 prevDx = uX;
@@ -387,24 +404,26 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
           break;
         }
 
-        // Check crossing with an existing edge -> SNAP cleanly to exact intersection!
-        let snappedHit: { x: number; z: number; t: number } | null = null;
+        // Check crossing with an existing edge from a DIFFERENT streamline -> SNAP cleanly to exact intersection!
+        let snappedHit: { x: number; z: number; t: number; otherStreamId: number } | null = null;
         for (const ex of edges) {
-          // Ignore edges sharing our exact start point
+          if (ex.streamId === streamId) continue;
           if (Math.hypot(ex.x1 - cx, ex.z1 - cz) < 2 || Math.hypot(ex.x2 - cx, ex.z2 - cz) < 2) continue;
           const hit = segCross(cx, cz, nx, nz, ex.x1, ex.z1, ex.x2, ex.z2);
           if (hit && (!snappedHit || hit.t < snappedHit.t)) {
-            snappedHit = hit;
+            snappedHit = { ...hit, otherStreamId: ex.streamId };
           }
         }
 
         if (snappedHit) {
-          if (Math.hypot(snappedHit.x - cx, snappedHit.z - cz) > 8) {
-            edges.push({ x1: cx, z1: cz, x2: snappedHit.x, z2: snappedHit.z, width, kind });
-            registerNode(cx, cz, kind === 'arterial', rotY, 10);
-            registerNode(snappedHit.x, snappedHit.z, true, rotY, 12);
+          if (Math.hypot(snappedHit.x - cx, snappedHit.z - cz) > 6) {
+            const eNew = { x1: cx, z1: cz, x2: snappedHit.x, z2: snappedHit.z, width, kind, streamId };
+            edges.push(eNew);
+            createdInStream.push(eNew);
+            registerNode(cx, cz, streamId, kind === 'arterial', rotY, 10);
+            const ndSnap = registerNode(snappedHit.x, snappedHit.z, streamId, true, rotY, 14);
+            registerNode(ndSnap.x, ndSnap.z, snappedHit.otherStreamId, true, rotY, 14);
           }
-          // Major arterials continue across intersections; secondary streets terminate cleanly at T-junctions!
           if (kind === 'street') break;
           cx = snappedHit.x;
           cz = snappedHit.z;
@@ -413,9 +432,10 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
           continue;
         }
 
-        // Proximity snap to nearby existing node (within 15m)
+        // Proximity snap to nearby existing node from ANOTHER streamline (within 15m)
         let nearNode: { x: number; z: number } | null = null;
         for (const nd of nodes) {
+          if (nd.streamIds.size === 1 && nd.streamIds.has(streamId)) continue;
           if (Math.hypot(nd.x - cx, nd.z - cz) < 8) continue;
           if (Math.hypot(nd.x - nx, nd.z - nz) < 15) {
             nearNode = nd;
@@ -423,26 +443,39 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
           }
         }
         if (nearNode) {
-          if (!isTooParallelNearExisting(cx, cz, nearNode.x, nearNode.z, minParallelSep * 0.72)) {
-            edges.push({ x1: cx, z1: cz, x2: nearNode.x, z2: nearNode.z, width, kind });
-            registerNode(cx, cz, kind === 'arterial', rotY, 10);
-            registerNode(nearNode.x, nearNode.z, kind === 'arterial', rotY, 12);
+          if (!isTooParallelNearExisting(cx, cz, nearNode.x, nearNode.z, minParallelSep * 0.72, streamId)) {
+            const eNew = { x1: cx, z1: cz, x2: nearNode.x, z2: nearNode.z, width, kind, streamId };
+            edges.push(eNew);
+            createdInStream.push(eNew);
+            registerNode(cx, cz, streamId, kind === 'arterial', rotY, 10);
+            registerNode(nearNode.x, nearNode.z, streamId, kind === 'arterial', rotY, 14);
           }
           break;
         }
 
-        if (isTooParallelNearExisting(cx, cz, nx, nz, minParallelSep)) {
+        if (isTooParallelNearExisting(cx, cz, nx, nz, minParallelSep, streamId)) {
           break;
         }
 
-        edges.push({ x1: cx, z1: cz, x2: nx, z2: nz, width, kind });
-        registerNode(cx, cz, kind === 'arterial', rotY, 10);
-        registerNode(nx, nz, kind === 'arterial', rotY, 10);
+        const eNew = { x1: cx, z1: cz, x2: nx, z2: nz, width, kind, streamId };
+        edges.push(eNew);
+        createdInStream.push(eNew);
+        registerNode(cx, cz, streamId, kind === 'arterial', rotY, 10);
+        registerNode(nx, nz, streamId, kind === 'arterial', rotY, 10);
 
         cx = nx;
         cz = nz;
         prevDx = segDx / segLen;
         prevDz = segDz / segLen;
+      }
+    }
+
+    // Prune isolated single-stub micro-roads (< 42m total length) so ZERO lonely disconnected road stubs ever appear!
+    const totalLen = createdInStream.reduce((acc, e) => acc + Math.hypot(e.x2 - e.x1, e.z2 - e.z1), 0);
+    if (totalLen < 42) {
+      for (const rem of createdInStream) {
+        const idx = edges.indexOf(rem);
+        if (idx >= 0) edges.splice(idx, 1);
       }
     }
   };
@@ -520,10 +553,10 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
     traceStreamline(ss.x, ss.z, !ss.major, 'street', 22, 74, 15);
   }
 
-  // ==================== PASS 3: EXTRACT CLEAN PLANAR JUNCTION NODES (Minimum 56m spacing -> ZERO colliding crosswalks!) ====================
+  // ==================== PASS 3: EXTRACT CLEAN PLANAR JUNCTION NODES (ONLY where >=2 distinct streamlines actually cross!) ====================
   const junctions: TensorJunction[] = [];
   for (const nd of nodes) {
-    if (nd.degree < 3) continue;
+    if (nd.streamIds.size < 2) continue;
     if (riverSignedDist(nd.x, nd.z) < 16) continue;
     if (junctions.some((j) => Math.hypot(j.x - nd.x, j.z - nd.z) < 56)) continue;
     const padW = nd.hasArterial ? 36 : 22;

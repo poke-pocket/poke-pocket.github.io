@@ -2342,22 +2342,52 @@ export function buildProceduralTown3D(
     }
   }
 
-  // 1A-PLUS. REAL 3D ELEVATED URBAN VIADUCT / EXPRESSWAY (城市高架快速路 — 南北高架 soaring 7.8m overhead!)
-  // Characters & ground traffic walk freely underneath the concrete T-piers while elevated express traffic cruises above!
-  const viaductArterials = layout.streets.filter(
-    (s) => !s.isBridge && s.kind === 'arterial' && Math.abs(s.z2 - s.z1) > Math.abs(s.x2 - s.x1) * 1.4,
-  );
-  if (viaductArterials.length >= 2) {
+  // 1A-PLUS. REAL 3D ELEVATED URBAN VIADUCT / EXPRESSWAY (城市高架快速路 — ONLY on connected continuous chains with sloped ramps & full pier support, ZERO floating dead-end slabs!)
+  const landArterials = layout.streets.filter((s) => !s.isBridge && s.kind === 'arterial');
+  // Find the longest connected collinear/smooth chain of arterial segments!
+  let bestChain: TownStreetSeg[] = [];
+  for (const startSeg of landArterials) {
+    const chain: TownStreetSeg[] = [startSeg];
+    const used = new Set<TownStreetSeg>([startSeg]);
+    let grew = true;
+    while (grew && chain.length < 10) {
+      grew = false;
+      const tail = chain[chain.length - 1];
+      const tdx = tail.x2 - tail.x1;
+      const tdz = tail.z2 - tail.z1;
+      const tLen = Math.hypot(tdx, tdz) || 1;
+      for (const cand of landArterials) {
+        if (used.has(cand)) continue;
+        if (Math.hypot(cand.x1 - tail.x2, cand.z1 - tail.z2) < 6) {
+          const cdx = cand.x2 - cand.x1;
+          const cdz = cand.z2 - cand.z1;
+          const cLen = Math.hypot(cdx, cdz) || 1;
+          if ((tdx * cdx + tdz * cdz) / (tLen * cLen) > 0.78) {
+            chain.push(cand);
+            used.add(cand);
+            grew = true;
+            break;
+          }
+        }
+      }
+    }
+    if (chain.length > bestChain.length) bestChain = chain;
+  }
+
+  const bestChainLen = bestChain.reduce((acc, s) => acc + Math.hypot(s.x2 - s.x1, s.z2 - s.z1), 0);
+  if (bestChain.length >= 4 && bestChainLen >= 90) {
     const pierConcreteMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xbec5cf }));
     const viaductGuardMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x707a8a }));
     const viaductDeckMat = new THREE.MeshLambertMaterial({ map: tex.collector2Lane });
     const viaductLampMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
-    const VIADUCT_H = 7.8;
+    const VIADUCT_H = 7.4;
     const VIADUCT_W = 13.5;
 
-    for (const vSeg of viaductArterials.slice(0, 4)) {
+    // First segment = sloped up-ramp (0 -> VIADUCT_H), middle segments = level elevated deck, last segment = sloped down-ramp (VIADUCT_H -> 0)!
+    for (let ci = 0; ci < bestChain.length; ci++) {
+      const vSeg = bestChain[ci];
       const vLen = Math.hypot(vSeg.x2 - vSeg.x1, vSeg.z2 - vSeg.z1);
-      if (vLen < 24) continue;
+      if (vLen < 10) continue;
       const vYaw = Math.atan2(vSeg.x2 - vSeg.x1, vSeg.z2 - vSeg.z1);
       const vDirX = (vSeg.x2 - vSeg.x1) / vLen;
       const vDirZ = (vSeg.z2 - vSeg.z1) / vLen;
@@ -2367,8 +2397,20 @@ export function buildProceduralTown3D(
       const vmZ = (vSeg.z1 + vSeg.z2) * 0.5 - centerZ;
       const vBaseY = localGroundY((vSeg.x1 + vSeg.x2) * 0.5, (vSeg.z1 + vSeg.z2) * 0.5);
 
-      // Elevated box-girder road deck + crisp dark ink edges
-      const deckGeo = new THREE.BoxGeometry(VIADUCT_W, 0.95, vLen + 2.8);
+      const yStart = ci === 0 ? 0.3 : VIADUCT_H;
+      const yEnd = ci === bestChain.length - 1 ? 0.3 : VIADUCT_H;
+      const yMid = (yStart + yEnd) * 0.5;
+      const dy = yEnd - yStart;
+      const slopeLen = Math.hypot(vLen, dy);
+      const pitchX = -Math.atan2(dy, vLen);
+
+      const spanGroup = new THREE.Group();
+      spanGroup.position.set(vmX, vBaseY + yMid, vmZ);
+      spanGroup.rotation.order = 'YXZ';
+      spanGroup.rotation.y = vYaw;
+      spanGroup.rotation.x = pitchX;
+
+      const deckGeo = new THREE.BoxGeometry(VIADUCT_W, 0.95, slopeLen + 2.4);
       const deck = new THREE.Mesh(deckGeo, [
         pierConcreteMat,
         pierConcreteMat,
@@ -2377,51 +2419,55 @@ export function buildProceduralTown3D(
         pierConcreteMat,
         pierConcreteMat,
       ]);
-      deck.position.set(vmX, vBaseY + VIADUCT_H, vmZ);
-      deck.rotation.y = vYaw;
       deck.castShadow = true;
       deck.receiveShadow = true;
       deck.add(new THREE.LineSegments(new THREE.EdgesGeometry(deckGeo, 30), INK_LINE_MAT));
-      group.add(deck);
+      spanGroup.add(deck);
 
-      // Sleek left & right elevated sound-barrier guardrails
       for (const side of [-1, 1]) {
-        const gx = vmX + vNx * side * (VIADUCT_W * 0.48);
-        const gz = vmZ + vNz * side * (VIADUCT_W * 0.48);
-        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, vLen + 2.4), viaductGuardMat);
-        rail.position.set(gx, vBaseY + VIADUCT_H + 0.95, gz);
-        rail.rotation.y = vYaw;
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.42, 1.05, slopeLen + 2.0), viaductGuardMat);
+        rail.position.set(side * (VIADUCT_W * 0.48), 0.95, 0);
         rail.castShadow = true;
-        group.add(rail);
+        spanGroup.add(rail);
       }
+      group.add(spanGroup);
 
-      // Concrete T-shaped support piers spaced neatly every ~26m inside central median (ZERO sidewalk blocking!)
-      const pierCount = Math.max(1, Math.floor(vLen / 26));
-      for (let pi = 0; pi < pierCount; pi++) {
-        const f = (pi + 0.5) / pierCount;
-        const pwx = vSeg.x1 + (vSeg.x2 - vSeg.x1) * f;
-        const pwz = vSeg.z1 + (vSeg.z2 - vSeg.z1) * f;
-        if (layout.junctions.some((jn) => Math.hypot(jn.x - pwx, jn.z - pwz) < 20)) continue;
+      // Guaranteed vertical concrete support pier under EVERY elevated joint so NO slab EVER floats unsupported!
+      if (ci > 0) {
+        const pwx = vSeg.x1;
+        const pwz = vSeg.z1;
         const py = localGroundY(pwx, pwz);
         const pxL = pwx - centerX;
         const pzL = pwz - centerZ;
-        const col = new THREE.Mesh(new THREE.BoxGeometry(2.1, VIADUCT_H - 0.5, 2.1), pierConcreteMat);
-        col.position.set(pxL, py + (VIADUCT_H - 0.5) * 0.5, pzL);
+        const col = new THREE.Mesh(new THREE.BoxGeometry(2.1, VIADUCT_H - 0.4, 2.1), pierConcreteMat);
+        col.position.set(pxL, py + (VIADUCT_H - 0.4) * 0.5, pzL);
         col.rotation.y = vYaw;
         col.castShadow = true;
         col.receiveShadow = true;
         const cap = new THREE.Mesh(new THREE.BoxGeometry(VIADUCT_W * 0.82, 1.0, 2.5), pierConcreteMat);
-        cap.position.set(pxL, py + VIADUCT_H - 0.85, pzL);
+        cap.position.set(pxL, py + VIADUCT_H - 0.8, pzL);
         cap.rotation.y = vYaw;
         cap.castShadow = true;
-        // Elevated dual-arm overhead streetlamp!
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 4.2, 6), viaductGuardMat);
-        pole.position.set(pxL, py + VIADUCT_H + 2.5, pzL);
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 4.0, 6), viaductGuardMat);
+        pole.position.set(pxL, py + VIADUCT_H + 2.4, pzL);
         const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), viaductLampMat);
-        bulb.position.set(pxL, py + VIADUCT_H + 4.7, pzL);
+        bulb.position.set(pxL, py + VIADUCT_H + 4.5, pzL);
         group.add(col, cap, pole, bulb);
-        colliders.push(makeObbCollider(pwx, pwz, 1.15, 1.15, vYaw, VIADUCT_H));
+        if (!layout.junctions.some((jn) => Math.hypot(jn.x - pwx, jn.z - pwz) < 16)) {
+          colliders.push(makeObbCollider(pwx, pwz, 1.15, 1.15, vYaw, VIADUCT_H));
+        }
       }
+      // Solid concrete abutment block underneath ramp touch-down ends!
+      if (ci === 0 || ci === bestChain.length - 1) {
+        const ex = ci === 0 ? vSeg.x1 + vDirX * (vLen * 0.35) : vSeg.x2 - vDirX * (vLen * 0.35);
+        const ez = ci === 0 ? vSeg.z1 + vDirZ * (vLen * 0.35) : vSeg.z2 - vDirZ * (vLen * 0.35);
+        const abutment = new THREE.Mesh(new THREE.BoxGeometry(VIADUCT_W * 0.92, 2.8, vLen * 0.45), pierConcreteMat);
+        abutment.position.set(ex - centerX, localGroundY(ex, ez) + 1.2, ez - centerZ);
+        abutment.rotation.y = vYaw;
+        group.add(abutment);
+      }
+      void vNx;
+      void vNz;
     }
   }
 
