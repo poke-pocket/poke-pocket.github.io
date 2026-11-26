@@ -2351,6 +2351,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         x: destX,
         z: destZ,
         facingAngle: faceFwdAngle,
+        updatedAt: Date.now(),
       });
       sound.play('levelup');
       showBanner(`⛰️ 已传送至「${spot.label}」（${spot.subLabel}）！按 M 键打开地图可切换名山或返回城市`, 4200);
