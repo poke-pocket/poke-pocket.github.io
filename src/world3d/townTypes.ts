@@ -11,11 +11,16 @@ export interface ProximityAutoDoor3D {
   triggerRadius: number;
   openT: number;
   isOpen?: boolean;
+  /** Signed swing direction (+1 or -1) chosen from player's side when opening so the door ALWAYS pushes away from the player! */
+  swingDir?: 1 | -1;
+  /** World-space unit normal of the doorway plane used to detect which side the player is standing on */
+  normalX?: number;
+  normalZ?: number;
   hotelId?: string;
   roomNumber?: string;
   inspectNote?: string;
   collider?: TownCollider;
-  applyOpenT: (t: number) => void;
+  applyOpenT: (t: number, swingDir: 1 | -1) => void;
 }
 
 const HELD_HOTEL_KEYCARDS = new Map<string, string>();

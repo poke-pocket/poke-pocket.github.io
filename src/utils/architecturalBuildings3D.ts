@@ -59,12 +59,27 @@ export function updateProximityAutoDoors3D(
       d.openT += (target - d.openT) * Math.min(1, dt * speed);
       if (Math.abs(d.openT - target) <= 0.006) d.openT = target;
       const eased = 1 - Math.pow(1 - d.openT, 2.2);
-      d.applyOpenT(eased);
+      d.applyOpenT(eased, d.swingDir ?? 1);
     }
     if (d.collider) {
       d.collider.disabled = d.openT > 0.42;
     }
   }
+}
+
+/** Sets `door.swingDir` based on which side of the door plane `(actorX, actorZ)` stands on so the leaf ALWAYS swings AWAY! */
+export function orientDoorSwingAwayFromActor(
+  door: ProximityAutoDoor3D,
+  actorX: number,
+  actorZ: number,
+): void {
+  if (door.openT > 0.08) return;
+  if (door.normalX === undefined || door.normalZ === undefined) {
+    door.swingDir = 1;
+    return;
+  }
+  const dot = (actorX - door.worldX) * door.normalX + (actorZ - door.worldZ) * door.normalZ;
+  door.swingDir = dot >= 0 ? 1 : -1;
 }
 
 export interface BuiltUnifiedBuildingResult {
@@ -552,10 +567,13 @@ export function buildUnifiedWalkInBuilding3D(opts: {
       triggerRadius: 3.2,
       openT: 0,
       isOpen: false,
+      swingDir: 1,
+      normalX: sinLot,
+      normalZ: cosLot,
       inspectNote: backDoorNote,
       collider: backDoorCol,
-      applyOpenT: (t) => {
-        rearPivot.rotation.y = -1.42 * t;
+      applyOpenT: (t, dir) => {
+        rearPivot.rotation.y = 1.42 * dir * t;
       },
     };
     autoDoors.push(backDoorEntry);
@@ -832,12 +850,15 @@ export function buildUnifiedWalkInBuilding3D(opts: {
         triggerRadius: 2.9,
         openT: 0,
         isOpen: false,
+        swingDir: 1,
+        normalX: sinLot,
+        normalZ: cosLot,
         hotelId: doorOpts?.hotelId,
         roomNumber: doorOpts?.roomNumber,
         inspectNote: doorNote,
         collider: doorCol,
-        applyOpenT: (t) => {
-          rPivot.rotation.y = -1.42 * t;
+        applyOpenT: (t, dir) => {
+          rPivot.rotation.y = 1.42 * dir * t;
         },
       };
       autoDoors.push(dEntry);
@@ -888,12 +909,15 @@ export function buildUnifiedWalkInBuilding3D(opts: {
         triggerRadius: 2.9,
         openT: 0,
         isOpen: false,
+        swingDir: 1,
+        normalX: cosLot,
+        normalZ: -sinLot,
         hotelId: doorOpts?.hotelId,
         roomNumber: doorOpts?.roomNumber,
         inspectNote: doorNote,
         collider: doorCol,
-        applyOpenT: (t) => {
-          rPivot.rotation.y = 1.42 * t;
+        applyOpenT: (t, dir) => {
+          rPivot.rotation.y = -1.42 * dir * t;
         },
       };
       autoDoors.push(dEntry);

@@ -5,7 +5,7 @@ import { sampleHumanWalkFrame } from '../../data/worldTextures3D';
 import { LAKE_BASINS_3D, WATER_LEVEL_3D, getTerrainHeight3D, getWalkableSurfaceHeight3D } from '../../data/survivorsTactics';
 import { getActiveGeoTerrainOrigin, worldToGeo } from '../../data/geoTerrain3D';
 import type { SpeciesId } from '../../types/pet';
-import { updateProximityAutoDoors3D } from '../../utils/architecturalBuildings3D';
+import { orientDoorSwingAwayFromActor, updateProximityAutoDoors3D } from '../../utils/architecturalBuildings3D';
 import { isInsideBuildingInterior, resolveTownWallCollisions, type EnterableBuildingInterior, type ProceduralTownInstance, type TownInteractPoint, type TownStrollingCitizen } from '../../utils/townBuilder3D';
 import { getHeldHotelKeycard, setHeldHotelKeycard } from '../../world3d/townTypes';
 import { sound } from '../../utils/sound';
@@ -691,10 +691,11 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
             });
             return;
           }
+          orientDoorSwingAwayFromActor(d, sim.px, sim.pz);
           d.isOpen = true;
           if (d.collider) d.collider.disabled = true;
           sound.play('confirm');
-          showBanner(`🔓 嘀♪【${heldCard} 房卡】验证通过，客房门已打开！`, 2400);
+          showBanner(`🔓 嘀♪【${heldCard} 房卡】验证通过，客房门已向内推开！`, 2400);
           pushWorldSpeechBubble(bubblesList, {
             speakerId: tp.id,
             speakerName: `${d.roomNumber} 电子门禁`,
@@ -707,7 +708,11 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
           });
           return;
         }
-        d.isOpen = !d.isOpen;
+        const willOpen = !d.isOpen;
+        if (willOpen) {
+          orientDoorSwingAwayFromActor(d, sim.px, sim.pz);
+        }
+        d.isOpen = willOpen;
         if (d.collider) d.collider.disabled = d.isOpen;
         sound.play(d.isOpen ? 'confirm' : 'cancel');
         pushWorldSpeechBubble(bubblesList, {
