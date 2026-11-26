@@ -1,4 +1,4 @@
-import { GEO_UNITS_PER_KM } from './geoTerrain3D';
+import { CITY_STREET_PLAN_SCALE } from './geoTerrain3D';
 
 export interface ShanghaiMasterEdge {
   x1: number;
@@ -25,8 +25,8 @@ const KM_PER_DEG_LNG = 111.32 * Math.cos((SH_ORIGIN_LAT * Math.PI) / 180);
 
 /** Project real (lat, lng) into local meters/units relative to Shanghai city anchor (31.23°N, 121.47°E) */
 export function shLatLngToLocal(lat: number, lng: number): [number, number] {
-  const dx = (lng - SH_ORIGIN_LNG) * KM_PER_DEG_LNG * GEO_UNITS_PER_KM;
-  const dz = (SH_ORIGIN_LAT - lat) * KM_PER_DEG_LAT * GEO_UNITS_PER_KM;
+  const dx = (lng - SH_ORIGIN_LNG) * KM_PER_DEG_LNG * CITY_STREET_PLAN_SCALE;
+  const dz = (SH_ORIGIN_LAT - lat) * KM_PER_DEG_LAT * CITY_STREET_PLAN_SCALE;
   return [Math.round(dx * 10) / 10, Math.round(dz * 10) / 10];
 }
 

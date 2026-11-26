@@ -75,10 +75,19 @@ export interface ScenicMountainSpot {
 
 export const SCENIC_MOUNTAIN_SPOTS: ScenicMountainSpot[] = [
   {
+    id: 'mt_sheshan',
+    label: '⛰️ 上海 · 松江佘山草坡',
+    subLabel: '真实 1:1 海拔 99m · 距山顶 1.6km 缓坡可徒步登顶',
+    lat: 31.081,
+    lng: 121.196,
+    yaw: 0,
+    pitch: 0.08,
+  },
+  {
     id: 'mt_huangshan',
     label: '⛰️ 黄山 · 汤口仰望光明顶',
-    subLabel: '海拔 1864m · 翠谷草甸仰望奇峰峭壁',
-    lat: 30.036,
+    subLabel: '真实 1:1 海拔 1864m · 距主峰 6.2km 巍峨山脉',
+    lat: 30.077,
     lng: 118.165,
     yaw: 0,
     pitch: 0.04,
@@ -86,8 +95,8 @@ export const SCENIC_MOUNTAIN_SPOTS: ScenicMountainSpot[] = [
   {
     id: 'mt_taishan',
     label: '⛰️ 泰山 · 岱宗山前翠麓',
-    subLabel: '海拔 1545m · 平原拔地通天落差',
-    lat: 36.174,
+    subLabel: '真实 1:1 海拔 1545m · 距玉皇顶 5.8km 拔地通天',
+    lat: 36.203,
     lng: 117.101,
     yaw: 0,
     pitch: 0.04,
@@ -95,17 +104,17 @@ export const SCENIC_MOUNTAIN_SPOTS: ScenicMountainSpot[] = [
   {
     id: 'mt_fuji',
     label: '🗻 富士山 · 河口湖观雪峰',
-    subLabel: '海拔 3776m · 巨型覆雪火山锥全景',
-    lat: 35.472,
-    lng: 138.735,
+    subLabel: '真实 1:1 海拔 3776m · 距主峰 11km 覆雪火山锥',
+    lat: 35.462,
+    lng: 138.732,
     yaw: Math.PI,
     pitch: 0.03,
   },
   {
     id: 'mt_moganshan',
     label: '⛰️ 莫干山 · 浙西天目山谷',
-    subLabel: '海拔 719–1506m · 江南连绵竹海深谷',
-    lat: 30.552,
+    subLabel: '真实 1:1 海拔 719m · 连绵竹海可骑乘登顶',
+    lat: 30.582,
     lng: 119.865,
     yaw: 0,
     pitch: 0.06,
@@ -113,20 +122,11 @@ export const SCENIC_MOUNTAIN_SPOTS: ScenicMountainSpot[] = [
   {
     id: 'mt_wutong',
     label: '⛰️ 深圳 · 梧桐山麓观景台',
-    subLabel: '海拔 944m · 滨海高耸山脉',
-    lat: 22.522,
+    subLabel: '真实 1:1 海拔 944m · 滨海高耸山脉',
+    lat: 22.542,
     lng: 114.215,
     yaw: 0,
     pitch: 0.05,
-  },
-  {
-    id: 'mt_sheshan',
-    label: '⛰️ 上海 · 松江佘山草坡',
-    subLabel: '海拔 99m · 江南秀丽丘陵对比',
-    lat: 31.066,
-    lng: 121.196,
-    yaw: 0,
-    pitch: 0.08,
   },
 ];
 
@@ -372,6 +372,8 @@ function paintRoadsAndTownsOnMap(
   skipPixelRoadOverlay = false,
 ) {
   const activeGeo = getActiveGeoTerrainOrigin();
+  const kmScale = GEO_UNITS_PER_KM / 20;
+  const eqUpp = activeGeo ? unitsPerPx / kmScale : unitsPerPx;
   const invScale = 1 / Math.max(0.1, unitsPerPx);
   const casingExtra = detailed ? 2.4 : 1.2;
 
@@ -383,7 +385,7 @@ function paintRoadsAndTownsOnMap(
   if (activeGeo) {
     if (skipPixelRoadOverlay) {
       // Live ArcGIS real street layer is active: only draw subtle ocean routes when zoomed far out
-      if (detailed && unitsPerPx > 3.5) {
+      if (detailed && eqUpp > 3.5) {
         for (const cor of REAL_WORLD_CORRIDORS) {
           if (cor.kind !== 'ferry') continue;
           const pts: { sx: number; sy: number }[] = [];
@@ -412,9 +414,9 @@ function paintRoadsAndTownsOnMap(
       const p = toScreen(gc.x, gc.z);
       cityPinScreenBoxes.push({ sx: p.sx, sy: p.sy - 8 });
     }
-    if (unitsPerPx > 1.2) {
+    if (eqUpp > 1.2) {
       for (const cap of PROVINCIAL_AND_WORLD_CAPITALS) {
-        if (cap.tier === 'provincial' && unitsPerPx > 260) continue;
+        if (cap.tier === 'provincial' && eqUpp > 260) continue;
         const wp = geoToWorld(cap.lat, cap.lng, activeGeo);
         if (wp) {
           const p = toScreen(wp.x, wp.z);
@@ -438,7 +440,7 @@ function paintRoadsAndTownsOnMap(
 
     // 0. Real-World River & Lake Labels ONLY (actual river channels, shoals, sandbars & lakes are carved directly into the pixel terrain raster — ZERO vector lines!)
     for (const riv of REAL_WORLD_RIVERS) {
-      if (!detailed || unitsPerPx <= 2.2 || unitsPerPx >= 160) continue;
+      if (!detailed || eqUpp <= 2.2 || eqUpp >= 160) continue;
       ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
       const rw = ctx.measureText(riv.name).width + 8;
       for (const frac of [0.55, 0.36, 0.72, 0.24]) {
@@ -459,10 +461,10 @@ function paintRoadsAndTownsOnMap(
         break;
       }
     }
-    if (detailed && unitsPerPx > 0.35 && unitsPerPx < 14) {
+    if (detailed && eqUpp > 0.35 && eqUpp < 14) {
       for (const dl of SHANGHAI_DISTRICT_LABELS) {
-        if (dl.tier === 'city' && unitsPerPx < 1.3) continue;
-        if (dl.tier === 'town' && unitsPerPx > 4.6) continue;
+        if (dl.tier === 'city' && eqUpp < 1.3) continue;
+        if (dl.tier === 'town' && eqUpp > 4.6) continue;
         const wp = geoToWorld(dl.lat, dl.lng, activeGeo);
         if (!wp) continue;
         const lp = toScreen(wp.x, wp.z);
@@ -481,9 +483,9 @@ function paintRoadsAndTownsOnMap(
         ctx.fillText(dl.name, lp.sx, lp.sy);
       }
     }
-    if (detailed && unitsPerPx > 0.22 && unitsPerPx < 85) {
+    if (detailed && eqUpp > 0.22 && eqUpp < 85) {
       for (const lk of REAL_INLAND_LAKES) {
-        if (lk.rxDeg < 0.08 && unitsPerPx > 6) continue;
+        if (lk.rxDeg < 0.08 && eqUpp > 6) continue;
         const wp = geoToWorld(lk.lat, lk.lng, activeGeo);
         if (!wp) continue;
         const lp = toScreen(wp.x, wp.z);
@@ -505,15 +507,15 @@ function paintRoadsAndTownsOnMap(
     if (compiledNet) {
       const hwyScaleW = () => {
         const raw = HIGHWAY_ROAD_WIDTH_3D * invScale;
-        if (unitsPerPx > 6.5) return Math.max(1.4, Math.min(2.8, raw * 0.44));
-        if (unitsPerPx > 1.8) return Math.max(1.8, Math.min(3.4, raw * 0.52));
+        if (eqUpp > 6.5) return Math.max(1.4, Math.min(2.8, raw * 0.44));
+        if (eqUpp > 1.8) return Math.max(1.8, Math.min(3.4, raw * 0.52));
         return Math.max(detailed ? 2.0 : 1.1, raw * 0.82);
       };
       const wHwy = hwyScaleW();
 
       // Pass 1A: Highway dark slate casing (identical to city arterial casing `#64748b` so outer-ring junctions weld seamlessly!)
       ctx.strokeStyle = '#64748b';
-      ctx.lineWidth = wHwy + (detailed ? (unitsPerPx > 2 ? 0.95 : 1.5) : 0.7);
+      ctx.lineWidth = wHwy + (detailed ? (eqUpp > 2 ? 0.95 : 1.5) : 0.7);
       for (const leg of compiledNet.highwayLegs) {
         if (leg.points.length < 2) continue;
         const p0 = toScreen(leg.points[0][0], leg.points[0][1]);
@@ -559,7 +561,7 @@ function paintRoadsAndTownsOnMap(
         }
         ctx.stroke();
 
-        if (detailed && unitsPerPx > 0.7 && !drawnCorridorShields.has(leg.corridorId)) {
+        if (detailed && eqUpp > 0.7 && !drawnCorridorShields.has(leg.corridorId)) {
           const midPt = leg.points[Math.floor(leg.points.length * 0.5)];
           const mid = toScreen(midPt[0], midPt[1]);
           if (
@@ -569,7 +571,7 @@ function paintRoadsAndTownsOnMap(
             mid.sy < ctx.canvas.height - 24
           ) {
             const shortCode = leg.label.split(' ')[0] || leg.label;
-            const badgeText = unitsPerPx < 4.5 ? leg.label : shortCode;
+            const badgeText = eqUpp < 4.5 ? leg.label : shortCode;
             ctx.font = 'bold 8px "PingFang SC", monospace';
             const tw = ctx.measureText(badgeText).width + 8;
             if (canPlaceGeoLabel(mid.sx, mid.sy, tw + 4, 14)) {
@@ -1240,10 +1242,11 @@ function paintTopographicMap(
   const halfW = w / 2;
   const halfH = h / 2;
   const activeGeo = getActiveGeoTerrainOrigin();
+  const eqUppDem = activeGeo ? unitsPerPx / (GEO_UNITS_PER_KM / 20) : unitsPerPx;
 
-  // Use Z9 ('detail', ~300m/px) across the entire metropolitan zoom (unitsPerPx <= 10.5) so Changxing, Hengsha, Chongming & Pudong coastlines stay razor-sharp!
+  // Use Z11/Z9 ('detail') across the entire metropolitan zoom (`eqUppDem <= 10.5`) so coastlines & mountains stay razor-sharp!
   const demRes: GeoDemResolution =
-    unitsPerPx > 95 ? 'global' : unitsPerPx > 24 ? 'world' : unitsPerPx > 10.5 ? 'macro' : 'detail';
+    eqUppDem > 95 ? 'global' : eqUppDem > 24 ? 'world' : eqUppDem > 10.5 ? 'macro' : 'detail';
 
   for (let py = 0; py < h; py += stepPx) {
     const wz = centerZ + (py - halfH) * unitsPerPx;
@@ -1345,7 +1348,7 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
     const W = canvas.width;
     const H = canvas.height;
     const geoOrigin = getActiveGeoTerrainOrigin();
-    const span = geoOrigin ? 180 : 84;
+    const span = geoOrigin ? 260 : 84;
 
     const toScreen = (wx: number, wz: number) => ({
       sx: ((wx - snapshot.px) / span + 0.5) * W,
@@ -1512,7 +1515,8 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showLiveStreetTiles, setShowLiveStreetTiles] = useState(false);
   const geoOrigin = getActiveGeoTerrainOrigin();
-  const [zoom, setZoom] = useState(geoOrigin ? 0.25 : 1.0);
+  const minZoom = geoOrigin ? 0.0000072 : 0.00036;
+  const [zoom, setZoom] = useState(geoOrigin ? 0.045 : 1.0);
   const [pan, setPan] = useState({ x: 0, z: 0 });
   const [isInteracting, setIsInteracting] = useState(false);
   const [, setIconTick] = useState(0);
@@ -1589,7 +1593,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       e.stopPropagation();
       const clampedDelta = Math.max(-180, Math.min(180, e.deltaY));
       const factor = Math.exp(-clampedDelta * 0.0022);
-      setZoom((z) => Math.max(0.00036, Math.min(20, Number((z * factor).toFixed(6)))));
+      setZoom((z) => Math.max(minZoom, Math.min(20, Number((z * factor).toFixed(7)))));
     };
     cv.addEventListener('wheel', onWheelNative, { passive: false });
     return () => cv.removeEventListener('wheel', onWheelNative);
@@ -1756,8 +1760,9 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
         ctx.fillStyle = '#fffdf5';
         ctx.fillRect(cxPin - 1, cyPin - 1, 2, 2);
 
+        const eqUppCity = unitsPerPx / (GEO_UNITS_PER_KM / 20);
         const cityTag =
-          unitsPerPx > 90
+          eqUppCity > 90
             ? gc.city.name
             : distKm <= 2
               ? `📍${gc.city.name}`
@@ -1779,10 +1784,11 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       }
 
       // Provincial Capitals (all 34 Chinese capitals/municipalities/SARs) + Major World Cities!
-      if (unitsPerPx > 1.2) {
+      const eqUppCap = unitsPerPx / (GEO_UNITS_PER_KM / 20);
+      if (eqUppCap > 1.2) {
         for (const cap of PROVINCIAL_AND_WORLD_CAPITALS) {
           if (flagshipIds.has(cap.id)) continue;
-          if (cap.tier === 'provincial' && unitsPerPx > 260) continue;
+          if (cap.tier === 'provincial' && eqUppCap > 260) continue;
           const wp = geoToWorld(cap.lat, cap.lng, activeGeo);
           if (!wp) continue;
           const { sx, sy } = toScreen(wp.x, wp.z);
@@ -2200,7 +2206,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
             title="缩小地图"
             onClick={() => {
               sound.play('cursor');
-              setZoom((z) => Math.max(0.00036, Number((z / 1.45).toFixed(6))));
+              setZoom((z) => Math.max(minZoom, Number((z / 1.45).toFixed(7))));
             }}
           >
             −
@@ -2250,7 +2256,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                           if (wp) {
                             sound.play('cursor');
                             setPan({ x: wp.x - snapshot.px, z: wp.z - snapshot.pz });
-                            setZoom(0.32);
+                            setZoom(0.02);
                             setDrawerOpen(false);
                           }
                         }}
@@ -2373,7 +2379,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                             onClick={() => {
                               sound.play('confirm');
                               setPan({ x: gc.x - snapshot.px, z: gc.z - snapshot.pz });
-                              setZoom(0.28);
+                              setZoom(0.045);
                               setDrawerOpen(false);
                             }}
                           >

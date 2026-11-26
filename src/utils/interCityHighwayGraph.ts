@@ -103,7 +103,8 @@ function resolveCityOuterRoadPortal(
   dirZ: number,
 ): { x: number; z: number; tx: number; tz: number; outerR: number } {
   const distFromOrigin = Math.hypot(city.wx, city.wz);
-  const useExactStreetGraph = distFromOrigin < 3400 || (city.isPlayableCity && distFromOrigin < 4800);
+  const useExactStreetGraph =
+    distFromOrigin < 220 * GEO_UNITS_PER_KM || (city.isPlayableCity && distFromOrigin < 320 * GEO_UNITS_PER_KM);
 
   if (useExactStreetGraph) {
     const layout = generateTownLayout({
@@ -191,9 +192,9 @@ function sampleCurvedHighwayLeg(
   const chord = Math.hypot(x1 - x0, z1 - z0);
   if (chord < 2) return [[x0, z0], [x1, z1]];
 
-  const stepSize = nearOrigin ? 24 : 95;
-  const steps = Math.max(4, Math.min(180, Math.ceil(chord / stepSize)));
-  const handleScale = Math.min(chord * 0.36, 260);
+  const stepSize = nearOrigin ? 36 : 180;
+  const steps = Math.max(4, Math.min(2600, Math.ceil(chord / stepSize)));
+  const handleScale = Math.min(chord * 0.36, 4800);
   const m0x = tx0 * handleScale;
   const m0z = tz0 * handleScale;
   const m1x = tx1 * handleScale;
@@ -201,7 +202,7 @@ function sampleCurvedHighwayLeg(
 
   const perpX = -(z1 - z0) / chord;
   const perpZ = (x1 - x0) / chord;
-  const wobbleAmp = Math.min(28, chord * 0.038);
+  const wobbleAmp = Math.min(420, chord * 0.032);
 
   const pts: [number, number][] = [];
   for (let s = 0; s <= steps; s++) {
@@ -284,8 +285,8 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
   const gridBuckets = new Map<string, number[]>();
 
   const registerSpatialSeg = (x1: number, z1: number, x2: number, z2: number, label: string, destHint: string) => {
-    // Only index segments within 4,600u (~230km) of active origin for fast 3D streaming & collision
-    if (Math.hypot((x1 + x2) * 0.5, (z1 + z2) * 0.5) > 4600) return;
+    // Index segments within ~240km of active origin for fast O(1) 3D highway streaming & roadbed grading
+    if (Math.hypot((x1 + x2) * 0.5, (z1 + z2) * 0.5) > 240 * GEO_UNITS_PER_KM) return;
     const idx = spatialSegs.length;
     spatialSegs.push({ x1, z1, x2, z2, label, destHint });
     const minGx = Math.floor((Math.min(x1, x2) - 40) / GRID_CELL);
@@ -329,7 +330,7 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
     if (cor.kind === 'rail') {
       // Snap railway waypoints near any known city directly to its suburban HSR station (`cx - 289, cz + 78` or `cx - 265, cz - 36`)!
       const railPts: [number, number][] = rawWorldPts.map((p) => {
-        const hitCity = findMatchingUrbanNode(p.x, p.z, urbanNodes, 380);
+        const hitCity = findMatchingUrbanNode(p.x, p.z, urbanNodes, 19 * GEO_UNITS_PER_KM);
         if (!hitCity) return [p.x, p.z];
         const offX = hitCity.id === 'shanghai' ? -289 : -265;
         const offZ = hitCity.id === 'shanghai' ? 78 : -36;
@@ -348,8 +349,8 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
     for (let i = 0; i < rawWorldPts.length - 1; i++) {
       const a = rawWorldPts[i];
       const b = rawWorldPts[i + 1];
-      const cityA = findMatchingUrbanNode(a.x, a.z, urbanNodes, 380);
-      const cityB = findMatchingUrbanNode(b.x, b.z, urbanNodes, 380);
+      const cityA = findMatchingUrbanNode(a.x, a.z, urbanNodes, 19 * GEO_UNITS_PER_KM);
+      const cityB = findMatchingUrbanNode(b.x, b.z, urbanNodes, 19 * GEO_UNITS_PER_KM);
 
       const axCenter = cityA ? cityA.wx : a.x;
       const azCenter = cityA ? cityA.wz : a.z;
@@ -423,7 +424,7 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
         );
       }
 
-      if (cityA && Math.hypot(startPortal.x, startPortal.z) < 3600) {
+      if (cityA && Math.hypot(startPortal.x, startPortal.z) < 220 * GEO_UNITS_PER_KM) {
         exitPortals.push({
           id: `portal_${cor.id}_${cityA.id}_to_${cityB?.id ?? i}`,
           cityId: cityA.id,
@@ -438,7 +439,7 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
           dirZ: startPortal.tz,
         });
       }
-      if (cityB && Math.hypot(endPortal.x, endPortal.z) < 3600) {
+      if (cityB && Math.hypot(endPortal.x, endPortal.z) < 220 * GEO_UNITS_PER_KM) {
         exitPortals.push({
           id: `portal_${cor.id}_${cityB.id}_to_${cityA?.id ?? i}`,
           cityId: cityB.id,
@@ -534,5 +535,5 @@ export function getNearestGeoHighwayDist3D(wx: number, wz: number): number {
   return proj ? proj.dist : 9999;
 }
 
-/** Ensures `GEO_UNITS_PER_KM` stays referenced cleanly for scaling consistency */
-export const HIGHWAY_ROAD_WIDTH_3D = Math.max(22, GEO_UNITS_PER_KM * 1.2);
+/** Authentic 4-lane highway roadbed width in meters (`24m`, independent of `GEO_UNITS_PER_KM`!) */
+export const HIGHWAY_ROAD_WIDTH_3D = Math.max(22, Math.min(26, GEO_UNITS_PER_KM * 0.024));

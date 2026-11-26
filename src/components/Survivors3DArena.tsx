@@ -604,6 +604,48 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   } | null>(null);
   const captureFinishRef = useRef<(() => void) | null>(null);
   const [isSurfing, setIsSurfing] = useState(false);
+  type RideGearId = 'walk' | 'dash' | 'fly' | 'jet';
+  const [rideMode, setRideMode] = useState<RideGearId>('walk');
+  const rideModeRef = useRef<RideGearId>('walk');
+  rideModeRef.current = rideMode;
+  const [playerAltitudeM, setPlayerAltitudeM] = useState(2);
+  const lastAltSyncMsRef = useRef(0);
+
+  const cycleRideMode = () => {
+    const order: RideGearId[] = ['walk', 'dash', 'fly', 'jet'];
+    const cur = rideModeRef.current;
+    const next = order[(order.indexOf(cur) + 1) % order.length];
+    rideModeRef.current = next;
+    setRideMode(next);
+    const sim = simRef.current;
+    if (sim && (next === 'fly' || next === 'jet')) {
+      const floorNow = getWalkableSurfaceHeight3D(sim.px, sim.pz, sim.py);
+      if (sim.py < floorNow + 14) {
+        sim.py = floorNow + 18;
+      }
+      sim.vy = 0;
+    }
+    sound.play(next === 'walk' ? 'cursor' : 'levelup');
+    const labels: Record<RideGearId, string> = {
+      walk: '🚶 已切换为【徒步慢跑 · 8m/s】（按住 Shift 可加速冲刺）',
+      dash: '🐕 召唤陆地骑乘！【疾驰模式 · 160km/h】轻松翻越真实山坡与公路！',
+      fly: '🦅 召唤苍穹飞骑！【高空飞行 · 630km/h】（空格拔高 / X键下降，自由翱翔群山！）',
+      jet: '⚡ 进入超音速云端！【极速巡航 · 1940km/h】瞬息跨越十里河山！',
+    };
+    showBanner(labels[next], 2800);
+  };
+
+  const landRideMode = () => {
+    rideModeRef.current = 'walk';
+    setRideMode('walk');
+    const sim = simRef.current;
+    if (sim) {
+      sim.py = Math.max(WATER_LEVEL_3D + 0.14, getWalkableSurfaceHeight3D(sim.px, sim.pz));
+      sim.vy = 0;
+    }
+    sound.play('confirm');
+    showBanner('🛬 已平稳降落至地面！', 1600);
+  };
   const surfWarnCdRef = useRef(0);
   const triggerBattleActionRef = useRef<
     ((kind: 'ball' | 'heal' | 'boost' | 'salvo' | 'capture_ko' | 'dismiss_ko', enemyId?: number) => void) | null
@@ -1579,9 +1621,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(pal.skyHex);
-    scene.fog = new THREE.Fog(pal.fogHex, 175, 520);
+    scene.fog = new THREE.Fog(pal.fogHex, 2400, 24500);
 
-    const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.35, 760);
+    const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.5, 34000);
     camera.position.set(0, 4.8, 10.5);
 
     const onResize = () => {
@@ -1619,7 +1661,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const horizonBackdrop = createHorizonBackdropMesh(selectedBiome);
     scene.add(horizonBackdrop);
 
-    // 1. GRAND CONTINUOUS TOPOGRAPHIC HILLS, OPEN PLAINS & REAL DISTANT MOUNTAINS (544u = 27.2km × 27.2km live 3D terrain!)
+    // 1. 3-RING NESTED CLIPMAP TERRAIN LOD (Fine 544m + Mid 5.2km + Far 32km = true 1:1 meter mountains & horizons at 60fps!)
     const TERRAIN_SIZE = 544;
     const TERRAIN_SEGS = prefsRef.current.graphicsQuality === 'low' ? 84 : 112;
     const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGS, TERRAIN_SEGS);
@@ -1630,13 +1672,31 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     terrainMesh.receiveShadow = true;
     scene.add(terrainMesh);
 
-    // 1B. Terrain-Clipped Organic Water Sheet (Automatically conforms to EVERY natural FBM lake, bay, peninsula & winding river — ZERO circular discs!)
+    const midSegs = prefsRef.current.graphicsQuality === 'low' ? 64 : 88;
+    const midTerrainGeo = new THREE.PlaneGeometry(5200, 5200, midSegs, midSegs);
+    midTerrainGeo.rotateX(-Math.PI / 2);
+    const midTerrainMesh = new THREE.Mesh(midTerrainGeo, terrainMat);
+    scene.add(midTerrainMesh);
+
+    const farSegs = prefsRef.current.graphicsQuality === 'low' ? 72 : 96;
+    const farTerrainGeo = new THREE.PlaneGeometry(32000, 32000, farSegs, farSegs);
+    farTerrainGeo.rotateX(-Math.PI / 2);
+    const farTerrainMesh = new THREE.Mesh(farTerrainGeo, terrainMat);
+    scene.add(farTerrainMesh);
+
+    // 1B. Terrain-Clipped Organic Water Sheet (Near 544m + Far 32km Ocean/Lake Horizon Sheet!)
     const waterMat = createPixelWaterMaterial(selectedBiome);
     const waterPlaneGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE);
     waterPlaneGeo.rotateX(-Math.PI / 2);
     const waterPlaneMesh = new THREE.Mesh(waterPlaneGeo, waterMat);
     waterPlaneMesh.position.set(0, WATER_LEVEL_3D, 0);
     scene.add(waterPlaneMesh);
+
+    const farWaterGeo = new THREE.PlaneGeometry(32000, 32000);
+    farWaterGeo.rotateX(-Math.PI / 2);
+    const farWaterPlaneMesh = new THREE.Mesh(farWaterGeo, waterMat);
+    farWaterPlaneMesh.position.set(0, WATER_LEVEL_3D - 0.12, 0);
+    scene.add(farWaterPlaneMesh);
 
     const floatingLilyPads = new Set<{ mesh: THREE.Mesh; baseY: number; phase: number }>();
     const lilyMat = new THREE.MeshBasicMaterial({
@@ -1976,7 +2036,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     weatherPoints.visible = false;
     scene.add(weatherPoints);
     let windClock = 0;
-    const { floraBillboards, syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround } = createArenaFloraStreamer3D({ chunkState, cattailMat, floatingLilyPads, floraGroup, isInsideAnyTownPlaza, lilyGeo, lilyMat, lotusMat, prefsRef, selectedBiome, terrainGeo, terrainMesh, terrainPosAttr, tex, waterPlaneMesh  });
+    const { floraBillboards, syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround } = createArenaFloraStreamer3D({ chunkState, cattailMat, farTerrainGeo, farTerrainMesh, farWaterPlaneMesh, floatingLilyPads, floraGroup, isInsideAnyTownPlaza, lilyGeo, lilyMat, lotusMat, midTerrainGeo, midTerrainMesh, prefsRef, selectedBiome, terrainGeo, terrainMesh, terrainPosAttr, tex, waterPlaneMesh });
     // 4. 3D Roadside Safe Zones (Boxy placeholder buildings temporarily removed pending custom pixel-art redesign!)
     const safeZoneMeshes = new Map<string, { group: THREE.Group; ring: THREE.Mesh }>();
     const syncSafeZones3D = (_cx: number, _cz: number) => {
@@ -2826,28 +2886,48 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           waterMat.uniforms.uTime.value = sim.elapsed;
           if (surfWarnCdRef.current > 0) surfWarnCdRef.current = Math.max(0, surfWarnCdRef.current - dt);
 
+          const curRide = rideModeRef.current;
+          const isFlyingNow = curRide === 'fly' || curRide === 'jet';
+          const isShiftSprint = ks.has('shift');
           const hasWaterSurfer = sim.followers.some(
             (f) => SPECIES_CATALOG[f.species].element === 'water',
           );
-          const moveSpeed = 7.6 * sim.speedMult;
+          const baseGearSpeed =
+            curRide === 'jet'
+              ? 540
+              : curRide === 'fly'
+                ? 175
+                : curRide === 'dash'
+                  ? 44
+                  : isShiftSprint
+                    ? 26
+                    : 8.2;
+          const moveSpeed = baseGearSpeed * sim.speedMult;
           const nextPx = sim.px + worldMx * moveSpeed * dt;
           const nextPz = sim.pz + worldMz * moveSpeed * dt;
           const nextGroundY = getWalkableSurfaceHeight3D(nextPx, nextPz, sim.py);
           const enteringDeepWater = nextGroundY < WATER_LEVEL_3D - 0.14;
-          if (enteringDeepWater && !hasWaterSurfer) {
+          if (!isFlyingNow && enteringDeepWater && !hasWaterSurfer) {
             if (surfWarnCdRef.current <= 0 && mLen > 0.1) {
               surfWarnCdRef.current = 3.5;
               sound.play('error');
-              showBanner('🌊 前方是深水湖泊！走桥梁可自由通行，或携带水系宝可梦冲浪渡水！', 3200);
+              showBanner('🌊 前方是深水！走桥梁、带水系宝可梦冲浪，或按 T 切换飞行宝可梦飞越！', 3200);
             }
           } else if (
-            nextGroundY <= sim.py + (isNearAnyRoadOrRailForFlora3D(nextPx, nextPz) ? 2.15 : 1.45)
+            isFlyingNow ||
+            nextGroundY <=
+              sim.py +
+                (curRide === 'dash' || isShiftSprint
+                  ? 5.5
+                  : isNearAnyRoadOrRailForFlora3D(nextPx, nextPz)
+                    ? 2.4
+                    : 1.85)
           ) {
             sim.px = nextPx;
             sim.pz = nextPz;
           }
           const rawGroundY = getWalkableSurfaceHeight3D(sim.px, sim.pz, sim.py);
-          const surfingNow = rawGroundY < WATER_LEVEL_3D - 0.1 && hasWaterSurfer;
+          const surfingNow = !isFlyingNow && rawGroundY < WATER_LEVEL_3D - 0.1 && hasWaterSurfer;
           const groundY = surfingNow ? WATER_LEVEL_3D + 0.12 : rawGroundY;
           surfRingMesh.visible = surfingNow;
           if (surfingNow) {
@@ -2860,19 +2940,47 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           }
           setIsSurfing((prev) => (prev === surfingNow ? prev : surfingNow));
 
-          // 3D Jump physics (High enough to scale 2.0m stone terrace ledges cleanly!)
-          if (jumpQueuedRef.current) {
+          if (isFlyingNow) {
             jumpQueuedRef.current = false;
-            if (sim.py <= groundY + 0.14) {
-              sim.vy = 11.2;
-              sound.play('jump');
+            const climbSpeed = curRide === 'jet' ? 145 : 68;
+            let vertVel = 0;
+            if (ks.has(' ')) vertVel += climbSpeed;
+            if (ks.has('x') || ks.has('control')) vertVel -= climbSpeed;
+            // Pitch-assisted glide when pressing forward (`W` / Up)
+            if (mLen > 0.12 && mz < -0.1) {
+              vertVel += (0.22 - camOrbitRef.current.pitch) * moveSpeed * 0.65;
+            }
+            sim.vy = 0;
+            const minAirY = Math.max(WATER_LEVEL_3D + 2.2, groundY + 2.4);
+            sim.py = Math.max(minAirY, Math.min(4800, sim.py + vertVel * dt));
+            // Keep squad companions soaring gracefully beside protagonist while airborne!
+            sim.followers.forEach((f, idx) => {
+              const ang = sim.facingAngle + Math.PI + (idx % 2 === 0 ? 1 : -1) * (0.55 + Math.floor(idx / 2) * 0.28);
+              const dist = 2.8 + Math.floor(idx / 2) * 1.6;
+              f.x += (sim.px + Math.sin(ang) * dist - f.x) * Math.min(1, dt * 10);
+              f.z += (sim.pz + Math.cos(ang) * dist - f.z) * Math.min(1, dt * 10);
+              f.y += (sim.py - 0.35 + Math.sin(sim.elapsed * 4 + idx) * 0.28 - f.y) * Math.min(1, dt * 12);
+            });
+          } else {
+            // 3D Ground & Jump physics
+            if (jumpQueuedRef.current) {
+              jumpQueuedRef.current = false;
+              if (sim.py <= groundY + 0.18) {
+                sim.vy = 11.2;
+                sound.play('jump');
+              }
+            }
+            sim.vy -= 23 * dt;
+            sim.py += sim.vy * dt;
+            if (sim.py < groundY) {
+              sim.py = groundY;
+              sim.vy = 0;
             }
           }
-          sim.vy -= 23 * dt;
-          sim.py += sim.vy * dt;
-          if (sim.py < groundY) {
-            sim.py = groundY;
-            sim.vy = 0;
+
+          if (now - lastAltSyncMsRef.current > 220) {
+            lastAltSyncMsRef.current = now;
+            setPlayerAltitudeM(Math.max(0, Math.round(sim.py)));
           }
 
           if (mLen > 0.08) {
@@ -2896,7 +3004,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             if (Math.floor(sim.elapsed * 2) > Math.floor((sim.elapsed - dt) * 2)) {
               for (const gc of getProjectedGeoCities()) {
                 if (mountedGeoCityIds.has(gc.city.id)) continue;
-                if (Math.hypot(sim.px - gc.x, sim.pz - gc.z) < 920) {
+                if (Math.hypot(sim.px - gc.x, sim.pz - gc.z) < 2600) {
                   mountedGeoCityIds.add(gc.city.id);
                   const neighborId = `geo_city_${gc.city.id}_${Math.round(gc.x)}_${Math.round(gc.z)}`;
                   const neighborName = `${gc.city.name}市`.replace(/市市$/, '市');
@@ -2933,6 +3041,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
           }
           const { closestTownPoint, activeTownNow, activeInteriorNow, closestNode, inTownPeaceZone } = stepArenaTownAndWorldNodes3D({ WEATHER_PARTICLE_COUNT, activeTownIdRef, activeZone, applyLiveSolarAtmosphere, autoNavTargetsRef, bbTiltX, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, damageEnemy3D, dt, executeInteractActionRef, groundY, heroFrames, interactOptionIdxRef, lastEnteredInteriorIdRef, liveWeatherRef, mLen, metaBonusesRef, metaRef, now, npcSocialTimerRef, onHealParty, onUpdateMeta, persistState, playerShadow, playerSprite, playerSpriteMat, prefsRef, proceduralTowns, safeZoneMeshes, setActiveBusStopModal, setAskQuickNavOpen, setInRunTownShopOpen, setWorldMapOpen, showBanner, sim, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, startStreetDuelRef, sun, surfingNow, syncSafeZones3D, teleportIntraCityBusRef, triggerInteractRef, updateWorldAround, vfxAtlas, weatherGeo, weatherMat, weatherPoints, windClock, worldBubblesRef, worldInteractNodes });
+          if (activeInteriorNow && rideModeRef.current !== 'walk') {
+            rideModeRef.current = 'walk';
+            setRideMode('walk');
+          }
           // Dynamic Zone & Walk-In Building BGM Switching (Town Day/Night, Wilderness, Pokémon Center, Poké Mart, Restaurant, Hotel, House, Boss/Duel!)
           {
             let desiredBgm: BgmTrackId = 'adventure';
@@ -3473,9 +3585,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, hud, followersView, tactics, camPreset, regionMeta.name, diffMeta.label, save.pets]);
 
-  useArenaKeyboardHotkeys({ CAM_MODE_META, activeBusStopModal, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, cycleCameraFollowMode, cycleInteractOptionRef, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, inRunTownShopOpen, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, programmaticUnlockRef, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setActiveBusStopModal, setBanishMode, setClosingLevelUp, setInRunTownShopOpen, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
+  useArenaKeyboardHotkeys({ CAM_MODE_META, activeBusStopModal, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, cycleCameraFollowMode, cycleInteractOptionRef, cycleRideMode, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, inRunTownShopOpen, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, programmaticUnlockRef, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setActiveBusStopModal, setBanishMode, setClosingLevelUp, setInRunTownShopOpen, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
   const bgmTrackLabel = BGM_TRACK_LABELS[activeBgmTrack] ?? '晴空微风 · 城镇漫步';
-  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
+  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
 
   return (
     <div ref={containerRef} className="world3d-stage">

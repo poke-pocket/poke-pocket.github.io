@@ -12,13 +12,16 @@ import { getShanghaiRiverSignedDist } from '../utils/townStreetGen';
  * Coordinate convention: +X = East, -Z = North, +Z = South, -X = West
  */
 
-export const GEO_UNITS_PER_KM = 20;
+export const GEO_UNITS_PER_KM = 1000;
+/** Compact urban street-block scale so 3D walkable city centers keep crisp 80–120m real-world block spacing within ±720m */
+export const CITY_STREET_PLAN_SCALE = 24;
 const KM_PER_DEG_LAT = 111.32;
 const DEM_Z_GLOBAL = 2;
 const DEM_Z_WORLD = 3;
 const DEM_Z_MACRO = 5;
-const DEM_Z_DETAIL = 9;
-const MAX_DETAIL_CACHE = 180;
+const DEM_Z_MID = 9;
+const DEM_Z_DETAIL = 11;
+const MAX_DETAIL_CACHE = 240;
 
 export interface GeoTerrainOrigin {
   originLat: number;
@@ -218,7 +221,15 @@ function prefetchRegionTiles(origin: GeoTerrainOrigin) {
     }
   }
 
-  // 2. Pre-fetch Detail Z9 3x3 grid (~230km x 230km) around starting city for crisp local coastlines & hills!
+  // 2. Pre-fetch Mid Z9 (~230km) + High-Res Z11 (~58km, ~76m/px!) 3x3 grids around starting city!
+  const mid = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_MID);
+  const m9x = Math.floor(mid.fx);
+  const m9y = Math.floor(mid.fy);
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      requestDemTile(DEM_Z_MID, m9x + dx, m9y + dy);
+    }
+  }
   const detail = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_DETAIL);
   const dcx = Math.floor(detail.fx);
   const dcy = Math.floor(detail.fy);
@@ -236,6 +247,14 @@ export function prefetchGeoDetailAround(lat: number, lng: number): void {
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       requestDemTile(DEM_Z_DETAIL, dcx + dx, dcy + dy);
+    }
+  }
+  const mid = latLngToTileFrac(lat, lng, DEM_Z_MID);
+  const m9x = Math.floor(mid.fx);
+  const m9y = Math.floor(mid.fy);
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      requestDemTile(DEM_Z_MID, m9x + dx, m9y + dy);
     }
   }
   const macro = latLngToTileFrac(lat, lng, DEM_Z_MACRO);
@@ -312,8 +331,10 @@ export function sampleRealElevationMeters(
   const res: GeoDemResolution =
     typeof preferMacro === 'string' ? preferMacro : preferMacro ? 'macro' : 'detail';
   if (res === 'detail') {
-    const detail = sampleGridAt(lat, lng, DEM_Z_DETAIL, true);
-    if (detail !== null) return detail;
+    const detail11 = sampleGridAt(lat, lng, DEM_Z_DETAIL, true);
+    if (detail11 !== null) return detail11;
+    const mid9 = sampleGridAt(lat, lng, DEM_Z_MID, true);
+    if (mid9 !== null) return mid9;
   }
   if (res === 'detail' || res === 'macro') {
     const macro = sampleGridAt(lat, lng, DEM_Z_MACRO, true);
@@ -634,39 +655,45 @@ export function classifyRealEarthPixelColor(
  * that coarse 300m Z9 DEM tiles otherwise blur out, while enhancing famous urban-fringe peaks across East Asia!
  * Format: [lat, lng, radiusKm, peakLiftUnits]
  */
+/**
+ * Real-World Peak Meter Floors (`1 单位 = 1 真实米`!)
+ * Guarantees narrow sub-kilometer hills (like Shanghai's 99m Sheshan!) and famous summits
+ * reach their exact real-world meter elevation even while coarse Z5/Z9 tiles are still streaming in!
+ * Format: [lat, lng, radiusKm, realPeakMeters]
+ */
 const REAL_REGIONAL_HILLS: [number, number, number, number][] = [
-  // 上海松江九峰 & 西郊丘陵群 (可自然徒步攀登的秀丽山坡!)
-  [31.096, 121.196, 4.2, 16.5], // 西佘山 & 东佘山
-  [31.076, 121.152, 3.6, 14.5], // 天马山
-  [31.082, 121.182, 3.0, 12.0], // 辰山
-  [31.042, 121.118, 3.4, 11.5], // 小昆山
-  [31.112, 121.162, 2.8, 10.0], // 凤凰山 / 厍公山
-  [30.735, 121.345, 2.6, 9.0],  // 金山岛 / 查山
-  // 苏锡常与杭嘉湖江南名山
-  [31.392, 120.952, 3.4, 13.0], // 昆山玉峰山
-  [31.265, 120.495, 5.8, 24.0], // 苏州穹窿山・天平山・灵岩山
-  [31.338, 120.575, 3.0, 11.5], // 苏州虎丘山
-  [31.542, 120.218, 5.0, 22.0], // 无锡惠山・锡山
-  [30.618, 119.865, 9.5, 42.0], // 莫干山脉 (719m)
-  [30.340, 119.430, 13.0, 68.0], // 天目山脉 (1506m)
-  [30.245, 120.102, 6.2, 28.0], // 杭州北高峰・飞来峰・玉皇山
-  [32.068, 118.852, 6.8, 32.0], // 南京紫金山 (钟山 448m)
-  // 全国与东亚著名高山地标 (宽阔山脚 + 可徒步缓坡脊线!)
-  [36.256, 117.101, 13.5, 76.0], // 五岳独尊・泰山 (1545m)
-  [30.133, 118.165, 14.5, 84.0], // 黄山光明顶・莲花峰 (1864m)
-  [29.558, 115.988, 12.0, 70.0], // 庐山汉阳峰 (1474m)
-  [36.185, 120.625, 10.5, 56.0], // 青岛崂山 (1132m)
-  [26.062, 119.395, 8.2, 46.0],  // 福州鼓山 (925m)
-  [29.545, 106.605, 7.2, 34.0],  // 重庆南山・歌乐山
-  [39.992, 116.188, 8.5, 38.0],  // 北京香山・西山 (575m)
-  [23.182, 113.298, 6.8, 28.0],  // 广州白云山 (382m)
-  [22.576, 114.215, 8.2, 48.0],  // 深圳梧桐山 (944m)
-  [22.502, 113.918, 4.5, 21.0],  // 深圳南山 (336m)
-  [22.275, 114.145, 5.5, 34.0],  // 香港太平山 (552m)
-  [22.352, 114.188, 5.5, 32.0],  // 香港狮子山 (495m)
-  [25.170, 121.555, 9.2, 56.0],  // 台北阳明山・七星山 (1120m)
-  [35.065, 135.838, 7.5, 42.0],  // 京都比叡山・大文字山 (848m)
-  [35.361, 138.727, 16.5, 112.0], // 富士山主峰 (3776m)
+  // 上海松江九峰 (真实海拔米数！1:1 比例下 99m 高、底宽 2.8km，坡度自然平缓可徒步登顶！)
+  [31.096, 121.196, 1.5, 99.0],   // 西佘山 & 东佘山 (99m)
+  [31.076, 121.152, 1.4, 98.2],   // 天马山 (98.2m)
+  [31.082, 121.182, 1.1, 71.4],   // 辰山 (71.4m)
+  [31.042, 121.118, 1.2, 54.3],   // 小昆山 (54.3m)
+  [31.112, 121.162, 1.0, 52.0],   // 凤凰山 (52m)
+  [30.735, 121.345, 1.1, 103.7],  // 大金山岛 (103.7m)
+  // 苏锡常与杭嘉湖江南名山 (真实海拔米数)
+  [31.392, 120.952, 1.4, 84.0],   // 昆山玉峰山 (84m)
+  [31.265, 120.495, 3.2, 341.7],  // 苏州穹窿山・天平山 (341.7m)
+  [31.338, 120.575, 0.9, 34.3],   // 苏州虎丘山 (34.3m)
+  [31.542, 120.218, 2.8, 328.9],  // 无锡惠山 (328.9m)
+  [30.618, 119.865, 5.8, 719.0],  // 莫干山脉 (719m)
+  [30.340, 119.430, 8.5, 1506.0], // 天目山脉 (1506m)
+  [30.245, 120.102, 3.2, 314.0],  // 杭州北高峰 (314m)
+  [32.068, 118.852, 4.2, 448.9],  // 南京紫金山 (448.9m)
+  // 全国与东亚著名高山 (真实海拔米数)
+  [36.256, 117.101, 9.5, 1545.0], // 泰山玉皇顶 (1545m)
+  [30.133, 118.165, 10.5, 1864.8], // 黄山莲花峰・光明顶 (1864.8m)
+  [29.558, 115.988, 8.5, 1474.0], // 庐山汉阳峰 (1474m)
+  [36.185, 120.625, 7.2, 1132.7], // 青岛崂山 (1132.7m)
+  [26.062, 119.395, 5.2, 925.0],  // 福州鼓山 (925m)
+  [29.545, 106.605, 4.5, 681.5],  // 重庆南山 (681.5m)
+  [39.992, 116.188, 4.8, 575.0],  // 北京香山鬼见愁 (575m)
+  [23.182, 113.298, 4.2, 382.0],  // 广州白云山摩星岭 (382m)
+  [22.576, 114.215, 5.2, 943.7],  // 深圳梧桐山 (943.7m)
+  [22.502, 113.918, 2.4, 336.0],  // 深圳大南山 (336m)
+  [22.275, 114.145, 2.8, 552.0],  // 香港太平山 (552m)
+  [22.352, 114.188, 2.6, 495.0],  // 香港狮子山 (495m)
+  [25.170, 121.555, 6.2, 1120.0], // 台北阳明山七星山 (1120m)
+  [35.065, 135.838, 5.0, 848.0],  // 京都比叡山 (848m)
+  [35.361, 138.727, 13.5, 3776.0], // 富士山主峰 (3776m)
 ];
 
 function sampleRegionalHillLift3D(lat: number, lng: number): number {
@@ -697,46 +724,36 @@ function sampleRegionalHillLift3D(lat: number, lng: number): number {
  * Produces clearly visible, walkable 8°–26° grassy slopes, undulating ridges, and stepped knolls
  * across rural forests & plains while staying strictly >= 0 on low plains so dry land NEVER floods!
  */
+/**
+ * Subtle 1:1 meter-scale natural meadow & hillside micro-topography (`0 .. +3.6m` gentle swells over 120–260m):
+ * Adds pleasant real-world grassy hillocks on plains while preserving 100% walkable `< 4°` natural grades!
+ */
 function sculptCountrysideRelief3D(wx: number, wz: number): number {
-  // 1. Broad rolling hills & valleys (~90-140u wavelength, up to +6.8u height -> clear scenic slopes!)
-  const broadA = Math.sin(wx * 0.026 + wz * 0.019 + 0.8);
-  const broadB = Math.cos(wx * 0.018 - wz * 0.029 + 2.1);
-  const broadWave = (broadA * 0.55 + broadB * 0.45) * 0.5 + 0.5; // [0, 1]
-  const rollingHills = Math.pow(broadWave, 1.45) * 6.8;
-
-  // 2. Medium ridges & natural stepped grassy terraces (~38-55u wavelength, up to +3.8u -> crisp hillock crests!)
-  const ridgeRaw =
-    0.5 +
-    0.32 * Math.sin(wx * 0.062 - wz * 0.048 + Math.sin(wz * 0.025) * 1.2) +
-    0.18 * Math.cos(wx * 0.045 + wz * 0.071);
-  // Soft terrace quantization creates authentic Pokémon/Zelda climbable hillside benches!
-  const ridgeSmooth = Math.max(0, ridgeRaw - 0.34) / 0.66;
-  const terracedKnoll =
-    (Math.floor(ridgeSmooth * 3.0) + smoothstepLocal(0.15, 0.85, (ridgeSmooth * 3.0) % 1)) * 1.25;
-
-  // 3. Tactile local slope undulation (~18-24u wavelength, ±0.45u shifted non-negative -> you always feel gentle ground grade!)
-  const localSlope =
-    (Math.sin(wx * 0.115 + wz * 0.085) * 0.5 + Math.cos(wx * 0.078 - wz * 0.125) * 0.5 + 1.0) * 0.55;
-
-  return rollingHills + terracedKnoll + localSlope;
+  const broadA = Math.sin(wx * 0.011 + wz * 0.0085 + 0.8);
+  const broadB = Math.cos(wx * 0.0075 - wz * 0.0125 + 2.1);
+  const broadWave = (broadA * 0.55 + broadB * 0.45) * 0.5 + 0.5;
+  const rollingMeadow = Math.pow(broadWave, 1.4) * 2.8;
+  const localGrade =
+    (Math.sin(wx * 0.038 + wz * 0.029) * 0.5 + Math.cos(wx * 0.026 - wz * 0.042) * 0.5 + 1.0) * 0.42;
+  return rollingMeadow + localGrade;
 }
 
-/** Smooth, broad walkable mountain shoulders (`<= 28°` grade, zero unwalkable knife-edge spikes!) */
+/** Gentle 1:1 meter-scale mountain rock detail (`±3m..±9m` over 150m+) so 76m Z11 DEM tiles have natural local rock texture */
 function sculptAlpineMountainRidges3D(wx: number, wz: number, meters: number): number {
-  if (meters <= 110) return 0;
-  const strength = smoothstepLocal(110, 1100, meters);
-  const s1 = Math.sin(wx * 0.0085 + wz * 0.0068 + 0.9) * 0.5 + 0.5;
-  const s2 = Math.cos(wx * 0.0135 - wz * 0.0112 + 1.7) * 0.5 + 0.5;
-  return (s1 * 6.5 + s2 * 3.5) * strength;
+  if (meters <= 80) return 0;
+  const strength = smoothstepLocal(80, 900, meters);
+  const s1 = Math.sin(wx * 0.018 + wz * 0.014 + 0.9) * 0.5 + 0.5;
+  const s2 = Math.cos(wx * 0.032 - wz * 0.027 + 1.7) * 0.5 + 0.5;
+  return (s1 * 5.2 + s2 * 2.6) * strength;
 }
 
 function microSculpt(wx: number, wz: number): number {
   const rollingHills =
-    Math.sin(wx * 0.024 + wz * 0.018) * 2.4 +
-    Math.cos(wx * 0.033 - wz * 0.027 + 1.4) * 1.65;
+    Math.sin(wx * 0.014 + wz * 0.011) * 1.2 +
+    Math.cos(wx * 0.021 - wz * 0.017 + 1.4) * 0.85;
   const micro =
-    Math.sin(wx * 0.085 + wz * 0.052) * 0.55 +
-    Math.cos(wx * 0.047 - wz * 0.098) * 0.42;
+    Math.sin(wx * 0.065 + wz * 0.048) * 0.32 +
+    Math.cos(wx * 0.042 - wz * 0.072) * 0.24;
   return rollingHills + micro;
 }
 
@@ -834,82 +851,61 @@ export function sampleGeoTerrainHeight3D(
 
   let elev: number;
   if (meters === null) {
-    elev = 1.65 + countrysideRelief * 0.55 + namedHillLift;
+    elev = Math.max(1.65 + countrysideRelief, namedHillLift);
   } else if (isTrueOcean) {
     // Real Ocean / Sea / Bay / Estuary
-    elev = Math.max(-2.45, -0.58 + Math.min(0, meters) * 0.055) + micro * 0.05;
+    elev = Math.max(-3.2, -0.58 + Math.min(0, meters) * 0.06) + micro * 0.04;
     if (elev > -0.42) elev = -0.45;
-  } else if (meters <= 45) {
-    // 1. Real Coastal Plains, River Terraces & Low Knolls (`0.8..45m` -> `0.65..6.8u`)
-    const clampedM = Math.max(0.8, meters);
-    const demSlopeLift = Math.pow((clampedM - 0.8) / 44.2, 0.88) * 6.15;
-    elev = 0.65 + demSlopeLift + countrysideRelief * 0.72 + namedHillLift;
-  } else if (meters <= 260) {
-    // 2. Walkable Hills & Low Mountains (`45..260m` -> `6.8..24.5u` + gentle ridge shoulders)
-    const tHill = (meters - 45) / 215;
-    const ridgeLift = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, meters);
-    elev = Math.max(
-      2.5,
-      6.8 + Math.pow(tHill, 0.9) * 17.7 + countrysideRelief * 0.55 + ridgeLift + namedHillLift * 0.65,
-    );
-  } else if (meters <= 1200) {
-    // 3. Walkable Medium-High Mountain Ranges (`260..1200m` -> `24.5..76.0u`)
-    const tMt = (meters - 260) / 940;
-    const ridgeLift = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, meters);
-    elev = Math.max(
-      16.0,
-      24.5 + Math.pow(tMt, 0.88) * 51.5 + ridgeLift + micro * 0.55 + namedHillLift * 0.55,
-    );
   } else {
-    // 4. Grand Walkable Mountains & Alpine Snow Peaks (`1200..5500m+` -> `76.0..188.0u`)
-    const tHigh = Math.min(1, (meters - 1200) / 3800);
-    const ridgeLift = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, meters);
-    elev = Math.max(
-      60.0,
-      76.0 + Math.pow(tHigh, 0.82) * 112.0 + ridgeLift + micro * 0.8 + namedHillLift * 0.5,
-    );
+    // TRUE 1:1 METER-EXACT EARTH ELEVATION (`1 游戏单位 === 1 真实海拔米`!)
+    // - 99m Sheshan = 99 units tall across 3,000 units (`1.5km` radius -> natural 8°–16° walkable slope!)
+    // - 1,864m Huangshan = 1,864 units tall across 20,000 units (`10km` radius -> natural 12°–30° walkable mountain!)
+    // - 3,776m Mt. Fuji = 3,776 units tall!
+    const realMeters = Math.max(0.85, meters, namedHillLift);
+    const ridgeDetail = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, realMeters);
+    elev = realMeters + countrysideRelief + ridgeDetail + (realMeters > 60 ? micro * 0.5 : 0);
   }
 
   // Carve real inland lakes (e.g. Taihu Lake 太湖, West Lake 西湖) & major continental rivers outside downtown so 2D & 3D water match 1:1!
   if (!preferMacro && !isTrueOcean) {
     const lakeDepth = sampleInlandLakeFactor(geo.lat, geo.lng);
     if (lakeDepth > 0) {
-      const targetLakeY = -0.45 - lakeDepth * 1.35;
+      const targetLakeY = -0.55 - lakeDepth * 1.65;
       elev = elev * (1 - lakeDepth) + targetLakeY * lakeDepth;
-    } else if (Math.hypot(wx, wz) > 320) {
+    } else if (Math.hypot(wx, wz) > 780) {
       const rivDepth = sampleContinentalRiverFactor(geo.lat, geo.lng);
       if (rivDepth > 0) {
-        const targetRivY = -0.45 - rivDepth * 1.15;
+        const targetRivY = -0.55 - rivDepth * 1.35;
         elev = elev * (1 - rivDepth) + targetRivY * rivDepth;
       }
     }
   }
 
-  // Deterministic Downtown Core Elevation ONLY within the active 3D city street footprint (`distFromOrigin < 280u`),
-  // NEVER bulldozing real mountains & hills across the 15-30km metropolitan region (`佘山`, `紫金山`, `白云山`, `梧桐山`, `太平山`, `香山`!)
+  // Deterministic 3D Downtown Core Elevation ONLY within the ±760m active 3D city street footprint around `(0, 0)`!
   if (!preferMacro) {
     const distFromOrigin = Math.hypot(wx, wz);
-    if (distFromOrigin < 280 && (distFromOrigin < 200 || !isTrueOcean)) {
+    if (distFromOrigin < 760 && (distFromOrigin < 480 || !isTrueOcean)) {
       const activeCityId = activeOrigin.startCityId ?? 'shanghai';
       const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
       const riverElev = -1.65;
+      const basePlainM = Math.max(1.65, Math.min(28.0, meters ?? 4.0));
       const urbanRoll =
-        smoothstepLocal(45, 220, distFromOrigin) *
-        (Math.sin(wx * 0.009 + wz * 0.007) * 0.85 + Math.cos(wx * 0.013 - wz * 0.011) * 0.65);
-      const dryCityY = 1.65 + urbanRoll;
+        smoothstepLocal(60, 420, distFromOrigin) *
+        (Math.sin(wx * 0.006 + wz * 0.005) * 0.75 + Math.cos(wx * 0.009 - wz * 0.008) * 0.55);
+      const dryCityY = basePlainM + urbanRoll;
       let cityTargetY = dryCityY;
       if (rivSigned < 0) {
         cityTargetY = riverElev;
-      } else if (rivSigned < 7.5) {
-        const bankT = rivSigned / 7.5;
+      } else if (rivSigned < 8.5) {
+        const bankT = rivSigned / 8.5;
         const smoothBank = bankT * bankT * (3 - 2 * bankT);
         cityTargetY = riverElev * (1 - smoothBank) + dryCityY * smoothBank;
       }
-      if (distFromOrigin < 145) {
+      if (distFromOrigin < 480) {
         return cityTargetY;
       }
-      const edgeT = 1 - smoothstepLocal(145, 280, distFromOrigin);
-      elev = Math.max(0.65, elev) * (1 - edgeT) + cityTargetY * edgeT;
+      const edgeT = 1 - smoothstepLocal(480, 760, distFromOrigin);
+      elev = Math.max(0.85, elev) * (1 - edgeT) + cityTargetY * edgeT;
     }
   }
 
@@ -1339,8 +1335,8 @@ export function getLocalRealRiversForCity(
 ): { id: string; name: string; width: number; points: [number, number][] }[] {
   const kmPerDegLng = Math.max(12, KM_PER_DEG_LAT * Math.cos((cityLat * Math.PI) / 180));
   const toLocal = (lat: number, lng: number): [number, number] => [
-    (lng - cityLng) * kmPerDegLng * GEO_UNITS_PER_KM,
-    -(lat - cityLat) * KM_PER_DEG_LAT * GEO_UNITS_PER_KM,
+    (lng - cityLng) * kmPerDegLng * CITY_STREET_PLAN_SCALE,
+    -(lat - cityLat) * KM_PER_DEG_LAT * CITY_STREET_PLAN_SCALE,
   ];
   const results: { id: string; name: string; width: number; points: [number, number][] }[] = [];
 
@@ -1395,8 +1391,8 @@ export function getLocalRealRiversForCity(
 export function getLocalRealHighwayAnglesForCity(cityLat: number, cityLng: number): number[] {
   const kmPerDegLng = Math.max(12, KM_PER_DEG_LAT * Math.cos((cityLat * Math.PI) / 180));
   const toLocal = (lat: number, lng: number): [number, number] => [
-    (lng - cityLng) * kmPerDegLng * GEO_UNITS_PER_KM,
-    -(lat - cityLat) * KM_PER_DEG_LAT * GEO_UNITS_PER_KM,
+    (lng - cityLng) * kmPerDegLng * CITY_STREET_PLAN_SCALE,
+    -(lat - cityLat) * KM_PER_DEG_LAT * CITY_STREET_PLAN_SCALE,
   ];
   const angles: number[] = [];
   for (const cor of REAL_WORLD_CORRIDORS) {

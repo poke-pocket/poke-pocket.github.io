@@ -291,13 +291,19 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         toggleWorldMap();
         return;
       }
-      if (k === 'z' || k === '[' || k === 'c' || k === ']') {
+      if (k === 't') {
         e.preventDefault();
+        (rawCtx as any).cycleRideMode?.();
+        return;
+      }
+      if (k === 'z' || k === '[' || k === 'c' || k === ']' || k === 'x' || k === 'shift' || k === 'control') {
+        if (k !== 'shift' && k !== 'control') e.preventDefault();
         keysRef.current.add(k);
         return;
       }
       if (e.key === ' ') {
         e.preventDefault();
+        keysRef.current.add(' ');
         if (!pausedRef.current) jumpQueuedRef.current = true;
         return;
       }
@@ -336,6 +342,7 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
       }
     };
     const up = (e: KeyboardEvent) => {
+      if (e.key === ' ') keysRef.current.delete(' ');
       keysRef.current.delete(norm(e.key));
     };
     window.addEventListener('keydown', down);

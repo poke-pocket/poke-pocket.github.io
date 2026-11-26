@@ -22,12 +22,17 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
   const {
     chunkState,
     cattailMat,
+    farTerrainGeo,
+    farTerrainMesh,
+    farWaterPlaneMesh,
     floatingLilyPads,
     floraGroup,
     isInsideAnyTownPlaza,
     lilyGeo,
     lilyMat,
     lotusMat,
+    midTerrainGeo,
+    midTerrainMesh,
     prefsRef,
     selectedBiome,
     terrainGeo,
@@ -138,13 +143,75 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
   let floraSnapGx = 999999;
   let floraSnapGz = 999999;
   let floraPendingPass = true;
+  let midSnapX = 99999999;
+  let midSnapZ = 99999999;
+  let farSnapX = 99999999;
+  let farSnapZ = 99999999;
   const terrainNormAttr = terrainGeo.attributes.normal as THREE.BufferAttribute;
   const gridSide = Math.round(Math.sqrt(terrainPosAttr.count));
   const cellSpacing = gridSide > 1 ? Math.abs(terrainPosAttr.getX(1) - terrainPosAttr.getX(0)) : 2.5;
   const twoSpacing = cellSpacing * 2;
 
+  const updateLodRingHeightfield = (
+    geo: THREE.BufferGeometry | undefined,
+    mesh: THREE.Mesh | undefined,
+    snapCenterX: number,
+    snapCenterZ: number,
+    innerHoleHalfSize: number,
+    holeDropY: number,
+  ) => {
+    if (!geo || !mesh) return;
+    mesh.position.set(snapCenterX, 0, snapCenterZ);
+    const pAttr = geo.attributes.position as THREE.BufferAttribute;
+    const nAttr = geo.attributes.normal as THREE.BufferAttribute;
+    const pArr = pAttr.array as Float32Array;
+    const cnt = pAttr.count;
+    const side = Math.round(Math.sqrt(cnt));
+    const sp2 = (side > 1 ? Math.abs(pAttr.getX(1) - pAttr.getX(0)) : 50) * 2;
+
+    for (let i = 0, p = 0; i < cnt; i++, p += 3) {
+      const lx = pArr[p];
+      const lz = pArr[p + 2];
+      let h = getTerrainHeight3D(lx + snapCenterX, lz + snapCenterZ);
+      if (Math.abs(lx) < innerHoleHalfSize && Math.abs(lz) < innerHoleHalfSize) {
+        h -= holeDropY;
+      }
+      pArr[p + 1] = h;
+    }
+    pAttr.needsUpdate = true;
+
+    if (nAttr && side * side === cnt) {
+      const nArr = nAttr.array as Float32Array;
+      for (let rz = 0; rz < side; rz++) {
+        const rPrev = Math.max(0, rz - 1) * side;
+        const rCur = rz * side;
+        const rNext = Math.min(side - 1, rz + 1) * side;
+        for (let rx = 0; rx < side; rx++) {
+          const p = (rCur + rx) * 3;
+          const hL = pArr[(rCur + Math.max(0, rx - 1)) * 3 + 1];
+          const hR = pArr[(rCur + Math.min(side - 1, rx + 1)) * 3 + 1];
+          const hU = pArr[(rPrev + rx) * 3 + 1];
+          const hD = pArr[(rNext + rx) * 3 + 1];
+          const nx = hL - hR;
+          const nz = hU - hD;
+          const inv = 1 / Math.hypot(nx, sp2, nz);
+          nArr[p] = nx * inv;
+          nArr[p + 1] = sp2 * inv;
+          nArr[p + 2] = nz * inv;
+        }
+      }
+      nAttr.needsUpdate = true;
+    } else {
+      geo.computeVertexNormals();
+    }
+  };
+
   const updateWorldAround = (cx: number, cz: number) => {
-    // 1. Snap 288m terrain mesh every 16m + ultra-fast O(N) heightfield central-difference normals (0.3ms, zero GC!)
+    if (chunkState.x === 999999) {
+      midSnapX = 99999999;
+      farSnapX = 99999999;
+    }
+    // 1A. Ring 0: Fine 544m near terrain mesh (snaps every 16m)
     const snapX = Math.round(cx / 16) * 16;
     const snapZ = Math.round(cz / 16) * 16;
     if (snapX !== chunkState.x || snapZ !== chunkState.z) {
@@ -184,6 +251,27 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
         terrainNormAttr.needsUpdate = true;
       } else {
         terrainGeo.computeVertexNormals();
+      }
+    }
+
+    // 1B. Ring 1: Mid-Horizon 5.2km × 5.2km terrain mesh (snaps every 160m)
+    const mSnapX = Math.round(cx / 160) * 160;
+    const mSnapZ = Math.round(cz / 160) * 160;
+    if (mSnapX !== midSnapX || mSnapZ !== midSnapZ) {
+      midSnapX = mSnapX;
+      midSnapZ = mSnapZ;
+      updateLodRingHeightfield(midTerrainGeo, midTerrainMesh, mSnapX, mSnapZ, 236, 18);
+    }
+
+    // 1C. Ring 2: Far Alpine Horizon 32km × 32km (±16km!) mountain & ocean mesh (snaps every 960m)
+    const fSnapX = Math.round(cx / 960) * 960;
+    const fSnapZ = Math.round(cz / 960) * 960;
+    if (fSnapX !== farSnapX || fSnapZ !== farSnapZ) {
+      farSnapX = fSnapX;
+      farSnapZ = fSnapZ;
+      updateLodRingHeightfield(farTerrainGeo, farTerrainMesh, fSnapX, fSnapZ, 2380, 65);
+      if (farWaterPlaneMesh) {
+        farWaterPlaneMesh.position.set(fSnapX, WATER_LEVEL_3D - 0.12, fSnapZ);
       }
     }
 

@@ -13,7 +13,7 @@ import { ArenaTownSocialAndBusOverlay } from './ArenaTownSocialAndBusOverlay';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, prefs, regionMeta, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, cycleRideMode, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, landRideMode, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, playerAltitudeM, prefs, regionMeta, reorderBattleFollowers, resetVirtualPad, resultModal, rideMode, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
   const isBgmOn = Boolean(save.bgmEnabled && !save.muted && save.bgmVolume > 0 && (prefs.masterVolume ?? 80) > 0);
   return (
     <>
@@ -254,6 +254,74 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   {isBgmOn ? bgmTrackLabel : '音乐已静音'}
                 </span>
               </button>
+
+              {/* 1:1 Real-Earth Multi-Gear Pokémon Ride & Flight Switcher (`T` hotkey / Click) */}
+              <button
+                type="button"
+                onClick={() => cycleRideMode?.()}
+                title="点击或按 T 键切换：徒步 (8m/s) → 疾驰骑乘 (160km/h) → 苍穹飞行 (630km/h，空格升空/X下降) → 极速巡航 (1940km/h)"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '3px 8px',
+                  background:
+                    rideMode === 'jet'
+                      ? 'rgba(30, 58, 138, 0.92)'
+                      : rideMode === 'fly'
+                        ? 'rgba(13, 71, 102, 0.92)'
+                        : rideMode === 'dash'
+                          ? 'rgba(58, 42, 16, 0.92)'
+                          : 'rgba(20, 24, 38, 0.86)',
+                  border: `2px solid ${
+                    rideMode === 'jet'
+                      ? '#74c0fc'
+                      : rideMode === 'fly'
+                        ? '#63e6be'
+                        : rideMode === 'dash'
+                          ? '#ffd43b'
+                          : '#868e96'
+                  }`,
+                  borderRadius: 4,
+                  color: '#fff9db',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '2px 2px 0 rgba(0, 0, 0, 0.55)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span>
+                  {rideMode === 'jet'
+                    ? `⚡ 极速 · 海拔 ${playerAltitudeM ?? 0}m`
+                    : rideMode === 'fly'
+                      ? `🦅 飞行 · 海拔 ${playerAltitudeM ?? 0}m`
+                      : rideMode === 'dash'
+                        ? `🐕 疾驰 · 海拔 ${playerAltitudeM ?? 0}m`
+                        : `🚶 徒步 [T骑乘] · ${playerAltitudeM ?? 0}m`}
+                </span>
+              </button>
+
+              {(rideMode === 'fly' || rideMode === 'jet') && (
+                <button
+                  type="button"
+                  onClick={() => landRideMode?.()}
+                  title="立即降落回到地面"
+                  style={{
+                    padding: '3px 7px',
+                    background: 'rgba(20, 24, 38, 0.88)',
+                    border: '2px solid #ffa94d',
+                    borderRadius: 4,
+                    color: '#ffd8a8',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    boxShadow: '2px 2px 0 rgba(0, 0, 0, 0.55)',
+                  }}
+                >
+                  ⬇ 降落
+                </button>
+              )}
 
               {autoNavActiveLabel && (
                 <div className="surv-autonav-active-pill" style={{ marginRight: 0 }}>
