@@ -28,15 +28,17 @@ export function buildModernCityBridge3D(opts: {
   group: THREE.Group;
   colliders: TownCollider[];
   deckRoadTex: THREE.CanvasTexture;
+  getGroundHeight: (x: number, z: number) => number;
 }): void {
-  const { seg, centerX, centerZ, baseY, group, colliders, deckRoadTex } = opts;
+  const { seg, centerX, centerZ, baseY, group, colliders, deckRoadTex, getGroundHeight } = opts;
   const bLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
   const bMidX = (seg.x1 + seg.x2) * 0.5 - centerX;
   const bMidZ = (seg.z1 + seg.z2) * 0.5 - centerZ;
   const bYaw = Math.atan2(seg.x2 - seg.x1, seg.z2 - seg.z1);
-  const deckY = WATER_LEVEL_3D + 2.35 - baseY;
+  const endH = Math.max(getGroundHeight(seg.x1, seg.z1), getGroundHeight(seg.x2, seg.z2));
+  const deckY = Math.max(WATER_LEVEL_3D + 0.9, baseY + 0.24, endH + 0.16) - baseY;
 
-  // Sleek chamfered concrete girder & asphalt deck
+  // Sleek chamfered concrete girder & asphalt deck flush with onshore avenues
   const girderMat = new THREE.MeshLambertMaterial({ color: 0xcbd5e1 });
   const parapetMat = new THREE.MeshLambertMaterial({
     color: seg.bridgeStyle === 'waibaidu' ? 0x64748b : 0xe2e8f0,
@@ -44,18 +46,22 @@ export function buildModernCityBridge3D(opts: {
   const capRailMat = new THREE.MeshLambertMaterial({ color: 0x475569 });
   const pierMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
 
-  const girderMesh = new THREE.Mesh(new THREE.BoxGeometry(seg.width + 0.6, 0.82, bLen), girderMat);
-  girderMesh.position.set(bMidX, deckY - 0.44, bMidZ);
+  const girderMesh = new THREE.Mesh(new THREE.BoxGeometry(seg.width + 0.4, 0.52, bLen + 4.2), girderMat);
+  girderMesh.position.set(bMidX, deckY - 0.26, bMidZ);
   girderMesh.rotation.y = bYaw;
   girderMesh.castShadow = true;
   girderMesh.receiveShadow = true;
   group.add(girderMesh);
 
   const deckTex = deckRoadTex.clone();
+  deckTex.center.set(0.5, 0.5);
+  deckTex.rotation = Math.PI / 2;
+  deckTex.repeat.set(Math.max(1, Math.round(bLen / 14)), 1);
+  deckTex.wrapS = THREE.RepeatWrapping;
+  deckTex.wrapT = THREE.RepeatWrapping;
   deckTex.needsUpdate = true;
-  deckTex.repeat.set(1, Math.max(1, bLen / 16));
   const deckMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(seg.width, bLen),
+    new THREE.PlaneGeometry(seg.width, bLen + 4.0),
     new THREE.MeshLambertMaterial({
       map: deckTex,
       polygonOffset: true,

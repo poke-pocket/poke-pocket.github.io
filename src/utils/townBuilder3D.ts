@@ -176,6 +176,7 @@ export function buildProceduralTown3D(
         group,
         colliders,
         deckRoadTex: tex.collector2Lane,
+        getGroundHeight,
       });
       continue;
     }
