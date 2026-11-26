@@ -13,18 +13,17 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <style>
-      html, body { margin: 0; padding: 0; background: #14121d; overflow: hidden; }
+      html, body { margin: 0; padding: 0; background: #14121d; overflow: hidden; image-rendering: pixelated; }
       #pokeball-boot-curtain {
         position: fixed;
         inset: 0;
         z-index: 99999;
         pointer-events: auto;
         overflow: hidden;
-        font-family: "PingFang SC", "Microsoft YaHei", monospace, sans-serif;
+        font-family: "Press Start 2P", "PingFang SC", "Microsoft YaHei", monospace;
+        image-rendering: pixelated;
       }
-      #pokeball-boot-curtain.is-opening {
-        pointer-events: none;
-      }
+      #pokeball-boot-curtain.is-opening { pointer-events: none; }
       #pokeball-boot-curtain .pb-boot-top,
       #pokeball-boot-curtain .pb-boot-bottom {
         position: absolute;
@@ -32,106 +31,204 @@
         right: 0;
         height: 50%;
         will-change: transform;
-        transition: transform 0.5s cubic-bezier(0.32, 0, 0.2, 1);
+        transition: transform 0.42s steps(14, end);
       }
+      /* Pure axis-aligned 6x6px 2-stage Bayer pixel dithering (ZERO smooth gradients or diagonal anti-aliasing!) */
       #pokeball-boot-curtain .pb-boot-top {
         top: 0;
-        background: linear-gradient(180deg, #ff4d4d 0%, #e03131 62%, #c92a2a 100%);
-        border-bottom: 9px solid #14121d;
+        background-color: #e03131;
+        border-bottom: 12px solid #14121d;
         box-sizing: border-box;
-        box-shadow: inset 0 -10px 0 rgba(0, 0, 0, 0.14);
+      }
+      #pokeball-boot-curtain .pb-boot-top::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 54px;
+        background-image:
+          linear-gradient(#ff6b6b, #ff6b6b),
+          repeating-conic-gradient(transparent 0% 25%, #ff5252 0% 50%),
+          repeating-conic-gradient(transparent 0% 25%, #ff5252 0% 50%),
+          conic-gradient(at 6px 6px, transparent 270deg, #ff5252 270deg);
+        background-size: 100% 18px, 12px 12px, 12px 12px, 12px 12px;
+        background-position: 0 0, 0 18px, 0 30px, 0 42px;
+        background-repeat: no-repeat, repeat-x, repeat-x, repeat-x;
+      }
+      #pokeball-boot-curtain .pb-boot-top::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 54px;
+        background-image:
+          conic-gradient(at 6px 6px, transparent 270deg, #b02525 270deg),
+          repeating-conic-gradient(#b02525 0% 25%, transparent 0% 50%),
+          repeating-conic-gradient(#b02525 0% 25%, transparent 0% 50%),
+          linear-gradient(#b02525, #b02525),
+          linear-gradient(#7d1515, #7d1515);
+        background-size: 12px 12px, 12px 12px, 12px 12px, 100% 12px, 100% 6px;
+        background-position: 0 0, 0 12px, 0 24px, 0 36px, 0 48px;
+        background-repeat: repeat-x, repeat-x, repeat-x, no-repeat, no-repeat;
       }
       #pokeball-boot-curtain .pb-boot-sheen {
         position: absolute;
-        top: 22px;
+        top: 24px;
         left: 50%;
         transform: translateX(-50%);
-        width: min(360px, 68vw);
-        height: 14px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.24);
+        width: min(300px, 60vw);
+        height: 12px;
+        background: #ffc9c9;
+        box-shadow:
+          -12px 6px 0 #ffa8a8,
+          12px 6px 0 #ffa8a8,
+          -24px 6px 0 #ff8787,
+          24px 6px 0 #ff8787;
+        z-index: 2;
       }
       #pokeball-boot-curtain .pb-boot-socket {
         position: absolute;
         left: 50%;
-        bottom: -9px;
+        bottom: -12px;
         transform: translateX(-50%);
-        width: 108px;
-        height: 54px;
-        background: #14121d;
-        border-radius: 54px 54px 0 0;
+        width: 132px;
+        height: 66px;
+        z-index: 3;
       }
       #pokeball-boot-curtain .pb-boot-bottom {
         bottom: 0;
-        background: linear-gradient(180deg, #ffffff 0%, #f1f3f5 72%, #dee2e6 100%);
-        border-top: 9px solid #14121d;
+        background-color: #f1f3f5;
+        border-top: 12px solid #14121d;
         box-sizing: border-box;
-        box-shadow: inset 0 10px 0 rgba(255, 255, 255, 0.75);
+      }
+      #pokeball-boot-curtain .pb-boot-bottom::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 42px;
+        background-image:
+          linear-gradient(#ffffff, #ffffff),
+          repeating-conic-gradient(#ffffff 0% 25%, transparent 0% 50%),
+          conic-gradient(at 6px 6px, transparent 270deg, #ffffff 270deg);
+        background-size: 100% 18px, 12px 12px, 12px 12px;
+        background-position: 0 0, 0 18px, 0 30px;
+        background-repeat: no-repeat, repeat-x, repeat-x;
+      }
+      #pokeball-boot-curtain .pb-boot-bottom::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 60px;
+        background-image:
+          conic-gradient(at 6px 6px, transparent 270deg, #ced4da 270deg),
+          repeating-conic-gradient(#ced4da 0% 25%, transparent 0% 50%),
+          repeating-conic-gradient(#ced4da 0% 25%, transparent 0% 50%),
+          linear-gradient(#ced4da, #ced4da),
+          linear-gradient(#adb5bd, #adb5bd);
+        background-size: 12px 12px, 12px 12px, 12px 12px, 100% 16px, 100% 8px;
+        background-position: 0 0, 0 12px, 0 24px, 0 36px, 0 52px;
+        background-repeat: repeat-x, repeat-x, repeat-x, no-repeat, no-repeat;
       }
       #pokeball-boot-curtain .pb-boot-clasp {
         position: absolute;
         left: 50%;
-        top: -54px;
+        top: -66px;
         transform: translateX(-50%);
-        width: 108px;
-        height: 108px;
-        border-radius: 50%;
-        background: #14121d;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 6px 0 rgba(20, 18, 29, 0.24);
+        width: 132px;
+        height: 132px;
+        z-index: 4;
+        filter: drop-shadow(0 6px 0 #ced4da);
       }
-      #pokeball-boot-curtain .pb-boot-ring {
-        width: 76px;
-        height: 76px;
-        border-radius: 50%;
-        background: linear-gradient(180deg, #ffffff 0%, #e9ecef 100%);
-        border: 4px solid #14121d;
-        box-sizing: border-box;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+      #pokeball-boot-curtain .pb-boot-core-base {
+        fill: #ff4d4d;
+        animation: pbBootPxCore 0.55s steps(2, end) infinite;
       }
-      #pokeball-boot-curtain .pb-boot-core {
-        width: 42px;
-        height: 42px;
-        border-radius: 50%;
-        border: 3.5px solid #14121d;
-        box-sizing: border-box;
-        background: #ff6b6b;
-        box-shadow: 0 0 16px rgba(255, 107, 107, 0.85), inset 0 3px 0 rgba(255, 255, 255, 0.65);
-        animation: pbBootPulse 0.9s ease-in-out infinite alternate;
+      #pokeball-boot-curtain .pb-boot-core-shade {
+        fill: #c92a2a;
       }
-      #pokeball-boot-curtain.is-ready .pb-boot-core {
+      #pokeball-boot-curtain.is-ready .pb-boot-core-base {
         animation: none;
-        background: #63e6be;
-        box-shadow: 0 0 22px rgba(99, 230, 190, 0.95), inset 0 3px 0 #ffffff;
+        fill: #51cf66;
       }
-      #pokeball-boot-curtain .pb-boot-label {
+      #pokeball-boot-curtain.is-ready .pb-boot-core-shade {
+        fill: #2b8a3e;
+      }
+      #pokeball-boot-curtain .pb-boot-hud {
         position: absolute;
         left: 50%;
-        top: 70px;
+        top: 82px;
         transform: translateX(-50%);
-        padding: 5px 14px;
+        z-index: 5;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
         background: #14121d;
-        color: #ffe066;
-        border: 2.5px solid #14121d;
-        box-shadow: 3px 3px 0 rgba(20, 18, 29, 0.25);
-        font-size: 12px;
-        font-weight: 900;
-        letter-spacing: 1px;
+        border: 4px solid #14121d;
+        outline: 2px solid #ffe066;
+        outline-offset: -6px;
+        box-shadow: 6px 6px 0 #adb5bd;
+        color: #fff9db;
         white-space: nowrap;
       }
+      #pokeball-boot-curtain .pb-boot-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 900;
+      }
+      #pokeball-boot-curtain .pb-boot-tag {
+        padding: 2px 5px;
+        background: #e03131;
+        color: #ffffff;
+        font-size: 9px;
+        letter-spacing: 1px;
+      }
+      #pokeball-boot-curtain .pb-boot-bars {
+        display: flex;
+        gap: 4px;
+      }
+      #pokeball-boot-curtain .pb-boot-bars i {
+        width: 14px;
+        height: 8px;
+        background: #2b283a;
+        display: block;
+        animation: pbBootSeg 0.8s steps(1, end) infinite;
+      }
+      #pokeball-boot-curtain .pb-boot-bars i:nth-child(1) { animation-delay: 0s; }
+      #pokeball-boot-curtain .pb-boot-bars i:nth-child(2) { animation-delay: 0.1s; }
+      #pokeball-boot-curtain .pb-boot-bars i:nth-child(3) { animation-delay: 0.2s; }
+      #pokeball-boot-curtain .pb-boot-bars i:nth-child(4) { animation-delay: 0.3s; }
+      #pokeball-boot-curtain .pb-boot-bars i:nth-child(5) { animation-delay: 0.4s; }
+      #pokeball-boot-curtain .pb-boot-bars i:nth-child(6) { animation-delay: 0.5s; }
+      #pokeball-boot-curtain .pb-boot-bars i:nth-child(7) { animation-delay: 0.6s; }
+      #pokeball-boot-curtain .pb-boot-bars i:nth-child(8) { animation-delay: 0.7s; }
+      #pokeball-boot-curtain.is-ready .pb-boot-bars i {
+        animation: none;
+        background: #51cf66;
+      }
       #pokeball-boot-curtain.is-opening .pb-boot-top {
-        transform: translate3d(0, -114%, 0);
+        transform: translate3d(0, -116%, 0);
       }
       #pokeball-boot-curtain.is-opening .pb-boot-bottom {
-        transform: translate3d(0, calc(100% + 76px), 0);
+        transform: translate3d(0, calc(100% + 90px), 0);
       }
-      @keyframes pbBootPulse {
-        0% { transform: scale(0.94); background: #ff8787; box-shadow: 0 0 10px rgba(255, 107, 107, 0.55), inset 0 3px 0 rgba(255,255,255,0.65); }
-        100% { transform: scale(1.05); background: #fa5252; box-shadow: 0 0 22px rgba(250, 82, 82, 0.95), inset 0 3px 0 rgba(255,255,255,0.8); }
+      @keyframes pbBootPxCore {
+        0% { fill: #ff4d4d; }
+        50% { fill: #ffd43b; }
+        100% { fill: #ff4d4d; }
+      }
+      @keyframes pbBootSeg {
+        0%, 49% { background: #ffd43b; }
+        50%, 100% { background: #2b283a; }
       }
     </style>
   </head>
@@ -139,15 +236,62 @@
     <div id="pokeball-boot-curtain" aria-label="正在加载游戏">
       <div class="pb-boot-top">
         <div class="pb-boot-sheen"></div>
-        <div class="pb-boot-socket"></div>
+        <svg class="pb-boot-socket" viewBox="0 0 24 12" shape-rendering="crispEdges">
+          <rect x="6" y="0" width="12" height="1" fill="#9e1f1f" />
+          <rect x="4" y="1" width="2" height="1" fill="#9e1f1f" />
+          <rect x="18" y="1" width="2" height="1" fill="#9e1f1f" />
+          <rect x="2" y="2" width="2" height="2" fill="#9e1f1f" />
+          <rect x="20" y="2" width="2" height="2" fill="#9e1f1f" />
+          <rect x="7" y="1" width="10" height="1" fill="#14121d" />
+          <rect x="5" y="2" width="14" height="1" fill="#14121d" />
+          <rect x="3" y="3" width="18" height="2" fill="#14121d" />
+          <rect x="2" y="5" width="20" height="2" fill="#14121d" />
+          <rect x="1" y="7" width="22" height="2" fill="#14121d" />
+          <rect x="0" y="9" width="24" height="3" fill="#14121d" />
+        </svg>
       </div>
       <div class="pb-boot-bottom">
-        <div class="pb-boot-clasp">
-          <div class="pb-boot-ring">
-            <div class="pb-boot-core"></div>
+        <svg class="pb-boot-clasp" viewBox="0 0 24 24" shape-rendering="crispEdges">
+          <rect x="7" y="0" width="10" height="24" fill="#14121d" />
+          <rect x="5" y="1" width="14" height="22" fill="#14121d" />
+          <rect x="3" y="2" width="18" height="20" fill="#14121d" />
+          <rect x="2" y="3" width="20" height="18" fill="#14121d" />
+          <rect x="1" y="5" width="22" height="14" fill="#14121d" />
+          <rect x="0" y="7" width="24" height="10" fill="#14121d" />
+          <rect x="8" y="3" width="8" height="18" fill="#f1f3f5" />
+          <rect x="6" y="4" width="12" height="16" fill="#f1f3f5" />
+          <rect x="4" y="6" width="16" height="12" fill="#f1f3f5" />
+          <rect x="3" y="8" width="18" height="8" fill="#f1f3f5" />
+          <rect x="8" y="3" width="8" height="1" fill="#ffffff" />
+          <rect x="6" y="4" width="5" height="1" fill="#ffffff" />
+          <rect x="4" y="6" width="2" height="3" fill="#ffffff" />
+          <rect x="3" y="8" width="1" height="5" fill="#ffffff" />
+          <rect x="8" y="20" width="8" height="1" fill="#adb5bd" />
+          <rect x="13" y="19" width="5" height="1" fill="#adb5bd" />
+          <rect x="18" y="15" width="2" height="3" fill="#adb5bd" />
+          <rect x="20" y="11" width="1" height="5" fill="#adb5bd" />
+          <rect x="9" y="6" width="6" height="12" fill="#14121d" />
+          <rect x="7" y="7" width="10" height="10" fill="#14121d" />
+          <rect x="6" y="9" width="12" height="6" fill="#14121d" />
+          <rect class="pb-boot-core-base" x="9" y="7" width="6" height="10" />
+          <rect class="pb-boot-core-base" x="8" y="8" width="8" height="8" />
+          <rect class="pb-boot-core-base" x="7" y="9" width="10" height="6" />
+          <rect class="pb-boot-core-shade" x="9" y="16" width="6" height="1" />
+          <rect class="pb-boot-core-shade" x="14" y="14" width="2" height="2" />
+          <rect class="pb-boot-core-shade" x="16" y="11" width="1" height="4" />
+          <rect x="9" y="8" width="2" height="2" fill="#ffffff" />
+          <rect x="11" y="8" width="1" height="1" fill="#fff5f5" />
+          <rect x="9" y="10" width="1" height="1" fill="#fff5f5" />
+        </svg>
+        <div class="pb-boot-hud">
+          <div class="pb-boot-row">
+            <span class="pb-boot-tag">LOADING</span>
+            <span>正在构筑像素世界…</span>
+          </div>
+          <div class="pb-boot-bars">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
           </div>
         </div>
-        <div class="pb-boot-label">POKé POCKET · 正在构筑世界…</div>
       </div>
     </div>
     <div id="root"></div>
