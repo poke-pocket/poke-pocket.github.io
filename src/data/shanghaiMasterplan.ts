@@ -110,24 +110,71 @@ export function buildShanghaiRealRoadNetwork(
     const localPts = latLngs.map(([lat, lng]) => shLatLngToLocal(lat, lng));
     const pts = smoothPasses > 0 ? smoothPolylineChaikin(localPts, closed, smoothPasses) : localPts;
     const count = closed ? pts.length : pts.length - 1;
+    let bridgeStartPt: [number, number] | null = null;
     for (let i = 0; i < count; i++) {
-      const [x1, z1] = pts[i];
-      const [x2, z2] = pts[(i + 1) % pts.length];
-      if (Math.hypot(x2 - x1, z2 - z1) < 2.5) continue;
-      const dMid = riverSignedDist((x1 + x2) * 0.5, (z1 + z2) * 0.5);
-      const d1 = riverSignedDist(x1, z1);
-      const d2 = riverSignedDist(x2, z2);
-      const crossesWater = dMid < 2.0 || d1 < 1.5 || d2 < 1.5;
-      if (crossesWater && !allowWaterTunnelOrBridge) continue;
+      const p1 = pts[i];
+      const p2 = pts[(i + 1) % pts.length];
+      if (Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) < 2.5) continue;
+      const dMid = riverSignedDist((p1[0] + p2[0]) * 0.5, (p1[1] + p2[1]) * 0.5);
+      const crossesWater = dMid < 0.8;
+      if (crossesWater) {
+        if (!allowWaterTunnelOrBridge) {
+          bridgeStartPt = null;
+          continue;
+        }
+        // Merge consecutive water-crossing sub-segments into ONE clean single-span bridge!
+        if (!bridgeStartPt) bridgeStartPt = p1;
+        const nextIdx = (i + 1) % count;
+        const p3 = pts[(nextIdx + 1) % pts.length];
+        const nextCrosses =
+          (closed || i + 1 < count) &&
+          riverSignedDist((p2[0] + p3[0]) * 0.5, (p2[1] + p3[1]) * 0.5) < 0.8;
+        if (!nextCrosses) {
+          const bx1 = bridgeStartPt[0];
+          const bz1 = bridgeStartPt[1];
+          const bx2 = p2[0];
+          const bz2 = p2[1];
+          const bMidX = (bx1 + bx2) * 0.5;
+          const bMidZ = (bz1 + bz2) * 0.5;
+          // STRICT BRIDGE NON-OVERLAP & NON-CROSSING GUARD: Never allow two bridges to cross or sit within 58u of each other!
+          const conflictsExistingBridge = rawEdges.some((ex) => {
+            if (!ex.isBridge) return false;
+            if (Math.hypot((ex.x1 + ex.x2) * 0.5 - bMidX, (ex.z1 + ex.z2) * 0.5 - bMidZ) < 58) return true;
+            const dx1 = bx2 - bx1;
+            const dz1 = bz2 - bz1;
+            const dx2 = ex.x2 - ex.x1;
+            const dz2 = ex.z2 - ex.z1;
+            const denom = dx1 * dz2 - dz1 * dx2;
+            if (Math.abs(denom) > 1e-3) {
+              const t = ((ex.x1 - bx1) * dz2 - (ex.z1 - bz1) * dx2) / denom;
+              const u = ((ex.x1 - bx1) * dz1 - (ex.z1 - bz1) * dx1) / denom;
+              if (t >= -0.05 && t <= 1.05 && u >= -0.05 && u <= 1.05) return true;
+            }
+            return false;
+          });
+          if (!conflictsExistingBridge) {
+            rawEdges.push({
+              x1: bx1,
+              z1: bz1,
+              x2: bx2,
+              z2: bz2,
+              width,
+              kind,
+              isBridge: true,
+              bridgeStyle: bridgeStyleHint ?? (Math.hypot(bx2 - bx1, bz2 - bz1) < 30 ? 'waibaidu' : 'nanpu'),
+            });
+          }
+          bridgeStartPt = null;
+        }
+        continue;
+      }
       rawEdges.push({
-        x1,
-        z1,
-        x2,
-        z2,
+        x1: p1[0],
+        z1: p1[1],
+        x2: p2[0],
+        z2: p2[1],
         width,
         kind,
-        isBridge: crossesWater ? true : undefined,
-        bridgeStyle: crossesWater ? (bridgeStyleHint ?? (Math.hypot(x2 - x1, z2 - z1) < 30 ? 'waibaidu' : 'nanpu')) : undefined,
       });
     }
   };
@@ -222,15 +269,17 @@ export function buildShanghaiRealRoadNetwork(
     'waibaidu',
   );
 
-  // 2B. North-South Elevated Rd -> Lupu Bridge -> Puxing Hwy (南北高架—逸仙高架—卢浦大桥—浦星公路)
+  // 2B. North-South Elevated Rd -> Connects cleanly into Inner Ring on Puxi dry land, crosses at Lupu Bridge well West of Nanpu Bridge!
   addLatLngChain(
     [
       [31.385, 121.465],
       [31.322, 121.452],
       [31.268, 121.455],
       [31.226, 121.455], // 延安东路立交
-      [31.188, 121.472], // 卢浦大桥北
-      [31.135, 121.498], // 济阳路/三林
+      [31.184, 121.442], // 徐汇内环立交 (陆地衔接，不与南浦大桥江心交叉!)
+      [31.162, 121.448], // 龙耀路/徐汇滨江北
+      [31.154, 121.482], // 前滩越江大桥 (独立跨江通道!)
+      [31.138, 121.548], // 衔接浦东中环华夏西路
       [31.085, 121.508],
       [31.015, 121.512],
     ],

@@ -170,13 +170,20 @@ export const SHANGHAI_LOCAL_BRIDGES: CityBridgeDef[] = [
 ];
 
 const CITY_HYDRO_CACHE = new Map<string, { rivers: TownRiverSpline[]; bridges: CityBridgeDef[] }>();
+const CITY_LATLNG_CACHE = new Map<string, { lat: number; lng: number } | null>();
 
 function lookupCityLatLng(cleanId: string): { lat: number; lng: number } | null {
+  if (CITY_LATLNG_CACHE.has(cleanId)) return CITY_LATLNG_CACHE.get(cleanId)!;
   const wc = WORLD_CITIES.find((c) => c.id === cleanId);
-  if (wc) return { lat: wc.lat, lng: wc.lng };
+  if (wc) {
+    const v = { lat: wc.lat, lng: wc.lng };
+    CITY_LATLNG_CACHE.set(cleanId, v);
+    return v;
+  }
   const cap = PROVINCIAL_AND_WORLD_CAPITALS.find((c) => c.id === cleanId);
-  if (cap) return { lat: cap.lat, lng: cap.lng };
-  return null;
+  const res = cap ? { lat: cap.lat, lng: cap.lng } : null;
+  CITY_LATLNG_CACHE.set(cleanId, res);
+  return res;
 }
 
 /**
@@ -306,14 +313,13 @@ export function getShanghaiRiverSignedDist(dx: number, dz: number, cityId = 'sha
       if (d < minSigned) minSigned = d;
     }
   }
-  // Also respect real famous urban lakes (e.g. Hangzhou's West Lake 西湖, Kunming's Dianchi 滇池) so streets/buildings NEVER pave over the lake!
-  const cityGeo = lookupCityLatLng(cleanId);
-  if (cityGeo) {
-    const kmPerDegLng = Math.max(12, 111.32 * Math.cos((cityGeo.lat * Math.PI) / 180));
-    const ptLng = cityGeo.lng + dx / (kmPerDegLng * GEO_UNITS_PER_KM);
-    const ptLat = cityGeo.lat - dz / (111.32 * GEO_UNITS_PER_KM);
-    // Keep exact city spawn plaza (0,0) dry within 26m
-    if (Math.hypot(dx, dz) > 26) {
+  // Only check inland urban lakes (e.g. Hangzhou West Lake, Kunming Dianchi) on lake cities — skip in Shanghai for ultra-fast 60fps queries!
+  if (cleanId !== 'shanghai') {
+    const cityGeo = lookupCityLatLng(cleanId);
+    if (cityGeo && Math.hypot(dx, dz) > 26) {
+      const kmPerDegLng = Math.max(12, 111.32 * Math.cos((cityGeo.lat * Math.PI) / 180));
+      const ptLng = cityGeo.lng + dx / (kmPerDegLng * GEO_UNITS_PER_KM);
+      const ptLat = cityGeo.lat - dz / (111.32 * GEO_UNITS_PER_KM);
       const ripple =
         Math.sin(ptLat * 190 + ptLng * 230) * 0.13 +
         Math.cos(ptLat * 370 - ptLng * 290) * 0.08;
@@ -335,15 +341,23 @@ export function getShanghaiRiverSignedDist(dx: number, dz: number, cityId = 'sha
   return minSigned;
 }
 
+const LAYOUT_BRIDGES_CACHE = new Map<string, TownStreetSeg[]>();
+
 export function isOnShanghaiBridgeLocal(dx: number, dz: number, cityId = 'shanghai'): boolean {
   const cleanId = cityId.replace(/^geo_city_/, '').replace(/^city_/, '');
-  // 1. Check all Tensor-generated + hydrography bridges in cached town layout (includes +4m bank approach aprons!)
-  for (const [, lay] of LAYOUT_CACHE) {
+  for (const [idKey, lay] of LAYOUT_CACHE) {
     const layClean = lay.townId.replace(/^geo_city_/, '').replace(/^city_/, '');
     if (layClean !== cleanId) continue;
-    for (const st of lay.streets) {
-      if (!st.isBridge) continue;
-      if (distToSeg(lay.centerX + dx, lay.centerZ + dz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.58 + 1.5) {
+    let brList = LAYOUT_BRIDGES_CACHE.get(idKey);
+    if (!brList) {
+      brList = lay.streets.filter((s) => s.isBridge);
+      LAYOUT_BRIDGES_CACHE.set(idKey, brList);
+    }
+    const wx = lay.centerX + dx;
+    const wz = lay.centerZ + dz;
+    for (let i = 0; i < brList.length; i++) {
+      const st = brList[i];
+      if (distToSeg(wx, wz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.58 + 1.5) {
         return true;
       }
     }
@@ -562,17 +576,24 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     }
   }
 
-  // Colored Urban Metro Lines following the city's actual tensor arterial axes!
+  // Colored Urban Metro Lines: Line 2 links Suburban HSR Hub (虹桥火车站/西站) straight into Downtown & Pudong!
   const metroPalette = ['#2f9e44', '#ae3ec9', '#1c7ed6', '#e8590c'];
   const mCol1 = cleanCityId === 'shanghai' ? '#2f9e44' : metroPalette[seedVal % metroPalette.length];
   const mCol2 = cleanCityId === 'shanghai' ? '#ae3ec9' : metroPalette[(seedVal + 1) % metroPalette.length];
   const cosB = Math.cos(baseGridAngle);
   const sinB = Math.sin(baseGridAngle);
-  const m1Pts: [number, number][] = [-150, -75, 0, 75, 150].map((s) => [
-    cx + Math.round(s * cosB),
-    cz + Math.round(s * sinB),
-  ]);
-  const m2Pts: [number, number][] = [-145, -72, 0, 72, 145].map((s) => [
+  // Place Suburban High-Speed Rail Station OUTSIDE downtown on the Western Outer Ring (e.g. 上海虹桥站 at 31.195°N, 121.318°E ≈ cx-289, cz+78)!
+  const hsrHubX = cleanCityId === 'shanghai' ? cx - 289 : cx - 265;
+  const hsrHubZ = cleanCityId === 'shanghai' ? cz + 78 : cz - 36;
+
+  const m1Pts: [number, number][] = [
+    [hsrHubX, hsrHubZ],
+    [cx + Math.round(-95 * cosB), cz + Math.round(-95 * sinB)],
+    [cx, cz],
+    [cx + Math.round(78 * cosB), cz + Math.round(78 * sinB)],
+    [cx + Math.round(165 * cosB), cz + Math.round(165 * sinB)],
+  ];
+  const m2Pts: [number, number][] = [-155, -75, 0, 75, 155].map((s) => [
     cx + Math.round(-s * sinB),
     cz + Math.round(s * cosB),
   ]);
@@ -582,6 +603,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       color: mCol1,
       points: m1Pts,
       stations: [
+        { x: m1Pts[0][0], z: m1Pts[0][1], name: cleanCityId === 'shanghai' ? '虹桥火车站' : `${anchor.name}高铁站` },
         { x: m1Pts[1][0], z: m1Pts[1][1], name: cleanCityId === 'shanghai' ? '静安寺' : `${anchor.name}西站` },
         { x: m1Pts[2][0], z: m1Pts[2][1], name: cleanCityId === 'shanghai' ? '人民广场' : `${anchor.name}中心` },
         { x: m1Pts[3][0], z: m1Pts[3][1], name: cleanCityId === 'shanghai' ? '陆家嘴' : `${anchor.name}东站` },
@@ -592,7 +614,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       color: mCol2,
       points: m2Pts,
       stations: [
-        { x: m2Pts[1][0], z: m2Pts[1][1], name: cleanCityId === 'shanghai' ? '上海火车站' : `${anchor.name}北站` },
+        { x: m2Pts[1][0], z: m2Pts[1][1], name: cleanCityId === 'shanghai' ? '汉中路' : `${anchor.name}北站` },
         { x: m2Pts[3][0], z: m2Pts[3][1], name: cleanCityId === 'shanghai' ? '徐家汇' : `${anchor.name}南站` },
       ],
     },
@@ -643,18 +665,17 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     }
   }
 
-  // 7. Curved High-Speed Railway Corridor across North District
-  const railCenterZ = cz - 146;
-  let rx = cx - 156;
-  let rz = railCenterZ;
-  let ra = -0.015 + (rng() - 0.5) * 0.03;
+  // 7. Suburban High-Speed Railway Hub & Tracks OUTSIDE Downtown (e.g. 上海虹桥高铁站 on West Outer Ring — NEVER cutting through downtown!)
+  let rx = hsrHubX - 18;
+  let rz = hsrHubZ - 132;
+  let ra = Math.PI * 0.52;
   for (let i = 0; i < 6; i++) {
     const nrx = rx + Math.cos(ra) * 44;
     const nrz = rz + Math.sin(ra) * 44;
     rail.push({ x1: rx, z1: rz, x2: nrx, z2: nrz, width: 7.5, kind: 'rail' });
     rx = nrx;
     rz = nrz;
-    ra += 0.008;
+    ra -= 0.012;
   }
 
   const midRail = rail[2];
