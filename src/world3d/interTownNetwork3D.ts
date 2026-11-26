@@ -281,20 +281,25 @@ export function buildStreetRibbonMesh(
     const rx = wx + perpX;
     const rz = wz + perpZ;
 
-    let maxH = WATER_LEVEL_3D + 0.12;
+    const hCenter = getGroundHeight(wx, wz);
+    let maxLeftH = WATER_LEVEL_3D + 0.12;
+    let maxRightH = WATER_LEVEL_3D + 0.12;
     for (let fi = 0; fi < sampleFracs.length; fi++) {
-      const h = getGroundHeight(wx + perpX * sampleFracs[fi], wz + perpZ * sampleFracs[fi]);
-      if (h > maxH) maxH = h;
+      const frac = sampleFracs[fi];
+      const h = getGroundHeight(wx + perpX * frac, wz + perpZ * frac);
+      if (frac <= 0 && h > maxLeftH) maxLeftH = h;
+      if (frac >= 0 && h > maxRightH) maxRightH = h;
     }
-    const crownY = Math.max(WATER_LEVEL_3D + 0.24, maxH + layerLiftY + 0.14) - baseY;
-    const edgeY = crownY - 0.03;
+    const edgeLY = Math.max(WATER_LEVEL_3D + 0.22, Math.max(maxLeftH, hCenter - 0.16) + layerLiftY + 0.08) - baseY;
+    const edgeRY = Math.max(WATER_LEVEL_3D + 0.22, Math.max(maxRightH, hCenter - 0.16) + layerLiftY + 0.08) - baseY;
+    const crownY = Math.max(edgeLY, edgeRY) + 0.035;
 
     positions.push(
-      lx - originX, edgeY - 2.4, lz - originZ,
-      lx - originX, edgeY, lz - originZ,
+      lx - originX, edgeLY - 2.4, lz - originZ,
+      lx - originX, edgeLY, lz - originZ,
       wx - originX, crownY, wz - originZ,
-      rx - originX, edgeY, rz - originZ,
-      rx - originX, edgeY - 2.4, rz - originZ,
+      rx - originX, edgeRY, rz - originZ,
+      rx - originX, edgeRY - 2.4, rz - originZ,
     );
     const u = (t * paddedDist) / (seg.kind === 'arterial' ? 16.5 : 10.5);
     uvs.push(u, 0, u, 0, u, 0.5, u, 1, u, 1);

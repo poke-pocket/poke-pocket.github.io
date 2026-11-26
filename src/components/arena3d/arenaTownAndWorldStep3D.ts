@@ -7,6 +7,7 @@ import { getActiveGeoTerrainOrigin, worldToGeo } from '../../data/geoTerrain3D';
 import type { SpeciesId } from '../../types/pet';
 import { updateProximityAutoDoors3D } from '../../utils/architecturalBuildings3D';
 import { isInsideBuildingInterior, resolveTownWallCollisions, type EnterableBuildingInterior, type ProceduralTownInstance, type TownInteractPoint, type TownStrollingCitizen } from '../../utils/townBuilder3D';
+import { getHeldHotelKeycard, setHeldHotelKeycard } from '../../world3d/townTypes';
 import { sound } from '../../utils/sound';
 import { buildInteractActionsForTarget, pushWorldSpeechBubble, type LiveWorldBubble } from './ArenaTownSocialAndBusOverlay';
 
@@ -75,6 +76,7 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
     onHealParty,
     onUpdateMeta,
     persistState,
+    playerShadow,
     playerSprite,
     playerSpriteMat,
     prefsRef,
@@ -92,6 +94,7 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
     surfingNow,
     teleportIntraCityBusRef,
     triggerInteractRef,
+    updateWorldAround,
     vfxAtlas,
     weatherGeo,
     weatherMat,
@@ -126,6 +129,9 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
     posAttr.needsUpdate = true;
     weatherPoints.position.set(sim.px, sim.py, sim.pz);
   }
+
+  // Stream & re-center the 288m heightfield terrain & water sheets dynamically around the player so ground NEVER ends past ±144m!
+  updateWorldAround(sim.px, sim.pz);
 
   const liveGeo = worldToGeo(sim.px, sim.pz);
   const tourCoords = metaRef.current.worldTour?.homeCoords;
@@ -381,7 +387,7 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
             : activeInteriorNow.kind === 'poke_mart'
               ? { name: '百货店员', emote: 'sparkle' as const, text: '欢迎光临友好百货！精灵球与树果补给今天货源充足！' }
               : activeInteriorNow.kind === 'hotel'
-                ? { name: '大堂总管', emote: 'happy' as const, text: '欢迎下榻驿站大酒店！前台或二楼豪华客房均可休整！' }
+                ? { name: '大堂总管', emote: 'happy' as const, text: '欢迎下榻驿站大酒店！请先来一楼前台办理入住领房卡，再去二楼刷卡进房休息哦！' }
                 : { name: '公寓主人', emote: 'happy' as const, text: '呀，有训练家来串门做客啦，快请进！' };
 
       pushWorldSpeechBubble(bubblesList, {
@@ -558,16 +564,193 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
         setInRunTownShopOpen(true);
         return;
       }
+      if (chosen.id === 'hotel_checkin' && tp.hotelId) {
+        const curCard = getHeldHotelKeycard(tp.hotelId);
+        const rooms = ['201', '202', '203'];
+        const nextRoom = curCard ? rooms[(rooms.indexOf(curCard) + 1) % rooms.length] : '201';
+        if (!curCard) {
+          const roomFee = 60;
+          const paidCoins = sim.coins >= roomFee;
+          if (paidCoins) {
+            sim.coins -= roomFee;
+          }
+          setHeldHotelKeycard(tp.hotelId, nextRoom);
+          sound.play('coin');
+          showBanner(
+            paidCoins
+              ? `🪪 已支付 ¥${roomFee} 办理入住，获得【${nextRoom} 号豪华客房房卡】！`
+              : `🪪 联盟新人礼遇免房费，获得【${nextRoom} 号豪华客房房卡】！`,
+            3200,
+          );
+          pushWorldSpeechBubble(bubblesList, {
+            speakerId: tp.id,
+            speakerName: '大堂总管',
+            emote: 'sparkle',
+            text: `入住登记完成！这是您的【${nextRoom} 号客房房卡】，请从左侧楼梯上二楼，在 ${nextRoom} 房门前刷卡进屋睡觉吧！`,
+            wx: tp.x,
+            wy: bubbleY,
+            wz: tp.z,
+            isPlayerDialog: true,
+          });
+        } else {
+          setHeldHotelKeycard(tp.hotelId, nextRoom);
+          sound.play('confirm');
+          showBanner(`🪪 已为您免费调换至【${nextRoom} 号豪华客房房卡】！`, 2600);
+          pushWorldSpeechBubble(bubblesList, {
+            speakerId: tp.id,
+            speakerName: '大堂总管',
+            emote: 'happy',
+            text: `没问题！已为您更换为二楼【${nextRoom} 号客房房卡】，祝您入住愉快！`,
+            wx: tp.x,
+            wy: bubbleY,
+            wz: tp.z,
+            isPlayerDialog: true,
+          });
+        }
+        return;
+      }
+      if (chosen.id === 'hotel_checkout' && tp.hotelId) {
+        const prevCard = getHeldHotelKeycard(tp.hotelId);
+        setHeldHotelKeycard(tp.hotelId, null);
+        for (const t of proceduralTowns) {
+          for (const d of t.autoDoors) {
+            if (d.hotelId === tp.hotelId) d.isOpen = false;
+          }
+        }
+        sound.play('cancel');
+        showBanner(`🔑 已归还【${prevCard ?? '客房'}】房卡并完成退房！`, 2400);
+        pushWorldSpeechBubble(bubblesList, {
+          speakerId: tp.id,
+          speakerName: '大堂总管',
+          emote: 'heart',
+          text: '房卡已收回，退房手续办妥啦！欢迎下次旅途再来下榻驿站大酒店～',
+          wx: tp.x,
+          wy: bubbleY,
+          wz: tp.z,
+          isPlayerDialog: true,
+        });
+        return;
+      }
+      if (chosen.id === 'door_inspect' && tp.doorRef) {
+        const d = tp.doorRef;
+        sound.play('cursor');
+        const heldCard = getHeldHotelKeycard(d.hotelId);
+        const statusSuffix =
+          d.mode === 'hotel_keycard'
+            ? heldCard === d.roomNumber
+              ? `您持有匹配的【${heldCard} 房卡】，可随时刷卡开门！`
+              : heldCard
+                ? `您当前持有的是【${heldCard} 房卡】，与这间房号不匹配。`
+                : '您尚未持有房卡，需先到一楼前台办理入住。'
+            : d.isOpen
+              ? '当前门处于敞开状态。'
+              : '当前门处于关闭状态，可按 E 手动推开。';
+        pushWorldSpeechBubble(bubblesList, {
+          speakerId: tp.id,
+          speakerName: d.label?.replace(/^[🔒🚪]\s*/, '') ?? '门禁检查',
+          emote: 'question',
+          text: `${d.inspectNote ?? '一扇结实的体素门。'}${statusSuffix}`,
+          wx: tp.x,
+          wy: (tp.y ?? sim.py) + 2.35,
+          wz: tp.z,
+          isPlayerDialog: true,
+        });
+        return;
+      }
+      if (chosen.id === 'door_toggle' && tp.doorRef) {
+        const d = tp.doorRef;
+        if (d.mode === 'hotel_keycard' && !d.isOpen) {
+          const heldCard = getHeldHotelKeycard(d.hotelId);
+          if (!heldCard) {
+            sound.play('error');
+            showBanner('🔒 客房门已锁！请先前往一楼前台办理入住领取房卡！', 2800);
+            pushWorldSpeechBubble(bubblesList, {
+              speakerId: tp.id,
+              speakerName: `${d.roomNumber ?? ''} 电子门禁`,
+              emote: 'exclaim',
+              text: `嘀——门禁红灯闪烁！${d.roomNumber ?? ''} 号豪华客房已上锁，请先到一楼前台总管处领取房卡后再来刷卡进入！`,
+              wx: tp.x,
+              wy: (tp.y ?? sim.py) + 2.35,
+              wz: tp.z,
+              isPlayerDialog: true,
+            });
+            return;
+          }
+          if (heldCard !== d.roomNumber) {
+            sound.play('error');
+            showBanner(`🔒 房卡不匹配！您持有的是【${heldCard} 房卡】，无法打开 ${d.roomNumber} 号房！`, 2800);
+            pushWorldSpeechBubble(bubblesList, {
+              speakerId: tp.id,
+              speakerName: `${d.roomNumber ?? ''} 电子门禁`,
+              emote: 'exclaim',
+              text: `嘀——房号不符！这里是 ${d.roomNumber} 号客房，请前往二楼【${heldCard} 号客房】刷卡开门哦！`,
+              wx: tp.x,
+              wy: (tp.y ?? sim.py) + 2.35,
+              wz: tp.z,
+              isPlayerDialog: true,
+            });
+            return;
+          }
+          d.isOpen = true;
+          if (d.collider) d.collider.disabled = true;
+          sound.play('confirm');
+          showBanner(`🔓 嘀♪【${heldCard} 房卡】验证通过，客房门已打开！`, 2400);
+          pushWorldSpeechBubble(bubblesList, {
+            speakerId: tp.id,
+            speakerName: `${d.roomNumber} 电子门禁`,
+            emote: 'sparkle',
+            text: `嘀♪ 房卡验证通过！欢迎入住 ${d.roomNumber} 号豪华客房，快进屋在柔软大床上睡一觉吧！`,
+            wx: tp.x,
+            wy: (tp.y ?? sim.py) + 2.35,
+            wz: tp.z,
+            isPlayerDialog: true,
+          });
+          return;
+        }
+        d.isOpen = !d.isOpen;
+        if (d.collider) d.collider.disabled = d.isOpen;
+        sound.play(d.isOpen ? 'confirm' : 'cancel');
+        pushWorldSpeechBubble(bubblesList, {
+          speakerId: tp.id,
+          speakerName: d.label?.replace(/^[🔒🚪]\s*/, '') ?? '房门',
+          emote: 'happy',
+          text: d.isOpen ? '咔嗒——推开了门！' : '咔嗒——随手关上了门。',
+          wx: tp.x,
+          wy: (tp.y ?? sim.py) + 2.25,
+          wz: tp.z,
+          isPlayerDialog: true,
+        });
+        return;
+      }
       if (chosen.id === 'rest') {
+        if (tp.hotelId && tp.roomNumber) {
+          const heldCard = getHeldHotelKeycard(tp.hotelId);
+          if (heldCard !== tp.roomNumber) {
+            sound.play('error');
+            pushWorldSpeechBubble(bubblesList, {
+              speakerId: tp.id,
+              speakerName: tp.label.replace(/^🛏️\s*/, ''),
+              emote: 'exclaim',
+              text: '您还没有办理这间客房的入住登记哦！请先去一楼前台领取房卡。',
+              wx: tp.x,
+              wy: bubbleY,
+              wz: tp.z,
+              isPlayerDialog: true,
+            });
+            return;
+          }
+        }
         sim.hp = sim.maxHp;
-        sim.boostTimer = Math.max(sim.boostTimer, 24);
+        sim.healCharges = Math.max(sim.healCharges, 4);
+        sim.boostTimer = Math.max(sim.boostTimer, 35);
         onHealParty();
-        sound.play('levelup');
+        sound.play('heal_jingle');
+        spawnPixelParticles(sim.px, sim.py + 1.1, sim.pz, vfxAtlas.starGlint, 16, 3.6, 0.85, 5.0, 6.0);
         pushWorldSpeechBubble(bubblesList, {
           speakerId: tp.id,
           speakerName: shortSpeaker,
-          emote: 'sparkle',
-          text: '美美地休整了一番！全队体力已完全回满，并获得 24 秒斗志加成！',
+          emote: 'heart',
+          text: '盖上松软被子美美地睡了一觉！全队体力与伤药已完全恢复，并获得 35 秒充沛斗志加成！',
           wx: tp.x,
           wy: bubbleY,
           wz: tp.z,
@@ -821,6 +1004,9 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
   const walkTiltZ = mLen > 0.08 && !isAirborne ? Math.sin(sim.walkDist * 2.8) * 0.042 : 0;
   playerSprite.position.set(sim.px, sim.py + walkBob + 0.02, sim.pz);
   playerSprite.rotation.set(bbTiltX * 0.35, camYawNow, walkTiltZ, 'YXZ');
+  if (playerShadow) {
+    playerShadow.position.set(sim.px, groundY + 0.04, sim.pz);
+  }
 
   if (mLen > 0.12 && !isAirborne) {
     const prevStepIdx = Math.floor((sim.walkDist - mLen) * 0.42);

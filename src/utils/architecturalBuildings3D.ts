@@ -20,17 +20,39 @@ export function updateProximityAutoDoors3D(
 ): void {
   for (let i = 0; i < doors.length; i++) {
     const d = doors[i];
+    const mode = d.mode ?? 'auto';
     let shouldOpen = false;
-    const closeRadius = d.triggerRadius + 0.75;
-    const thresh = d.openT > 0.2 ? closeRadius : d.triggerRadius;
-    for (let a = 0; a < actors.length; a++) {
-      const act = actors[a];
-      if (Math.abs(act.y - d.worldY) > 2.65) continue;
-      if (Math.hypot(act.x - d.worldX, act.z - d.worldZ) <= thresh) {
-        shouldOpen = true;
-        break;
+
+    if (mode === 'auto') {
+      const closeRadius = d.triggerRadius + 0.75;
+      const thresh = d.openT > 0.2 ? closeRadius : d.triggerRadius;
+      for (let a = 0; a < actors.length; a++) {
+        const act = actors[a];
+        if (Math.abs(act.y - d.worldY) > 2.65) continue;
+        if (Math.hypot(act.x - d.worldX, act.z - d.worldZ) <= thresh) {
+          shouldOpen = true;
+          break;
+        }
       }
+    } else {
+      // Manual & Hotel Keycard doors NEVER auto-open on approach!
+      // Once explicitly opened by the player, gently close back after all actors walk far away (> 10.5m).
+      if (d.isOpen) {
+        let anyoneNearby = false;
+        for (let a = 0; a < actors.length; a++) {
+          const act = actors[a];
+          if (Math.abs(act.y - d.worldY) <= 3.2 && Math.hypot(act.x - d.worldX, act.z - d.worldZ) <= 10.5) {
+            anyoneNearby = true;
+            break;
+          }
+        }
+        if (!anyoneNearby) {
+          d.isOpen = false;
+        }
+      }
+      shouldOpen = Boolean(d.isOpen);
     }
+
     const target = shouldOpen ? 1.0 : 0.0;
     if (Math.abs(d.openT - target) > 0.004) {
       const speed = shouldOpen ? 7.8 : 4.6;
@@ -38,6 +60,9 @@ export function updateProximityAutoDoors3D(
       if (Math.abs(d.openT - target) <= 0.006) d.openT = target;
       const eased = 1 - Math.pow(1 - d.openT, 2.2);
       d.applyOpenT(eased);
+    }
+    if (d.collider) {
+      d.collider.disabled = d.openT > 0.42;
     }
   }
 }
@@ -492,19 +517,63 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     shellGroup.add(rearPivot);
 
     const bWorld = localToWorldXZ(backDoorCenterX, bz);
-    autoDoors.push({
+    const wallMaxYB = baseWorldY + floor1Y + totalWallH + 1.0;
+    const backDoorCol = makeLocalObb(
+      lotX,
+      lotZ,
+      rotY,
+      backDoorCenterX,
+      bz,
+      backDoorW * 0.5,
+      0.45,
+      0,
+      2.6,
+      interiorId,
+      baseWorldY - 0.5,
+      baseWorldY + floor1Y + backDoorH,
+    );
+    const backDoorNote =
+      kind === 'pokemon_center'
+        ? '【应急安全后门】通往宝可梦中心后巷，平时保持闭合，需手动推拉开启。'
+        : kind === 'poke_mart'
+          ? '【百货卸货后门】贴着「随手关门 · 货物通道」标识，可手动推门出入。'
+          : kind === 'restaurant'
+            ? '【后厨通道后门】贴着「净厨通道 · 进出请随手关门」，里面飘来浓郁高汤香气！'
+            : kind === 'hotel'
+              ? '【酒店后勤通道门】厚重的防风金属门，需手动推门开启。'
+              : '【公寓后院小门】配有黄铜门锁的后门，需手动转动把手开启。';
+    const backDoorEntry: ProximityAutoDoor3D = {
+      id: `${interiorId}_back_door`,
+      mode: 'manual',
+      label: '🚪 建筑后门',
       worldX: bWorld.wx,
       worldY: baseWorldY + floor1Y,
       worldZ: bWorld.wz,
-      triggerRadius: 4.5,
+      triggerRadius: 3.2,
       openT: 0,
+      isOpen: false,
+      inspectNote: backDoorNote,
+      collider: backDoorCol,
       applyOpenT: (t) => {
         rearPivot.rotation.y = -1.42 * t;
       },
+    };
+    autoDoors.push(backDoorEntry);
+    interactPoints.push({
+      id: `${interiorId}_back_door_pt`,
+      townName,
+      kind: 'building_door',
+      label: '🚪 建筑后门',
+      hint: '手动推开/关上后门，或检查门牌标识',
+      doorRef: backDoorEntry,
+      x: bWorld.wx,
+      y: baseWorldY + floor1Y,
+      z: bWorld.wz,
+      radius: 2.9,
     });
 
-    const wallMaxYB = baseWorldY + floor1Y + totalWallH + 1.0;
     colliders.push(
+      backDoorCol,
       makeLocalObb(lotX, lotZ, rotY, -w * 0.5 + leftSpanW * 0.5, bz, leftSpanW * 0.5 + 0.1, 0.6, 0, totalWallH, interiorId, baseWorldY - 1, wallMaxYB),
       makeLocalObb(lotX, lotZ, rotY, w * 0.5 - rightSpanW * 0.5, bz, rightSpanW * 0.5 + 0.1, 0.6, 0, totalWallH, interiorId, baseWorldY - 1, wallMaxYB),
     );
@@ -672,6 +741,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   }
 
   // Interior partition wall helpers (used by Enclosed Restaurant Kitchen & 2F Suites!)
+  let interiorDoorCounter = 0;
   const addInteriorWallWithDoor = (
     floorIdx: 1 | 2,
     axis: 'x' | 'z',
@@ -680,6 +750,14 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     spanEnd: number,
     doorCenter: number,
     doorWidth = 3.2,
+    doorOpts?: {
+      id?: string;
+      mode?: 'manual' | 'hotel_keycard';
+      label?: string;
+      hotelId?: string;
+      roomNumber?: string;
+      inspectNote?: string;
+    },
   ) => {
     const baseY = floorIdx === 2 ? floor2Y : floor1Y;
     const h = floorIdx === 2 ? H2 : H1;
@@ -688,6 +766,11 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     const leftLen = Math.max(0, doorCenter - doorWidth * 0.5 - spanStart);
     const rightLen = Math.max(0, spanEnd - (doorCenter + doorWidth * 0.5));
     const dH = 3.15;
+    const doorMode = doorOpts?.mode ?? 'manual';
+    const doorId = doorOpts?.id ?? `${interiorId}_room_door_${interiorDoorCounter++}`;
+    const doorLabel = doorOpts?.label ?? '🚪 房间木门';
+    const doorNote =
+      doorOpts?.inspectNote ?? '精巧的室内体素木门，转动黄铜把手即可打开或关上。';
 
     if (axis === 'x') {
       if (leftLen > 0.2) {
@@ -703,6 +786,32 @@ export function buildUnifiedWalkInBuilding3D(opts: {
       addBox(doorWidth, h - dH, 0.42, wainscotMat, doorCenter, baseY + dH + (h - dH) * 0.5, fixedCoord);
       addBox(doorWidth + 0.3, 0.22, 0.52, trimMat, doorCenter, baseY + dH, fixedCoord, false);
 
+      // Hotel electronic keycard reader & brass room plaque beside hotel suite doors!
+      if (doorMode === 'hotel_keycard') {
+        addVoxelBox(
+          shellGroup,
+          0.32,
+          0.46,
+          0.14,
+          new THREE.MeshLambertMaterial({ color: 0x1e293b }),
+          doorCenter + doorWidth * 0.5 + 0.38,
+          baseY + 1.35,
+          fixedCoord + 0.24,
+          false,
+        );
+        addVoxelBox(
+          shellGroup,
+          0.16,
+          0.12,
+          0.16,
+          new THREE.MeshBasicMaterial({ color: 0x38bdf8 }),
+          doorCenter + doorWidth * 0.5 + 0.38,
+          baseY + 1.62,
+          fixedCoord + 0.25,
+          false,
+        );
+      }
+
       const rw = doorWidth - 0.22;
       const rh = dH - 0.10;
       const rPivot = new THREE.Group();
@@ -711,15 +820,40 @@ export function buildUnifiedWalkInBuilding3D(opts: {
       addVoxelBox(rPivot, 0.16, 0.16, 0.30, new THREE.MeshLambertMaterial({ color: 0xfcc419 }), rw - 0.32, 1.25, 0, false);
       shellGroup.add(rPivot);
       const rWorld = localToWorldXZ(doorCenter, fixedCoord);
-      autoDoors.push({
+      const doorCol = makeLocalObb(lotX, lotZ, rotY, doorCenter, fixedCoord, doorWidth * 0.5, 0.35, 0, 2.55, interiorId, minY, baseWorldY + baseY + dH);
+      colliders.push(doorCol);
+      const dEntry: ProximityAutoDoor3D = {
+        id: doorId,
+        mode: doorMode,
+        label: doorLabel,
         worldX: rWorld.wx,
         worldY: baseWorldY + baseY,
         worldZ: rWorld.wz,
-        triggerRadius: 4.1,
+        triggerRadius: 2.9,
         openT: 0,
+        isOpen: false,
+        hotelId: doorOpts?.hotelId,
+        roomNumber: doorOpts?.roomNumber,
+        inspectNote: doorNote,
+        collider: doorCol,
         applyOpenT: (t) => {
           rPivot.rotation.y = -1.42 * t;
         },
+      };
+      autoDoors.push(dEntry);
+      interactPoints.push({
+        id: `${doorId}_pt`,
+        townName,
+        kind: 'building_door',
+        label: doorLabel,
+        hint: doorMode === 'hotel_keycard' ? '需刷对应房卡开门 / 检查门牌' : '手动开关房门 / 检查房门',
+        doorRef: dEntry,
+        hotelId: doorOpts?.hotelId,
+        roomNumber: doorOpts?.roomNumber,
+        x: rWorld.wx,
+        y: baseWorldY + baseY,
+        z: rWorld.wz,
+        radius: 2.75,
       });
     } else {
       if (leftLen > 0.2) {
@@ -742,15 +876,40 @@ export function buildUnifiedWalkInBuilding3D(opts: {
       addVoxelBox(rPivot, 0.30, 0.16, 0.16, new THREE.MeshLambertMaterial({ color: 0xfcc419 }), 0, 1.25, rw - 0.32, false);
       shellGroup.add(rPivot);
       const rWorld = localToWorldXZ(fixedCoord, doorCenter);
-      autoDoors.push({
+      const doorCol = makeLocalObb(lotX, lotZ, rotY, fixedCoord, doorCenter, 0.35, doorWidth * 0.5, 0, 2.55, interiorId, minY, baseWorldY + baseY + dH);
+      colliders.push(doorCol);
+      const dEntry: ProximityAutoDoor3D = {
+        id: doorId,
+        mode: doorMode,
+        label: doorLabel,
         worldX: rWorld.wx,
         worldY: baseWorldY + baseY,
         worldZ: rWorld.wz,
-        triggerRadius: 4.1,
+        triggerRadius: 2.9,
         openT: 0,
+        isOpen: false,
+        hotelId: doorOpts?.hotelId,
+        roomNumber: doorOpts?.roomNumber,
+        inspectNote: doorNote,
+        collider: doorCol,
         applyOpenT: (t) => {
           rPivot.rotation.y = 1.42 * t;
         },
+      };
+      autoDoors.push(dEntry);
+      interactPoints.push({
+        id: `${doorId}_pt`,
+        townName,
+        kind: 'building_door',
+        label: doorLabel,
+        hint: doorMode === 'hotel_keycard' ? '需刷对应房卡开门 / 检查门牌' : '手动开关房门 / 检查房门',
+        doorRef: dEntry,
+        hotelId: doorOpts?.hotelId,
+        roomNumber: doorOpts?.roomNumber,
+        x: rWorld.wx,
+        y: baseWorldY + baseY,
+        z: rWorld.wz,
+        radius: 2.75,
       });
     }
   };

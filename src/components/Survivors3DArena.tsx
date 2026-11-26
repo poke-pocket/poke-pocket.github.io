@@ -1596,9 +1596,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const horizonBackdrop = createHorizonBackdropMesh(selectedBiome);
     scene.add(horizonBackdrop);
 
-    // 1. GRAND CONTINUOUS TOPOGRAPHIC HILLS, OPEN PLAINS & REAL DISTANT MOUNTAINS (224m cached heightfield terrain!)
-    const TERRAIN_SIZE = 224;
-    const TERRAIN_SEGS = prefsRef.current.graphicsQuality === 'low' ? 64 : 88;
+    // 1. GRAND CONTINUOUS TOPOGRAPHIC HILLS, OPEN PLAINS & REAL DISTANT MOUNTAINS (288m cached heightfield terrain!)
+    const TERRAIN_SIZE = 288;
+    const TERRAIN_SEGS = prefsRef.current.graphicsQuality === 'low' ? 72 : 96;
     const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGS, TERRAIN_SEGS);
     terrainGeo.rotateX(-Math.PI / 2);
     const terrainPosAttr = terrainGeo.attributes.position as THREE.BufferAttribute;
@@ -1781,15 +1781,24 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       const iconByKind: Record<string, { icon: string; sub: string; order: number }> = {
         pokemon_center: { icon: '/sprites/items/potion.png', sub: '室内 · 乔伊恢复柜台', order: 1 },
         poke_mart: { icon: '/sprites/items/poke-ball.png', sub: '室内 · 四层货架超市收银台', order: 2 },
+        hotel_desk: { icon: '/sprites/items/luxury-ball.png', sub: '室内 · 前台办理房卡入住', order: 3 },
         hotel_rest: { icon: '/sprites/items/luxury-ball.png', sub: '室内 · 豪华休息大厅', order: 3 },
         restaurant: { icon: '/sprites/items/sitrus-berry.png', sub: '室内 · 树果料理吧台', order: 4 },
-        transit_station: { icon: '/sprites/items/vs-seeker.png', sub: '室外 · 有轨电车站台', order: 5 },
+        city_bus_stop: { icon: '/sprites/items/town-map.png', sub: '室外 · 市内公交与城际巴士站', order: 5 },
+        transit_station: { icon: '/sprites/items/vs-seeker.png', sub: '城郊 · 虹桥高铁站枢纽', order: 6 },
         npc_chat: { icon: '/sprites/items/poke-radar.png', sub: '街区居民交谈点', order: 7 },
       };
       for (const town of proceduralTowns) {
         for (const pt of town.interactPoints) {
-          // Skip generic duplicate apartment NPC chat points & upstairs beds
-          if (pt.kind === 'npc_chat' || pt.id.includes('suite_bed')) continue;
+          // Skip generic NPC chat points, interactive doors & upstairs locked beds in city-wide Auto-Nav list
+          if (
+            pt.kind === 'npc_chat' ||
+            pt.kind === 'building_door' ||
+            pt.kind === 'hotel_bed' ||
+            pt.id.includes('suite_bed')
+          ) {
+            continue;
+          }
           const meta = iconByKind[pt.kind] ?? { icon: '/sprites/items/poke-ball.png', sub: town.name, order: 8 };
           items.push({
             id: pt.id,

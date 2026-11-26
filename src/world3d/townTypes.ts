@@ -2,12 +2,30 @@ import * as THREE from 'three';
 import type { WalkableStairAndFloorZone3D } from '../data/survivorsTactics';
 
 export interface ProximityAutoDoor3D {
+  id?: string;
+  mode?: 'auto' | 'manual' | 'hotel_keycard';
+  label?: string;
   worldX: number;
   worldY: number;
   worldZ: number;
   triggerRadius: number;
   openT: number;
+  isOpen?: boolean;
+  hotelId?: string;
+  roomNumber?: string;
+  inspectNote?: string;
+  collider?: TownCollider;
   applyOpenT: (t: number) => void;
+}
+
+const HELD_HOTEL_KEYCARDS = new Map<string, string>();
+export function getHeldHotelKeycard(hotelId?: string): string | null {
+  if (!hotelId) return null;
+  return HELD_HOTEL_KEYCARDS.get(hotelId) ?? null;
+}
+export function setHeldHotelKeycard(hotelId: string, roomNumber: string | null): void {
+  if (!roomNumber) HELD_HOTEL_KEYCARDS.delete(hotelId);
+  else HELD_HOTEL_KEYCARDS.set(hotelId, roomNumber);
 }
 
 export type TownInteractKind =
@@ -16,7 +34,10 @@ export type TownInteractKind =
   | 'transit_station'
   | 'city_bus_stop'
   | 'npc_chat'
+  | 'hotel_desk'
+  | 'hotel_bed'
   | 'hotel_rest'
+  | 'building_door'
   | 'restaurant';
 
 export interface NpcSocialProfile {
@@ -38,6 +59,9 @@ export interface TownInteractPoint {
   hint: string;
   dialogText?: string;
   npcProfile?: NpcSocialProfile;
+  doorRef?: ProximityAutoDoor3D;
+  hotelId?: string;
+  roomNumber?: string;
   x: number;
   /** Optional world-Y floor anchor so 1F vs 2F NPCs/beds only trigger on the matching floor! */
   y?: number;
@@ -50,6 +74,8 @@ export interface TownCollider {
   maxX: number;
   minZ: number;
   maxZ: number;
+  /** Dynamic disable flag (e.g., unlocked/opened manual & keycard doors disable their doorway collider while open!) */
+  disabled?: boolean;
   /** Optional Oriented Bounding Box (OBB) for rotated buildings & solid doorway walls */
   cx?: number;
   cz?: number;
@@ -206,6 +232,7 @@ export function resolveTownWallCollisions(
 ): void {
   for (let i = 0; i < colliders.length; i++) {
     const box = colliders[i];
+    if (box.disabled) continue;
     // Fast AABB pre-rejection BEFORE any Math.cos/Math.sin OBB trig (skips >99% of city colliders in 2 float checks!)
     if (
       pos.x <= box.minX - pad ||
@@ -292,6 +319,7 @@ export function computeCameraWallClipT(
     const pz = oz + (cz - oz) * t;
     for (let i = 0; i < colliders.length; i++) {
       const box = colliders[i];
+      if (box.disabled) continue;
       const h = box.height ?? 9.5;
       if (h < 2.85) continue;
       const wallMinY = box.minY ?? groundBaseY - 1.0;

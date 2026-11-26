@@ -65,6 +65,14 @@ export interface InteriorFurnishContext {
     spanEnd: number,
     doorCenter: number,
     doorWidth?: number,
+    doorOpts?: {
+      id?: string;
+      mode?: 'manual' | 'hotel_keycard';
+      label?: string;
+      hotelId?: string;
+      roomNumber?: string;
+      inspectNote?: string;
+    },
   ) => void;
   addSolidPartition: (floorIdx: 1 | 2, axis: 'x' | 'z', fixedCoord: number, s0: number, s1: number) => void;
 }
@@ -445,9 +453,14 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
   if (kind === 'restaurant') {
     // ==================== BERRY RESTAURANT WITH ENCLOSED NON-OPEN BACK KITCHEN ====================
     // Full-height solid interior partition wall separating Back Kitchen (`z < -d*0.14`) from Front Dining Hall (`z > -d*0.14`)
-    // with a default-CLOSED proximity auto-swinging kitchen service door on the East side (`x = w * 0.26`)!
+    // with a default-CLOSED manual kitchen service door on the East side (`x = w * 0.26`)!
     const partZ = -d * 0.14;
-    addInteriorWallWithDoor(1, 'x', partZ, -w * 0.49, w * 0.49, w * 0.26, 3.2);
+    addInteriorWallWithDoor(1, 'x', partZ, -w * 0.49, w * 0.49, w * 0.26, 3.2, {
+      id: `${interiorId}_kitchen_door`,
+      mode: 'manual',
+      label: '🚪 后厨净厨木门',
+      inspectNote: '门上挂着「净厨重地 · 请敲门后手动推门入内」木牌，门缝里飘出浓郁树果骨汤香气！',
+    });
 
     // Inside Enclosed Back Kitchen (`z = -d*0.48 .. partZ`): Twin Voxel Stoves + Hoods + Beverage Cooler + Chef!
     placeVoxel(createVoxelKitchenRangeUnit(), { x: -4.2, y: floor1Y, z: -d * 0.39, halfW: 1.25, halfD: 0.78, colH: 2.1 });
@@ -574,9 +587,10 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
     npcs.push(concierge, guest1F);
     pushLocalInteract(2.0, floor1Y, -d * 0.22 + 0.9, {
       id: `${interiorId}_hotel_desk`,
-      kind: 'hotel_rest',
+      kind: 'hotel_desk',
+      hotelId: interiorId,
       label: '🏨 酒店前台总管',
-      hint: '办理休整（或上 2F 客房床边休息），全队满血并获斗志强化',
+      hint: '办理入住领取二楼豪华客房房卡',
       radius: 3.5,
     });
     pushLocalInteract(2.8, floor1Y, 4.2, {
@@ -590,9 +604,9 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
         name: '时尚丽人 琳达',
         role: '环球巡礼收藏家',
         sprite: '/sprites/people/beauty.png',
-        greeting: '二楼有三间独立体素客房，推门进去靠近柔软的大床就能美美睡一觉哦！',
+        greeting: '想上二楼豪华客房睡觉的话，记得先在一楼前台总管那里办入住领一张房卡哦！',
         chatLines: [
-          '我刚刚坐市内公交从火车站过来，大马路宽敞又气派！',
+          '二楼每间客房都有独立电子门禁锁，只有刷对应房号的房卡才能推门进去休息，特别安全私密！',
           '来和我的优雅搭档过两招吗？',
         ],
         battleSpecies: 'mew',
@@ -600,16 +614,29 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
       },
     });
 
-    // 2F 3 Private Suites with Solid Walls, Default-Closed Swinging Doors & Chibi-Scaled Voxel Double Beds!
+    // 2F 3 Private Suites with Solid Walls, Keycard-Locked Doors & Chibi-Scaled Voxel Double Beds!
     const corrZ = 3.2;
     const eastSpanStart = -w * 0.44 + 5.2;
     const suiteSpan = (w * 0.48 - eastSpanStart) / 3;
     const quiltColors: ('berry' | 'azure' | 'mint')[] = ['berry', 'azure', 'mint'];
+    const suiteInspectNotes = [
+      '【201 豪华大床房】电子感应门禁亮着待机蓝灯，需刷 201 号房卡解锁。',
+      '【202 景观大床房】电子门禁处于锁定状态，需持 202 号专属房卡方可刷卡进入。',
+      '【203 尊享套房】电子门禁处于锁定状态，需持 203 号专属房卡方可刷卡进入。',
+    ];
     for (let si = 0; si < 3; si++) {
+      const roomNo = `20${si + 1}`;
       const sx0 = eastSpanStart + si * suiteSpan;
       const sx1 = sx0 + suiteSpan;
       const scx = (sx0 + sx1) * 0.5;
-      addInteriorWallWithDoor(2, 'x', corrZ, sx0, sx1, scx, 3.3);
+      addInteriorWallWithDoor(2, 'x', corrZ, sx0, sx1, scx, 3.3, {
+        id: `${interiorId}_suite_door_${roomNo}`,
+        mode: 'hotel_keycard',
+        hotelId: interiorId,
+        roomNumber: roomNo,
+        label: `🔒 ${roomNo} 豪华客房门`,
+        inspectNote: suiteInspectNotes[si],
+      });
       if (si > 0) addSolidPartition(2, 'z', sx0, -d * 0.49, corrZ);
       else addSolidPartition(2, 'z', sx0, -d * 0.22, corrZ);
 
@@ -624,9 +651,11 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
       });
       pushLocalInteract(scx + 0.8, floor2Y, -d * 0.22, {
         id: `${interiorId}_suite_bed_${si}`,
-        kind: 'hotel_rest',
-        label: `🛏️ 20${si + 1} 豪华客房大床`,
-        hint: '在柔软体素大床上小憩，全队体力回满并获强化',
+        kind: 'hotel_bed',
+        hotelId: interiorId,
+        roomNumber: roomNo,
+        label: `🛏️ ${roomNo} 豪华客房大床`,
+        hint: '在柔软体素大床上睡觉，全队体力回满并获强化',
         radius: 2.8,
       });
       placeVoxel(createVoxelNightstandWithLamp(), {
@@ -713,10 +742,20 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
     },
   });
 
-  // 2F Master Bedroom + Study separated by solid walls & swinging doors
+  // 2F Master Bedroom + Study separated by solid walls & manual interactive doors
   const roomX0 = -w * 0.44 + 5.2;
-  addInteriorWallWithDoor(2, 'z', roomX0, -d * 0.49, d * 0.49, -2.5, 3.4);
-  addInteriorWallWithDoor(2, 'x', 1.2, roomX0, w * 0.49, (roomX0 + w * 0.49) * 0.5, 3.3);
+  addInteriorWallWithDoor(2, 'z', roomX0, -d * 0.49, d * 0.49, -2.5, 3.4, {
+    id: `${interiorId}_apt_hall_door`,
+    mode: 'manual',
+    label: '🚪 二楼起居走廊门',
+    inspectNote: '通往二楼书房与主卧的体素橡木房门，转动门把手即可推开。',
+  });
+  addInteriorWallWithDoor(2, 'x', 1.2, roomX0, w * 0.49, (roomX0 + w * 0.49) * 0.5, 3.3, {
+    id: `${interiorId}_apt_bed_door`,
+    mode: 'manual',
+    label: '🚪 二楼卧室门',
+    inspectNote: '公寓主人的温馨卧室门，请礼貌手动开关房门哦。',
+  });
   const mbX = (roomX0 + w * 0.48) * 0.5;
   placeVoxel(createVoxelDoubleBed('berry'), { x: mbX, y: floor2Y, z: -d * 0.28, halfW: 1.9, halfD: 2.2, colH: 0.95, floor: 2 });
   placeVoxel(createVoxelNightstandWithLamp(), { x: mbX - 2.8, y: floor2Y, z: -d * 0.38, halfW: 0.6, halfD: 0.55, colH: 1.2, floor: 2 });

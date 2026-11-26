@@ -1,7 +1,7 @@
 import React from 'react';
 import { WORLD_CITIES } from '../../data/worldTour';
 import { sound } from '../../utils/sound';
-import type { TownInteractPoint } from '../../world3d/townTypes';
+import { getHeldHotelKeycard, type TownInteractPoint } from '../../world3d/townTypes';
 import { PixelItemImg } from '../PixelSprite';
 import type { ArenaSharedCtx } from './arenaTypesAndProps';
 
@@ -182,17 +182,52 @@ export function buildInteractActionsForTarget(
         ],
       };
     }
-    if (tp.kind === 'hotel_rest') {
-      const isBed = tp.id.includes('suite_bed');
+    if (tp.kind === 'hotel_desk') {
+      const heldRoom = getHeldHotelKeycard(tp.hotelId);
       return {
-        speakerName: isBed ? tp.label.replace(/^🛏️\s*/, '') : '驿站酒店 · 大堂总管',
-        actions: isBed
-          ? [{ id: 'rest', label: '在体素大床上休整', icon: '/sprites/items/luxury-ball.png' }]
+        speakerName: '驿站酒店 · 大堂总管',
+        actions: heldRoom
+          ? [
+              { id: 'hotel_checkin', label: `已持【${heldRoom} 房卡】· 换房`, icon: '/sprites/items/luxury-ball.png' },
+              { id: 'hotel_checkout', label: '办理退房归还房卡', icon: '/sprites/items/amulet-coin.png' },
+              { id: 'chat', label: '与总管闲聊', icon: '/sprites/items/soothe-bell.png' },
+            ]
           : [
-              { id: 'rest', label: '办理休整回满状态', icon: '/sprites/items/luxury-ball.png' },
+              { id: 'hotel_checkin', label: '办理入住领房卡 (¥60)', icon: '/sprites/items/luxury-ball.png' },
               { id: 'chat', label: '与总管闲聊', icon: '/sprites/items/soothe-bell.png' },
               { id: 'ask', label: '询问周边情报', icon: '/sprites/items/town-map.png' },
             ],
+      };
+    }
+    if (tp.kind === 'hotel_bed' || tp.kind === 'hotel_rest') {
+      return {
+        speakerName: tp.label.replace(/^🛏️\s*/, ''),
+        actions: [{ id: 'rest', label: '盖上被子美美睡一觉', icon: '/sprites/items/luxury-ball.png' }],
+      };
+    }
+    if (tp.kind === 'building_door' && tp.doorRef) {
+      const d = tp.doorRef;
+      if (d.mode === 'hotel_keycard') {
+        const heldRoom = getHeldHotelKeycard(d.hotelId);
+        const toggleLabel = d.isOpen
+          ? `关上 ${d.roomNumber ?? ''} 客房门`
+          : heldRoom === d.roomNumber
+            ? `刷【${heldRoom} 房卡】开门`
+            : '尝试刷卡 / 推门';
+        return {
+          speakerName: d.label?.replace(/^[🔒🚪]\s*/, '') ?? '酒店客房门',
+          actions: [
+            { id: 'door_toggle', label: toggleLabel, icon: '/sprites/items/luxury-ball.png' },
+            { id: 'door_inspect', label: '检查门牌与电子锁', icon: '/sprites/items/town-map.png' },
+          ],
+        };
+      }
+      return {
+        speakerName: d.label?.replace(/^🚪\s*/, '') ?? '房门',
+        actions: [
+          { id: 'door_toggle', label: d.isOpen ? '随手关上门' : '手动推开门', icon: '/sprites/items/poke-ball.png' },
+          { id: 'door_inspect', label: '检查门锁与标识', icon: '/sprites/items/town-map.png' },
+        ],
       };
     }
     if (tp.kind === 'city_bus_stop') {
