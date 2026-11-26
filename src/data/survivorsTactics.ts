@@ -1,7 +1,11 @@
 import type { PokemonElement, SpeciesId } from '../types/pet';
 import { getActiveGeoTerrainOrigin, sampleGeoTerrainHeight3D, subscribeGeoDemLoaded } from './geoTerrain3D';
-import { HIGHWAY_ROAD_WIDTH_3D, getNearestGeoHighwayDist3D } from '../utils/interCityHighwayGraph';
-import { isOnShanghaiBridgeLocal } from '../utils/townStreetGen';
+import {
+  HIGHWAY_ROAD_WIDTH_3D,
+  getNearestGeoHighwayDist3D,
+  getNearestGeoHighwayProjection3D,
+} from '../utils/interCityHighwayGraph';
+import { generateTownLayout, isOnShanghaiBridgeLocal, type TownStreetSeg } from '../utils/townStreetGen';
 import type { BiomeId } from './worldTextures3D';
 
 export type SurvivorSkillId =
@@ -571,6 +575,175 @@ export function getRawNaturalTerrainHeight3D(wx: number, wz: number): number {
   return elev;
 }
 
+// ============================================================================
+// ACTIVE TOWN STREET, BRIDGE & RAIL SPATIAL INDEX (O(1) 32m Bucket Grid)
+// Unifies roadbed terrain grading, 1:1 walkable asphalt/bridge deck height,
+// and strict exclusion of wild trees/rocks/signposts from ALL paved roads!
+// ============================================================================
+interface IndexedTownStreetEntry {
+  seg: TownStreetSeg;
+  halfW: number;
+  townCenterX: number;
+  townCenterZ: number;
+}
+
+interface IndexedRailEntry {
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+}
+
+const TOWN_STREET_GRID_CELL = 32;
+const activeStreetBuckets = new Map<string, IndexedTownStreetEntry[]>();
+const activeRailBuckets = new Map<string, IndexedRailEntry[]>();
+
+export function registerActiveTownRoadLayouts3D(
+  specs: {
+    id: string;
+    name: string;
+    x: number;
+    z: number;
+    seed: number;
+    plazaRadius: number;
+    plateauY?: number;
+    landmarkCityId?: string;
+  }[],
+): void {
+  activeStreetBuckets.clear();
+  activeRailBuckets.clear();
+
+  for (const spec of specs) {
+    const layout = generateTownLayout({
+      id: spec.id,
+      name: spec.name,
+      x: spec.x,
+      z: spec.z,
+      seed: spec.seed,
+      plazaRadius: spec.plazaRadius,
+      plateauY: spec.plateauY ?? 1.65,
+      landmarkCityId: spec.landmarkCityId,
+    });
+
+    for (const seg of layout.streets) {
+      const midDist = Math.hypot((seg.x1 + seg.x2) * 0.5 - spec.x, (seg.z1 + seg.z2) * 0.5 - spec.z);
+      if (!seg.isBridge && midDist > 720) continue;
+      const halfW = Math.max(seg.width, seg.widthStart ?? seg.width, seg.widthEnd ?? seg.width) * 0.5;
+      const pad = halfW + 10.0;
+      const gx0 = Math.floor((Math.min(seg.x1, seg.x2) - pad) / TOWN_STREET_GRID_CELL);
+      const gx1 = Math.floor((Math.max(seg.x1, seg.x2) + pad) / TOWN_STREET_GRID_CELL);
+      const gz0 = Math.floor((Math.min(seg.z1, seg.z2) - pad) / TOWN_STREET_GRID_CELL);
+      const gz1 = Math.floor((Math.max(seg.z1, seg.z2) + pad) / TOWN_STREET_GRID_CELL);
+      const entry: IndexedTownStreetEntry = {
+        seg,
+        halfW,
+        townCenterX: spec.x,
+        townCenterZ: spec.z,
+      };
+      for (let gz = gz0; gz <= gz1; gz++) {
+        for (let gx = gx0; gx <= gx1; gx++) {
+          const k = `${gx},${gz}`;
+          let arr = activeStreetBuckets.get(k);
+          if (!arr) {
+            arr = [];
+            activeStreetBuckets.set(k, arr);
+          }
+          arr.push(entry);
+        }
+      }
+    }
+
+    for (const rl of layout.rail) {
+      const pad = 10.0;
+      const gx0 = Math.floor((Math.min(rl.x1, rl.x2) - pad) / TOWN_STREET_GRID_CELL);
+      const gx1 = Math.floor((Math.max(rl.x1, rl.x2) + pad) / TOWN_STREET_GRID_CELL);
+      const gz0 = Math.floor((Math.min(rl.z1, rl.z2) - pad) / TOWN_STREET_GRID_CELL);
+      const gz1 = Math.floor((Math.max(rl.z1, rl.z2) + pad) / TOWN_STREET_GRID_CELL);
+      for (let gz = gz0; gz <= gz1; gz++) {
+        for (let gx = gx0; gx <= gx1; gx++) {
+          const k = `${gx},${gz}`;
+          let arr = activeRailBuckets.get(k);
+          if (!arr) {
+            arr = [];
+            activeRailBuckets.set(k, arr);
+          }
+          arr.push(rl);
+        }
+      }
+    }
+  }
+
+  clearTerrainHeightCache3D();
+}
+
+function getNearestTownStreetHit3D(
+  wx: number,
+  wz: number,
+  includeBridges: boolean,
+): { entry: IndexedTownStreetEntry; dist: number; qx: number; qz: number; t: number } | null {
+  const gx = Math.floor(wx / TOWN_STREET_GRID_CELL);
+  const gz = Math.floor(wz / TOWN_STREET_GRID_CELL);
+  const bucket = activeStreetBuckets.get(`${gx},${gz}`);
+  if (!bucket || bucket.length === 0) return null;
+
+  let best: { entry: IndexedTownStreetEntry; dist: number; qx: number; qz: number; t: number } | null = null;
+  let bestClearance = 9999;
+
+  for (let i = 0; i < bucket.length; i++) {
+    const e = bucket[i];
+    if (!includeBridges && e.seg.isBridge) continue;
+    const vx = e.seg.x2 - e.seg.x1;
+    const vz = e.seg.z2 - e.seg.z1;
+    const lenSq = vx * vx + vz * vz;
+    const t = lenSq > 1e-4 ? Math.max(0, Math.min(1, ((wx - e.seg.x1) * vx + (wz - e.seg.z1) * vz) / lenSq)) : 0;
+    const qx = e.seg.x1 + vx * t;
+    const qz = e.seg.z1 + vz * t;
+    const dist = Math.hypot(wx - qx, wz - qz);
+    const clearance = dist - e.halfW;
+    if (clearance < bestClearance) {
+      bestClearance = clearance;
+      best = { entry: e, dist, qx, qz, t };
+    }
+  }
+  return best;
+}
+
+/**
+ * Returns `true` if `(wx, wz)` falls on or beside ANY paved road, highway, bridge, or railway track
+ * — preventing wild trees, rocks, bushes, flowers, mushrooms & random signposts from EVER spawning on roads!
+ */
+export function isNearAnyRoadOrRailForFlora3D(wx: number, wz: number, extraPad = 0): boolean {
+  if (getActiveGeoTerrainOrigin() !== null) {
+    if (getNearestGeoHighwayDist3D(wx, wz) < HIGHWAY_ROAD_WIDTH_3D * 0.5 + 6.8 + extraPad) {
+      return true;
+    }
+  } else {
+    if (isOnInterTownRoad3D(wx, wz, 15.5 + extraPad)) {
+      return true;
+    }
+    for (let i = 0; i < WORLD_RAIL_SEGMENTS_3D.length; i++) {
+      const [ax, az, bx, bz] = WORLD_RAIL_SEGMENTS_3D[i];
+      if (nearestPointOnSeg2D(wx, wz, ax, az, bx, bz).dist < 7.5 + extraPad) return true;
+    }
+  }
+
+  const stHit = getNearestTownStreetHit3D(wx, wz, true);
+  if (stHit && stHit.dist < stHit.entry.halfW + 5.6 + extraPad) {
+    return true;
+  }
+
+  const gx = Math.floor(wx / TOWN_STREET_GRID_CELL);
+  const gz = Math.floor(wz / TOWN_STREET_GRID_CELL);
+  const rails = activeRailBuckets.get(`${gx},${gz}`);
+  if (rails) {
+    for (let i = 0; i < rails.length; i++) {
+      const r = rails[i];
+      if (nearestPointOnSeg2D(wx, wz, r.x1, r.z1, r.x2, r.z2).dist < 7.5 + extraPad) return true;
+    }
+  }
+  return false;
+}
+
 // Zero-allocation 131,072-entry direct-mapped spatial height cache (0.5m resolution) — eliminates 37,000+ redundant DEM/river evaluations when shifting terrain chunks!
 const TERRAIN_CACHE_MASK = (1 << 17) - 1;
 const TERRAIN_CACHE_KX = new Int32Array(1 << 17).fill(0x7fffffff);
@@ -609,12 +782,79 @@ export function getTerrainHeight3D(wx: number, wz: number): number {
         elev = elev * (1.0 - cut) + MOUNTAIN_TUNNEL_FLOOR_Y * cut;
       }
     }
+  } else {
+    // 1. Grade Real-Earth Inter-City Highway roadbeds flat side-to-side (so slopes never bury half the road or player!)
+    const hwyHalfW = HIGHWAY_ROAD_WIDTH_3D * 0.5;
+    const hwyProj = getNearestGeoHighwayProjection3D(sx, sz);
+    if (hwyProj && hwyProj.dist < hwyHalfW + 8.5) {
+      const centerElev = getRawNaturalTerrainHeight3D(hwyProj.qx, hwyProj.qz);
+      if (centerElev > WATER_LEVEL_3D + 0.22) {
+        const gradeBlend = 1.0 - smoothstep(hwyHalfW + 1.4, hwyHalfW + 8.5, hwyProj.dist);
+        elev = elev * (1.0 - gradeBlend) + centerElev * gradeBlend;
+      }
+    }
+    // 2. Grade Mounted City Street roadbeds flat side-to-side across hills & gentle slopes!
+    const stHit = getNearestTownStreetHit3D(sx, sz, false);
+    if (stHit && stHit.dist < stHit.entry.halfW + 5.5) {
+      const centerElev = getRawNaturalTerrainHeight3D(stHit.qx, stHit.qz);
+      if (centerElev > WATER_LEVEL_3D + 0.18) {
+        const gradeBlend = 1.0 - smoothstep(stHit.entry.halfW + 0.9, stHit.entry.halfW + 5.5, stHit.dist);
+        elev = elev * (1.0 - gradeBlend) + centerElev * gradeBlend;
+      }
+    }
   }
 
   TERRAIN_CACHE_KX[slot] = qxInt;
   TERRAIN_CACHE_KZ[slot] = qzInt;
   TERRAIN_CACHE_VAL[slot] = elev;
   return elev;
+}
+
+/**
+ * Shared 1:1 Exact Surface Height for 3D Inter-City Highways & Highway Water Bridges!
+ * Used identically by `interCityHighway3D.ts` mesh vertices AND `getWalkableSurfaceHeight3D`
+ * so the player NEVER sinks underneath a highway or hits a sudden bridge cliff!
+ */
+export function getExactHighwayStationDeckY3D(
+  centerQx: number,
+  centerQz: number,
+  dirX: number,
+  dirZ: number,
+  lateralFrac01: number,
+  getGround: (x: number, z: number) => number = getTerrainHeight3D,
+): { deckY: number; bridgeBlend: number } {
+  const g0 = getGround(centerQx, centerQz);
+  const gM14 = getGround(centerQx - dirX * 14.0, centerQz - dirZ * 14.0);
+  const gM7 = getGround(centerQx - dirX * 7.0, centerQz - dirZ * 7.0);
+  const gP7 = getGround(centerQx + dirX * 7.0, centerQz + dirZ * 7.0);
+  const gP14 = getGround(centerQx + dirX * 14.0, centerQz + dirZ * 14.0);
+  const minAlong = Math.min(g0, gM14, gM7, gP7, gP14);
+
+  // Smooth 14m approach ramp up onto river/lake highway bridges (zero sudden step!)
+  const bridgeBlend = 1.0 - smoothstep(WATER_LEVEL_3D + 0.16, WATER_LEVEL_3D + 0.92, minAlong);
+  const onshoreEdgeY = Math.max(WATER_LEVEL_3D + 0.26, g0 + 0.16);
+  const bridgeDeckY = Math.max(BRIDGE_DECK_Y_3D, 1.92, onshoreEdgeY);
+  const edgeY = onshoreEdgeY + (bridgeDeckY - onshoreEdgeY) * bridgeBlend;
+  const crownOffset = 0.035 * (1.0 - Math.max(0, Math.min(1, lateralFrac01)));
+  return { deckY: edgeY + crownOffset, bridgeBlend };
+}
+
+/**
+ * Shared 1:1 Exact Surface Height for City Bridges (`buildModernCityBridge3D`)!
+ * Smoothly arches from exact onshore street elevation at `t=0` and `t=1` up to `midDeckY` over the river.
+ */
+export function computeCityBridgeDeckWorldY3D(
+  seg: TownStreetSeg,
+  baseY: number,
+  tClamped: number,
+  getGround: (x: number, z: number) => number = getTerrainHeight3D,
+): number {
+  const end1Y = Math.max(WATER_LEVEL_3D + 0.24, getGround(seg.x1, seg.z1) + 0.15);
+  const end2Y = Math.max(WATER_LEVEL_3D + 0.24, getGround(seg.x2, seg.z2) + 0.15);
+  const linearEndY = end1Y + (end2Y - end1Y) * tClamped;
+  const peakDeckY = Math.max(WATER_LEVEL_3D + 0.95, baseY + 0.24, Math.max(end1Y, end2Y) + 0.28);
+  const arch = smoothstep(0.0, 0.22, tClamped) * smoothstep(0.0, 0.22, 1.0 - tClamped);
+  return linearEndY + (peakDeckY - linearEndY) * arch;
 }
 
 export interface WalkableStairAndFloorZone3D {
@@ -710,19 +950,42 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number, currentPy?: n
       }
     }
   } else {
-    // Active Real-Earth city centered at (0, 0) + Inter-City Walkable Highway Network:
+    // Active Real-Earth Cities + Walkable Inter-City Highway Network (1:1 unified surface height!):
+    const stHit = getNearestTownStreetHit3D(wx, wz, true);
+    if (stHit && stHit.dist <= stHit.entry.halfW + 0.75) {
+      if (stHit.entry.seg.isBridge) {
+        const baseY = getTerrainHeight3D(stHit.entry.townCenterX, stHit.entry.townCenterZ);
+        return computeCityBridgeDeckWorldY3D(stHit.entry.seg, baseY, stHit.t, getTerrainHeight3D) + 0.03;
+      }
+      const segKind = stHit.entry.seg.kind;
+      const liftY = segKind === 'arterial' ? 0.098 : segKind === 'street' ? 0.072 : 0.045;
+      const centerG = getTerrainHeight3D(stHit.qx, stHit.qz);
+      const latFrac = Math.min(1, stHit.dist / Math.max(0.5, stHit.entry.halfW));
+      const streetDeckY = Math.max(WATER_LEVEL_3D + 0.24, centerG + liftY + 0.08 + 0.035 * (1 - latFrac));
+      return Math.max(ground + 0.16, streetDeckY);
+    }
+
     const geoCityId = activeGeo.startCityId ?? 'shanghai';
     if (isOnShanghaiBridgeLocal(wx, wz, geoCityId)) {
       return Math.max(ground + 0.16, 1.92);
     }
-    const hwyDist = getNearestGeoHighwayDist3D(wx, wz);
-    if (hwyDist < HIGHWAY_ROAD_WIDTH_3D * 0.5 + 0.8) {
-      if (ground < WATER_LEVEL_3D + 0.22) {
-        return Math.max(BRIDGE_DECK_Y_3D, 1.92) + 0.04;
-      }
-      return ground + 0.18;
+
+    const hwyHalfW = HIGHWAY_ROAD_WIDTH_3D * 0.5;
+    const hwyProj = getNearestGeoHighwayProjection3D(wx, wz);
+    if (hwyProj && hwyProj.dist <= hwyHalfW + 0.85) {
+      const latFrac = Math.min(1, hwyProj.dist / hwyHalfW);
+      const { deckY } = getExactHighwayStationDeckY3D(
+        hwyProj.qx,
+        hwyProj.qz,
+        hwyProj.dirX,
+        hwyProj.dirZ,
+        latFrac,
+        getTerrainHeight3D,
+      );
+      return Math.max(deckY + 0.02, ground >= WATER_LEVEL_3D ? ground + 0.16 : deckY + 0.02);
     }
-    // 2. Dry paved city avenues & parks sit flush at ground + 0.16 across dry landmass!
+
+    // Dry paved city plazas & parks sit flush at ground + 0.16 across dry landmass!
     if (Math.hypot(wx, wz) < 860 && ground >= WATER_LEVEL_3D) {
       return ground + 0.16;
     }

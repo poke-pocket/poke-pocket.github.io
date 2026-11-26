@@ -264,7 +264,7 @@ export function buildInteractActionsForTarget(
   if (node) {
     const suffix = node.maxHp > 1 ? ` (${node.hp}/${node.maxHp})` : '';
     return {
-      speakerName: '野外探索交互',
+      speakerName: node.kind === 'road_supply' ? '公路专属补给' : '野外探索交互',
       actions: [{ id: 'world_node', label: `${node.label}${suffix}`, icon: node.icon }],
     };
   }

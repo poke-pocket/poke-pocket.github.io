@@ -3,9 +3,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { computeBattleStats } from '../data/battleMoves';
 import { ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getPokemonCryId, getPokemonWorldScale3D } from '../data/catalog';
-import { DEFAULT_TACTICAL_CONFIG, DIFFICULTIES, MAP_REGIONS, SURVIVOR_SKILLS, WATER_LEVEL_3D, WORLD_SECTOR_SIZE, WORLD_TOWNS_3D, clearTerrainHeightCache3D, getDefaultSkillsForElement, getRawNaturalTerrainHeight3D, getTerrainHeight3D, getUnlockedSkillSlotCount, getWalkableSurfaceHeight3D, setWalkableBuildingFloorZones3D, type DifficultyId, type SafeZone3D, type SurvivorSkillId, type SurvivorsGameMode, type TacticalConfig } from '../data/survivorsTactics';
+import { DEFAULT_TACTICAL_CONFIG, DIFFICULTIES, MAP_REGIONS, SURVIVOR_SKILLS, WATER_LEVEL_3D, WORLD_SECTOR_SIZE, WORLD_TOWNS_3D, clearTerrainHeightCache3D, getDefaultSkillsForElement, getRawNaturalTerrainHeight3D, getTerrainHeight3D, getUnlockedSkillSlotCount, getWalkableSurfaceHeight3D, isNearAnyRoadOrRailForFlora3D, registerActiveTownRoadLayouts3D, setWalkableBuildingFloorZones3D, type DifficultyId, type SafeZone3D, type SurvivorSkillId, type SurvivorsGameMode, type TacticalConfig } from '../data/survivorsTactics';
 import { BIOME_PALETTES, createHorizonBackdropMesh, createPixelWaterMaterial, createSculptedTerrainMaterial, getAnimatedGifTextures, getBiomeTextures, getHeroSpriteFrames, type AnimatedSpriteSheet3D, type BiomeId } from '../data/worldTextures3D';
-import { findAutoWalkPath3D, type AutoNavBuildingPortalInfo, type AutoNavWaypoint } from '../utils/autoPathfinder3D';
+import { computeInstantKickoffWaypoints3D, createAutoWalkPathJob3D, findForwardSpliceIndex3D, type AutoNavBuildingPortalInfo, type AutoNavWaypoint, type IncrementalAutoPathJob3D } from '../utils/autoPathfinder3D';
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
 import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
 import { extractDexIdFromSpriteUrl, getPmd8DirSheet, type Pmd8DirSheet3D } from '../data/pmdSprites3D';
@@ -360,6 +360,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     stuckTimer: number;
     lastCheckX: number;
     lastCheckZ: number;
+    planningJob?: IncrementalAutoPathJob3D | null;
+    hasRemainingHorizon?: boolean;
   } | null>(null);
   const startAutoNavRef = useRef<(target: { label: string; x: number; z: number }) => void>(() => {});
   const stopAutoNavRef = useRef<(silent?: boolean) => void>(() => {});
@@ -1715,6 +1717,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     if (activeGeoNow) {
       mountedGeoCityIds.add(activeGeoNow.startCityId ?? 'shanghai');
     }
+    const activeTownLayoutSpecs = [...townSpecs];
+    // Register active city streets & rails BEFORE building 3D meshes so terrain roadbeds grade 100% flat!
+    registerActiveTownRoadLayouts3D(activeTownLayoutSpecs);
+    if (geoHighwayStreamer) {
+      geoHighwayStreamer.updateAround(0, 0, true);
+    }
     const proceduralTowns: ProceduralTownInstance[] = townSpecs.map((spec) => {
       const t = buildProceduralTown3D(
         spec.id,
@@ -1908,21 +1916,41 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       const allCols = proceduralTowns.flatMap((t) => t.colliders);
       const portals = getBuildingPortals();
       const canSurf = curSim.followers.some((f) => SPECIES_CATALOG[f.species].element === 'water');
-      const waypoints = findAutoWalkPath3D(curSim.px, curSim.pz, x, z, allCols, canSurf, portals);
+      // 1. Instant `< 0.15ms` macro-heading kickoff so protagonist starts walking on Frame 1!
+      const kickoffWaypoints = computeInstantKickoffWaypoints3D(
+        curSim.px,
+        curSim.pz,
+        x,
+        z,
+        allCols,
+        canSurf,
+        portals,
+      );
+      // 2. Frame-budgeted (`2.2ms/frame`) detailed A* job refines obstacles/doorways/bridges in the background!
+      const planningJob = createAutoWalkPathJob3D(
+        curSim.px,
+        curSim.pz,
+        x,
+        z,
+        allCols,
+        canSurf,
+        portals,
+      );
       autoNavRef.current = {
         label,
         goalX: x,
         goalZ: z,
-        waypoints,
+        waypoints: kickoffWaypoints,
         idx: 0,
         stuckTimer: 0,
         lastCheckX: curSim.px,
         lastCheckZ: curSim.pz,
+        planningJob,
+        hasRemainingHorizon: false,
       };
-      setAutoNavActiveLabel(label);
-      rebuildAutoNavTrailVisuals(curSim.px, curSim.pz, waypoints, 0);
-      sound.play('confirm');
-      showBanner(`🧭 自动寻路：前往「${label}」（按 WASD/方向键可随时手动接管）`, 2600);
+      setAutoNavActiveLabel(`${label} · 路线规划中…`);
+      rebuildAutoNavTrailVisuals(curSim.px, curSim.pz, kickoffWaypoints, 0);
+      showBanner(`🧭 已出发前往「${label}」（边走边规划精细路线，按 WASD 可随时接管）`, 2400);
     };
 
     // 2C. Live 3D Weather Particle System (Rain Streaks / Falling Snowflakes synced to real GPS/city weather!)
@@ -2643,6 +2671,37 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             autoNavTrailGroup.visible = false;
             showBanner('🕹️ 已切换为手动移动控制', 1400);
           } else if (navNow && mLen <= 0.08) {
+            // Advance background time-sliced A* pathfinder (~2.2ms budget, 60fps zero-stutter!) while walking!
+            if (navNow.planningJob) {
+              const planned = navNow.planningJob.step(2.2);
+              if (planned) {
+                navNow.planningJob = null;
+                navNow.waypoints = planned.waypoints;
+                navNow.hasRemainingHorizon = planned.hasRemainingHorizon;
+                navNow.idx = findForwardSpliceIndex3D(sim.px, sim.pz, planned.waypoints);
+                setAutoNavActiveLabel(navNow.label);
+                rebuildAutoNavTrailVisuals(sim.px, sim.pz, navNow.waypoints, navNow.idx);
+              }
+            } else if (navNow.hasRemainingHorizon && navNow.waypoints.length >= 2) {
+              // Rolling-Horizon Refresh for multi-km journeys: seamlessly plan next 500m ahead before reaching horizon end!
+              const horizonWp = navNow.waypoints[navNow.waypoints.length - 2];
+              const finalGoalDist = Math.hypot(navNow.goalX - sim.px, navNow.goalZ - sim.pz);
+              if (horizonWp && Math.hypot(horizonWp.x - sim.px, horizonWp.z - sim.pz) < 175 && finalGoalDist > 210) {
+                const allCols = proceduralTowns.flatMap((t) => t.colliders);
+                const portals = getBuildingPortals();
+                const canSurf = sim.followers.some((f) => SPECIES_CATALOG[f.species].element === 'water');
+                navNow.planningJob = createAutoWalkPathJob3D(
+                  sim.px,
+                  sim.pz,
+                  navNow.goalX,
+                  navNow.goalZ,
+                  allCols,
+                  canSurf,
+                  portals,
+                );
+              }
+            }
+
             while (
               navNow.idx < navNow.waypoints.length - 1 &&
               Math.hypot(navNow.waypoints[navNow.idx].x - sim.px, navNow.waypoints[navNow.idx].z - sim.pz) < 1.55
@@ -2651,9 +2710,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               rebuildAutoNavTrailVisuals(sim.px, sim.pz, navNow.waypoints, navNow.idx);
             }
             const curWp = navNow.waypoints[navNow.idx];
-            const finalWp = navNow.waypoints[navNow.waypoints.length - 1];
-            const distToFinal = finalWp ? Math.hypot(finalWp.x - sim.px, finalWp.z - sim.pz) : 0;
-            if (!curWp || distToFinal < 1.35) {
+            const distToFinal = Math.hypot(navNow.goalX - sim.px, navNow.goalZ - sim.pz);
+            if (!curWp || distToFinal < 1.45) {
               const arrivedLabel = navNow.label;
               autoNavRef.current = null;
               setAutoNavActiveLabel(null);
@@ -2674,11 +2732,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 navNow.lastCheckX = sim.px;
                 navNow.lastCheckZ = sim.pz;
                 navNow.stuckTimer = 0;
-                if (moved < 0.25) {
+                if (moved < 0.25 && !navNow.planningJob) {
                   const allCols = proceduralTowns.flatMap((t) => t.colliders);
                   const portals = getBuildingPortals();
                   const canSurf = sim.followers.some((f) => SPECIES_CATALOG[f.species].element === 'water');
-                  navNow.waypoints = findAutoWalkPath3D(
+                  navNow.waypoints = computeInstantKickoffWaypoints3D(
                     sim.px,
                     sim.pz,
                     navNow.goalX,
@@ -2688,6 +2746,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     portals,
                   );
                   navNow.idx = 0;
+                  navNow.planningJob = createAutoWalkPathJob3D(
+                    sim.px,
+                    sim.pz,
+                    navNow.goalX,
+                    navNow.goalZ,
+                    allCols,
+                    canSurf,
+                    portals,
+                  );
                   rebuildAutoNavTrailVisuals(sim.px, sim.pz, navNow.waypoints, 0);
                 }
               }
@@ -2712,7 +2779,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               sound.play('error');
               showBanner('🌊 前方是深水湖泊！走桥梁可自由通行，或携带水系宝可梦冲浪渡水！', 3200);
             }
-          } else if (nextGroundY <= sim.py + 1.45) {
+          } else if (
+            nextGroundY <= sim.py + (isNearAnyRoadOrRailForFlora3D(nextPx, nextPz) ? 2.15 : 1.45)
+          ) {
             sim.px = nextPx;
             sim.pz = nextPz;
           }
@@ -2768,18 +2837,34 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 if (mountedGeoCityIds.has(gc.city.id)) continue;
                 if (Math.hypot(sim.px - gc.x, sim.pz - gc.z) < 920) {
                   mountedGeoCityIds.add(gc.city.id);
+                  const neighborId = `geo_city_${gc.city.id}_${Math.round(gc.x)}_${Math.round(gc.z)}`;
+                  const neighborName = `${gc.city.name}市`.replace(/市市$/, '市');
+                  const neighborSeed = hashCitySeed(gc.city.id);
+                  activeTownLayoutSpecs.push({
+                    id: neighborId,
+                    name: neighborName,
+                    x: gc.x,
+                    z: gc.z,
+                    seed: neighborSeed,
+                    plazaRadius: 185,
+                    plateauY: 1.65,
+                    landmarkCityId: gc.city.id,
+                  });
+                  registerActiveTownRoadLayouts3D(activeTownLayoutSpecs);
                   const neighborTown = buildProceduralTown3D(
-                    `geo_city_${gc.city.id}_${Math.round(gc.x)}_${Math.round(gc.z)}`,
+                    neighborId,
                     gc.x,
                     gc.z,
-                    hashCitySeed(gc.city.id),
+                    neighborSeed,
                     (x, z) => getTerrainHeight3D(x, z),
-                    `${gc.city.name}市`.replace(/市市$/, '市'),
+                    neighborName,
                     185,
                     gc.city.id,
                   );
                   proceduralTowns.push(neighborTown);
                   townsGroup.add(neighborTown.group);
+                  chunkState.x = 999999; // Refresh local terrain chunk normals & roadbed grading
+                  geoHighwayStreamer.updateAround(sim.px, sim.pz, true);
                   syncUpperFloors();
                   syncAutoNavTargets();
                 }

@@ -126,6 +126,49 @@ export function createVoxelSignpost3D(scale = 1.0): THREE.Mesh {
 }
 
 /**
+ * 2B. 3D Voxel Roadside Trainer Supply Crate / Lost Poké-Supply Capsule (`公路专属特殊补给箱`)
+ *     Spawns exclusively along highway/road shoulders (never blocking traffic lanes!).
+ */
+export function createVoxelRoadSupply3D(variant = 0, scale = 1.0): THREE.Mesh {
+  const v = Math.abs(variant) % 2;
+  const geo = getCachedGridGeo(`vox_road_supply_v1_${v}`, 14, 13, 14, 0.105, (g) => {
+    // Reflective dark-steel road safety base pad + yellow hazard corner stripes
+    g.fillBox(1, 0, 1, 12, 1, 12, 0x343a40);
+    g.fillBox(1, 1, 1, 3, 1, 2, 0xfcc419);
+    g.fillBox(10, 1, 1, 12, 1, 2, 0xfcc419);
+    g.fillBox(1, 1, 11, 3, 1, 12, 0xfcc419);
+    g.fillBox(10, 1, 11, 12, 1, 12, 0xfcc419);
+
+    // Lower white Poké-supply chest hull (`y = 2..5`)
+    g.fillBox(2, 2, 2, 11, 5, 11, 0xf8f9fa, 0xe9ecef);
+    // Dark seam band + glowing clasp button (`y = 6`)
+    g.fillBox(2, 6, 2, 11, 6, 11, 0x212529);
+    g.fillBox(5, 5, 11, 8, 7, 12, 0xdee2e6);
+    g.fillBox(6, 6, 12, 7, 6, 12, 0xffe066);
+
+    // Upper Poké-red (`v=0`) or Great-Ball-blue (`v=1`) lid (`y = 7..10`)
+    const lidMain = v === 0 ? 0xe03131 : 0x1c7ed6;
+    const lidShade = v === 0 ? 0xc92a2a : 0x1971c2;
+    g.fillBox(2, 7, 2, 11, 9, 11, lidMain, lidShade);
+    g.fillBox(3, 10, 3, 10, 10, 10, lidMain);
+    if (v === 1) {
+      // Classic Great Ball red accent stripes on lid
+      g.fillBox(3, 8, 3, 4, 10, 10, 0xf03e3e);
+      g.fillBox(9, 8, 3, 10, 10, 10, 0xf03e3e);
+    } else {
+      // Crisp white specular cross emblem on top
+      g.fillBox(6, 10, 5, 7, 10, 8, 0xffffff);
+      g.fillBox(5, 10, 6, 8, 10, 7, 0xffffff);
+    }
+  });
+  const mesh = new THREE.Mesh(geo, getSharedVoxelArchMaterial());
+  mesh.scale.setScalar(scale);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+/**
  * 3. Monumental Stepped MagicaVoxel Civic Fountain (`喷泉` — ZERO CylinderGeometry / SphereGeometry / TorusGeometry!)
  *    Combines a `60×34×60` stepped voxel marble basin + turquoise pixel water + animated voxel water-cube jets!
  */

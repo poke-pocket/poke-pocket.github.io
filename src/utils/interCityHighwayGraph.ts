@@ -288,10 +288,10 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
     if (Math.hypot((x1 + x2) * 0.5, (z1 + z2) * 0.5) > 4600) return;
     const idx = spatialSegs.length;
     spatialSegs.push({ x1, z1, x2, z2, label, destHint });
-    const minGx = Math.floor((Math.min(x1, x2) - 24) / GRID_CELL);
-    const maxGx = Math.floor((Math.max(x1, x2) + 24) / GRID_CELL);
-    const minGz = Math.floor((Math.min(z1, z2) - 24) / GRID_CELL);
-    const maxGz = Math.floor((Math.max(z1, z2) + 24) / GRID_CELL);
+    const minGx = Math.floor((Math.min(x1, x2) - 40) / GRID_CELL);
+    const maxGx = Math.floor((Math.max(x1, x2) + 40) / GRID_CELL);
+    const minGz = Math.floor((Math.min(z1, z2) - 40) / GRID_CELL);
+    const maxGz = Math.floor((Math.max(z1, z2) + 40) / GRID_CELL);
     for (let gz = minGz; gz <= maxGz; gz++) {
       for (let gx = minGx; gx <= maxGx; gx++) {
         const k = cellKey(gx, gz);
@@ -468,26 +468,70 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
   return cachedNet;
 }
 
-/** O(1) spatial query for distance from `(wx, wz)` to the nearest Real-Earth Inter-City Highway centerline! */
-export function getNearestGeoHighwayDist3D(wx: number, wz: number): number {
+export interface HighwaySpatialProjection {
+  dist: number;
+  qx: number;
+  qz: number;
+  dirX: number;
+  dirZ: number;
+  segIdx: number;
+  label: string;
+}
+
+/** O(1) spatial query for closest projection onto the nearest Real-Earth Inter-City Highway centerline! */
+export function getNearestGeoHighwayProjection3D(wx: number, wz: number): HighwaySpatialProjection | null {
   const net = getCompiledInterCityNetwork();
-  if (!net || net.spatialSegs.length === 0) return 9999;
+  if (!net || net.spatialSegs.length === 0) return null;
   const gx = Math.floor(wx / GRID_CELL);
   const gz = Math.floor(wz / GRID_CELL);
   const bucket = net.gridBuckets.get(cellKey(gx, gz));
-  if (!bucket || bucket.length === 0) return 9999;
+  if (!bucket || bucket.length === 0) return null;
 
-  let best = 9999;
+  let bestDist = 9999;
+  let bestQx = wx;
+  let bestQz = wz;
+  let bestDirX = 1;
+  let bestDirZ = 0;
+  let bestIdx = -1;
+  let bestLabel = '';
+
   for (let i = 0; i < bucket.length; i++) {
-    const seg = net.spatialSegs[bucket[i]];
+    const segIdx = bucket[i];
+    const seg = net.spatialSegs[segIdx];
     const vx = seg.x2 - seg.x1;
     const vz = seg.z2 - seg.z1;
     const lenSq = vx * vx + vz * vz;
     const t = lenSq > 1e-4 ? Math.max(0, Math.min(1, ((wx - seg.x1) * vx + (wz - seg.z1) * vz) / lenSq)) : 0;
-    const d = Math.hypot(wx - (seg.x1 + vx * t), wz - (seg.z1 + vz * t));
-    if (d < best) best = d;
+    const qx = seg.x1 + vx * t;
+    const qz = seg.z1 + vz * t;
+    const d = Math.hypot(wx - qx, wz - qz);
+    if (d < bestDist) {
+      bestDist = d;
+      bestQx = qx;
+      bestQz = qz;
+      const len = Math.sqrt(lenSq) || 1;
+      bestDirX = vx / len;
+      bestDirZ = vz / len;
+      bestIdx = segIdx;
+      bestLabel = seg.label;
+    }
   }
-  return best;
+  if (bestIdx < 0) return null;
+  return {
+    dist: bestDist,
+    qx: bestQx,
+    qz: bestQz,
+    dirX: bestDirX,
+    dirZ: bestDirZ,
+    segIdx: bestIdx,
+    label: bestLabel,
+  };
+}
+
+/** O(1) spatial query for distance from `(wx, wz)` to the nearest Real-Earth Inter-City Highway centerline! */
+export function getNearestGeoHighwayDist3D(wx: number, wz: number): number {
+  const proj = getNearestGeoHighwayProjection3D(wx, wz);
+  return proj ? proj.dist : 9999;
 }
 
 /** Ensures `GEO_UNITS_PER_KM` stays referenced cleanly for scaling consistency */

@@ -1410,15 +1410,19 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
 /* =========================================================================
    2. FULL-BLEED HANDHELD CONSOLE TOWN MAP VIEW (Floating Collapsible Drawer!)
    ========================================================================= */
+let sessionPersistedMapPins: MapPin[] = [];
+
 interface HandheldWorldMapViewProps {
   data: WorldMapData;
   onClose?: () => void;
+  onDismissTo3D?: () => void;
   closeLabel?: string;
 }
 
 export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   data,
   onClose,
+  onDismissTo3D,
   closeLabel = '关闭',
 }) => {
   const { biome, regionName, snapshot } = data;
@@ -1426,7 +1430,14 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ w: 480, h: 430 });
   const pois = useMemo(() => generateRegionalPois(), []);
-  const [pins, setPins] = useState<MapPin[]>([]);
+  const [pins, setPinsState] = useState<MapPin[]>(() => sessionPersistedMapPins);
+  const setPins: React.Dispatch<React.SetStateAction<MapPin[]>> = (updater) => {
+    setPinsState((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: MapPin[]) => MapPin[])(prev) : updater;
+      sessionPersistedMapPins = next;
+      return next;
+    });
+  };
   const [highlightType, setHighlightType] = useState<WorldPoi['type'] | null>(null);
   const [focusedPoiId, setFocusedPoiId] = useState<string | null>(null);
   const [poiCycleIdx, setPoiCycleIdx] = useState<Record<string, number>>({});
@@ -2071,8 +2082,14 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
               onClick={() => {
                 const targetPin = pins[pins.length - 1];
                 sound.play('confirm');
-                data.onAutoWalkTo?.(targetPin.x, targetPin.z, `地图标点 (${Math.round(targetPin.x)}, ${Math.round(targetPin.z)})`);
-                onClose?.();
+                // Close map modal IMMEDIATELY on this paint frame, then kick off instant heading + async A*!
+                (onDismissTo3D ?? onClose)?.();
+                const tx = targetPin.x;
+                const tz = targetPin.z;
+                const lbl = `地图标点 (${Math.round(tx)}, ${Math.round(tz)})`;
+                window.requestAnimationFrame(() => {
+                  data.onAutoWalkTo?.(tx, tz, lbl);
+                });
               }}
             >
               🧭 自动寻路至最新标点
@@ -2194,8 +2211,13 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                           title={`自动寻路前往${item.label}`}
                           onClick={() => {
                             sound.play('confirm');
-                            data.onAutoWalkTo?.(item.x, item.z, item.label);
-                            onClose?.();
+                            (onDismissTo3D ?? onClose)?.();
+                            const tx = item.x;
+                            const tz = item.z;
+                            const lbl = item.label;
+                            window.requestAnimationFrame(() => {
+                              data.onAutoWalkTo?.(tx, tz, lbl);
+                            });
                           }}
                         >
                           寻路
@@ -2260,8 +2282,8 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                               title={`直飞前往${gc.city.name}探索3D城景`}
                               onClick={() => {
                                 sound.play('confirm');
+                                (onDismissTo3D ?? onClose)?.();
                                 data.onFastTravelCity?.(gc.city.id);
-                                onClose?.();
                               }}
                             >
                               ✈

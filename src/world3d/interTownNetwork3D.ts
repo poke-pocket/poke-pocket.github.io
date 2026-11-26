@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   BRIDGE_DECK_Y_3D,
+  computeCityBridgeDeckWorldY3D,
   MOUNTAIN_TUNNEL_TRIGGER_Y,
   WATER_LEVEL_3D,
   WORLD_RAIL_SEGMENTS_3D,
@@ -35,10 +36,9 @@ export function buildModernCityBridge3D(opts: {
   const bMidX = (seg.x1 + seg.x2) * 0.5 - centerX;
   const bMidZ = (seg.z1 + seg.z2) * 0.5 - centerZ;
   const bYaw = Math.atan2(seg.x2 - seg.x1, seg.z2 - seg.z1);
-  const endH = Math.max(getGroundHeight(seg.x1, seg.z1), getGroundHeight(seg.x2, seg.z2));
-  const deckY = Math.max(WATER_LEVEL_3D + 0.9, baseY + 0.24, endH + 0.16) - baseY;
+  const deckY = computeCityBridgeDeckWorldY3D(seg, baseY, 0.5, getGroundHeight) - baseY;
 
-  // Sleek chamfered concrete girder & asphalt deck flush with onshore avenues
+  // Sleek arched concrete girder & asphalt deck ribbon flush with onshore avenues (0.0m step at ends!)
   const girderMat = new THREE.MeshLambertMaterial({ color: 0xcbd5e1 });
   const parapetMat = new THREE.MeshLambertMaterial({
     color: seg.bridgeStyle === 'waibaidu' ? 0x64748b : 0xe2e8f0,
@@ -46,42 +46,81 @@ export function buildModernCityBridge3D(opts: {
   const capRailMat = new THREE.MeshLambertMaterial({ color: 0x475569 });
   const pierMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
 
-  const girderMesh = new THREE.Mesh(new THREE.BoxGeometry(seg.width + 0.4, 0.52, bLen + 4.2), girderMat);
-  girderMesh.position.set(bMidX, deckY - 0.26, bMidZ);
-  girderMesh.rotation.y = bYaw;
+  const bDirX = (seg.x2 - seg.x1) / Math.max(0.01, bLen);
+  const bDirZ = (seg.z2 - seg.z1) / Math.max(0.01, bLen);
+  const bNx = -bDirZ;
+  const bNz = bDirX;
+  const halfW = seg.width * 0.5;
+  const archSteps = Math.max(10, Math.ceil(bLen / 2.5));
+  const deckPos: number[] = [];
+  const deckUvs: number[] = [];
+  const deckIdx: number[] = [];
+  const girderPos: number[] = [];
+  const girderIdx: number[] = [];
+
+  for (let s = 0; s <= archSteps; s++) {
+    const t = s / archSteps;
+    const wx = seg.x1 + (seg.x2 - seg.x1) * t;
+    const wz = seg.z1 + (seg.z2 - seg.z1) * t;
+    const yLocal = computeCityBridgeDeckWorldY3D(seg, baseY, t, getGroundHeight) - baseY;
+    const lx = wx - bNx * halfW - centerX;
+    const lz = wz - bNz * halfW - centerZ;
+    const rx = wx + bNx * halfW - centerX;
+    const rz = wz + bNz * halfW - centerZ;
+    deckPos.push(lx, yLocal + 0.02, lz, rx, yLocal + 0.02, rz);
+    const u = (t * bLen) / 14;
+    deckUvs.push(u, 0, u, 1);
+
+    const glx = wx - bNx * (halfW + 0.22) - centerX;
+    const glz = wz - bNz * (halfW + 0.22) - centerZ;
+    const grx = wx + bNx * (halfW + 0.22) - centerX;
+    const grz = wz + bNz * (halfW + 0.22) - centerZ;
+    girderPos.push(glx, yLocal - 0.5, glz, glx, yLocal, glz, grx, yLocal, grz, grx, yLocal - 0.5, grz);
+
+    if (s < archSteps) {
+      const d0 = s * 2;
+      deckIdx.push(d0, d0 + 2, d0 + 1, d0 + 1, d0 + 2, d0 + 3);
+      const g0 = s * 4;
+      const gn = (s + 1) * 4;
+      girderIdx.push(g0, gn, g0 + 1, g0 + 1, gn, gn + 1);
+      girderIdx.push(g0 + 1, gn + 1, g0 + 2, g0 + 2, gn + 1, gn + 2);
+      girderIdx.push(g0 + 2, gn + 2, g0 + 3, g0 + 3, gn + 2, gn + 3);
+    }
+  }
+
+  const girderGeo = new THREE.BufferGeometry();
+  girderGeo.setAttribute('position', new THREE.Float32BufferAttribute(girderPos, 3));
+  girderGeo.setIndex(girderIdx);
+  girderGeo.computeVertexNormals();
+  const girderMesh = new THREE.Mesh(girderGeo, girderMat);
   girderMesh.castShadow = true;
   girderMesh.receiveShadow = true;
   group.add(girderMesh);
 
   const deckTex = deckRoadTex.clone();
-  deckTex.center.set(0.5, 0.5);
-  deckTex.rotation = Math.PI / 2;
-  deckTex.repeat.set(Math.max(1, Math.round(bLen / 14)), 1);
   deckTex.wrapS = THREE.RepeatWrapping;
   deckTex.wrapT = THREE.RepeatWrapping;
   deckTex.needsUpdate = true;
+  const deckGeo = new THREE.BufferGeometry();
+  deckGeo.setAttribute('position', new THREE.Float32BufferAttribute(deckPos, 3));
+  deckGeo.setAttribute('uv', new THREE.Float32BufferAttribute(deckUvs, 2));
+  deckGeo.setIndex(deckIdx);
+  deckGeo.computeVertexNormals();
   const deckMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(seg.width, bLen + 4.0),
+    deckGeo,
     new THREE.MeshLambertMaterial({
       map: deckTex,
+      side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -3,
       polygonOffsetUnits: -3,
     }),
   );
-  deckMesh.rotation.order = 'YXZ';
-  deckMesh.rotation.y = bYaw;
-  deckMesh.rotation.x = -Math.PI / 2;
-  deckMesh.position.set(bMidX, deckY + 0.02, bMidZ);
   deckMesh.receiveShadow = true;
   group.add(deckMesh);
 
-  const bDirX = (seg.x2 - seg.x1) / Math.max(0.01, bLen);
-  const bDirZ = (seg.z2 - seg.z1) / Math.max(0.01, bLen);
-  const bNx = -bDirZ;
-  const bNz = bDirX;
-  // Inset parapets to 80% of span so onshore road intersections stay 100% open & unobstructed
-  const railSpan = Math.max(6, bLen * 0.80);
+  // Inset parapets to central 64% of span (where arch has leveled out at peakDeckY) so onshore intersections stay 100% open
+  const railSpan = Math.max(6, bLen * 0.64);
 
   for (const side of [-1, 1]) {
     const rx = bMidX + bNx * side * (seg.width * 0.48);
@@ -282,16 +321,16 @@ export function buildStreetRibbonMesh(
     const rz = wz + perpZ;
 
     const hCenter = getGroundHeight(wx, wz);
-    let maxLeftH = WATER_LEVEL_3D + 0.12;
-    let maxRightH = WATER_LEVEL_3D + 0.12;
+    let maxLeftH = hCenter;
+    let maxRightH = hCenter;
     for (let fi = 0; fi < sampleFracs.length; fi++) {
       const frac = sampleFracs[fi];
-      const h = getGroundHeight(wx + perpX * frac, wz + perpZ * frac);
+      const h = Math.min(hCenter + 0.14, getGroundHeight(wx + perpX * frac, wz + perpZ * frac));
       if (frac <= 0 && h > maxLeftH) maxLeftH = h;
       if (frac >= 0 && h > maxRightH) maxRightH = h;
     }
-    const edgeLY = Math.max(WATER_LEVEL_3D + 0.22, Math.max(maxLeftH, hCenter - 0.16) + layerLiftY + 0.08) - baseY;
-    const edgeRY = Math.max(WATER_LEVEL_3D + 0.22, Math.max(maxRightH, hCenter - 0.16) + layerLiftY + 0.08) - baseY;
+    const edgeLY = Math.max(WATER_LEVEL_3D + 0.22, maxLeftH + layerLiftY + 0.08) - baseY;
+    const edgeRY = Math.max(WATER_LEVEL_3D + 0.22, maxRightH + layerLiftY + 0.08) - baseY;
     const crownY = Math.max(edgeLY, edgeRY) + 0.035;
 
     positions.push(

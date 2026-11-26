@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BRIDGE_DECK_Y_3D, WATER_LEVEL_3D } from '../data/survivorsTactics';
+import { getExactHighwayStationDeckY3D, WATER_LEVEL_3D } from '../data/survivorsTactics';
 import {
   HIGHWAY_ROAD_WIDTH_3D,
   getCompiledInterCityNetwork,
@@ -196,14 +196,26 @@ export function createInterCityHighwayStreamer3D(opts: {
             const rz = wz + perpZ;
 
             const gC = getGroundHeight(wx, wz);
-            const gL = getGroundHeight(lx, lz);
-            const gR = getGroundHeight(rx, rz);
-            const isBridge = gC < WATER_LEVEL_3D + 0.22;
-            const bridgeY = Math.max(BRIDGE_DECK_Y_3D, 1.92);
-
-            const edgeLY = isBridge ? bridgeY : Math.max(WATER_LEVEL_3D + 0.24, Math.max(gL, gC - 0.18) + 0.16);
-            const edgeRY = isBridge ? bridgeY : Math.max(WATER_LEVEL_3D + 0.24, Math.max(gR, gC - 0.18) + 0.16);
-            const crownY = Math.max(edgeLY, edgeRY) + 0.035;
+            const { deckY: edgeY, bridgeBlend } = getExactHighwayStationDeckY3D(
+              wx,
+              wz,
+              dirX,
+              dirZ,
+              1.0,
+              getGroundHeight,
+            );
+            const { deckY: crownY } = getExactHighwayStationDeckY3D(
+              wx,
+              wz,
+              dirX,
+              dirZ,
+              0.0,
+              getGroundHeight,
+            );
+            const isBridge = bridgeBlend > 0.65 && gC < WATER_LEVEL_3D + 0.25;
+            const bridgeY = crownY;
+            const edgeLY = edgeY;
+            const edgeRY = edgeY;
 
             positions.push(
               lx, edgeLY - 2.2, lz,

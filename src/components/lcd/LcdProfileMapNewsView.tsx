@@ -107,6 +107,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
               <HandheldWorldMapView
                 data={worldMapData}
                 closeLabel={openedEntryMode === 'map' ? '关闭' : '返回'}
+                onDismissTo3D={onCloseHandheldTo3D}
                 onClose={() => {
                   if (openedEntryMode === 'map' && onCloseHandheldTo3D) {
                     onCloseHandheldTo3D();

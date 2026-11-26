@@ -193,8 +193,8 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
           v.group.position.x = v.coord;
           v.group.position.z = v.laneOffset;
         }
-        const wy = getTerrainHeight3D(town.centerX + v.group.position.x, town.centerZ + v.group.position.z);
-        v.group.position.y = wy - town.group.position.y + 0.16;
+        const wy = getWalkableSurfaceHeight3D(town.centerX + v.group.position.x, town.centerZ + v.group.position.z);
+        v.group.position.y = wy - town.group.position.y + 0.02;
       }
 
       for (const w of town.animatedParts.walkers) {
@@ -240,7 +240,7 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
         }
         w.worldX = town.centerX + wxLocal;
         w.worldZ = town.centerZ + wzLocal;
-        const wyWorld = getTerrainHeight3D(w.worldX, w.worldZ) + 0.22;
+        const wyWorld = getWalkableSurfaceHeight3D(w.worldX, w.worldZ) + 0.06;
         const wy = wyWorld - town.group.position.y;
 
         if (distPlayerToWalker < 28) {
@@ -493,7 +493,11 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
           node.extraMesh.visible = true;
         } else {
           node.mesh.visible = true;
-          node.mesh.scale.set(node.baseScaleX, node.baseScaleY, 1);
+          if (node.kind === 'ore_rock' || node.kind === 'road_supply' || node.kind === 'signpost') {
+            node.mesh.scale.setScalar(node.baseScaleX);
+          } else {
+            node.mesh.scale.set(node.baseScaleX, node.baseScaleY, 1);
+          }
         }
       }
       continue;
@@ -942,6 +946,27 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
           life: 0.9,
         });
         showBanner('🍎 摇落树上树果！伤药补给 +1，金币 +26！', 2200);
+        return;
+      }
+      if (target.kind === 'road_supply') {
+        target.cooldown = 75;
+        target.mesh.visible = false;
+        sim.healCharges = Math.min(9, sim.healCharges + 1);
+        sim.coins += 45;
+        sim.xp += 35;
+        onUpdateMeta?.((prev) => ({ ...prev, stardust: prev.stardust + 8 }));
+        sound.play('levelup');
+        spawnPixelParticles(target.x, target.y + 0.85, target.z, vfxAtlas.starGlint, 14, 3.4, 0.72, 5.2, 6.4);
+        sim.dmgPops.push({
+          id: sim.nextId++,
+          wx: target.x,
+          wy: target.y + 1.6,
+          wz: target.z,
+          text: '+1 伤药 +45G +8星沙',
+          color: '#ffd43b',
+          life: 0.95,
+        });
+        showBanner('🧰 开启公路专属补给箱！获得 应急伤药 +1、金币 +45、星沙 +8！', 2400);
         return;
       }
       if (target.kind === 'ore_rock') {

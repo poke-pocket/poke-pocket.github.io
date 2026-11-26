@@ -215,60 +215,46 @@ export function buildProceduralTown3D(
         ? floraTex.flowers[idx % floraTex.flowers.length] ?? floraTex.flower
         : floraTex.bushes[idx % floraTex.bushes.length] ?? floraTex.bush;
 
-    if (seg.kind === 'arterial' && segLen >= 18) {
-      const medianSteps = Math.max(2, Math.floor((segLen - 4) / 7.5));
-      for (let mi = 0; mi < medianSteps; mi++) {
-        const f = 0.08 + (medianSteps > 1 ? (mi / (medianSteps - 1)) * 0.84 : 0.42);
-        const mx = seg.x1 + dirX * (segLen * f);
-        const mz = seg.z1 + dirZ * (segLen * f);
-        if (isNearAnyJunction(mx, mz, 18) || isBlockedForGreenery(mx, mz, seg)) continue;
-        const my = localGroundY(mx, mz) + 0.16;
-        if (mi % 2 === 1) {
-          const treeTex = floraTex.treeSprites[(mi + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
-          spawnPixelGreenery(treeTex, mx - centerX, my, mz - centerZ, 5.2, 6.2);
-        } else {
-          spawnPixelGreenery(pickDetailedShrubTex(mi + segIdx + styleIdx), mx - centerX, my, mz - centerZ, 2.25, 1.95);
-        }
-      }
-
-      const vergeOff = seg.width * 0.5 - 3.9;
-      const sideSteps = Math.max(2, Math.floor((segLen - 4) / 8.5));
+    if (seg.kind === 'arterial' && segLen >= 26) {
+      // Keep asphalt lanes & center median 100% unobstructed — plant street trees ONLY along outer sidewalks at spacious 19m intervals!
+      const vergeOff = seg.width * 0.5 + 1.15;
+      const sideSteps = Math.max(1, Math.floor((segLen - 12) / 19.0));
       for (let si = 0; si < sideSteps; si++) {
-        const f = 0.08 + (sideSteps > 1 ? (si / (sideSteps - 1)) * 0.84 : 0.42);
+        const f = 0.14 + (sideSteps > 1 ? (si / (sideSteps - 1)) * 0.72 : 0.36);
         const sx = seg.x1 + dirX * (segLen * f);
         const sz = seg.z1 + dirZ * (segLen * f);
         for (const side of [-1, 1]) {
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;
-          if (isNearAnyJunction(tx, tz, 19) || isBlockedForGreenery(tx, tz, seg)) continue;
+          if (isNearAnyJunction(tx, tz, 20) || isBlockedForGreenery(tx, tz, seg)) continue;
           const ty = localGroundY(tx, tz) + 0.16;
-          if (si % 2 === 0) {
+          if ((si + (side > 0 ? 1 : 0)) % 2 === 0) {
             const treeTex = floraTex.treeSprites[(si + styleIdx + (side > 0 ? 1 : 0)) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
-            spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.9, 5.9);
+            spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.6, 5.6);
           } else {
-            spawnPixelGreenery(pickDetailedShrubTex(si + (side > 0 ? 2 : 0) + segIdx), tx - centerX, ty, tz - centerZ, 2.05, 1.8);
+            spawnPixelGreenery(pickDetailedShrubTex(si + (side > 0 ? 2 : 0) + segIdx), tx - centerX, ty, tz - centerZ, 1.85, 1.65);
           }
         }
       }
     }
 
-    if (seg.kind === 'street' && segLen >= 18) {
-      const vergeOff = seg.width * 0.5 - 2.3;
-      const stepCount = Math.max(2, Math.floor((segLen - 4) / 9.5));
+    if (seg.kind === 'street' && segLen >= 28) {
+      const vergeOff = seg.width * 0.5 + 0.95;
+      const stepCount = Math.max(1, Math.floor((segLen - 12) / 21.0));
       for (let ti = 0; ti < stepCount; ti++) {
-        const tFrac = 0.1 + (stepCount > 1 ? (ti / (stepCount - 1)) * 0.8 : 0.4);
+        const tFrac = 0.16 + (stepCount > 1 ? (ti / (stepCount - 1)) * 0.68 : 0.34);
         const sx = seg.x1 + dirX * (segLen * tFrac);
         const sz = seg.z1 + dirZ * (segLen * tFrac);
         for (const side of [-1, 1]) {
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;
-          if (isNearAnyJunction(tx, tz, 15) || isBlockedForGreenery(tx, tz, seg)) continue;
+          if (isNearAnyJunction(tx, tz, 17) || isBlockedForGreenery(tx, tz, seg)) continue;
           const ty = localGroundY(tx, tz) + 0.16;
           if (ti % 2 === 0) {
             const treeTex = floraTex.treeSprites[(ti + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
-            spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.5, 5.4);
+            spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.2, 5.1);
           } else {
-            spawnPixelGreenery(pickDetailedShrubTex(ti + (side > 0 ? 3 : 0) + segIdx), tx - centerX, ty, tz - centerZ, 1.85, 1.65);
+            spawnPixelGreenery(pickDetailedShrubTex(ti + (side > 0 ? 3 : 0) + segIdx), tx - centerX, ty, tz - centerZ, 1.7, 1.5);
           }
         }
       }
