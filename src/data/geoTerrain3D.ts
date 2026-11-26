@@ -14,6 +14,7 @@ import { getShanghaiRiverSignedDist } from '../utils/townStreetGen';
 
 export const GEO_UNITS_PER_KM = 20;
 const KM_PER_DEG_LAT = 111.32;
+const DEM_Z_WORLD = 3;
 const DEM_Z_MACRO = 5;
 const DEM_Z_DETAIL = 9;
 const MAX_DETAIL_CACHE = 180;
@@ -26,17 +27,50 @@ export interface GeoTerrainOrigin {
   unitsPerKm: number;
 }
 
-let activeOrigin: GeoTerrainOrigin | null = null;
-let demVersion = 0;
+export const DEFAULT_GEO_ORIGIN: GeoTerrainOrigin = {
+  originLat: 31.23,
+  originLng: 121.47,
+  startCityId: 'shanghai',
+  startCityName: '上海市',
+  unitsPerKm: GEO_UNITS_PER_KM,
+};
 
-const MACRO_DEM_CACHE = new Map<string, Float32Array>();
-const DETAIL_DEM_CACHE = new Map<string, Float32Array>();
-const DEM_INFLIGHT = new Set<string>();
+interface PersistedGeoState {
+  activeOrigin: GeoTerrainOrigin;
+  demVersion: number;
+  worldCache: Map<string, Float32Array>;
+  macroCache: Map<string, Float32Array>;
+  detailCache: Map<string, Float32Array>;
+  inflight: Set<string>;
+}
+
+const GEO_GLOBAL_KEY = '__POKE_POCKET_GEO_STATE_V2__';
+const gAny = globalThis as unknown as Record<string, PersistedGeoState | undefined>;
+const PERSISTED_GEO: PersistedGeoState =
+  gAny[GEO_GLOBAL_KEY] ??
+  (gAny[GEO_GLOBAL_KEY] = {
+    activeOrigin: { ...DEFAULT_GEO_ORIGIN },
+    demVersion: 0,
+    worldCache: new Map<string, Float32Array>(),
+    macroCache: new Map<string, Float32Array>(),
+    detailCache: new Map<string, Float32Array>(),
+    inflight: new Set<string>(),
+  });
+
+// Real-Earth mode is ALWAYS active (persisted across Vite HMR so the map can NEVER fall back to random procedural noise!)
+let activeOrigin: GeoTerrainOrigin = PERSISTED_GEO.activeOrigin;
+let demVersion = PERSISTED_GEO.demVersion;
+
+const WORLD_DEM_CACHE = PERSISTED_GEO.worldCache;
+const MACRO_DEM_CACHE = PERSISTED_GEO.macroCache;
+const DETAIL_DEM_CACHE = PERSISTED_GEO.detailCache;
+const DEM_INFLIGHT = PERSISTED_GEO.inflight;
 const DEM_LISTENERS = new Set<() => void>();
 
 let notifyQueued = false;
 function notifyDemLoaded() {
   demVersion += 1;
+  PERSISTED_GEO.demVersion = demVersion;
   if (notifyQueued) return;
   notifyQueued = true;
   // Batch rapid parallel tile completions into one clean repaint frame
@@ -68,7 +102,7 @@ export function getGeoDemVersion(): number {
   return demVersion;
 }
 
-export function getActiveGeoTerrainOrigin(): GeoTerrainOrigin | null {
+export function getActiveGeoTerrainOrigin(): GeoTerrainOrigin {
   return activeOrigin;
 }
 
@@ -102,7 +136,7 @@ function requestDemTile(z: number, tx: number, ty: number) {
   const wrappedTx = ((tx % n) + n) % n;
   if (ty < 0 || ty >= n) return;
   const key = `${z}/${wrappedTx}/${ty}`;
-  const cache = z <= DEM_Z_MACRO ? MACRO_DEM_CACHE : DETAIL_DEM_CACHE;
+  const cache = z <= DEM_Z_WORLD ? WORLD_DEM_CACHE : z <= DEM_Z_MACRO ? MACRO_DEM_CACHE : DETAIL_DEM_CACHE;
   if (cache.has(key) || DEM_INFLIGHT.has(key)) return;
   if (typeof window === 'undefined' || typeof Image === 'undefined') return;
 
@@ -140,30 +174,48 @@ function requestDemTile(z: number, tx: number, ty: number) {
   img.src = `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${wrappedTx}/${ty}.png`;
 }
 
-export function setActiveGeoTerrainOrigin(origin: GeoTerrainOrigin | null) {
-  activeOrigin = origin;
-  if (origin) {
-    // 1. Pre-fetch Macro Z5 3x3 grid (~3600km x 3600km) so zoomed-out coastlines NEVER show missing squares!
-    const macro = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_MACRO);
-    const mcx = Math.floor(macro.fx);
-    const mcy = Math.floor(macro.fy);
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        requestDemTile(DEM_Z_MACRO, mcx + dx, mcy + dy);
-      }
-    }
-
-    // 2. Pre-fetch Detail Z9 3x3 grid (~230km x 230km) around starting city for crisp local coastlines & hills!
-    const detail = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_DETAIL);
-    const dcx = Math.floor(detail.fx);
-    const dcy = Math.floor(detail.fy);
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        requestDemTile(DEM_Z_DETAIL, dcx + dx, dcy + dy);
-      }
+function prefetchRegionTiles(origin: GeoTerrainOrigin) {
+  // 0. Pre-fetch Global Z3 3x3 tiles (~15,000km across Asia/Pacific) so even extreme x0.005 zoom-out shows crisp real continents!
+  const world = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_WORLD);
+  const wcx = Math.floor(world.fx);
+  const wcy = Math.floor(world.fy);
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      requestDemTile(DEM_Z_WORLD, wcx + dx, wcy + dy);
     }
   }
+
+  // 1. Pre-fetch Macro Z5 3x3 grid (~3600km x 3600km) so zoomed-out coastlines NEVER show missing squares!
+  const macro = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_MACRO);
+  const mcx = Math.floor(macro.fx);
+  const mcy = Math.floor(macro.fy);
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      requestDemTile(DEM_Z_MACRO, mcx + dx, mcy + dy);
+    }
+  }
+
+  // 2. Pre-fetch Detail Z9 3x3 grid (~230km x 230km) around starting city for crisp local coastlines & hills!
+  const detail = latLngToTileFrac(origin.originLat, origin.originLng, DEM_Z_DETAIL);
+  const dcx = Math.floor(detail.fx);
+  const dcy = Math.floor(detail.fy);
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      requestDemTile(DEM_Z_DETAIL, dcx + dx, dcy + dy);
+    }
+  }
+}
+
+export function setActiveGeoTerrainOrigin(origin: GeoTerrainOrigin | null) {
+  activeOrigin = origin ? { ...origin } : { ...DEFAULT_GEO_ORIGIN };
+  PERSISTED_GEO.activeOrigin = activeOrigin;
+  prefetchRegionTiles(activeOrigin);
   notifyDemLoaded();
+}
+
+// Kick off Real-Earth DEM pre-fetch immediately on module load so even an already-open tab has real coastlines instantly!
+if (typeof window !== 'undefined') {
+  prefetchRegionTiles(activeOrigin);
 }
 
 function sampleGridAt(lat: number, lng: number, z: number, queueIfMissing: boolean): number | null {
@@ -173,7 +225,7 @@ function sampleGridAt(lat: number, lng: number, z: number, queueIfMissing: boole
   const ty = Math.floor(fy);
   const wrappedTx = ((tx % n) + n) % n;
   const key = `${z}/${wrappedTx}/${ty}`;
-  const cache = z <= DEM_Z_MACRO ? MACRO_DEM_CACHE : DETAIL_DEM_CACHE;
+  const cache = z <= DEM_Z_WORLD ? WORLD_DEM_CACHE : z <= DEM_Z_MACRO ? MACRO_DEM_CACHE : DETAIL_DEM_CACHE;
   const grid = cache.get(key);
   if (!grid) {
     if (queueIfMissing) requestDemTile(z, wrappedTx, ty);
@@ -198,9 +250,9 @@ function sampleGridAt(lat: number, lng: number, z: number, queueIfMissing: boole
 }
 
 /**
- * Sample real-Earth elevation in meters with automatic Macro (Z5) fallback:
- * - When `preferMacro` is true (zoomed-out overview map), reads Z5 directly so cache never thrashes.
- * - Otherwise prefers Z9 detail tile and seamlessly falls back to Z5 macro tile while Z9 streams in.
+ * Sample real-Earth elevation in meters with 3-tier automatic fallback (Z9 Detail -> Z5 Macro -> Z3 Global):
+ * - When `preferMacro` is true (zoomed-out overview map), reads Z5 (or Z3 fallback) so zooming to entire East Asia is instant!
+ * - Otherwise prefers Z9 detail tile and seamlessly falls back to Z5 -> Z3 while Z9 streams in.
  */
 export function sampleRealElevationMeters(
   lat: number,
@@ -211,7 +263,9 @@ export function sampleRealElevationMeters(
     const detail = sampleGridAt(lat, lng, DEM_Z_DETAIL, true);
     if (detail !== null) return detail;
   }
-  return sampleGridAt(lat, lng, DEM_Z_MACRO, true);
+  const macro = sampleGridAt(lat, lng, DEM_Z_MACRO, true);
+  if (macro !== null) return macro;
+  return sampleGridAt(lat, lng, DEM_Z_WORLD, true);
 }
 
 /** Deterministic subtle micro-ripple so real plains & foothills stay sculpted & lively at close 3D range */

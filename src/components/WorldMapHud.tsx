@@ -1326,7 +1326,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       e.stopPropagation();
       const clampedDelta = Math.max(-180, Math.min(180, e.deltaY));
       const factor = Math.exp(-clampedDelta * 0.0022);
-      setZoom((z) => Math.max(0.015, Number((z * factor).toFixed(4))));
+      setZoom((z) => Math.max(0.004, Number((z * factor).toFixed(4))));
     };
     cv.addEventListener('wheel', onWheelNative, { passive: false });
     return () => cv.removeEventListener('wheel', onWheelNative);
@@ -1832,7 +1832,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
             title="缩小地图"
             onClick={() => {
               sound.play('cursor');
-              setZoom((z) => Math.max(0.015, Number((z / 1.35).toFixed(4))));
+              setZoom((z) => Math.max(0.004, Number((z / 1.35).toFixed(4))));
             }}
           >
             −

@@ -7242,10 +7242,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, selectedBiome, gameMode, difficultyId, runNonce]);
 
-  // Clear real-Earth geo projection when returning to Hub or non-playing screens
+  // Keep Real-Earth geo terrain ALWAYS active (never reset to null / random procedural noise!)
   useEffect(() => {
     if (phase !== 'playing') {
-      setActiveGeoTerrainOrigin(null);
       setLiveOverlandCity(null);
       liveOverlandCityRef.current = null;
       overlandCityIdRef.current = null;
