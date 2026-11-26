@@ -320,12 +320,19 @@ export function buildStreetRibbonMesh(
     const rx = wx + perpX;
     const rz = wz + perpZ;
 
-    const hCenter = getGroundHeight(wx, wz);
+    const rawCenter = getGroundHeight(wx, wz);
+    // Civil-engineered longitudinal vertical-curve smoothing along the interior of the block while locking exact junction endpoints!
+    const endPin = Math.min(1, Math.min(t, 1 - t) * 5.0);
+    const spanLook = Math.min(18.0, dist * 0.25);
+    const hPrev = getGroundHeight(wx - dirX * spanLook, wz - dirZ * spanLook);
+    const hNext = getGroundHeight(wx + dirX * spanLook, wz + dirZ * spanLook);
+    const hSmooth = rawCenter * 0.5 + (hPrev + hNext) * 0.25;
+    const hCenter = rawCenter + (hSmooth - rawCenter) * endPin;
     let maxLeftH = hCenter;
     let maxRightH = hCenter;
     for (let fi = 0; fi < sampleFracs.length; fi++) {
       const frac = sampleFracs[fi];
-      const h = Math.min(hCenter + 0.14, getGroundHeight(wx + perpX * frac, wz + perpZ * frac));
+      const h = Math.min(hCenter + 0.08, getGroundHeight(wx + perpX * frac, wz + perpZ * frac));
       if (frac <= 0 && h > maxLeftH) maxLeftH = h;
       if (frac >= 0 && h > maxRightH) maxRightH = h;
     }

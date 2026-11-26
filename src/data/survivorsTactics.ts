@@ -627,7 +627,7 @@ export function registerActiveTownRoadLayouts3D(
 
     for (const seg of layout.streets) {
       const midDist = Math.hypot((seg.x1 + seg.x2) * 0.5 - spec.x, (seg.z1 + seg.z2) * 0.5 - spec.z);
-      if (!seg.isBridge && midDist > 720) continue;
+      if (!seg.isBridge && midDist > 2800) continue;
       const halfW = Math.max(seg.width, seg.widthStart ?? seg.width, seg.widthEnd ?? seg.width) * 0.5;
       const pad = halfW + 10.0;
       const gx0 = Math.floor((Math.min(seg.x1, seg.x2) - pad) / TOWN_STREET_GRID_CELL);

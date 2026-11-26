@@ -888,8 +888,8 @@ export function sampleGeoTerrainHeight3D(
   const macroM = preferMacro ? meters : sampleRealElevationMeters(geo.lat, geo.lng, 'macro');
   const micro = preferMacro ? 0 : microSculpt(wx, wz);
   const uDens = sampleUrbanClusterDensity(geo.lat, geo.lng);
-  // Attenuate wild hillock undulations inside dense downtown blocks (`uDens > 0.34`), unleash full 3D slopes & hills in suburbs/countryside!
-  const ruralFactor = preferMacro ? 0 : 1 - smoothstepLocal(0.16, 0.40, uDens);
+  // Attenuate wild hillock undulations across all built-up urban & suburban zones (`uDens > 0.12`), unleash full 3D slopes in countryside!
+  const ruralFactor = preferMacro ? 0 : 1 - smoothstepLocal(0.08, 0.28, uDens);
   const countrysideRelief = preferMacro ? 0 : sculptCountrysideRelief3D(wx, wz) * ruralFactor;
   const namedHillLift = preferMacro ? 0 : sampleRegionalHillLift3D(geo.lat, geo.lng);
 
@@ -907,11 +907,15 @@ export function sampleGeoTerrainHeight3D(
     elev = Math.max(-3.2, -0.58 + Math.min(0, meters) * 0.06) + micro * 0.04;
     if (elev > -0.42) elev = -0.45;
   } else {
-    // 1:10 Real-Earth Scale (`1 km = 100 units`) with walkable, majestic mountain relief!
-    const realMeters = Math.max(3.5, meters, namedHillLift);
+    // Filter out Z11 SRTM radar skyscraper/canopy spikes (`15m..55m` every 76m pixel!) inside urban areas using smooth `macroM`!
+    const filteredUrbanM =
+      uDens > 0.18 && macroM !== null && macroM < 85
+        ? Math.min(meters, macroM + 4.0)
+        : meters;
+    const realMeters = Math.max(3.5, filteredUrbanM, namedHillLift);
     const baseY = Math.max(0.95, realMetersToWorldY3D(realMeters));
-    const ridgeDetail = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, realMeters);
-    elev = baseY + countrysideRelief + ridgeDetail + (realMeters > 70 ? micro * 0.22 : 0);
+    const ridgeDetail = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, realMeters) * ruralFactor;
+    elev = baseY + countrysideRelief + ridgeDetail + (realMeters > 95 ? micro * 0.22 * ruralFactor : 0);
   }
 
   // Carve real inland lakes (e.g. Taihu Lake 太湖, West Lake 西湖) & major continental rivers outside downtown so 2D & 3D water match 1:1!
@@ -929,35 +933,41 @@ export function sampleGeoTerrainHeight3D(
     }
   }
 
-  // Deterministic 3D Metropolitan Plain & River Channel within the ±2,350u (`±23.5km`) active 3D city footprint
-  // (Preserves real urban hills/peaks >= 38m like Victoria Peak, Zijinshan & West Lake hills right beside the city!)
+  // Civil-Engineered 3D Metropolitan Grading within ±2,450u (`±24.5km`):
+  // - Uses smooth regional `macroM` datum instead of noisy 76m Z11 skyscraper radar echoes (eliminates steep 25° block-to-block bumps!)
+  // - Preserves a very gentle, broad multi-kilometer urban contour (~0.8°–1.4° grade across whole districts) + real major mountains (>130m)!
   if (!preferMacro) {
     const distFromOrigin = Math.hypot(wx, wz);
-    const localRealM = Math.max(meters ?? 4.0, namedHillLift);
-    if (distFromOrigin < 2350 && !isTrueOcean && (distFromOrigin < 320 || localRealM < 38)) {
+    const smoothRegionalM = Math.max(4.0, macroM ?? 5.0);
+    const truePeakM = Math.max(smoothRegionalM, namedHillLift);
+    const isTrueUrbanMountain = distFromOrigin > 480 && truePeakM >= 130 && (meters ?? 0) >= 110;
+    if (distFromOrigin < 2450 && !isTrueOcean && !isTrueUrbanMountain) {
       const activeCityId = activeOrigin.startCityId ?? 'shanghai';
       const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
       const riverElev = -1.65;
-      const basePlainY = Math.max(1.55, Math.min(5.2, realMetersToWorldY3D(Math.max(4.0, meters ?? 5.0))));
-      const urbanRoll =
-        smoothstepLocal(120, 950, distFromOrigin) *
-        (Math.sin(wx * 0.0035 + wz * 0.0028) * 0.55 + Math.cos(wx * 0.0052 - wz * 0.0044) * 0.42);
-      const dryCityY = basePlainY + urbanRoll;
+      // Stable city-wide datum from smooth macro geology (zero 7.6u pixel jitter!)
+      const basePlainY = Math.max(1.65, Math.min(6.5, realMetersToWorldY3D(Math.min(28, smoothRegionalM))));
+      // Broad, unhurried district-scale undulation (wavelength ~2.4km–4.2km, max grade ~0.9° — subtle & natural, never frequent!)
+      const broadDistrictContour =
+        smoothstepLocal(160, 780, distFromOrigin) *
+        (Math.sin(wx * 0.0015 + wz * 0.0012) * 0.48 + Math.cos(wx * 0.0023 - wz * 0.0019) * 0.28);
+      const dryCityY = basePlainY + broadDistrictContour;
       let cityTargetY = dryCityY;
       if (rivSigned < 0) {
         cityTargetY = riverElev;
-      } else if (rivSigned < 9.5) {
-        const bankT = rivSigned / 9.5;
+      } else if (rivSigned < 2.8) {
+        // Crisp river seawall bank over 2.8u so nearby riverside boulevards (Bund / Suzhou Creek) stay 100% level!
+        const bankT = rivSigned / 2.8;
         const smoothBank = bankT * bankT * (3 - 2 * bankT);
         cityTargetY = riverElev * (1 - smoothBank) + dryCityY * smoothBank;
       }
-      if (distFromOrigin < 1650 && localRealM < 28) {
+      if (distFromOrigin < 1850 && truePeakM < 95) {
         return cityTargetY;
       }
-      const distBlend = 1 - smoothstepLocal(1650, 2350, distFromOrigin);
-      const hillBlend = distFromOrigin < 320 ? 1 : 1 - smoothstepLocal(24, 38, localRealM);
+      const distBlend = 1 - smoothstepLocal(1850, 2450, distFromOrigin);
+      const hillBlend = distFromOrigin < 480 ? 1 : 1 - smoothstepLocal(90, 145, truePeakM);
       const edgeT = distBlend * hillBlend;
-      elev = Math.max(0.85, elev) * (1 - edgeT) + cityTargetY * edgeT;
+      elev = Math.max(0.95, elev) * (1 - edgeT) + cityTargetY * edgeT;
     }
   }
 
