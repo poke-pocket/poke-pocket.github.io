@@ -303,8 +303,98 @@ export function sampleRealElevationMeters(
 }
 
 /**
+ * Real-World Metropolitan Built-Up Urban Agglomeration Clusters (lat, lng, radiusKm, weight):
+ * Painted ONLY on real dry land (meters > 0.6) so metropolitan footprints like Greater Shanghai / Yangtze Delta,
+ * Beijing-Tianjin, Pearl River Delta, Chengdu-Chongqing & Greater Tokyo naturally hug real coastlines, bays & lakes!
+ */
+const REAL_URBAN_CORES: [number, number, number][] = [
+  // 长三角大上海都市圈 (上海市区 + 浦东 + 宝山 + 嘉定 + 闵行 + 松江 + 青浦 + 奉贤 + 昆山 + 苏州 + 无锡 + 常州 + 南通 + 嘉兴 + 杭州 + 宁波)
+  [31.23, 121.47, 26], // 上海中心城 (浦西 + 陆家嘴)
+  [31.18, 121.66, 22], // 浦东新区 / 张江 / 祝桥
+  [31.38, 121.36, 17], // 宝山 / 嘉定
+  [31.05, 121.38, 18], // 闵行 / 奉贤
+  [31.04, 121.22, 16], // 松江 / 青浦
+  [31.38, 120.98, 15], // 昆山
+  [31.30, 120.60, 21], // 苏州
+  [31.56, 120.30, 17], // 无锡
+  [31.81, 119.97, 15], // 常州
+  [32.01, 120.89, 15], // 南通
+  [30.75, 120.75, 14], // 嘉兴
+  [30.27, 120.16, 22], // 杭州主城 + 萧山/余杭
+  [29.87, 121.55, 17], // 宁波
+  [32.06, 118.80, 22], // 南京
+  [31.82, 117.23, 18], // 合肥
+  // 京津冀都市圈
+  [39.90, 116.40, 30], // 北京主城五环/六环
+  [39.13, 117.20, 22], // 天津主城 + 滨海
+  [38.98, 117.68, 14], // 天津滨海新区
+  [39.53, 116.70, 12], // 廊坊
+  [38.04, 114.51, 16], // 石家庄
+  // 粤港澳大湾区都市圈
+  [23.13, 113.26, 25], // 广州
+  [23.02, 113.12, 17], // 佛山
+  [22.92, 113.75, 18], // 东莞
+  [22.55, 114.06, 21], // 深圳
+  [22.32, 114.17, 14], // 香港
+  [22.27, 113.57, 12], // 珠海/澳门
+  // 中西部与东北核心都市区
+  [30.57, 104.07, 24], // 成都
+  [29.56, 106.55, 22], // 重庆
+  [30.59, 114.31, 23], // 武汉
+  [28.23, 112.94, 18], // 长沙
+  [28.68, 115.86, 15], // 南昌
+  [34.75, 113.62, 20], // 郑州
+  [34.34, 108.94, 20], // 西安
+  [36.65, 117.12, 18], // 济南
+  [36.07, 120.38, 18], // 青岛
+  [41.81, 123.43, 20], // 沈阳
+  [43.82, 125.32, 17], // 长春
+  [45.80, 126.53, 18], // 哈尔滨
+  [26.07, 119.30, 15], // 福州
+  [24.48, 118.09, 14], // 厦门
+  [25.04, 102.72, 16], // 昆明
+  [26.65, 106.63, 14], // 贵阳
+  [22.82, 108.37, 15], // 南宁
+  [36.06, 103.83, 13], // 兰州
+  [43.83, 87.62, 15],  // 乌鲁木齐
+  [25.03, 121.56, 16], // 台北
+  // 东亚都市圈 (东京圈 / 京阪神 / 首尔首都圈)
+  [35.68, 139.69, 30], // 东京 + 横滨 + 埼玉 + 千叶
+  [35.44, 139.64, 18], // 横滨
+  [34.69, 135.50, 22], // 大阪
+  [35.01, 135.77, 14], // 京都
+  [35.18, 136.91, 18], // 名古屋
+  [33.59, 130.40, 15], // 福冈
+  [43.06, 141.35, 15], // 札幌
+  [37.57, 126.98, 25], // 首尔首都圈
+];
+
+/** Returns 0..1 urban built-up density on dry land at real (lat, lng) for realistic metropolitan cluster rendering! */
+function sampleUrbanClusterDensity(lat: number, lng: number): number {
+  let maxD = 0;
+  // Slight organic pixel-sprawl wobble so metropolitan footprints look organic (like real suburbs along roads!)
+  const wobble = 1 + Math.sin(lat * 42 + lng * 31) * 0.14 + Math.cos(lat * 27 - lng * 48) * 0.12;
+  for (let i = 0; i < REAL_URBAN_CORES.length; i++) {
+    const [cLat, cLng, radKm] = REAL_URBAN_CORES[i];
+    const dLat = Math.abs(lat - cLat);
+    if (dLat > 0.65) continue;
+    const dLng = Math.abs(lng - cLng);
+    if (dLng > 0.8) continue;
+    const kmLat = dLat * KM_PER_DEG_LAT;
+    const kmLng = dLng * KM_PER_DEG_LAT * Math.cos((cLat * Math.PI) / 180);
+    const distKm = Math.hypot(kmLat, kmLng);
+    const effRad = radKm * wobble;
+    if (distKm < effRad) {
+      const dens = 1 - distKm / effRad;
+      if (dens > maxD) maxD = dens;
+    }
+  }
+  return maxD;
+}
+
+/**
  * Real-Earth Geographic Biome Pixel Classifier (True Deserts, Gobi, Loess Plateau, Steppe, Subtropical Forests,
- * Forested Hills, Alpine Ridges & True Latitude-Dependent Snowlines in Real Meters!)
+ * Metropolitan Urban Clusters on Dry Land, Forested Hills, Alpine Ridges & True Relief-Aware Snowlines!)
  */
 export function classifyRealEarthPixelColor(
   lat: number,
@@ -325,6 +415,20 @@ export function classifyRealEarthPixelColor(
     if (meters < -400) return '#1c7ed6';
     if (meters < -60) return '#228be6';
     return dither ? '#74c0fc' : '#4dabf7';
+  }
+
+  // 1B. Real-Scale Metropolitan Urban Built-Up Footprint (ONLY on dry lowland/plain land — automatically hugs real coastlines, rivers & lakes!)
+  if (meters > 0.6 && meters < 650 && absLat < 55) {
+    const uDens = sampleUrbanClusterDensity(lat, nLng);
+    if (uDens > 0.36) {
+      // Dense metropolitan core: warm GBA parchment city blocks with crisp pixel street-grid dither!
+      const blockHash = (Math.floor(lat * 240) + Math.floor(nLng * 240)) % 3 === 0;
+      return dither ? (blockHash ? '#dfd0a8' : '#ede0bc') : '#e5d6ae';
+    }
+    if (uDens > 0.12) {
+      // Suburban urban-fringe transition (warm sage-parchment satellite towns & industrial parks!)
+      return dither ? '#d4d49c' : '#a8c27a';
+    }
   }
 
   // 2. Polar Ice Caps & High Arctic Tundra (Greenland / Antarctica / High Arctic)

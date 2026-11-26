@@ -369,11 +369,11 @@ function paintRoadsAndTownsOnMap(
       const smoothSc = smoothPolyline(rawScreen, subSteps);
       const smoothGeo = smoothPolyline(rawLatLng, subSteps);
 
-      // Trim trailing ocean points where real DEM elevation drops below -1.5m (open sea past the estuary mouth!)
+      // Trim trailing estuary/ocean points as soon as the river hits open water (meters <= 0.6m) so ZERO river pipe floats over the sea!
       let endIdx = smoothSc.length - 1;
       while (endIdx > 2) {
         const m = sampleRealElevationMeters(smoothGeo[endIdx].sx, smoothGeo[endIdx].sy, 'macro');
-        if (m !== null && m < -1.5) {
+        if (m !== null && m <= 0.6) {
           endIdx -= 1;
         } else {
           break;
@@ -531,9 +531,9 @@ function paintRoadsAndTownsOnMap(
       }
     }
 
-    // 2. EVERY Visible Real-Earth City's UNIQUE Procedural GBA Pixel-Art Masterplan
-    // (Shanghai uses its signature Huangpu River + Suzhou Creek + Lujiazui layout; EVERY other city gets its own unique procedural river, bridges, tilted street grid, parks & metro lines!)
-    if (unitsPerPx < 4.5) {
+    // 2. EVERY Visible Real-Earth City's UNIQUE Tensor-Field GBA Pixel-Art Masterplan
+    // Visible seamlessly up to regional zoom (unitsPerPx < 9.5) right on top of the real-scale metropolitan built-up footprint!
+    if (unitsPerPx < 9.5) {
       const projected = getProjectedGeoCities();
       const citiesToRender: { id: string; name: string; x: number; z: number }[] = [];
       const activeId = activeGeo.startCityId ?? 'shanghai';
