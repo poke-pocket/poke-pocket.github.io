@@ -2433,7 +2433,8 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                       const dKm = Math.round(
                         Math.hypot(gc.x - snapshot.px, gc.z - snapshot.pz) / GEO_UNITS_PER_KM,
                       );
-                      const isCurrent = gc.city.id === (geoOrigin.startCityId ?? 'shanghai');
+                      const isOriginCity = gc.city.id === (geoOrigin.startCityId ?? 'shanghai');
+                      const isCurrent = isOriginCity && dKm < 2;
                       return (
                         <div
                           key={gc.city.id}
@@ -2446,7 +2447,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                             onClick={() => {
                               sound.play('confirm');
                               setPan({ x: gc.x - snapshot.px, z: gc.z - snapshot.pz });
-                              setZoom(0.045);
+                              setZoom(0.05);
                               setDrawerOpen(false);
                             }}
                           >
@@ -2454,9 +2455,9 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                               <PixelItemImg src="/sprites/items/town-map.png" size={13} />
                             </span>
                             <span className="lcd-map-poi-lbl">{gc.city.name}</span>
-                            <em>{isCurrent ? '当前' : `${dKm}km`}</em>
+                            <em>{isCurrent ? '当前' : `${Math.max(1, dKm)}km`}</em>
                           </button>
-                          {data.onFastTravelCity && !isCurrent && (
+                          {(data.onFastTravelCity || (isOriginCity && data.onTeleportGeoSpot)) && !isCurrent && (
                             <button
                               type="button"
                               className="lcd-map-poi-btn"
@@ -2466,18 +2467,34 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                                 flexShrink: 0,
                                 justifyContent: 'center',
                                 padding: '0 8px',
-                                background: '#fff3bf',
-                                color: '#212529',
-                                fontWeight: 700,
+                                background: isOriginCity ? '#69db7c' : '#fff3bf',
+                                color: '#161420',
+                                fontWeight: 900,
                               }}
-                              title={`直飞前往${gc.city.name}探索3D城景`}
+                              title={
+                                isOriginCity
+                                  ? `立即传回${gc.city.name}市中心`
+                                  : `直飞前往${gc.city.name}探索3D城景`
+                              }
                               onClick={() => {
                                 sound.play('confirm');
                                 (onDismissTo3D ?? onClose)?.();
-                                data.onFastTravelCity?.(gc.city.id);
+                                if (isOriginCity && data.onTeleportGeoSpot) {
+                                  data.onTeleportGeoSpot({
+                                    id: `city_return_${gc.city.id}`,
+                                    label: `${gc.city.name}市中心`,
+                                    subLabel: '人民广场 / 外滩核心区',
+                                    lat: gc.city.lat,
+                                    lng: gc.city.lng,
+                                    yaw: -1.15,
+                                    pitch: 0.24,
+                                  });
+                                } else {
+                                  data.onFastTravelCity?.(gc.city.id);
+                                }
                               }}
                             >
-                              ✈
+                              {isOriginCity ? '回城' : '✈'}
                             </button>
                           )}
                         </div>

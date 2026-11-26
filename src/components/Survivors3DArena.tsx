@@ -1626,7 +1626,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(pal.skyHex);
-    scene.fog = new THREE.Fog(pal.fogHex, 1400, 14500);
+    scene.fog = new THREE.Fog(pal.fogHex, 150, 4800);
 
     const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.5, 22000);
     camera.position.set(0, 4.8, 10.5);

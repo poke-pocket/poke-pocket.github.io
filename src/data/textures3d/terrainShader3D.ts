@@ -199,8 +199,8 @@ export function createSculptedTerrainMaterial(
       uBaseClimate: { value: new THREE.Vector2(baseT, baseM) },
       uGeoOrigin: { value: buildInitialGeoOriginVec4() },
       uRealEarthParams: { value: new THREE.Vector2(hasGeo ? 1.0 : 0.0, liveSnowWeatherWeight) },
-      uFogNear: { value: 1400.0 },
-      uFogFar: { value: 14500.0 },
+      uFogNear: { value: 95.0 },
+      uFogFar: { value: 5600.0 },
       uSectorSize: { value: sectorSize },
       uSunDir: { value: new THREE.Vector3(0.54, 0.78, 0.44).normalize() },
     },
@@ -454,6 +454,31 @@ export function createSculptedTerrainMaterial(
         vec3 sandyBankCol = vec3(0.86, 0.79, 0.58) * (0.94 + bayer2 * 2.0);
         albedo = mix(albedo, seawallCol, wetStoneMask * 0.86);
         albedo = mix(albedo, sandyBankCol, bankSandMask * 0.68);
+
+        // Procedural Distant Forest Canopy Macro-Texture & Rocky Outcrops beyond 3D tree cull distance (62u+)
+        // Prevents mid/far mountains from ever looking bare or flat when 3D sprite trees fade out!
+        float farCanopyFade =
+          smoothstep(62.0, 165.0, vFogDepth) *
+          wForest *
+          (1.0 - smoothstep(2350.0, 2750.0, realElevM)) *
+          smoothstep(0.60, 0.86, n.y) *
+          (1.0 - roadMask);
+        if (farCanopyFade > 0.005) {
+          vec2 crownP = vWorldPos.xz * 0.145;
+          float c1 = sin(crownP.x * 1.7 + sin(crownP.y * 1.4)) * cos(crownP.y * 1.6 - cos(crownP.x * 1.3));
+          float c2 = sin(crownP.x * 3.9 - crownP.y * 3.1 + 1.7) * 0.5 + cos(crownP.x * 2.8 + crownP.y * 4.2) * 0.5;
+          float crownHeight = clamp((c1 * 0.62 + c2 * 0.38) * 0.5 + 0.5, 0.0, 1.0);
+          float cNext = sin((crownP.x + 0.32) * 1.7 + sin((crownP.y + 0.24) * 1.4)) * cos((crownP.y + 0.24) * 1.6 - cos((crownP.x + 0.32) * 1.3));
+          float crownSunSlope = clamp(0.5 + (c1 - cNext) * 0.95, 0.0, 1.0);
+          vec3 deepCanopy = vec3(0.14, 0.36, 0.19);
+          vec3 litCanopy  = vec3(0.30, 0.61, 0.27);
+          vec3 canopyTex  = mix(deepCanopy, litCanopy, smoothstep(0.22, 0.78, crownHeight * 0.55 + crownSunSlope * 0.45));
+          // Subtle rocky crag veins on steeper mid/far slopes
+          float farSlopeRock = (1.0 - smoothstep(0.74, 0.90, n.y)) * smoothstep(80.0, 220.0, vFogDepth);
+          canopyTex = mix(canopyTex, vec3(0.46, 0.49, 0.52) * cliffLuma, farSlopeRock * 0.65);
+          albedo = mix(albedo, canopyTex, farCanopyFade * 0.82);
+        }
+
         albedo *= (1.0 + bayer2);
 
         // Bright HD-2D sunlit shading with warm sunlight / cool-slate hillshade contrast + cel micro-steps!
@@ -464,8 +489,22 @@ export function createSculptedTerrainMaterial(
         vec3 lit = albedo * (0.74 + 0.38 * qNdl) * elevLift * sunTint;
         lit += vec3(0.32, 0.09, 0.01) * lavaCrack * wVolcano;
 
-        float fogFactor = smoothstep(uFogNear, uFogFar, vFogDepth);
-        vec3 finalCol = mix(lit, uFogColor, fogFactor);
+        // Multi-Layer Atmospheric Haze (Aerial Perspective) + Foothill Valley Mist Veil!
+        float nearHaze = smoothstep(88.0, 620.0, vFogDepth) * 0.48;
+        float midHaze  = smoothstep(380.0, 2100.0, vFogDepth) * 0.36;
+        float farHaze  = smoothstep(1600.0, 6800.0, vFogDepth) * 0.14;
+        float aerialFactor = clamp(nearHaze + midHaze + farHaze, 0.0, 0.95);
+
+        vec3 inkMountainMist = mix(uFogColor * vec3(0.85, 0.93, 1.04), uFogColor, smoothstep(320.0, 2200.0, vFogDepth));
+        vec3 finalCol = mix(lit, inkMountainMist, aerialFactor);
+
+        float valleyBand =
+          smoothstep(105.0, 440.0, vFogDepth) *
+          (1.0 - smoothstep(3.0, 48.0, vWorldPos.y)) *
+          smoothstep(-0.3, 4.5, vWorldPos.y);
+        float mistSwirl = 0.65 + 0.35 * sin(vWorldPos.x * 0.008 + vWorldPos.z * 0.007);
+        finalCol = mix(finalCol, mix(uFogColor, vec3(0.94, 0.97, 1.0), 0.36), valleyBand * mistSwirl * 0.42);
+
         gl_FragColor = vec4(finalCol, 1.0);
       }
     `,
