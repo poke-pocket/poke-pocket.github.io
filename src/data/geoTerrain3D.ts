@@ -367,11 +367,12 @@ function sampleGridAt(lat: number, lng: number, z: number, queueIfMissing: boole
   return top + (bot - top) * sy;
 }
 
-export type GeoDemResolution = 'detail' | 'macro' | 'world' | 'global';
+export type GeoDemResolution = 'detail' | 'mid' | 'macro' | 'world' | 'global';
 
 /**
- * Sample real-Earth elevation in meters with 4-tier automatic fallback (Z9 Detail -> Z5 Macro -> Z3 Continental -> Z2 Global):
- * Supports smooth zooming from street-level (100m) all the way out to the ENTIRE PLANET EARTH (North Pole -> South Pole)!
+ * Sample real-Earth elevation in meters with 5-tier automatic fallback (Z11 Detail -> Z9 Mid -> Z5 Macro -> Z3 Continental -> Z2 Global):
+ * - `'detail'` (Z11 ~76m/px): Crisp alpine ridges & canyons in wilderness
+ * - `'mid'` (Z9 ~305m/px): True geological hills & mountain-city slopes WITHOUT 76m skyscraper radar spikes!
  */
 export function sampleRealElevationMeters(
   lat: number,
@@ -383,10 +384,12 @@ export function sampleRealElevationMeters(
   if (res === 'detail') {
     const detail11 = sampleGridAt(lat, lng, DEM_Z_DETAIL, true);
     if (detail11 !== null) return detail11;
+  }
+  if (res === 'detail' || res === 'mid') {
     const mid9 = sampleGridAt(lat, lng, DEM_Z_MID, true);
     if (mid9 !== null) return mid9;
   }
-  if (res === 'detail' || res === 'macro') {
+  if (res === 'detail' || res === 'mid' || res === 'macro') {
     const macro = sampleGridAt(lat, lng, DEM_Z_MACRO, true);
     if (macro !== null) return macro;
   }
@@ -885,11 +888,12 @@ export function sampleGeoTerrainHeight3D(
   const geo = worldToGeo(wx, wz, activeOrigin);
   if (!geo) return null;
   const meters = sampleRealElevationMeters(geo.lat, geo.lng, preferMacro);
+  const midM = preferMacro ? meters : sampleRealElevationMeters(geo.lat, geo.lng, 'mid');
   const macroM = preferMacro ? meters : sampleRealElevationMeters(geo.lat, geo.lng, 'macro');
   const micro = preferMacro ? 0 : microSculpt(wx, wz);
   const uDens = sampleUrbanClusterDensity(geo.lat, geo.lng);
-  // Attenuate wild hillock undulations across all built-up urban & suburban zones (`uDens > 0.12`), unleash full 3D slopes in countryside!
-  const ruralFactor = preferMacro ? 0 : 1 - smoothstepLocal(0.08, 0.28, uDens);
+  // Attenuate small high-frequency bumps inside dense downtown streets (`uDens > 0.24`), keep full 3D rolling slopes in suburbs, hills & countryside!
+  const ruralFactor = preferMacro ? 0 : 1 - smoothstepLocal(0.16, 0.38, uDens);
   const countrysideRelief = preferMacro ? 0 : sculptCountrysideRelief3D(wx, wz) * ruralFactor;
   const namedHillLift = preferMacro ? 0 : sampleRegionalHillLift3D(geo.lat, geo.lng);
 
@@ -907,15 +911,16 @@ export function sampleGeoTerrainHeight3D(
     elev = Math.max(-3.2, -0.58 + Math.min(0, meters) * 0.06) + micro * 0.04;
     if (elev > -0.42) elev = -0.45;
   } else {
-    // Filter out Z11 SRTM radar skyscraper/canopy spikes (`15m..55m` every 76m pixel!) inside urban areas using smooth `macroM`!
+    // Suppress ONLY 76m single-block Z11 skyscraper radar spikes inside built-up areas using Z9 (`~305m` geological hill resolution),
+    // so 100% of real hills, mountain cities (Chongqing/HK/Qingdao) & wilderness peaks stay completely intact!
     const filteredUrbanM =
-      uDens > 0.18 && macroM !== null && macroM < 85
-        ? Math.min(meters, macroM + 4.0)
+      uDens > 0.2 && midM !== null
+        ? midM + Math.max(-3.5, Math.min(4.0, (meters - midM) * 0.18))
         : meters;
     const realMeters = Math.max(3.5, filteredUrbanM, namedHillLift);
     const baseY = Math.max(0.95, realMetersToWorldY3D(realMeters));
-    const ridgeDetail = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, realMeters) * ruralFactor;
-    elev = baseY + countrysideRelief + ridgeDetail + (realMeters > 95 ? micro * 0.22 * ruralFactor : 0);
+    const ridgeDetail = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, realMeters) * (0.35 + 0.65 * ruralFactor);
+    elev = baseY + countrysideRelief + ridgeDetail + (realMeters > 80 ? micro * 0.22 * (0.3 + 0.7 * ruralFactor) : 0);
   }
 
   // Carve real inland lakes (e.g. Taihu Lake 太湖, West Lake 西湖) & major continental rivers outside downtown so 2D & 3D water match 1:1!
@@ -933,41 +938,46 @@ export function sampleGeoTerrainHeight3D(
     }
   }
 
-  // Civil-Engineered 3D Metropolitan Grading within ±2,450u (`±24.5km`):
-  // - Uses smooth regional `macroM` datum instead of noisy 76m Z11 skyscraper radar echoes (eliminates steep 25° block-to-block bumps!)
-  // - Preserves a very gentle, broad multi-kilometer urban contour (~0.8°–1.4° grade across whole districts) + real major mountains (>130m)!
+  // Civil-Engineered 3D Urban Plain & Hillside Grading within ±2,250u (`±22.5km`):
+  // - Flat alluvial cities (`localHillM < 22m`, e.g. Shanghai downtown) get smooth avenues with gentle multi-km contour + crisp riverbanks.
+  // - Real hills >= 22m (`虎丘 34m`, `辰山 71m`, `佘山 99m`, `西湖群山`, `紫金山`, `太平山`) and mountain-city slopes (`重庆`/`香港`/`青岛`)
+  //   smoothly retain 100% of their true Z9 geological slopes & peaks!
   if (!preferMacro) {
     const distFromOrigin = Math.hypot(wx, wz);
-    const smoothRegionalM = Math.max(4.0, macroM ?? 5.0);
-    const truePeakM = Math.max(smoothRegionalM, namedHillLift);
-    const isTrueUrbanMountain = distFromOrigin > 480 && truePeakM >= 130 && (meters ?? 0) >= 110;
-    if (distFromOrigin < 2450 && !isTrueOcean && !isTrueUrbanMountain) {
+    const localMidM = Math.max(4.0, midM ?? macroM ?? 5.0);
+    const localHillM = Math.max(localMidM, namedHillLift);
+    if (distFromOrigin < 2250 && !isTrueOcean) {
       const activeCityId = activeOrigin.startCityId ?? 'shanghai';
       const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
       const riverElev = -1.65;
-      // Stable city-wide datum from smooth macro geology (zero 7.6u pixel jitter!)
-      const basePlainY = Math.max(1.65, Math.min(6.5, realMetersToWorldY3D(Math.min(28, smoothRegionalM))));
-      // Broad, unhurried district-scale undulation (wavelength ~2.4km–4.2km, max grade ~0.9° — subtle & natural, never frequent!)
-      const broadDistrictContour =
-        smoothstepLocal(160, 780, distFromOrigin) *
-        (Math.sin(wx * 0.0015 + wz * 0.0012) * 0.48 + Math.cos(wx * 0.0023 - wz * 0.0019) * 0.28);
-      const dryCityY = basePlainY + broadDistrictContour;
-      let cityTargetY = dryCityY;
-      if (rivSigned < 0) {
-        cityTargetY = riverElev;
-      } else if (rivSigned < 2.8) {
-        // Crisp river seawall bank over 2.8u so nearby riverside boulevards (Bund / Suzhou Creek) stay 100% level!
-        const bankT = rivSigned / 2.8;
-        const smoothBank = bankT * bankT * (3 - 2 * bankT);
-        cityTargetY = riverElev * (1 - smoothBank) + dryCityY * smoothBank;
+      const originBaseM = Math.max(
+        4.0,
+        sampleRealElevationMeters(activeOrigin.originLat, activeOrigin.originLng, 'mid') ?? 5.0,
+      );
+      const relReliefM = localHillM - originBaseM;
+      // Only apply flat-plain smoothing where terrain is genuinely flat alluvial plain (`relReliefM < 18m` & `namedHillLift < 20m`);
+      // any real hill, ridge, or sloped mountain-city district (`relReliefM >= 18m` or `namedHillLift >= 20m`) keeps its full natural slope!
+      const plainMask =
+        (1 - smoothstepLocal(1850, 2250, distFromOrigin)) *
+        (distFromOrigin < 145 ? 1 : 1 - smoothstepLocal(16, 36, Math.max(relReliefM, namedHillLift - 6)));
+      if (plainMask > 0.001 || rivSigned < 2.8) {
+        const gentlePlainM = originBaseM + Math.max(-3.0, Math.min(12.0, relReliefM * 0.35));
+        const basePlainY = Math.max(1.65, realMetersToWorldY3D(gentlePlainM));
+        const broadDistrictContour =
+          smoothstepLocal(150, 760, distFromOrigin) *
+          (Math.sin(wx * 0.0015 + wz * 0.0012) * 0.52 + Math.cos(wx * 0.0023 - wz * 0.0019) * 0.30);
+        const dryCityY = basePlainY + broadDistrictContour;
+        if (rivSigned < 0) {
+          return riverElev;
+        }
+        if (rivSigned < 2.8) {
+          const bankT = rivSigned / 2.8;
+          const smoothBank = bankT * bankT * (3 - 2 * bankT);
+          const shoreTopY = Math.max(0.95, elev) * (1 - plainMask) + dryCityY * plainMask;
+          return riverElev * (1 - smoothBank) + shoreTopY * smoothBank;
+        }
+        elev = Math.max(0.95, elev) * (1 - plainMask) + dryCityY * plainMask;
       }
-      if (distFromOrigin < 1850 && truePeakM < 95) {
-        return cityTargetY;
-      }
-      const distBlend = 1 - smoothstepLocal(1850, 2450, distFromOrigin);
-      const hillBlend = distFromOrigin < 480 ? 1 : 1 - smoothstepLocal(90, 145, truePeakM);
-      const edgeT = distBlend * hillBlend;
-      elev = Math.max(0.95, elev) * (1 - edgeT) + cityTargetY * edgeT;
     }
   }
 
