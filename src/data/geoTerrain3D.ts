@@ -625,10 +625,69 @@ function smoothstepLocal(e0: number, e1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/** Checks if (lat, lng) lies inside a real inland lake (Taihu, West Lake, Poyang, etc.) — returns 0..1 depth factor */
+function sampleInlandLakeFactor(lat: number, lng: number): number {
+  const nLng = ((((lng + 180) % 360) + 360) % 360) - 180;
+  const ripple =
+    Math.sin(lat * 190 + nLng * 230) * 0.13 +
+    Math.cos(lat * 370 - nLng * 290) * 0.08 +
+    Math.sin(lat * 680 + nLng * 510) * 0.05;
+  for (let li = 0; li < REAL_INLAND_LAKES.length; li++) {
+    const lk = REAL_INLAND_LAKES[li];
+    if (Math.abs(lat - lk.lat) > lk.ryDeg * 1.45 || Math.abs(nLng - lk.lng) > lk.rxDeg * 1.45) continue;
+    const dx = nLng - lk.lng;
+    const dy = lat - lk.lat;
+    const c = Math.cos(lk.rotRad ?? 0);
+    const s = Math.sin(lk.rotRad ?? 0);
+    const rx = dx * c + dy * s;
+    const ry = -dx * s + dy * c;
+    const normR = Math.hypot(rx / lk.rxDeg, ry / lk.ryDeg) + ripple;
+    if (normR < 0.98) {
+      return Math.min(1, (0.98 - normR) / 0.26);
+    }
+  }
+  return 0;
+}
+
+/** Checks if (lat, lng) lies inside a major continental river channel from REAL_WORLD_RIVERS — returns 0..1 depth factor */
+function sampleContinentalRiverFactor(lat: number, lng: number): number {
+  const nLng = ((((lng + 180) % 360) + 360) % 360) - 180;
+  const warpScale = 0.0068;
+  const wLat =
+    lat +
+    Math.sin(nLng * 28.5 + lat * 19.2) * warpScale +
+    Math.cos(nLng * 67.0 - lat * 53.0) * (warpScale * 0.38);
+  const wLng =
+    nLng +
+    Math.cos(lat * 26.8 - nLng * 21.4) * warpScale +
+    Math.sin(lat * 61.0 + nLng * 49.0) * (warpScale * 0.38);
+  const cosLat = Math.max(0.25, Math.cos((lat * Math.PI) / 180));
+  const segs = getCompiledHydroSegs();
+
+  let bestRatio = 999;
+  for (let i = 0; i < segs.length; i++) {
+    const sg = segs[i];
+    if (wLat < sg.minLat || wLat > sg.maxLat || wLng < sg.minLng || wLng > sg.maxLng) continue;
+    const vx = (sg.lng2 - sg.lng1) * cosLat * KM_PER_DEG_LAT;
+    const vz = (sg.lat2 - sg.lat1) * KM_PER_DEG_LAT;
+    const px = (wLng - sg.lng1) * cosLat * KM_PER_DEG_LAT;
+    const pz = (wLat - sg.lat1) * KM_PER_DEG_LAT;
+    const lenSq = vx * vx + vz * vz;
+    const t = lenSq > 0.0001 ? Math.max(0, Math.min(1, (px * vx + pz * vz) / lenSq)) : 0;
+    const distKm = Math.hypot(px - vx * t, pz - vz * t);
+    const ratio = distKm / Math.max(0.12, sg.halfWidthKm);
+    if (ratio < bestRatio) bestRatio = ratio;
+  }
+  if (bestRatio >= 1.0) return 0;
+  return Math.min(1, (1.0 - bestRatio) / 0.38);
+}
+
 /**
  * Sample real-Earth geographic 3D terrain height when in World Tour mode.
- * Returns null ONLY when geo mode is inactive.
- * While tiles are still streaming on the very first 100ms, returns a calm neutral plain (never random Perlin lakes!).
+ * STRICT 1:1 LAND/WATER CONSISTENCY WITH 2D MAP:
+ * - Dry plains & forests (`meters > 0.6` or inland polders where `macroM > 2.0`) NEVER drop below `WATER_LEVEL_3D` (`-0.35m`),
+ *   fixing the bug where negative `microSculpt` waves submerged green Yangtze/plain forests (`e.g. 31.08°N, 121.08°E`) under fake ocean water!
+ * - Real oceans, real inland lakes (`太湖`, `西湖`, etc.), and real river channels (`黄浦江`, `长江`, etc.) carve cleanly below `-0.35m`!
  */
 export function sampleGeoTerrainHeight3D(
   wx: number,
@@ -639,44 +698,62 @@ export function sampleGeoTerrainHeight3D(
   const geo = worldToGeo(wx, wz, activeOrigin);
   if (!geo) return null;
   const meters = sampleRealElevationMeters(geo.lat, geo.lng, preferMacro);
+  const macroM = preferMacro ? meters : sampleRealElevationMeters(geo.lat, geo.lng, 'macro');
   const micro = preferMacro ? 0 : microSculpt(wx, wz);
+  // Strictly non-negative gentle hillock lift [0 .. +1.85m] for low coastal plains so rolling waves NEVER push dry forests below water!
+  const plainLift = preferMacro ? 0 : Math.max(0, micro + 2.85) * 0.32;
+
+  // True ocean/sea check: prevents noisy 0m inland SRTM polders (like Qingpu/Kunshan 40km inland where macroM > 2.2m) from becoming fake seas!
+  const isTrueOcean =
+    meters !== null &&
+    meters <= 0.6 &&
+    (macroM === null || macroM <= 2.2 || meters <= -2.0);
 
   let elev: number;
   if (meters === null) {
-    // Calm neutral plain placeholder for the ~150ms before Z5 tile resolves — NEVER return early before city grading!
-    elev = 1.65 + micro * 0.25;
-  } else if (meters <= 0.6) {
-    // Real Ocean / Sea / Bay / Estuary (shallow sandy shoreline -> deep sea)
-    elev = Math.max(-2.45, -0.22 + Math.min(0, meters) * 0.055) + micro * 0.12;
-    if (elev > -0.05) elev = -0.08;
+    elev = 1.65 + plainLift * 0.35;
+  } else if (isTrueOcean) {
+    // Real Ocean / Sea / Bay / Estuary
+    elev = Math.max(-2.45, -0.58 + Math.min(0, meters) * 0.055) + micro * 0.08;
+    if (elev > -0.42) elev = -0.45;
   } else if (meters <= 65) {
-    // Real Coastal Plains & River Valleys (e.g. Shanghai, Pearl River Delta, Kanto Plain, North China Plain)
-    elev = 0.55 + (meters / 65) * 1.95 + micro * 0.65;
+    // Real Coastal Plains, Forests & River Valleys (strictly >= +0.58m above WATER_LEVEL_3D = -0.35m!)
+    const clampedM = Math.max(0.8, meters);
+    elev = 0.58 + (clampedM / 65) * 1.95 + plainLift;
   } else if (meters <= 420) {
-    // Real Foothills & Low Mountains (e.g. Shenzhen/HK hills, Taihang foothills)
-    elev = 2.5 + ((meters - 65) / 355) * 4.6 + micro * 0.85;
+    // Real Foothills & Low Mountains
+    elev = Math.max(1.2, 2.5 + ((meters - 65) / 355) * 4.6 + micro * 0.65);
   } else {
-    // Real Major Mountain Ranges (e.g. Wutong Peak, Yan Mountains, Mount Fuji)
-    elev = 7.1 + Math.min(6.4, Math.log1p((meters - 420) / 260) * 3.05) + micro;
+    // Real Major Mountain Ranges
+    elev = Math.max(3.5, 7.1 + Math.min(6.4, Math.log1p((meters - 420) / 260) * 3.05) + micro);
   }
 
-  // Deterministic Urban Core Elevation (identical at t=0ms AND after NASA DEM loads -> ZERO road/character height desync!):
-  // Carves the real S-curving Huangpu River & Suzhou Creek water channel cleanly through downtown Shanghai!
+  // Carve real inland lakes (e.g. Taihu Lake 太湖, West Lake 西湖) & major continental rivers outside downtown so 2D & 3D water match 1:1!
+  if (!preferMacro && !isTrueOcean) {
+    const lakeDepth = sampleInlandLakeFactor(geo.lat, geo.lng);
+    if (lakeDepth > 0) {
+      const targetLakeY = -0.45 - lakeDepth * 1.35;
+      elev = elev * (1 - lakeDepth) + targetLakeY * lakeDepth;
+    } else if (Math.hypot(wx, wz) > 320) {
+      const rivDepth = sampleContinentalRiverFactor(geo.lat, geo.lng);
+      if (rivDepth > 0) {
+        const targetRivY = -0.45 - rivDepth * 1.15;
+        elev = elev * (1 - rivDepth) + targetRivY * rivDepth;
+      }
+    }
+  }
+
+  // Deterministic Urban Core Elevation: carves the real S-curving Huangpu River & Suzhou Creek cleanly through downtown!
   if (!preferMacro) {
     const uDens = sampleUrbanClusterDensity(geo.lat, geo.lng);
     const distFromOrigin = Math.hypot(wx, wz);
-    const macroM = sampleRealElevationMeters(geo.lat, geo.lng, 'macro');
-    // Guarantee dry continuous urban grading across the city center (< 240m, fixes HK coastal spawn pit!)
-    // AND across the macro dry landmass so noisy 1-pixel Z9 SRTM depressions NEVER punch random water holes in Pudong/downtown!
     const isDryCoast =
       distFromOrigin < 240 ||
-      (macroM === null ? distFromOrigin < 360 : macroM > 0.65 && (meters === null || meters > -1.5));
+      !isTrueOcean;
     if ((uDens > 0.12 || distFromOrigin < 240) && isDryCoast) {
-      // Smooth river channel carving ONLY along the active city's real river spline!
       const activeCityId = activeOrigin.startCityId ?? 'shanghai';
       const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
       const riverElev = -1.65;
-      // Preserve gentle rolling urban topography (+0..1.4m natural slope outside exact spawn plaza) while keeping riverbanks crisp!
       const urbanRoll =
         smoothstepLocal(45, 220, distFromOrigin) *
         (Math.sin(wx * 0.009 + wz * 0.007) * 0.85 + Math.cos(wx * 0.013 - wz * 0.011) * 0.65);
@@ -714,34 +791,37 @@ export interface RealWorldCorridor {
  * Projected dynamically onto real Earth coordinates via geoToWorld(lat, lng).
  */
 export const REAL_WORLD_CORRIDORS: RealWorldCorridor[] = [
-  // G2 京沪高速 & 京哈高速 (上海 -> 苏州 -> 南京 -> 徐州 -> 济南 -> 天津 -> 北京 -> 沈阳 -> 长春 -> 哈尔滨)
+  // G2 京沪高速 & G1 京哈高速 (全线陆地走向，绕开太湖与渤海湾，在各城外环立交与市内主干道无缝衔接!)
   {
     id: 'g2_jinghu',
     label: 'G2 京沪高速',
     kind: 'highway',
     points: [
-      [31.23, 121.47], // 上海
+      [31.23, 121.47], // 上海 (外环西/嘉定安亭立交接入)
       [31.30, 120.59], // 苏州
+      [31.57, 120.30], // 无锡 (太湖北岸陆地走廊)
+      [31.81, 119.97], // 常州
       [32.06, 118.80], // 南京
       [34.21, 117.28], // 徐州
       [36.65, 117.12], // 济南
       [39.13, 117.20], // 天津
       [39.90, 116.40], // 北京
+      [39.94, 119.60], // 秦皇岛 (山海关陆路走廊)
       [41.80, 123.43], // 沈阳
       [43.82, 125.32], // 长春
       [45.80, 126.53], // 哈尔滨
     ],
   },
-  // 京沪-京哈高铁 (接入上海城西虹桥高铁枢纽 31.195°N, 121.318°E，绝不直接穿入市中心!)
+  // 京沪-京哈高铁 (接入各城城郊高铁站枢纽，绝不穿入市中心!)
   {
     id: 'hsr_jinghu',
     label: '京沪高铁',
     kind: 'rail',
     points: [
-      [31.195, 121.318], // 上海虹桥高铁站 (城西外环枢纽)
+      [31.195, 121.318], // 上海虹桥高铁站
       [31.32, 120.62],   // 苏州北
       [31.49, 120.31],   // 无锡东
-      [32.06, 118.80],   // 南京南
+      [32.00, 118.80],   // 南京南
       [32.94, 117.39],   // 蚌埠南
       [34.27, 117.19],   // 徐州东
       [36.67, 116.90],   // 济南西
@@ -751,34 +831,46 @@ export const REAL_WORLD_CORRIDORS: RealWorldCorridor[] = [
       [45.80, 126.53],
     ],
   },
-  // G15/G60 东南沿海高速 (上海 -> 杭州 -> 温州 -> 福州 -> 厦门 -> 深圳 -> 香港 & 广州)
+  // G60 沪昆高速 — G15 东南沿海高速 (经松江—嘉兴—杭州—绍兴—宁波全陆地走廊，绝不横穿杭州湾海面!)
   {
     id: 'g15_coastal',
-    label: 'G15 沈海高速',
+    label: 'G60/G15 沪杭沈海高速',
     kind: 'highway',
     points: [
-      [31.23, 121.47], // 上海
+      [31.23, 121.47], // 上海 (外环西南莘庄/松江立交接入)
+      [30.76, 120.75], // 嘉兴
       [30.27, 120.15], // 杭州
+      [30.00, 120.58], // 绍兴
       [29.87, 121.55], // 宁波
+      [28.66, 121.42], // 台州
       [28.00, 120.70], // 温州
       [26.07, 119.30], // 福州
+      [24.87, 118.67], // 泉州
       [24.48, 118.09], // 厦门
       [23.35, 116.68], // 汕头
+      [23.11, 114.42], // 惠州
       [22.54, 114.06], // 深圳
       [22.32, 114.17], // 香港
     ],
   },
+  // G4 京港澳高速 (纵贯南北内陆核心大都市圈：北京 -> 石家庄 -> 郑州 -> 武汉 -> 长沙 -> 广州 -> 东莞 -> 深圳 -> 香港)
   {
     id: 'g4_guangshen',
-    label: 'G4 广深高速',
+    label: 'G4 京港澳高速',
     kind: 'highway',
     points: [
+      [39.90, 116.40], // 北京
+      [38.04, 114.51], // 石家庄
+      [34.75, 113.62], // 郑州
+      [30.59, 114.31], // 武汉
+      [28.23, 112.94], // 长沙
       [23.13, 113.26], // 广州
-      [22.82, 113.75], // 东莞
+      [22.92, 113.75], // 东莞
       [22.54, 114.06], // 深圳
+      [22.32, 114.17], // 香港
     ],
   },
-  // 沪昆-东南沿海高铁 (同样由城西上海虹桥高铁站引出，经松江南连杭州，不穿入市中心!)
+  // 沪昆-京广高铁 (由城西上海虹桥高铁站引出，经松江南连杭州东、长沙南、广州南、西九龙)
   {
     id: 'hsr_coastal',
     label: '沪广高铁',
@@ -787,14 +879,14 @@ export const REAL_WORLD_CORRIDORS: RealWorldCorridor[] = [
       [31.195, 121.318], // 上海虹桥高铁站
       [30.98, 121.20],   // 松江南
       [30.29, 120.21],   // 杭州东
-      [28.68, 115.86],   // 南昌
-      [28.23, 112.94],   // 长沙
-      [23.13, 113.26],   // 广州
-      [22.54, 114.06],   // 深圳
-      [22.32, 114.17],   // 香港
+      [28.68, 115.86],   // 南昌西
+      [28.15, 113.06],   // 长沙南
+      [22.99, 113.27],   // 广州南
+      [22.61, 114.03],   // 深圳北
+      [22.30, 114.16],   // 香港西九龙
     ],
   },
-  // G42 沪蓉高速 (上海 -> 南京 -> 合肥 -> 武汉 -> 重庆 -> 成都)
+  // G42 沪蓉高速 (南京 -> 合肥 -> 武汉 -> 宜昌 -> 重庆 -> 成都)
   {
     id: 'g42_hurong',
     label: 'G42 沪蓉高速',
@@ -808,7 +900,21 @@ export const REAL_WORLD_CORRIDORS: RealWorldCorridor[] = [
       [30.57, 104.06], // 成都
     ],
   },
-  // 日本东海道・山阳・东北新干线 (福冈 -> 广岛 -> 大阪 -> 京都 -> 名古屋 -> 东京 -> 仙台 -> 青森 -> 札幌)
+  // G30 连霍 — G5 京昆高速 (郑州 -> 西安 -> 汉中 -> 成都 -> 昆明)
+  {
+    id: 'g5_jingkun',
+    label: 'G5 西成昆高速',
+    kind: 'highway',
+    points: [
+      [34.75, 113.62], // 郑州
+      [34.34, 108.94], // 西安
+      [33.07, 107.03], // 汉中
+      [30.57, 104.06], // 成都
+      [28.87, 104.62], // 宜宾
+      [25.04, 102.72], // 昆明
+    ],
+  },
+  // 日本东海道・山阳・东北新干线
   {
     id: 'jp_shinkansen',
     label: '东海道新干线',
@@ -816,37 +922,40 @@ export const REAL_WORLD_CORRIDORS: RealWorldCorridor[] = [
     points: [
       [33.59, 130.40], // 福冈
       [34.39, 132.46], // 广岛
-      [34.69, 135.50], // 大阪
-      [35.01, 135.77], // 京都
-      [35.18, 136.91], // 名古屋
-      [35.68, 139.65], // 东京
-      [38.27, 140.87], // 仙台
-      [40.82, 140.74], // 青森
+      [34.73, 135.50], // 新大阪
+      [34.98, 135.76], // 京都站
+      [35.17, 136.88], // 名古屋
+      [35.68, 139.76], // 东京站
+      [38.26, 140.88], // 仙台
+      [40.82, 140.74], // 新青森
       [43.06, 141.35], // 札幌
     ],
   },
-  // 日本东名/名神高速
+  // 日本东名・名神・山阳・东北自动车道 (陆路走廊，绕开骏河湾与伊势湾海面)
   {
     id: 'jp_tomei',
     label: '东名高速',
     kind: 'highway',
     points: [
-      [33.59, 130.40],
-      [34.69, 135.50],
-      [35.01, 135.77],
-      [35.18, 136.91],
-      [35.68, 139.65],
+      [33.59, 130.40], // 福冈
+      [34.39, 132.46], // 广岛
+      [34.69, 135.50], // 大阪
+      [35.01, 135.77], // 京都
+      [35.18, 136.91], // 名古屋
+      [34.98, 138.38], // 静冈
+      [35.68, 139.69], // 东京
+      [38.27, 140.87], // 仙台
     ],
   },
-  // 东海跨海航线 (上海 <-> 福冈 / 大阪 / 冲绳)
+  // 东海跨海航线 (上海外高桥/吴淞口 <-> 福冈 / 冲绳)
   {
     id: 'ferry_sh_jp',
     label: '东海航线',
     kind: 'ferry',
     points: [
-      [31.23, 121.47], // 上海
+      [31.36, 121.62], // 上海外高桥港
       [32.60, 126.20],
-      [33.59, 130.40], // 福冈
+      [33.59, 130.40], // 福冈博多港
     ],
   },
   {
@@ -854,9 +963,9 @@ export const REAL_WORLD_CORRIDORS: RealWorldCorridor[] = [
     label: '沪冲航线',
     kind: 'ferry',
     points: [
-      [31.23, 121.47], // 上海
+      [31.36, 121.62], // 上海外高桥港
       [28.70, 124.90],
-      [26.21, 127.68], // 冲绳
+      [26.21, 127.68], // 冲绳那霸港
     ],
   },
 ];

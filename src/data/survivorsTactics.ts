@@ -1,5 +1,6 @@
 import type { PokemonElement, SpeciesId } from '../types/pet';
 import { getActiveGeoTerrainOrigin, sampleGeoTerrainHeight3D, subscribeGeoDemLoaded } from './geoTerrain3D';
+import { HIGHWAY_ROAD_WIDTH_3D, getNearestGeoHighwayDist3D } from '../utils/interCityHighwayGraph';
 import { isOnShanghaiBridgeLocal } from '../utils/townStreetGen';
 import type { BiomeId } from './worldTextures3D';
 
@@ -709,12 +710,19 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number, currentPy?: n
       }
     }
   } else {
-    // Active Real-Earth city centered at (0, 0):
+    // Active Real-Earth city centered at (0, 0) + Inter-City Walkable Highway Network:
     const geoCityId = activeGeo.startCityId ?? 'shanghai';
     if (isOnShanghaiBridgeLocal(wx, wz, geoCityId)) {
       return Math.max(ground + 0.16, 1.92);
     }
-    // 2. Dry paved city avenues & parks sit flush at ground + 0.16 across the full real metropolitan dry land!
+    const hwyDist = getNearestGeoHighwayDist3D(wx, wz);
+    if (hwyDist < HIGHWAY_ROAD_WIDTH_3D * 0.5 + 0.8) {
+      if (ground < WATER_LEVEL_3D + 0.22) {
+        return Math.max(BRIDGE_DECK_Y_3D, 1.92) + 0.04;
+      }
+      return ground + 0.18;
+    }
+    // 2. Dry paved city avenues & parks sit flush at ground + 0.16 across dry landmass!
     if (Math.hypot(wx, wz) < 860 && ground >= WATER_LEVEL_3D) {
       return ground + 0.16;
     }

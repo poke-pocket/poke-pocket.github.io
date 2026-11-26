@@ -24,6 +24,7 @@ import {
   WORLD_TOWNS_3D,
 } from '../data/survivorsTactics';
 import { generateTownLayout, hashCitySeed } from '../utils/townStreetGen';
+import { HIGHWAY_ROAD_WIDTH_3D, getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { SHANGHAI_DISTRICT_LABELS } from '../data/shanghaiMasterplan';
 import { BIOME_PALETTES, type BiomeId } from '../data/worldTextures3D';
 import { sound } from '../utils/sound';
@@ -430,77 +431,135 @@ function paintRoadsAndTownsOnMap(
       }
     }
 
-    // 1. Real-Geography Curved Inter-City Highways, High-Speed Rail / Shinkansen & Ocean Routes (matching GBA pixel-art map palette!)
-    for (const cor of REAL_WORLD_CORRIDORS) {
-      const pts: { sx: number; sy: number }[] = [];
-      for (const [lat, lng] of cor.points) {
-        const wp = geoToWorld(lat, lng, activeGeo);
-        if (wp) pts.push(toScreen(wp.x, wp.z));
+    // 1. Real-Geography Inter-City Highways (Docked Strictly to Outer-Ring Arterial Portals — NEVER stabbing city centers!),
+    //    Suburban HSR Corridors & Ocean Ferry Routes!
+    const compiledNet = getCompiledInterCityNetwork(activeGeo);
+    if (compiledNet) {
+      const hwyScaleW = () => {
+        const raw = HIGHWAY_ROAD_WIDTH_3D * invScale;
+        if (unitsPerPx > 6.5) return Math.max(1.4, Math.min(2.8, raw * 0.44));
+        if (unitsPerPx > 1.8) return Math.max(1.8, Math.min(3.4, raw * 0.52));
+        return Math.max(detailed ? 2.0 : 1.1, raw * 0.82);
+      };
+      const wHwy = hwyScaleW();
+
+      // Pass 1A: Highway dark slate casing (identical to city arterial casing `#64748b` so outer-ring junctions weld seamlessly!)
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = wHwy + (detailed ? (unitsPerPx > 2 ? 0.95 : 1.5) : 0.7);
+      for (const leg of compiledNet.highwayLegs) {
+        if (leg.points.length < 2) continue;
+        const p0 = toScreen(leg.points[0][0], leg.points[0][1]);
+        const pLast = toScreen(leg.points[leg.points.length - 1][0], leg.points[leg.points.length - 1][1]);
+        if (
+          (p0.sx < -80 && pLast.sx < -80) ||
+          (p0.sx > ctx.canvas.width + 80 && pLast.sx > ctx.canvas.width + 80) ||
+          (p0.sy < -80 && pLast.sy < -80) ||
+          (p0.sy > ctx.canvas.height + 80 && pLast.sy > ctx.canvas.height + 80)
+        ) {
+          continue;
+        }
+        ctx.beginPath();
+        ctx.moveTo(p0.sx, p0.sy);
+        for (let i = 1; i < leg.points.length; i++) {
+          const sp = toScreen(leg.points[i][0], leg.points[i][1]);
+          ctx.lineTo(sp.sx, sp.sy);
+        }
+        ctx.stroke();
       }
-      if (pts.length < 2) continue;
 
-      if (cor.kind === 'ferry') {
-        ctx.strokeStyle = 'rgba(186, 230, 253, 0.85)';
-        ctx.lineWidth = detailed ? 1.6 : 1.0;
-        ctx.setLineDash([5, 5]);
+      // Pass 1B: Highway arterial gold-amber fill (`#f6b93b`, exact match with city arterial boulevards!) + Route Shields
+      const drawnCorridorShields = new Set<string>();
+      for (const leg of compiledNet.highwayLegs) {
+        if (leg.points.length < 2) continue;
+        const p0 = toScreen(leg.points[0][0], leg.points[0][1]);
+        const pLast = toScreen(leg.points[leg.points.length - 1][0], leg.points[leg.points.length - 1][1]);
+        if (
+          (p0.sx < -80 && pLast.sx < -80) ||
+          (p0.sx > ctx.canvas.width + 80 && pLast.sx > ctx.canvas.width + 80) ||
+          (p0.sy < -80 && pLast.sy < -80) ||
+          (p0.sy > ctx.canvas.height + 80 && pLast.sy > ctx.canvas.height + 80)
+        ) {
+          continue;
+        }
+        ctx.strokeStyle = '#f6b93b';
+        ctx.lineWidth = wHwy;
         ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        continue;
-      }
-
-      if (cor.kind === 'highway') {
-        const w = detailed ? Math.max(2.6, Math.min(7, 18 * invScale)) : 1.8;
-        ctx.strokeStyle = '#3b4252';
-        ctx.lineWidth = w + 1.8;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-        ctx.stroke();
-
-        ctx.strokeStyle = '#ffd166';
-        ctx.lineWidth = w;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
+        ctx.moveTo(p0.sx, p0.sy);
+        for (let i = 1; i < leg.points.length; i++) {
+          const sp = toScreen(leg.points[i][0], leg.points[i][1]);
+          ctx.lineTo(sp.sx, sp.sy);
+        }
         ctx.stroke();
 
-        if (detailed && unitsPerPx > 1.8) {
-          ctx.font = 'bold 8px monospace';
-          const tw = ctx.measureText(cor.label).width + 6;
-          for (const frac of [0.5, 0.33, 0.67]) {
-            const mid = pts[Math.min(pts.length - 1, Math.floor(pts.length * frac))];
-            if (!canPlaceGeoLabel(mid.sx, mid.sy, tw + 4, 14)) continue;
-            ctx.fillStyle = '#2b8a3e';
-            ctx.fillRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 0.9;
-            ctx.strokeRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
-            ctx.fillStyle = '#ffffff';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(cor.label, mid.sx, mid.sy + 0.5);
-            break;
+        if (detailed && unitsPerPx > 0.7 && !drawnCorridorShields.has(leg.corridorId)) {
+          const midPt = leg.points[Math.floor(leg.points.length * 0.5)];
+          const mid = toScreen(midPt[0], midPt[1]);
+          if (
+            mid.sx > 28 &&
+            mid.sx < ctx.canvas.width - 28 &&
+            mid.sy > 24 &&
+            mid.sy < ctx.canvas.height - 24
+          ) {
+            const shortCode = leg.label.split(' ')[0] || leg.label;
+            const badgeText = unitsPerPx < 4.5 ? leg.label : shortCode;
+            ctx.font = 'bold 8px "PingFang SC", monospace';
+            const tw = ctx.measureText(badgeText).width + 8;
+            if (canPlaceGeoLabel(mid.sx, mid.sy, tw + 4, 14)) {
+              drawnCorridorShields.add(leg.corridorId);
+              ctx.fillStyle = '#1b7a38';
+              ctx.fillRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 0.9;
+              ctx.strokeRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
+              ctx.fillStyle = '#ffffff';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(badgeText, mid.sx, mid.sy + 0.5);
+            }
           }
         }
-      } else if (cor.kind === 'rail') {
-        ctx.strokeStyle = '#1e2430';
-        ctx.lineWidth = detailed ? 2.2 : 1.4;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-        ctx.stroke();
+      }
 
-        ctx.strokeStyle = '#f8f9fa';
-        ctx.lineWidth = detailed ? 1.1 : 0.7;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath();
-        ctx.moveTo(pts[0].sx, pts[0].sy);
-        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-        ctx.stroke();
-        ctx.setLineDash([]);
+      // Pass 1C: Suburban HSR Tracks & Maritime Ferry Routes
+      for (const cor of compiledNet.otherCorridors) {
+        if (cor.points.length < 2) continue;
+        if (cor.kind === 'ferry') {
+          ctx.strokeStyle = 'rgba(186, 230, 253, 0.85)';
+          ctx.lineWidth = detailed ? 1.6 : 1.0;
+          ctx.setLineDash([5, 5]);
+          ctx.beginPath();
+          const f0 = toScreen(cor.points[0][0], cor.points[0][1]);
+          ctx.moveTo(f0.sx, f0.sy);
+          for (let i = 1; i < cor.points.length; i++) {
+            const fp = toScreen(cor.points[i][0], cor.points[i][1]);
+            ctx.lineTo(fp.sx, fp.sy);
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          const r0 = toScreen(cor.points[0][0], cor.points[0][1]);
+          ctx.strokeStyle = '#1e2430';
+          ctx.lineWidth = detailed ? 2.2 : 1.4;
+          ctx.beginPath();
+          ctx.moveTo(r0.sx, r0.sy);
+          for (let i = 1; i < cor.points.length; i++) {
+            const rp = toScreen(cor.points[i][0], cor.points[i][1]);
+            ctx.lineTo(rp.sx, rp.sy);
+          }
+          ctx.stroke();
+
+          ctx.strokeStyle = '#f8f9fa';
+          ctx.lineWidth = detailed ? 1.1 : 0.7;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(r0.sx, r0.sy);
+          for (let i = 1; i < cor.points.length; i++) {
+            const rp = toScreen(cor.points[i][0], cor.points[i][1]);
+            ctx.lineTo(rp.sx, rp.sy);
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
       }
     }
 
@@ -1134,10 +1193,13 @@ function paintTopographicMap(
           ctx.fillRect(px, py, stepPx, stepPx);
           continue;
         }
-        const m =
+        const mRaw =
           sampleRealElevationMeters(geo.lat, geo.lng, demRes) ??
           sampleRealElevationMeters(geo.lat, geo.lng, 'macro') ??
           12;
+        const mMacro = demRes === 'detail' ? sampleRealElevationMeters(geo.lat, geo.lng, 'macro') : mRaw;
+        // Suppress noisy 0m inland SRTM polders (where macroM > 2.2m) so 2D & 3D forest plains match 100%!
+        const m = mRaw <= 0.6 && mRaw > -2.0 && mMacro !== null && mMacro > 2.2 ? Math.max(2.0, mMacro * 0.6) : mRaw;
         const geoE = worldToGeo(wx + sampleStep, wz, activeGeo)!;
         const geoS = worldToGeo(wx, wz + sampleStep, activeGeo)!;
         const geoW = worldToGeo(wx - sampleStep, wz, activeGeo)!;

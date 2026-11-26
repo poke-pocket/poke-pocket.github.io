@@ -9,7 +9,9 @@ import { findAutoWalkPath3D, type AutoNavBuildingPortalInfo, type AutoNavWaypoin
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
 import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
 import { extractDexIdFromSpriteUrl, getPmd8DirSheet, type Pmd8DirSheet3D } from '../data/pmdSprites3D';
-import { GEO_UNITS_PER_KM, getActiveGeoTerrainOrigin, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded } from '../data/geoTerrain3D';
+import { GEO_UNITS_PER_KM, getActiveGeoTerrainOrigin, getProjectedGeoCities, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded } from '../data/geoTerrain3D';
+import { getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
+import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D';
 import { DEFAULT_WORLD_TOUR_STATE, WORLD_CITIES, getDefaultHomeByLanguage, type WorldCityDef } from '../data/worldTour';
 import { type WorldLaunchPayload } from './WorldMapOverlay';
 import { DEFAULT_GAME_PREFS, DEFAULT_TRAINER_PROFILE, type CameraFollowMode, type GamePrefs, type PetRecord, type PetSkinId, type SpeciesId, type TrainerProfile } from '../types/pet';
@@ -1664,13 +1666,21 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const townsGroup = new THREE.Group();
     scene.add(townsGroup);
     const activeGeoNow = getActiveGeoTerrainOrigin();
+    let geoHighwayStreamer: ReturnType<typeof createInterCityHighwayStreamer3D> | null = null;
     if (!activeGeoNow) {
       const roadNetGroup = buildInterTownRoadNetwork3D(
         (x, z) => getTerrainHeight3D(x, z),
         (x, z) => getRawNaturalTerrainHeight3D(x, z),
       );
       townsGroup.add(roadNetGroup);
+    } else {
+      geoHighwayStreamer = createInterCityHighwayStreamer3D({
+        scene,
+        getGroundHeight: (x, z) => getTerrainHeight3D(x, z),
+      });
+      geoHighwayStreamer.updateAround(0, 0, true);
     }
+    const mountedGeoCityIds = new Set<string>();
     const townSpecs = activeGeoNow
       ? [
           {
@@ -1685,6 +1695,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           },
         ]
       : WORLD_TOWNS_3D;
+    if (activeGeoNow) {
+      mountedGeoCityIds.add(activeGeoNow.startCityId ?? 'shanghai');
+    }
     const proceduralTowns: ProceduralTownInstance[] = townSpecs.map((spec) => {
       const t = buildProceduralTown3D(
         spec.id,
@@ -1822,6 +1835,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             z: foyerZ,
           });
         });
+      }
+      // Also surface active city's Outer-Ring Inter-City Highway Portals (`出城立交口`) so players can walk straight onto inter-city roads!
+      const hwyNet = getCompiledInterCityNetwork();
+      if (hwyNet) {
+        const startId = activeGeoNow?.startCityId ?? 'shanghai';
+        for (const p of hwyNet.exitPortals) {
+          if (p.cityId !== startId) continue;
+          items.push({
+            id: `nav_${p.id}`,
+            label: `🛣️ ${p.highwayLabel}出城口（往${p.destCityName}）`,
+            subLabel: `顺着市内主干道直通${p.destCityName}（约 ${p.distKm}km）`,
+            icon: '/sprites/items/town-map.png',
+            x: p.x,
+            z: p.z,
+          });
+        }
       }
       const priorityOf = (id: string) =>
         id.includes('center')
@@ -2162,10 +2191,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       const curSim = simRef.current;
       if (curSim) {
         updateWorldAround(curSim.px, curSim.pz);
-        const newFloor = getTerrainHeight3D(curSim.px, curSim.pz);
+        geoHighwayStreamer?.updateAround(curSim.px, curSim.pz, true);
+        const newFloor = getWalkableSurfaceHeight3D(curSim.px, curSim.pz, curSim.py);
         curSim.py = Math.max(WATER_LEVEL_3D - 0.15, newFloor);
       } else {
         updateWorldAround(0, 0);
+        geoHighwayStreamer?.updateAround(0, 0, true);
       }
     });
     syncSafeZones3D(0, 0);
@@ -2685,6 +2716,32 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const camRightZ = -Math.sin(camYawNow);
           windClock += dt;
           syncFloraBillboards(camYawNow, camPitchNow, windClock);
+          if (geoHighwayStreamer) {
+            geoHighwayStreamer.updateAround(sim.px, sim.pz);
+            // Lazily mount neighboring real-world 3D cities when walking overland along an inter-city highway!
+            if (Math.floor(sim.elapsed * 2) > Math.floor((sim.elapsed - dt) * 2)) {
+              for (const gc of getProjectedGeoCities()) {
+                if (mountedGeoCityIds.has(gc.city.id)) continue;
+                if (Math.hypot(sim.px - gc.x, sim.pz - gc.z) < 920) {
+                  mountedGeoCityIds.add(gc.city.id);
+                  const neighborTown = buildProceduralTown3D(
+                    `geo_city_${gc.city.id}_${Math.round(gc.x)}_${Math.round(gc.z)}`,
+                    gc.x,
+                    gc.z,
+                    hashCitySeed(gc.city.id),
+                    (x, z) => getTerrainHeight3D(x, z),
+                    `${gc.city.name}市`.replace(/市市$/, '市'),
+                    185,
+                    gc.city.id,
+                  );
+                  proceduralTowns.push(neighborTown);
+                  townsGroup.add(neighborTown.group);
+                  syncUpperFloors();
+                  syncAutoNavTargets();
+                }
+              }
+            }
+          }
           const { closestTownPoint, activeTownNow, activeInteriorNow, closestNode, inTownPeaceZone } = stepArenaTownAndWorldNodes3D({ WEATHER_PARTICLE_COUNT, activeTownIdRef, activeZone, applyLiveSolarAtmosphere, autoNavTargetsRef, bbTiltX, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, damageEnemy3D, dt, executeInteractActionRef, groundY, heroFrames, interactOptionIdxRef, lastEnteredInteriorIdRef, liveWeatherRef, mLen, metaBonusesRef, metaRef, now, npcSocialTimerRef, onHealParty, onUpdateMeta, persistState, playerShadow, playerSprite, playerSpriteMat, prefsRef, proceduralTowns, safeZoneMeshes, setActiveBusStopModal, setAskQuickNavOpen, setInRunTownShopOpen, setWorldMapOpen, showBanner, sim, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, startStreetDuelRef, sun, surfingNow, syncSafeZones3D, teleportIntraCityBusRef, triggerInteractRef, updateWorldAround, vfxAtlas, weatherGeo, weatherMat, weatherPoints, windClock, worldBubblesRef, worldInteractNodes });
           // Dynamic Zone & Walk-In Building BGM Switching (Town Day/Night, Wilderness, Pokémon Center, Poké Mart, Restaurant, Hotel, House, Boss/Duel!)
           {
@@ -2775,6 +2832,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     rafId = window.requestAnimationFrame(animate);
     return () => {
       unsubGeoDem();
+      geoHighwayStreamer?.dispose();
       setWalkableBuildingFloorZones3D([]);
       window.removeEventListener('resize', onResize);
       window.cancelAnimationFrame(rafId);
