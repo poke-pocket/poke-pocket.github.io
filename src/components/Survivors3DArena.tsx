@@ -739,20 +739,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
   }, []);
 
-  // One-time live teleport into Mount Huangshan scenic foothills (`30.088°N, 118.165°E`) whether starting from Hub or Playing!
+  // One-time live teleport into Mount Huangshan scenic foothill valley (`30.036°N, 118.165°E`) whether starting from Hub or Playing!
   useEffect(() => {
     try {
-      const tourKey = 'pocket_paw_mountain_tour_once_v1';
-      if (window.localStorage.getItem(tourKey) !== 'huangshan_done') {
+      const tourKey = 'pocket_paw_mountain_tour_once_v2';
+      if (window.localStorage.getItem(tourKey) !== 'huangshan_vista_done') {
         if (phase !== 'playing') {
           setActiveCareSessionFlag(true);
           setPhase('playing');
           return;
         }
-        const defaultSpot = SCENIC_MOUNTAIN_SPOTS[0]; // 黄山 · 莲花光明顶 (1864m)
+        const defaultSpot = SCENIC_MOUNTAIN_SPOTS[0]; // 黄山 · 汤口仰望光明顶 (1864m)
         if (defaultSpot) {
           const timer = window.setTimeout(() => {
-            window.localStorage.setItem(tourKey, 'huangshan_done');
+            window.localStorage.setItem(tourKey, 'huangshan_vista_done');
             teleportGeoSpotRef.current(defaultSpot);
           }, 120);
           return () => window.clearTimeout(timer);

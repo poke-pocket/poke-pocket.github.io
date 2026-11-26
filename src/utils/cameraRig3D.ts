@@ -131,7 +131,7 @@ export function updatePhysicalCameraRig3D(opts: {
 
   const spec = CAM_MODE_SPECS[mode];
   let wantDist = spec.dist * orbit.zoom;
-  let wantPitch = mode === 'free' ? orbit.pitch : Math.max(0.14, orbit.pitch);
+  let wantPitch = Math.max(-0.16, orbit.pitch);
   let overheadCeilingY = 9999;
 
   // 1. Check if player is walking underneath an elevated urban viaduct!
@@ -220,5 +220,7 @@ export function updatePhysicalCameraRig3D(opts: {
       : Math.max(desiredCamY, minFloorClearY);
 
   camera.position.set(camX + sxOff, finalCamY + syOff, camZ);
-  camera.lookAt(pivot.x, pivot.y + 0.68, pivot.z);
+  // Tilt lookAt upward smoothly when user pitches camera low (`pitch < 0.22`) so towering mountains & skyscrapers frame against the sky!
+  const skyGazeLift = Math.max(0, (0.24 - smooth.pitch) * 8.5);
+  camera.lookAt(pivot.x, pivot.y + 0.68 + skyGazeLift, pivot.z);
 }
