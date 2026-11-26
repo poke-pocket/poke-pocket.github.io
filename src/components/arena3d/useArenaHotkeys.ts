@@ -4,7 +4,7 @@ import { sound } from '../../utils/sound';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
-  const { CAM_MODE_META, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, cycleCameraFollowMode, cycleInteractOptionRef, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setBanishMode, setClosingLevelUp, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef } = rawCtx as ArenaSharedCtx;
+  const { CAM_MODE_META, activeBusStopModal, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, cycleCameraFollowMode, cycleInteractOptionRef, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, inRunTownShopOpen, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, programmaticUnlockRef, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setActiveBusStopModal, setBanishMode, setClosingLevelUp, setInRunTownShopOpen, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef } = rawCtx as ArenaSharedCtx;
   // Comprehensive Arcade Keyboard Hotkeys (WASD/Arrows + Space + 1/2/3/4 Events + Q/E/M + Enter/Esc!)
   useEffect(() => {
     const kb = save.keyBindings;
@@ -50,6 +50,19 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
             e.preventDefault();
             closeProfileModal();
           }
+          return;
+        }
+        if (squadEditorOpen) {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            closeSquadEditor?.();
+          }
+          return;
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          sound.play('cursor');
+          onOpenPokemonManager('menu', false);
           return;
         }
         if (e.key === '1' || e.key === 'Enter') {
@@ -102,10 +115,27 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         }
       }
       if (e.key === 'Alt' && document.pointerLockElement === canvasRef.current) {
+        if (programmaticUnlockRef) programmaticUnlockRef.current = true;
         try {
           document.exitPointerLock?.();
         } catch {
           // ignore
+        }
+        return;
+      }
+      if (activeBusStopModal) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          sound.play('cancel');
+          setActiveBusStopModal?.(null);
+        }
+        return;
+      }
+      if (inRunTownShopOpen) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          sound.play('cancel');
+          setInRunTownShopOpen?.(false);
         }
         return;
       }
@@ -219,7 +249,14 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         setShopOpen(true);
         return;
       }
-      if (k === 'Escape' || k === 'p' || k === 'q') {
+      // ESC opens Top-Right Trainer Menu & Settings (`训练家菜单与设置`); P/Q open Tactical Terminal!
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        sound.play('cursor');
+        onOpenPokemonManager('menu', true);
+        return;
+      }
+      if (k === 'p' || k === 'q') {
         e.preventDefault();
         sound.play('cursor');
         onOpenPokemonManager('tactics', true);
@@ -308,6 +345,6 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
       window.removeEventListener('keyup', up);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, hubModal, profileOpen, squadEditorOpen, save.keyBindings, levelChoices, shopOpen, resultSummary, captureOffer, hud.inSafeZone, hud.hp, hud.maxHp]);
+  }, [phase, hubModal, profileOpen, squadEditorOpen, activeBusStopModal, inRunTownShopOpen, save.keyBindings, levelChoices, shopOpen, resultSummary, captureOffer, hud.inSafeZone, hud.hp, hud.maxHp]);
 
 }

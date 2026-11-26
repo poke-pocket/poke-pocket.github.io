@@ -9,8 +9,9 @@ import { findAutoWalkPath3D, type AutoNavBuildingPortalInfo, type AutoNavWaypoin
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
 import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
 import { extractDexIdFromSpriteUrl, getPmd8DirSheet, type Pmd8DirSheet3D } from '../data/pmdSprites3D';
-import { GEO_UNITS_PER_KM, getActiveGeoTerrainOrigin, getProjectedGeoCities, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded } from '../data/geoTerrain3D';
+import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGeoCities, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded, worldToGeo } from '../data/geoTerrain3D';
 import { getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
+import { clearWorldCheckpoint, loadWorldCheckpoint, saveWorldCheckpoint, setActiveCareSessionFlag, wasActiveCareSessionOpen } from '../utils/worldCheckpoint';
 import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D';
 import { DEFAULT_WORLD_TOUR_STATE, WORLD_CITIES, getDefaultHomeByLanguage, type WorldCityDef } from '../data/worldTour';
 import { type WorldLaunchPayload } from './WorldMapOverlay';
@@ -365,6 +366,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   // Standard PC 3D Third-Person Camera (Click-to-Pointer-Lock Mouse Look + Left/Right-Drag Orbit Fallback + Wheel Zoom + Physical Wall/Viaduct/Room Zoom!)
   const [pointerLocked, setPointerLocked] = useState(false);
   const restorePointerLockRef = useRef(false);
+  const programmaticUnlockRef = useRef(false);
+  const phaseRef = useRef<ArenaScreenPhase>(phase);
+  phaseRef.current = phase;
   const camOrbitRef = useRef({ yaw: 0, pitch: 0.58, zoom: 1.0 });
   const camPivotRef = useRef(new THREE.Vector3(0, 1.55, 0));
   const camSmoothRef = useRef(createCameraRigSmoothState());
@@ -852,8 +856,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   // Standard PC 3D Free-Look Camera: Pointer Lock listener + Mouse Look + Auto-Unlock on Modals/Pause
   useEffect(() => {
+    let wasLocked = false;
     const onLockChange = () => {
-      setPointerLocked(document.pointerLockElement === canvasRef.current);
+      const nowLocked = document.pointerLockElement === canvasRef.current;
+      setPointerLocked(nowLocked);
+      if (wasLocked && !nowLocked) {
+        if (programmaticUnlockRef.current) {
+          programmaticUnlockRef.current = false;
+        } else if (phaseRef.current === 'playing' && !externalPausedRef.current && !worldMapOpenRef.current) {
+          // User pressed ESC while in 3D pointer-lock -> immediately open Top-Right Trainer Menu & Settings!
+          sound.play('cursor');
+          onOpenPokemonManager('menu', true);
+        }
+      }
+      wasLocked = nowLocked;
     };
     const onGamepadConnect = (e: GamepadEvent) => {
       showBanner(`🎮 已连接游戏手柄「${e.gamepad.id.slice(0, 26)}」！支持双摇杆与全快捷键操作`, 3200);
@@ -894,6 +910,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       if (isTempInterrupt && !isTerminalEnd) {
         restorePointerLockRef.current = true;
       }
+      programmaticUnlockRef.current = true;
       try {
         document.exitPointerLock?.();
       } catch {
@@ -1500,10 +1517,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           });
           return false;
         }
-        // In live 3D adventure, pressing mobile Back opens the Handheld Tactics/Pause console
+        // In live 3D adventure, pressing mobile Back opens the Trainer Menu & Settings
         // (matching desktop ESC) instead of accidentally abandoning the run!
         sound.play('cursor');
-        onOpenPokemonManager('tactics', true);
+        onOpenPokemonManager('menu', true);
         return true;
       }
       return false;
@@ -1558,9 +1575,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(pal.skyHex);
-    scene.fog = new THREE.Fog(pal.fogHex, 92, 225);
+    scene.fog = new THREE.Fog(pal.fogHex, 105, 250);
 
-    const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.35, 250);
+    const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.35, 285);
     camera.position.set(0, 4.8, 10.5);
 
     const onResize = () => {
@@ -2023,40 +2040,53 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       attachFollowerMeshes(f);
     });
 
-    // Start cleanly on the sunlit Puxi Promenade beside People's Square Park (dry land, looking across Huangpu River toward Oriental Pearl Tower!),
-    // or resume the player's last saved position in that city!
+    // Start cleanly on the sunlit Puxi Promenade beside People's Square Park,
+    // OR resume the player's exact last saved world coordinates (`lat, lng` / `x, z`)!
     let startPx = -22;
     let startPz = 12;
+    let startFacing = 0;
+    const hasInitialWaterSurfer = initialFollowers.some(
+      (f) => SPECIES_CATALOG[f.species].element === 'water',
+    );
     if (phase === 'playing') {
-      try {
-        const geoOrigin = getActiveGeoTerrainOrigin();
-        const posKey = geoOrigin ? `pocket_paw_geo_pos_${geoOrigin.startCityId ?? 'shanghai'}_v1` : 'pocket_paw_last_world_pos_v1';
-        const rawPos = window.localStorage.getItem(posKey);
-        if (rawPos) {
-          const parsed = JSON.parse(rawPos) as { x?: number; z?: number };
-          if (typeof parsed.x === 'number' && typeof parsed.z === 'number' && Number.isFinite(parsed.x) && Number.isFinite(parsed.z)) {
-            startPx = parsed.x;
-            startPz = parsed.z;
+      const cp = loadWorldCheckpoint();
+      const geoOrigin = getActiveGeoTerrainOrigin();
+      if (cp) {
+        if (geoOrigin && cp.mode === 'geo') {
+          if (cp.lat !== undefined && cp.lng !== undefined) {
+            const wp = geoToWorld(cp.lat, cp.lng, geoOrigin);
+            if (wp) {
+              startPx = wp.x;
+              startPz = wp.z;
+              startFacing = cp.facingAngle;
+            }
+          } else if (cp.cityId === (geoOrigin.startCityId ?? 'shanghai')) {
+            startPx = cp.x;
+            startPz = cp.z;
+            startFacing = cp.facingAngle;
           }
+        } else if (!geoOrigin && cp.mode === 'procedural') {
+          startPx = cp.x;
+          startPz = cp.z;
+          startFacing = cp.facingAngle;
         }
-      } catch {
-        // ignore storage errors
       }
     }
-    // Guarantee spawn is on open dry land outside rivers & solid building footprints (prevents HK / coastal / building spawn traps!)
+    // Guarantee spawn is not trapped inside a solid building wall or deep water without a Water surfer (preserves bridges, highways & hills!)
     const isSafeDrySpawn = (cxTest: number, czTest: number) => {
-      if (getTerrainHeight3D(cxTest, czTest) < WATER_LEVEL_3D + 0.55) return false;
+      const walkSurfY = getWalkableSurfaceHeight3D(cxTest, czTest);
+      if (!hasInitialWaterSurfer && walkSurfY < WATER_LEVEL_3D + 0.05) return false;
       for (const t of proceduralTowns) {
         if (Math.hypot(cxTest - t.centerX, czTest - t.centerZ) > t.safeRadius + 60) continue;
         const probe = { x: cxTest, z: czTest };
-        resolveTownWallCollisions(probe, 1.4, t.colliders);
-        if (Math.hypot(probe.x - cxTest, probe.z - czTest) > 0.05) return false;
+        resolveTownWallCollisions(probe, 1.1, t.colliders);
+        if (Math.hypot(probe.x - cxTest, probe.z - czTest) > 0.06) return false;
       }
       return true;
     };
     if (!isSafeDrySpawn(startPx, startPz)) {
       let rescued = false;
-      for (let rad = 8; rad <= 120 && !rescued; rad += 10) {
+      for (let rad = 6; rad <= 120 && !rescued; rad += 8) {
         for (let ai = 0; ai < 16; ai++) {
           const ang = (ai / 16) * Math.PI * 2;
           const candX = startPx + Math.cos(ang) * rad;
@@ -2070,12 +2100,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         }
       }
     }
-    const startPy = getTerrainHeight3D(startPx, startPz);
+    const startPy = Math.max(WATER_LEVEL_3D + 0.12, getWalkableSurfaceHeight3D(startPx, startPz));
     initialFollowers.forEach((f, idx) => {
       const ang = (idx * Math.PI * 2) / Math.max(1, initialFollowers.length) + 0.6;
       f.x = startPx + Math.cos(ang) * 2.4;
       f.z = startPz + Math.sin(ang) * 2.4;
-      f.y = getTerrainHeight3D(f.x, f.z);
+      f.y = Math.max(WATER_LEVEL_3D + 0.12, getWalkableSurfaceHeight3D(f.x, f.z));
     });
 
     simRef.current = {
@@ -2083,7 +2113,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       py: startPy,
       pz: startPz,
       vy: 0,
-      facingAngle: 0,
+      facingAngle: startFacing,
       walkDist: 0,
       hp: startHp,
       maxHp,
@@ -2126,7 +2156,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       dmgPops: [],
     };
     syncFollowersView();
-    updateWorldAround(0, 0);
+    updateWorldAround(startPx, startPz);
+    geoHighwayStreamer?.updateAround(startPx, startPz, true);
 
     // When real-Earth NASA/SRTM DEM elevation tiles finish streaming, rebuild coast-clipped city ONCE in 1:1 lockstep with 2D map!
     let rebuiltCoastClippedTown = false;
@@ -2248,6 +2279,19 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         f.y = gy;
       });
       updateWorldAround(destX, destZ);
+      const destGeo = worldToGeo(destX, destZ);
+      const curOrg = getActiveGeoTerrainOrigin();
+      saveWorldCheckpoint({
+        mode: curOrg ? 'geo' : 'procedural',
+        cityId: curOrg?.startCityId ?? 'shanghai',
+        cityName: curOrg?.startCityName,
+        lat: destGeo?.lat,
+        lng: destGeo?.lng,
+        x: destX,
+        z: destZ,
+        facingAngle: curSim.facingAngle,
+        updatedAt: Date.now(),
+      });
       sound.play('levelup');
       showBanner(`🚌 叮咚！市内公交已将你送达「${label}」门口！`, 3000);
     };
@@ -2841,6 +2885,40 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, selectedBiome, gameMode, difficultyId, runNonce]);
 
+  const flushLiveWorldCheckpointNow = () => {
+    const curSim = simRef.current;
+    if (!curSim || endedRef.current || curSim.hp <= 0) return;
+    if (adventureStyleRef.current !== 'care_world') return;
+    const curOrg = getActiveGeoTerrainOrigin();
+    const curGeo = worldToGeo(curSim.px, curSim.pz);
+    saveWorldCheckpoint({
+      mode: curOrg ? 'geo' : 'procedural',
+      cityId: curOrg?.startCityId ?? 'shanghai',
+      cityName: curOrg?.startCityName,
+      lat: curGeo?.lat,
+      lng: curGeo?.lng,
+      x: curSim.px,
+      z: curSim.pz,
+      facingAngle: curSim.facingAngle,
+      updatedAt: Date.now(),
+    });
+  };
+
+  useEffect(() => {
+    const isCarePlaying = phase === 'playing' && adventureStyle === 'care_world';
+    setActiveCareSessionFlag(isCarePlaying);
+    if (!isCarePlaying) return;
+    const onUnload = () => flushLiveWorldCheckpointNow();
+    window.addEventListener('beforeunload', onUnload);
+    window.addEventListener('pagehide', onUnload);
+    return () => {
+      flushLiveWorldCheckpointNow();
+      window.removeEventListener('beforeunload', onUnload);
+      window.removeEventListener('pagehide', onUnload);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, adventureStyle]);
+
   useEffect(() => {
     if (phase !== 'playing') {
       setLiveOverlandCity(null);
@@ -2850,34 +2928,49 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     }
   }, [phase]);
 
-  // 1) Default Entry「开始冒险」: Real-Earth City Care & Open Exploration Mode (养成探索模式)!
+  // 1) Default Entry「开始冒险」: Real-Earth City Care & Open Exploration Mode (养成探索模式 — resumes exact last checkpoint if alive!)
   const handleLaunchRun = () => {
     setAdventureStyle('care_world');
     adventureStyleRef.current = 'care_world';
     setWorldMapOpen(false);
+    const savedCp = loadWorldCheckpoint();
     const wt = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
-    const activeId = wt.currentCityId || 'shanghai';
+    const activeId = (savedCp?.mode === 'geo' && savedCp.cityId) || wt.currentCityId || 'shanghai';
     const city = WORLD_CITIES.find((c) => c.id === activeId) ?? WORLD_CITIES.find((c) => c.id === 'shanghai') ?? WORLD_CITIES[0];
-    handleLaunchWorldRun({
-      cityId: city.id,
-      cityName: `${city.name}市`.replace(/市市$/, '市'),
-      gymName: city.gymName,
-      gymBadgeName: city.gymBadgeName,
-      biome: city.biome,
-      wildPool: city.wildPool,
-      bossSpecies: city.gymBossSpecies,
-      bossName: city.gymBossTitle,
-      bossTrainerKey: city.gymTrainerKey,
-      bossTrainerName: city.gymLeaderName,
-      regionalSkinId: city.regionalSkinId,
-      rewardCoins: city.rewardCoins,
-      originLat: city.lat,
-      originLng: city.lng,
-      isGymChallenge: false,
-      isHomeTurf: true,
-      hotelTier: wt.stayHotelTier ?? null,
-    });
+    handleLaunchWorldRun(
+      {
+        cityId: city.id,
+        cityName: `${city.name}市`.replace(/市市$/, '市'),
+        gymName: city.gymName,
+        gymBadgeName: city.gymBadgeName,
+        biome: city.biome,
+        wildPool: city.wildPool,
+        bossSpecies: city.gymBossSpecies,
+        bossName: city.gymBossTitle,
+        bossTrainerKey: city.gymTrainerKey,
+        bossTrainerName: city.gymLeaderName,
+        regionalSkinId: city.regionalSkinId,
+        rewardCoins: city.rewardCoins,
+        originLat: city.lat,
+        originLng: city.lng,
+        isGymChallenge: false,
+        isHomeTurf: true,
+        hotelTier: wt.stayHotelTier ?? null,
+      },
+      false,
+    );
   };
+
+  // Auto-resume straight back into 3D Playing at exact saved coordinates across F5 browser refreshes!
+  const didAutoResumeRef = useRef(false);
+  useEffect(() => {
+    if (didAutoResumeRef.current) return;
+    didAutoResumeRef.current = true;
+    if (wasActiveCareSessionOpen() && loadWorldCheckpoint()) {
+      handleLaunchRun();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 2) Secondary Entry「随机冒险模式」: Classic Vampire-Survivors Roguelike Horde & 3-Choice Draft Mode!
   const handleLaunchRandomRogueRun = (explicitBiome?: BiomeId) => {
@@ -2906,9 +2999,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     );
   };
 
-  const handleLaunchWorldRun = (payload: WorldLaunchPayload) => {
+  const handleLaunchWorldRun = (payload: WorldLaunchPayload, resetCheckpointToCity = false) => {
     sound.play('confirm');
     setWorldMapOpen(false);
+    if (resetCheckpointToCity || payload.isGymChallenge) {
+      clearWorldCheckpoint();
+    }
+    const resumedCp = !resetCheckpointToCity && !payload.isGymChallenge ? loadWorldCheckpoint() : null;
     const nextStyle = payload.isGymChallenge ? 'vampire_rogue' : 'care_world';
     setAdventureStyle(nextStyle);
     adventureStyleRef.current = nextStyle;
@@ -2939,7 +3036,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     showBanner(
       payload.isGymChallenge
         ? `✈ ${payload.cityName} · 挑战「${payload.gymName}」：击败 ${payload.bossName} 赢取 ${payload.gymBadgeName}！${buffNote}`
-        : `🌍 ${payload.cityName} 真实地形已加载：可沿海岸与平原探索，甚至徒步跨越邻城！${buffNote}`,
+        : resumedCp?.lat !== undefined && resumedCp?.lng !== undefined
+          ? `📍 已继续回到上次探索位置（${resumedCp.lat.toFixed(2)}°N, ${resumedCp.lng.toFixed(2)}°E）！${buffNote}`
+          : `🌍 ${payload.cityName} 真实地形已加载：可沿主干道与丘陵探索，甚至徒步跨越邻城！${buffNote}`,
       4200,
     );
   };
@@ -2947,6 +3046,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   fastTravelCityRef.current = (cityId: string) => {
     const city = WORLD_CITIES.find((c) => c.id === cityId);
     if (!city) return;
+    clearWorldCheckpoint();
     const wt = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
     onUpdateMeta?.((prev) => {
       const prevTour = prev.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
@@ -2962,25 +3062,28 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         },
       };
     });
-    handleLaunchWorldRun({
-      cityId: city.id,
-      cityName: `${city.name}市`.replace(/市市$/, '市'),
-      gymName: city.gymName,
-      gymBadgeName: city.gymBadgeName,
-      biome: city.biome,
-      wildPool: city.wildPool,
-      bossSpecies: city.gymBossSpecies,
-      bossName: city.gymBossTitle,
-      bossTrainerKey: city.gymTrainerKey,
-      bossTrainerName: city.gymLeaderName,
-      regionalSkinId: city.regionalSkinId,
-      rewardCoins: city.rewardCoins,
-      originLat: city.lat,
-      originLng: city.lng,
-      isGymChallenge: false,
-      isHomeTurf: false,
-      hotelTier: wt.stayHotelTier ?? null,
-    });
+    handleLaunchWorldRun(
+      {
+        cityId: city.id,
+        cityName: `${city.name}市`.replace(/市市$/, '市'),
+        gymName: city.gymName,
+        gymBadgeName: city.gymBadgeName,
+        biome: city.biome,
+        wildPool: city.wildPool,
+        bossSpecies: city.gymBossSpecies,
+        bossName: city.gymBossTitle,
+        bossTrainerKey: city.gymTrainerKey,
+        bossTrainerName: city.gymLeaderName,
+        regionalSkinId: city.regionalSkinId,
+        rewardCoins: city.rewardCoins,
+        originLat: city.lat,
+        originLng: city.lng,
+        isGymChallenge: false,
+        isHomeTurf: false,
+        hotelTier: wt.stayHotelTier ?? null,
+      },
+      true,
+    );
   };
 
   const handleChooseUpgrade = (choice: LevelChoice) => {
@@ -3224,7 +3327,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, hud, followersView, tactics, camPreset, regionMeta.name, diffMeta.label, save.pets]);
 
-  useArenaKeyboardHotkeys({ CAM_MODE_META, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, cycleCameraFollowMode, cycleInteractOptionRef, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setBanishMode, setClosingLevelUp, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
+  useArenaKeyboardHotkeys({ CAM_MODE_META, activeBusStopModal, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, cycleCameraFollowMode, cycleInteractOptionRef, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, inRunTownShopOpen, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, programmaticUnlockRef, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setActiveBusStopModal, setBanishMode, setClosingLevelUp, setInRunTownShopOpen, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
   const bgmTrackLabel = BGM_TRACK_LABELS[activeBgmTrack] ?? '晴空微风 · 城镇漫步';
   const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
 

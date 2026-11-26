@@ -609,14 +609,98 @@ export function classifyRealEarthPixelColor(
   return dither ? '#48b546' : '#3ea63e';
 }
 
-/** Natural multi-scale rolling hills + micro-ripple so lowland plains & suburbs have real rolling hillocks & valleys in 3D! */
+/**
+ * Iconic Real-World Local Hills, Volcanic Knolls & Scenic Peaks (`真实著名丘陵与山峰地标`)
+ * Restores famous sub-2km local hills (like Shanghai's Songjiang Nine Peaks 松江九峰：佘山、天马山、辰山、小昆山!)
+ * that coarse 300m Z9 DEM tiles otherwise blur out, while enhancing famous urban-fringe peaks across East Asia!
+ * Format: [lat, lng, radiusKm, peakLiftUnits]
+ */
+const REAL_REGIONAL_HILLS: [number, number, number, number][] = [
+  // 上海松江九峰 & 西郊丘陵群 (就在上海西南青浦/松江 31.04°N–31.12°N, 121.10°E–121.21°E!)
+  [31.096, 121.196, 3.2, 18.5], // 西佘山 & 东佘山 (上海最高天然山峰!)
+  [31.076, 121.152, 2.8, 16.5], // 天马山 (护珠斜塔山峰)
+  [31.082, 121.182, 2.2, 13.5], // 辰山
+  [31.042, 121.118, 2.6, 12.0], // 小昆山 (紧邻 31.08°N, 121.08°E!)
+  [31.112, 121.162, 2.1, 10.5], // 凤凰山 / 厍公山
+  [30.735, 121.345, 2.0, 9.5],  // 金山岛 / 查山
+  // 苏锡常与杭嘉湖江南丘陵名山
+  [31.392, 120.952, 2.6, 13.5], // 昆山玉峰山
+  [31.265, 120.495, 4.2, 22.0], // 苏州天平山・灵岩山・穹窿山
+  [31.338, 120.575, 2.2, 11.5], // 苏州虎丘山
+  [31.542, 120.218, 3.8, 20.5], // 无锡惠山・锡山
+  [30.618, 119.865, 6.5, 30.0], // 莫干山脉
+  [30.245, 120.102, 4.4, 24.5], // 杭州北高峰・飞来峰・玉皇山
+  [32.068, 118.852, 5.0, 27.5], // 南京紫金山 (钟山)
+  // 京津、广深港及东亚名山
+  [39.992, 116.188, 5.5, 31.0], // 北京香山・西山
+  [23.182, 113.298, 4.8, 24.5], // 广州白云山
+  [22.576, 114.215, 5.2, 34.0], // 深圳梧桐山
+  [22.502, 113.918, 3.0, 18.5], // 深圳南山
+  [22.275, 114.145, 3.6, 30.0], // 香港太平山 (扯旗山)
+  [22.352, 114.188, 3.8, 28.0], // 香港狮子山
+  [35.025, 135.798, 4.2, 24.0], // 京都大文字山・比叡山
+  [35.361, 138.727, 9.5, 62.0], // 富士山主峰锥体增强
+];
+
+function sampleRegionalHillLift3D(lat: number, lng: number): number {
+  let lift = 0;
+  for (let i = 0; i < REAL_REGIONAL_HILLS.length; i++) {
+    const [hLat, hLng, radKm, peakU] = REAL_REGIONAL_HILLS[i];
+    const dLat = Math.abs(lat - hLat);
+    if (dLat > 0.14) continue;
+    const dLng = Math.abs(lng - hLng);
+    if (dLng > 0.16) continue;
+    const kmLat = dLat * KM_PER_DEG_LAT;
+    const kmLng = dLng * KM_PER_DEG_LAT * Math.cos((hLat * Math.PI) / 180);
+    const dKm = Math.hypot(kmLat, kmLng);
+    if (dKm < radKm) {
+      const t = 1 - dKm / radKm;
+      // Natural ridge-and-shoulder bell profile with subtle rocky spur ridges!
+      const ang = Math.atan2(kmLat, kmLng);
+      const spur = 1 + 0.14 * Math.sin(ang * 3 + i * 1.7) + 0.08 * Math.cos(ang * 5 - i);
+      const h = peakU * Math.pow(t, 1.55) * (0.35 + 0.65 * (3 * t * t - 2 * t * t * t)) * spur;
+      if (h > lift) lift = h;
+    }
+  }
+  return lift;
+}
+
+/**
+ * Multi-scale 3D countryside landform sculptor (`真实坡度感丘陵、岗地、台地与山谷起伏`):
+ * Produces clearly visible, walkable 8°–26° grassy slopes, undulating ridges, and stepped knolls
+ * across rural forests & plains while staying strictly >= 0 on low plains so dry land NEVER floods!
+ */
+function sculptCountrysideRelief3D(wx: number, wz: number): number {
+  // 1. Broad rolling hills & valleys (~90-140u wavelength, up to +6.8u height -> clear scenic slopes!)
+  const broadA = Math.sin(wx * 0.026 + wz * 0.019 + 0.8);
+  const broadB = Math.cos(wx * 0.018 - wz * 0.029 + 2.1);
+  const broadWave = (broadA * 0.55 + broadB * 0.45) * 0.5 + 0.5; // [0, 1]
+  const rollingHills = Math.pow(broadWave, 1.45) * 6.8;
+
+  // 2. Medium ridges & natural stepped grassy terraces (~38-55u wavelength, up to +3.8u -> crisp hillock crests!)
+  const ridgeRaw =
+    0.5 +
+    0.32 * Math.sin(wx * 0.062 - wz * 0.048 + Math.sin(wz * 0.025) * 1.2) +
+    0.18 * Math.cos(wx * 0.045 + wz * 0.071);
+  // Soft terrace quantization creates authentic Pokémon/Zelda climbable hillside benches!
+  const ridgeSmooth = Math.max(0, ridgeRaw - 0.34) / 0.66;
+  const terracedKnoll =
+    (Math.floor(ridgeSmooth * 3.0) + smoothstepLocal(0.15, 0.85, (ridgeSmooth * 3.0) % 1)) * 1.25;
+
+  // 3. Tactile local slope undulation (~18-24u wavelength, ±0.45u shifted non-negative -> you always feel gentle ground grade!)
+  const localSlope =
+    (Math.sin(wx * 0.115 + wz * 0.085) * 0.5 + Math.cos(wx * 0.078 - wz * 0.125) * 0.5 + 1.0) * 0.55;
+
+  return rollingHills + terracedKnoll + localSlope;
+}
+
 function microSculpt(wx: number, wz: number): number {
   const rollingHills =
-    Math.sin(wx * 0.014 + wz * 0.011) * 1.45 +
-    Math.cos(wx * 0.021 - wz * 0.017 + 1.4) * 0.95;
+    Math.sin(wx * 0.024 + wz * 0.018) * 2.4 +
+    Math.cos(wx * 0.033 - wz * 0.027 + 1.4) * 1.65;
   const micro =
-    Math.sin(wx * 0.075 + wz * 0.042) * 0.24 +
-    Math.cos(wx * 0.037 - wz * 0.088) * 0.18;
+    Math.sin(wx * 0.085 + wz * 0.052) * 0.55 +
+    Math.cos(wx * 0.047 - wz * 0.098) * 0.42;
   return rollingHills + micro;
 }
 
@@ -700,8 +784,11 @@ export function sampleGeoTerrainHeight3D(
   const meters = sampleRealElevationMeters(geo.lat, geo.lng, preferMacro);
   const macroM = preferMacro ? meters : sampleRealElevationMeters(geo.lat, geo.lng, 'macro');
   const micro = preferMacro ? 0 : microSculpt(wx, wz);
-  // Strictly non-negative gentle hillock lift [0 .. +1.85m] for low coastal plains so rolling waves NEVER push dry forests below water!
-  const plainLift = preferMacro ? 0 : Math.max(0, micro + 2.85) * 0.32;
+  const uDens = sampleUrbanClusterDensity(geo.lat, geo.lng);
+  // Attenuate wild hillock undulations inside dense downtown blocks (`uDens > 0.34`), unleash full 3D slopes & hills in suburbs/countryside!
+  const ruralFactor = preferMacro ? 0 : 1 - smoothstepLocal(0.16, 0.40, uDens);
+  const countrysideRelief = preferMacro ? 0 : sculptCountrysideRelief3D(wx, wz) * ruralFactor;
+  const namedHillLift = preferMacro ? 0 : sampleRegionalHillLift3D(geo.lat, geo.lng);
 
   // True ocean/sea check: prevents noisy 0m inland SRTM polders (like Qingpu/Kunshan 40km inland where macroM > 2.2m) from becoming fake seas!
   const isTrueOcean =
@@ -711,21 +798,30 @@ export function sampleGeoTerrainHeight3D(
 
   let elev: number;
   if (meters === null) {
-    elev = 1.65 + plainLift * 0.35;
+    elev = 1.65 + countrysideRelief * 0.55 + namedHillLift;
   } else if (isTrueOcean) {
     // Real Ocean / Sea / Bay / Estuary
-    elev = Math.max(-2.45, -0.58 + Math.min(0, meters) * 0.055) + micro * 0.08;
+    elev = Math.max(-2.45, -0.58 + Math.min(0, meters) * 0.055) + micro * 0.05;
     if (elev > -0.42) elev = -0.45;
   } else if (meters <= 65) {
-    // Real Coastal Plains, Forests & River Valleys (strictly >= +0.58m above WATER_LEVEL_3D = -0.35m!)
+    // Real Coastal Plains, Rolling Hills & River Terraces:
+    // Sensitive elevation response (`1..65m` -> `0.65..10.2u`) + multi-scale rolling ridges & named local hills (佘山/天马山/小昆山)!
     const clampedM = Math.max(0.8, meters);
-    elev = 0.58 + (clampedM / 65) * 1.95 + plainLift;
+    const demSlopeLift = Math.pow((clampedM - 0.8) / 64.2, 0.82) * 9.55;
+    elev = 0.65 + demSlopeLift + countrysideRelief + namedHillLift;
   } else if (meters <= 420) {
-    // Real Foothills & Low Mountains
-    elev = Math.max(1.2, 2.5 + ((meters - 65) / 355) * 4.6 + micro * 0.65);
+    // Real Foothills & Medium Mountains (`65..420m` -> `10.2..33.5u`, dramatic climbable ridges & cliff outcrops!)
+    const tHill = (meters - 65) / 355;
+    elev = Math.max(
+      2.5,
+      10.2 + Math.pow(tHill, 0.88) * 23.3 + countrysideRelief * 0.85 + micro * 0.85 + namedHillLift,
+    );
   } else {
-    // Real Major Mountain Ranges
-    elev = Math.max(3.5, 7.1 + Math.min(6.4, Math.log1p((meters - 420) / 260) * 3.05) + micro);
+    // Real Major Mountain Ranges (`> 420m` -> `33.5..78u`, towering alpine peaks & snow-capped crests!)
+    elev = Math.max(
+      8.0,
+      33.5 + Math.min(44.5, Math.log1p((meters - 420) / 180) * 14.2) + micro * 1.25 + namedHillLift,
+    );
   }
 
   // Carve real inland lakes (e.g. Taihu Lake 太湖, West Lake 西湖) & major continental rivers outside downtown so 2D & 3D water match 1:1!

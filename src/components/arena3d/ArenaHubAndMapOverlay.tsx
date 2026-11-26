@@ -771,7 +771,7 @@ export const ArenaHubAndMapOverlay: React.FC<{ ctx: Record<string, any> }> = ({ 
           lang={lang}
           meta={meta}
           onUpdateMeta={(updater, coinDelta) => onUpdateMeta?.(updater, coinDelta)}
-          onLaunchWorldRun={handleLaunchWorldRun}
+          onLaunchWorldRun={(payload) => handleLaunchWorldRun(payload, true)}
           onClose={() => {
             sound.play('cancel');
             setWorldMapOpen(false);

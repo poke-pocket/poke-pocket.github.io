@@ -9,6 +9,7 @@ import { orientDoorSwingAwayFromActor, updateProximityAutoDoors3D } from '../../
 import { isInsideBuildingInterior, resolveTownWallCollisions, type EnterableBuildingInterior, type ProceduralTownInstance, type TownInteractPoint, type TownStrollingCitizen } from '../../utils/townBuilder3D';
 import { getHeldHotelKeycard, setHeldHotelKeycard } from '../../world3d/townTypes';
 import { sound } from '../../utils/sound';
+import { saveWorldCheckpoint } from '../../utils/worldCheckpoint';
 import { buildInteractActionsForTarget, pushWorldSpeechBubble, type LiveWorldBubble } from './ArenaTownSocialAndBusOverlay';
 
 const NPC_CHAT_GIFTED = new Set<string>();
@@ -145,16 +146,20 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
     Date.now(),
   );
 
-  if (!getActiveGeoTerrainOrigin() && now - persistState.lastAt > 2000) {
+  if (now - persistState.lastAt > 1000) {
     persistState.lastAt = now;
-    try {
-      window.localStorage.setItem(
-        'pocket_paw_last_world_pos_v1',
-        JSON.stringify({ x: Number(sim.px.toFixed(1)), z: Number(sim.pz.toFixed(1)) }),
-      );
-    } catch {
-      // ignore
-    }
+    const geoOrg = getActiveGeoTerrainOrigin();
+    saveWorldCheckpoint({
+      mode: geoOrg ? 'geo' : 'procedural',
+      cityId: geoOrg?.startCityId ?? 'shanghai',
+      cityName: geoOrg?.startCityName,
+      lat: liveGeo?.lat,
+      lng: liveGeo?.lng,
+      x: sim.px,
+      z: sim.pz,
+      facingAngle: sim.facingAngle,
+      updatedAt: Date.now(),
+    });
   }
 
   let closestTownPoint: TownInteractPoint | null = null;

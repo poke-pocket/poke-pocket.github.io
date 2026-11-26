@@ -6,6 +6,8 @@ import { getNpcWalkSpriteFrames, getSeamlessBiomeAt3D, sampleAnimatedFrame, samp
 import { pickPmdDirIndex, samplePmd8DirFrame } from '../../data/pmdSprites3D';
 import { type PetSkinId, type SpeciesId } from '../../types/pet';
 import { getElementalSynergyBonus, getSkinDef } from '../../data/metaProgression';
+import { getActiveGeoTerrainOrigin, worldToGeo } from '../../data/geoTerrain3D';
+import { saveWorldCheckpoint } from '../../utils/worldCheckpoint';
 import { sound } from '../../utils/sound';
 import { resolveTownWallCollisions } from '../../utils/townBuilder3D';
 import { getWeatherCombatBonus } from '../../utils/weatherSystem';
@@ -689,15 +691,27 @@ export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
                     }
                     showBanner(`⚡ 气势披带发动！原地复活（剩余 ${sim.revivesLeft} 次）！`, 3400);
                   } else if (gameMode === 'story') {
-                    // Open-World Survival Respawn: automatically escort back to Home Spawn with full HP!
-                    sim.px = 0;
-                    sim.pz = 0;
-                    sim.py = getTerrainHeight3D(0, 0);
+                    // Open-World Survival Respawn: ONLY death escorts back to Home Spawn with full HP!
+                    sim.px = -22;
+                    sim.pz = 12;
+                    sim.py = getTerrainHeight3D(-22, 12) + 0.16;
                     sim.hp = sim.maxHp;
                     sim.invuln = 3.0;
                     onHealParty();
                     sound.play('levelup');
-                    try { window.localStorage.setItem('pocket_paw_last_world_pos_v1', JSON.stringify({ x: 0, z: 0 })); } catch {}
+                    const geoOrg = getActiveGeoTerrainOrigin();
+                    const spawnGeo = worldToGeo(-22, 12);
+                    saveWorldCheckpoint({
+                      mode: geoOrg ? 'geo' : 'procedural',
+                      cityId: geoOrg?.startCityId ?? 'shanghai',
+                      cityName: geoOrg?.startCityName,
+                      lat: spawnGeo?.lat,
+                      lng: spawnGeo?.lng,
+                      x: -22,
+                      z: 12,
+                      facingAngle: 0,
+                      updatedAt: Date.now(),
+                    });
                     showBanner('🏥 体力与血量耗尽！已紧急护送回出生点休整，全队恢复满血！', 3800);
                   } else {
                     endedRef.current = true;
@@ -1085,14 +1099,26 @@ export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
                   }
                   showBanner(`⚡ 气势披带发动！原地复活（剩余 ${sim.revivesLeft} 次）！`, 3400);
                 } else if (gameMode === 'story') {
-                  sim.px = 0;
-                  sim.pz = 0;
-                  sim.py = getTerrainHeight3D(0, 0);
+                  sim.px = -22;
+                  sim.pz = 12;
+                  sim.py = getTerrainHeight3D(-22, 12) + 0.16;
                   sim.hp = sim.maxHp;
                   sim.invuln = 3.0;
                   onHealParty();
                   sound.play('levelup');
-                  try { window.localStorage.setItem('pocket_paw_last_world_pos_v1', JSON.stringify({ x: 0, z: 0 })); } catch {}
+                  const geoOrg = getActiveGeoTerrainOrigin();
+                  const spawnGeo = worldToGeo(-22, 12);
+                  saveWorldCheckpoint({
+                    mode: geoOrg ? 'geo' : 'procedural',
+                    cityId: geoOrg?.startCityId ?? 'shanghai',
+                    cityName: geoOrg?.startCityName,
+                    lat: spawnGeo?.lat,
+                    lng: spawnGeo?.lng,
+                    x: -22,
+                    z: 12,
+                    facingAngle: 0,
+                    updatedAt: Date.now(),
+                  });
                   showBanner('🏥 体力与血量耗尽！已紧急护送回出生点休整，全队恢复满血！', 3800);
                   break;
                 } else {
