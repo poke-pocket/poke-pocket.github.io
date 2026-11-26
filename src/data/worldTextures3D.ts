@@ -1970,8 +1970,9 @@ function drawHeroPixelFrame(
   heroId: HeroId,
   dir: FacingDir,
   pose: HeroPoseKey,
+  customPal?: (typeof HERO_PALETTES)[HeroId],
 ) {
-  const pal = HERO_PALETTES[heroId];
+  const pal = customPal ?? HERO_PALETTES[heroId];
   const W = 48;
   const H = 56;
   ctx.clearRect(0, 0, W, H);
@@ -2767,6 +2768,226 @@ export function getTrainerRedSpriteFrames(): Record<string, THREE.CanvasTexture>
   return getHeroSpriteFrames('red');
 }
 
+const npcWalkFramesCache: Record<string, Record<string, THREE.CanvasTexture>> = {};
+
+const GBA_PEOPLE_SHEET_MAP: Record<string, string> = {
+  red: '/sprites/people/red_normal.png',
+  green: '/sprites/people/green_normal.png',
+  blue: '/sprites/people/blue.png',
+  youngster: '/sprites/people/youngster.png',
+  lass: '/sprites/people/lass.png',
+  boy: '/sprites/people/boy.png',
+  picnicker: '/sprites/people/picnicker.png',
+  camper: '/sprites/people/camper.png',
+  cooltrainer_m: '/sprites/people/cooltrainer_m.png',
+  cooltrainer_f: '/sprites/people/cooltrainer_f.png',
+  woman_1: '/sprites/people/woman_1.png',
+  woman_2: '/sprites/people/woman_2.png',
+  man: '/sprites/people/man.png',
+  gentleman: '/sprites/people/gentleman.png',
+  beauty: '/sprites/people/beauty.png',
+  policeman: '/sprites/people/policeman.png',
+  sailor: '/sprites/people/sailor.png',
+  hiker: '/sprites/people/hiker.png',
+  scientist: '/sprites/people/scientist.png',
+  nurse: '/sprites/people/nurse.png',
+  clerk: '/sprites/people/clerk.png',
+  chef: '/sprites/people/chef.png',
+  brock: '/sprites/people/brock.png',
+  misty: '/sprites/people/misty.png',
+  ltsurge: '/sprites/people/lt_surge.png',
+  erika: '/sprites/people/erika.png',
+};
+
+/**
+ * Loads 100% authentic GBA Pokémon FireRed/LeafGreen 16x32 pixel-art character sprite sheets
+ * (matching Protagonist Red & Blue pixel-for-pixel in outline, head proportion, and texel size!).
+ * - 9/10-frame sheets (144x32 / 160x32): uses native GBA 4-dir walking frames directly!
+ * - 3/4-frame sheets (48x32 / 64x32, e.g. Gym Leaders & Nurse Joy): synthesizes crisp 1-GBA-pixel
+ *   alternating foot strides directly on the native 16x32 pixel grid before 2.4x nearest-neighbor scaling!
+ */
+export function getNpcWalkSpriteFrames(spriteUrlOrKey: string): Record<string, THREE.CanvasTexture> {
+  const lower = spriteUrlOrKey.toLowerCase();
+  let key = 'youngster';
+  if (lower.includes('blue')) return getHeroSpriteFrames('blue');
+  if (lower.includes('red')) return getHeroSpriteFrames('red');
+  for (const cand of Object.keys(GBA_PEOPLE_SHEET_MAP)) {
+    if (lower.includes(cand)) {
+      key = cand;
+      break;
+    }
+  }
+  if (lower.includes('surge')) key = 'ltsurge';
+
+  if (npcWalkFramesCache[key]) return npcWalkFramesCache[key];
+
+  const dirs: FacingDir[] = ['down', 'up', 'left', 'right'];
+  const poses: HeroPoseKey[] = ['idle0', 'idle1', '0', '1', 'jump'];
+  const out: Record<string, THREE.CanvasTexture> = {};
+  const canvases: Record<string, HTMLCanvasElement> = {};
+
+  // Clean transparent placeholder until the tiny <1KB local PNG decodes in ~1ms
+  for (const dir of dirs) {
+    for (const pose of poses) {
+      const c = document.createElement('canvas');
+      c.width = 48;
+      c.height = 56;
+      const tex = new THREE.CanvasTexture(c);
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      tex.generateMipmaps = false;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.ClampToEdgeWrapping;
+      tex.wrapT = THREE.ClampToEdgeWrapping;
+      const k = `${dir}_${pose}`;
+      canvases[k] = c;
+      out[k] = tex;
+    }
+  }
+
+  if (typeof Image !== 'undefined') {
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => {
+      try {
+        const fh = img.naturalHeight || 32;
+        const fw = 16;
+        const nCols = Math.max(1, Math.floor(img.naturalWidth / fw));
+        const sheetCanvas = document.createElement('canvas');
+        sheetCanvas.width = img.naturalWidth;
+        sheetCanvas.height = fh;
+        const sctx = sheetCanvas.getContext('2d')!;
+        sctx.imageSmoothingEnabled = false;
+        sctx.drawImage(img, 0, 0);
+
+        // Measure visible vertical bounds on col 0 so every GBA sprite stands at identical scale & baseline as Red!
+        const f0 = sctx.getImageData(0, 0, fw, fh).data;
+        let minY = fh;
+        let maxY = -1;
+        for (let y = 0; y < fh; y++) {
+          for (let x = 0; x < fw; x++) {
+            if (f0[(y * fw + x) * 4 + 3] > 20) {
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        const visH = maxY >= minY ? maxY - minY + 1 : 22;
+        const srcY = maxY >= minY ? minY : 0;
+        const scale = Math.min(2.4, 48 / Math.max(16, visH));
+        const dw = Math.round(fw * scale);
+        const dh = Math.round(visH * scale);
+        const dstX = Math.round((48 - dw) / 2);
+        const dstBaseY = Math.round(54 - dh);
+
+        // Scratch 16x32 native GBA frame composer for 3/4-col sheets that lack built-in walk columns
+        const nativeTile = document.createElement('canvas');
+        nativeTile.width = fw;
+        nativeTile.height = fh;
+        const nctx = nativeTile.getContext('2d')!;
+        nctx.imageSmoothingEnabled = false;
+
+        for (const dir of dirs) {
+          for (const pose of poses) {
+            const k = `${dir}_${pose}`;
+            const ctx = canvases[k].getContext('2d')!;
+            ctx.imageSmoothingEnabled = false;
+            ctx.clearRect(0, 0, 48, 56);
+
+            let flipX = dir === 'right';
+            let dy = pose === 'jump' ? -3 : 0;
+
+            if (nCols >= 9) {
+              // Full 9/10-frame GBA FireRed walking sheet!
+              // Cols: 0=down, 1=up, 2=left, 3=down_w0, 4=down_w1, 5=up_w0, 6=up_w1, 7=left_w0, 8=left_w1
+              let col = 0;
+              if (dir === 'down') {
+                col = pose === '0' ? 3 : pose === '1' || pose === 'jump' ? 4 : 0;
+              } else if (dir === 'up') {
+                col = pose === '0' ? 5 : pose === '1' || pose === 'jump' ? 6 : 1;
+              } else {
+                col = pose === '0' ? 7 : pose === '1' || pose === 'jump' ? 8 : 2;
+              }
+              ctx.save();
+              if (flipX) {
+                ctx.translate(48, 0);
+                ctx.scale(-1, 1);
+              }
+              ctx.drawImage(sheetCanvas, col * fw, srcY, fw, visH, dstX, dstBaseY + dy, dw, dh);
+              ctx.restore();
+            } else {
+              // 3/4-col GBA sheet (0=down, 1=up, 2=left): compose crisp 1px native GBA leg-stride on 16x32 grid!
+              const baseCol = dir === 'down' ? 0 : dir === 'up' ? 1 : Math.min(2, nCols - 1);
+              nctx.clearRect(0, 0, fw, fh);
+              const splitY = Math.max(0, maxY - 5); // bottom 6 native GBA pixels = legs/shoes
+              const isWalk0 = pose === '0';
+              const isWalk1 = pose === '1' || pose === 'jump';
+              const headBob = isWalk0 || isWalk1 ? -1 : 0;
+              // Upper head + torso
+              nctx.drawImage(sheetCanvas, baseCol * fw, 0, fw, splitY, 0, headBob, fw, splitY);
+              if (!isWalk0 && !isWalk1) {
+                nctx.drawImage(sheetCanvas, baseCol * fw, splitY, fw, fh - splitY, 0, 0, fw, fh - splitY);
+              } else if (dir === 'down' || dir === 'up') {
+                // Alternating left/right foot lift by 1 native GBA pixel!
+                const lLift = isWalk0 ? -1 : 0;
+                const rLift = isWalk1 ? -1 : 0;
+                nctx.drawImage(sheetCanvas, baseCol * fw, splitY, 8, fh - splitY, 0, splitY + lLift, 8, fh - splitY);
+                nctx.drawImage(sheetCanvas, baseCol * fw + 8, splitY, 8, fh - splitY, 8, splitY + rLift, 8, fh - splitY);
+              } else {
+                // Side stride: split legs slightly fore & aft by 1 native GBA pixel!
+                const stepShift = isWalk0 ? -1 : 1;
+                nctx.drawImage(sheetCanvas, baseCol * fw, splitY, fw, 3, 0, splitY - 1, fw, 3);
+                nctx.drawImage(sheetCanvas, baseCol * fw, splitY + 2, fw, fh - splitY - 2, stepShift, splitY + 2, fw, fh - splitY - 2);
+              }
+              ctx.save();
+              if (flipX) {
+                ctx.translate(48, 0);
+                ctx.scale(-1, 1);
+              }
+              ctx.drawImage(nativeTile, 0, srcY, fw, visH, dstX, dstBaseY + dy, dw, dh);
+              ctx.restore();
+            }
+            out[k].needsUpdate = true;
+          }
+        }
+      } catch {
+        // ignore decode error
+      }
+    };
+    img.src = GBA_PEOPLE_SHEET_MAP[key] ?? GBA_PEOPLE_SHEET_MAP.youngster;
+  }
+
+  npcWalkFramesCache[key] = out;
+  return out;
+}
+
+/**
+ * Picks the exact camera-relative 4-direction GBA stride texture ('down' | 'up' | 'left' | 'right' x 'idle0' | '0' | '1')
+ * so citizens & trainers genuinely walk with alternating legs & swinging arms (and stand still calmly when idle!).
+ */
+export function sampleHumanWalkFrame(
+  frames: Record<string, THREE.CanvasTexture>,
+  relFwd: number,
+  relRight: number,
+  walkPhase: number,
+  isMoving: boolean,
+): THREE.CanvasTexture {
+  let dir: FacingDir = 'down';
+  if (Math.abs(relFwd) >= Math.abs(relRight)) {
+    dir = relFwd > 0.15 ? 'up' : 'down';
+  } else {
+    dir = relRight > 0 ? 'right' : 'left';
+  }
+  if (!isMoving) {
+    const breathePose: HeroPoseKey = Math.floor(walkPhase * 1.4) % 2 === 0 ? 'idle0' : 'idle1';
+    return frames[`${dir}_${breathePose}`] ?? frames.down_idle0;
+  }
+  // Classic 4-step GBA walk cycle: idle0 -> step0 (left leg) -> idle0 -> step1 (right leg)
+  const stepIdx = ((Math.floor(walkPhase) % 4) + 4) % 4;
+  const pose: HeroPoseKey = stepIdx === 1 ? '0' : stepIdx === 3 ? '1' : 'idle0';
+  return frames[`${dir}_${pose}`] ?? frames.down_idle0;
+}
+
 /**
  * Normalizes a list of raw sprite frame canvases to standardized 96x96 textures using
  * their shared tight non-transparent bounding box, scaled uniformly (Math.min(72/boxH, 80/boxW)),
@@ -3092,14 +3313,41 @@ export function createSculptedTerrainMaterial(
       varying vec3 vWorldNormal;
       varying float vFogDepth;
 
+      vec2 groundHash22(vec2 p) {
+        p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+        return fract(sin(p) * 43758.5453123);
+      }
+
       void main() {
         vec3 n = normalize(vWorldNormal);
 
-        // Preserve crisp pixel-art texel micro-detail from ground & cliff sheets
-        vec2 groundUv = vWorldPos.xz * 0.24;
+        // Non-repeating stochastic per-tile pixel UV rotation (0/90/180/270 deg) + organic flower clumping mask
+        // so grass blades & wildflowers NEVER show periodic grid repetition!
+        vec2 scaledPos = vWorldPos.xz * 0.21;
+        vec2 cellId = floor(scaledPos);
+        vec2 localUv = fract(scaledPos) - 0.5;
+        vec2 rnd = groundHash22(cellId);
+        float rotIdx = floor(rnd.x * 4.0);
+        if (rotIdx < 0.5) localUv = vec2(localUv.x, localUv.y);
+        else if (rotIdx < 1.5) localUv = vec2(-localUv.y, localUv.x);
+        else if (rotIdx < 2.5) localUv = vec2(-localUv.x, -localUv.y);
+        else localUv = vec2(localUv.y, -localUv.x);
+        // Snap offset to 1/64th texel grid so pixels remain 100% razor-sharp!
+        vec2 pxShift = floor(rnd * 16.0) / 16.0;
+        vec2 groundUv = fract(localUv + 0.5 + pxShift);
         vec3 baseTexCol = texture2D(uGroundTex, groundUv).rgb;
-        float texLuma = clamp(dot(baseTexCol, vec3(0.3, 0.59, 0.11)) / 0.56, 0.72, 1.24);
-        float meadowPatch = sin(vWorldPos.x * 0.09) * cos(vWorldPos.z * 0.09) * 0.5 + 0.5;
+        // Organic meadow flower-cluster mask: suppress white flower dots outside natural blooming patches!
+        float flowerMask = smoothstep(
+          0.42,
+          0.68,
+          0.5 + 0.32 * sin(vWorldPos.x * 0.065 + vWorldPos.z * 0.048) + 0.25 * cos(vWorldPos.x * 0.041 - vWorldPos.z * 0.073)
+        );
+        float rawLum = dot(baseTexCol, vec3(0.3, 0.59, 0.11));
+        if (rawLum > 0.68 && rnd.y > flowerMask * 0.65) {
+          rawLum = 0.54;
+        }
+        float texLuma = clamp(rawLum / 0.56, 0.76, 1.22);
+        float meadowPatch = sin(vWorldPos.x * 0.055 + 1.3) * cos(vWorldPos.z * 0.062 - 0.7) * 0.5 + 0.5;
 
         // Vast Minecraft-style continental Temperature × Moisture × Elevation biome blending (~750m+ macro regions!)
         float distSpawn = length(vWorldPos.xz);

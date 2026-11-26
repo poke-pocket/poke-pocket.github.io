@@ -1251,7 +1251,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       <header className="wt-header">
         <button type="button" className="pkb-esc-btn" onClick={onClose}>
           <PixelIcon name="arrow_left" size={13} />
-          <span>返回大厅</span>
+          <span>返回</span>
         </button>
 
         <div className="wt-header-right">

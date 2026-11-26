@@ -329,7 +329,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
   ) => {
     const width = kind === 'arterial' ? 32 : 17;
     if (riverSignedDist(sx, sz) < 6 || !insideCity(sx, sz)) return;
-    if (edges.length >= 260) return;
+    if (edges.length >= 440) return;
 
     const streamId = nextStreamId++;
     const initField = sampleField(sx, sz);
@@ -343,7 +343,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
       let prevDz = initVec.z * sign;
 
       for (let step = 0; step < maxSteps; step++) {
-        if (edges.length >= 260) break;
+        if (edges.length >= 440) break;
         const next = rk2Step(cx, cz, stepLen, useMajor, prevDx, prevDz);
         const nx = next.x;
         const nz = next.z;
@@ -365,10 +365,10 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
             const uX = segDx / segLen;
             const uZ = segDz / segLen;
             let landDist = -1;
-            for (let probe = stepLen; probe <= 86; probe += 4) {
+            for (let probe = stepLen; probe <= 104; probe += 4) {
               const px = cx + uX * probe;
               const pz = cz + uZ * probe;
-              if (riverSignedDist(px, pz) > 3.5 && insideCity(px, pz)) {
+              if (riverSignedDist(px, pz) > 6.5 && insideCity(px, pz)) {
                 landDist = probe;
                 break;
               }
@@ -376,21 +376,22 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
             if (landDist > 16) {
               const bx = cx + uX * landDist;
               const bz = cz + uZ * landDist;
-              // Keep real-scale generous spacing (~95m+) between cross-river bridges!
+              // Keep real-scale generous spacing (~88m+) between cross-river bridges!
               const dupBridge = edges.some(
                 (e) =>
                   e.isBridge &&
-                  Math.hypot((e.x1 + e.x2) * 0.5 - (cx + bx) * 0.5, (e.z1 + e.z2) * 0.5 - (cz + bz) * 0.5) < 95,
+                  Math.hypot((e.x1 + e.x2) * 0.5 - (cx + bx) * 0.5, (e.z1 + e.z2) * 0.5 - (cz + bz) * 0.5) < 88,
               );
               if (!dupBridge) {
                 const style =
-                  landDist < 42 ? 'waibaidu' : edges.filter((e) => e.isBridge).length % 2 === 0 ? 'nanpu' : 'yangpu';
+                  landDist < 38 ? 'waibaidu' : edges.filter((e) => e.isBridge).length % 2 === 0 ? 'nanpu' : 'yangpu';
+                const brWidth = style === 'waibaidu' ? 20 : 28;
                 const brEdge: TensorRoadEdge & { streamId: number } = {
                   x1: cx,
                   z1: cz,
                   x2: bx,
                   z2: bz,
-                  width: style === 'waibaidu' ? 18 : 22,
+                  width: brWidth,
                   kind: 'arterial',
                   isBridge: true,
                   bridgeStyle: style,
@@ -398,10 +399,30 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
                 };
                 edges.push(brEdge);
                 createdInStream.push(brEdge);
-                registerNode(cx, cz, streamId, true, rotY, 10);
-                registerNode(bx, bz, streamId, true, rotY, 10);
-                cx = bx;
-                cz = bz;
+                registerNode(cx, cz, streamId, true, rotY, 12);
+                registerNode(bx, bz, streamId, true, rotY, 12);
+                // Guarantee a dry-land approach avenue segment immediately on the far bank so ZERO bridges end in grass!
+                const farX = bx + uX * 32;
+                const farZ = bz + uZ * 32;
+                if (insideCity(farX, farZ) && riverSignedDist(farX, farZ) > 6) {
+                  const farEdge: TensorRoadEdge & { streamId: number } = {
+                    x1: bx,
+                    z1: bz,
+                    x2: farX,
+                    z2: farZ,
+                    width,
+                    kind: 'arterial',
+                    streamId,
+                  };
+                  edges.push(farEdge);
+                  createdInStream.push(farEdge);
+                  registerNode(farX, farZ, streamId, true, rotY, 12);
+                  cx = farX;
+                  cz = farZ;
+                } else {
+                  cx = bx;
+                  cz = bz;
+                }
                 prevDx = uX;
                 prevDz = uZ;
                 continue;
@@ -504,92 +525,530 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
       }
     }
   }
-  // Use finer 28m RK2 steps so major boulevards curve gracefully across the ENTIRE real metropolitan landmass!
-  const artSteps = Math.max(20, Math.ceil(radius / 26));
-  traceStreamline(seedCx, seedCz, true, 'arterial', 28, 128, artSteps);
-  traceStreamline(seedCx, seedCz, false, 'arterial', 28, 128, artSteps);
+  // Use finer 28m RK2 steps with generous real-city block spacing (~230m arterial blocks, ~150m neighborhood blocks)
+  // so 10x-area realistic department stores, clinics, hotels, restaurants & homes (~45-56m wide!) fit cleanly inside blocks!
+  const artSteps = Math.max(22, Math.ceil(radius / 26));
+  traceStreamline(seedCx, seedCz, true, 'arterial', 28, 210, artSteps);
+  traceStreamline(seedCx, seedCz, false, 'arterial', 28, 210, artSteps);
 
-  // 1B. Waterfront Boulevard parallel to the real river on BOTH banks (e.g. Bund + Lujiazui Riverside!)
-  for (const riv of rivers.slice(0, 1)) {
-    const midIdx = Math.floor(riv.points.length * 0.5);
-    if (midIdx > 0 && midIdx < riv.points.length) {
-      const [rx1, rz1] = riv.points[midIdx - 1];
-      const [rx2, rz2] = riv.points[midIdx];
-      const rLen = Math.hypot(rx2 - rx1, rz2 - rz1) || 1;
-      const rnx = -(rz2 - rz1) / rLen;
-      const rnz = (rx2 - rx1) / rLen;
-      const mx = (rx1 + rx2) * 0.5;
-      const mz = (rz1 + rz2) * 0.5;
-      const bankOff = riv.width * 0.5 + 34;
-      for (const side of [-1, 1]) {
-        const bx = mx + rnx * side * bankOff;
-        const bz = mz + rnz * side * bankOff;
-        if (insideCity(bx, bz) && riverSignedDist(bx, bz) > 16) {
-          traceStreamline(bx, bz, true, 'arterial', 28, 122, artSteps);
+  // 1B. Waterfront Boulevards parallel to ALL real rivers on BOTH banks (e.g. Bund + Lujiazui Riverside + Suzhou Creek Banks!)
+  for (const riv of rivers) {
+    for (const frac of [0.28, 0.52, 0.76]) {
+      const midIdx = Math.max(1, Math.min(riv.points.length - 1, Math.floor(riv.points.length * frac)));
+      if (midIdx > 0 && midIdx < riv.points.length) {
+        const [rx1, rz1] = riv.points[midIdx - 1];
+        const [rx2, rz2] = riv.points[midIdx];
+        const rLen = Math.hypot(rx2 - rx1, rz2 - rz1) || 1;
+        const rnx = -(rz2 - rz1) / rLen;
+        const rnz = (rx2 - rx1) / rLen;
+        const mx = (rx1 + rx2) * 0.5;
+        const mz = (rz1 + rz2) * 0.5;
+        const bankOff = riv.width * 0.5 + 36;
+        for (const side of [-1, 1]) {
+          const bx = mx + rnx * side * bankOff;
+          const bz = mz + rnz * bankOff * side;
+          if (insideCity(bx, bz) && riverSignedDist(bx, bz) > 14) {
+            traceStreamline(bx, bz, true, 'arterial', 28, 165, artSteps);
+          }
         }
       }
     }
   }
 
-  // 1C. Full-Metropolis Curved Arterial Grid expanding across the ENTIRE real urban coastline (Puxi, Pudong, Baoshan, Minhang, Songjiang, etc.)!
-  const ringStep = 170;
+  // 1C. Full-Metropolis Curved Arterial Grid expanding across the ENTIRE real urban coastline (Puxi, North Suzhou Creek / Hongkou, Pudong, etc.)!
+  const ringStep = 185;
   for (let off = -Math.floor(radius / ringStep) * ringStep; off <= radius; off += ringStep) {
-    if (Math.abs(off) < 40) continue;
+    if (Math.abs(off) < 55) continue;
     const sx1 = seedCx + Math.cos(baseGridAngle + Math.PI / 2) * off;
     const sz1 = seedCz + Math.sin(baseGridAngle + Math.PI / 2) * off;
-    if (insideCity(sx1, sz1) && riverSignedDist(sx1, sz1) > 18) {
-      traceStreamline(sx1, sz1, true, 'arterial', 28, 132, artSteps);
+    if (insideCity(sx1, sz1) && riverSignedDist(sx1, sz1) > 16) {
+      traceStreamline(sx1, sz1, true, 'arterial', 28, 175, artSteps);
     }
     const sx2 = seedCx + Math.cos(baseGridAngle) * off;
     const sz2 = seedCz + Math.sin(baseGridAngle) * off;
-    if (insideCity(sx2, sz2) && riverSignedDist(sx2, sz2) > 18) {
-      traceStreamline(sx2, sz2, false, 'arterial', 28, 132, artSteps);
+    if (insideCity(sx2, sz2) && riverSignedDist(sx2, sz2) > 16) {
+      traceStreamline(sx2, sz2, false, 'arterial', 28, 175, artSteps);
     }
   }
-  // Also seed outer peninsula districts (e.g., SE Pudong, NW Baoshan/Jiading, SW Songjiang) where center-projected lines might miss!
-  for (let gx = -radius + 90; gx <= radius - 90; gx += 210) {
-    for (let gz = -radius + 90; gz <= radius - 90; gz += 210) {
-      if (Math.hypot(gx, gz) < 160) continue;
-      if (insideCity(gx, gz) && riverSignedDist(gx, gz) > 20) {
-        traceStreamline(gx, gz, true, 'arterial', 28, 145, Math.ceil(artSteps * 0.7));
-        traceStreamline(gx, gz, false, 'arterial', 28, 145, Math.ceil(artSteps * 0.7));
+  // Seed all districts on BOTH sides of creeks/rivers (including North bank z = -140..-380 & East bank x = +120..+420)!
+  for (let gx = -radius + 90; gx <= radius - 90; gx += 195) {
+    for (let gz = -radius + 90; gz <= radius - 90; gz += 195) {
+      if (Math.hypot(gx, gz) < 115) continue;
+      if (insideCity(gx, gz) && riverSignedDist(gx, gz) > 16) {
+        traceStreamline(gx, gz, true, 'arterial', 28, 175, Math.ceil(artSteps * 0.8));
+        traceStreamline(gx, gz, false, 'arterial', 28, 175, Math.ceil(artSteps * 0.8));
       }
     }
   }
 
-  // ==================== PASS 2: SECONDARY COLLECTOR STREETS (Spacious ~95m Neighborhood Blocks across ALL Real Urban Land!) ====================
+  // ==================== PASS 2: SECONDARY COLLECTOR STREETS (Spacious ~132m Neighborhood Blocks for Realistic Large Buildings!) ====================
   const streetSeeds: { x: number; z: number; major: boolean }[] = [];
-  const sMax = Math.min(radius - 40, 560);
-  for (let gx = -sMax; gx <= sMax; gx += 120) {
-    for (let gz = -sMax; gz <= sMax; gz += 120) {
+  const sMax = Math.min(radius - 40, 620);
+  for (let gx = -sMax; gx <= sMax; gx += 140) {
+    for (let gz = -sMax; gz <= sMax; gz += 140) {
       if (!insideCity(gx, gz)) continue;
-      if (riverSignedDist(gx, gz) > 22) {
-        streetSeeds.push({ x: gx + (rng() - 0.5) * 16, z: gz + (rng() - 0.5) * 16, major: (gx + gz) % 240 === 0 });
+      if (riverSignedDist(gx, gz) > 18) {
+        streetSeeds.push({ x: gx + (rng() - 0.5) * 16, z: gz + (rng() - 0.5) * 16, major: (gx + gz) % 280 === 0 });
       }
     }
   }
-  // Sort downtown seeds first so the central core is richly detailed before outer districts!
   streetSeeds.sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
 
   for (const ss of streetSeeds) {
-    traceStreamline(ss.x, ss.z, ss.major, 'street', 26, 86, 14);
-    traceStreamline(ss.x, ss.z, !ss.major, 'street', 26, 86, 14);
+    traceStreamline(ss.x, ss.z, ss.major, 'street', 26, 126, 26);
+    traceStreamline(ss.x, ss.z, !ss.major, 'street', 26, 126, 26);
   }
 
-  // ==================== PASS 3: EXTRACT CLEAN PLANAR JUNCTION NODES (ONLY where >=2 distinct streamlines actually cross!) ====================
+  // ==================== PASS 2B: STRICT BRIDGE-TO-ROAD CONNECTIVITY GUARANTEE ====================
+  // Every bridge MUST connect at BOTH ends (x1,z1) and (x2,z2) directly onto a real dry-land road segment!
+  for (let bi = edges.length - 1; bi >= 0; bi--) {
+    const br = edges[bi];
+    if (!br.isBridge) continue;
+    const ensureEndConnected = (ex: number, ez: number): boolean => {
+      const connected = edges.some(
+        (o) =>
+          !o.isBridge &&
+          (Math.hypot(o.x1 - ex, o.z1 - ez) < 6.5 || Math.hypot(o.x2 - ex, o.z2 - ez) < 6.5),
+      );
+      if (connected) return true;
+      // Search closest point on ANY dry-land road segment within 110m on the SAME side of the river
+      let bestHit: { x: number; z: number; d: number; targetIdx: number; t: number } | null = null;
+      for (let oi = 0; oi < edges.length; oi++) {
+        const o = edges[oi];
+        if (o.isBridge) continue;
+        const dx = o.x2 - o.x1;
+        const dz = o.z2 - o.z1;
+        const lenSq = dx * dx + dz * dz || 1;
+        const t = Math.max(0, Math.min(1, ((ex - o.x1) * dx + (ez - o.z1) * dz) / lenSq));
+        const px = o.x1 + dx * t;
+        const pz = o.z1 + dz * t;
+        const d = Math.hypot(px - ex, pz - ez);
+        if (
+          d >= 2 &&
+          d < 110 &&
+          riverSignedDist((ex + px) * 0.5, (ez + pz) * 0.5) > 3 &&
+          riverSignedDist(ex * 0.75 + px * 0.25, ez * 0.75 + pz * 0.25) > 2.5
+        ) {
+          if (!bestHit || d < bestHit.d) bestHit = { x: px, z: pz, d, targetIdx: oi, t };
+        }
+      }
+      if (bestHit) {
+        const tgt = edges[bestHit.targetIdx];
+        let sx = bestHit.x;
+        let sz = bestHit.z;
+        if (Math.hypot(sx - tgt.x1, sz - tgt.z1) < 8) {
+          sx = tgt.x1;
+          sz = tgt.z1;
+        } else if (Math.hypot(sx - tgt.x2, sz - tgt.z2) < 8) {
+          sx = tgt.x2;
+          sz = tgt.z2;
+        } else {
+          // Split target road segment cleanly at (sx, sz) so the bridgehead forms a true planar junction!
+          const origX2 = tgt.x2;
+          const origZ2 = tgt.z2;
+          tgt.x2 = sx;
+          tgt.z2 = sz;
+          edges.push({
+            x1: sx,
+            z1: sz,
+            x2: origX2,
+            z2: origZ2,
+            width: tgt.width,
+            kind: tgt.kind,
+            streamId: tgt.streamId,
+          });
+        }
+        if (Math.hypot(sx - ex, sz - ez) > 2) {
+          edges.push({
+            x1: ex,
+            z1: ez,
+            x2: sx,
+            z2: sz,
+            width: br.width,
+            kind: 'arterial',
+            streamId: br.streamId,
+          });
+        } else if (Math.hypot(br.x1 - ex, br.z1 - ez) < 1) {
+          br.x1 = sx;
+          br.z1 = sz;
+        } else {
+          br.x2 = sx;
+          br.z2 = sz;
+        }
+        return true;
+      }
+      return false;
+    };
+    const ok1 = ensureEndConnected(br.x1, br.z1);
+    const ok2 = ensureEndConnected(br.x2, br.z2);
+    if (!ok1 || !ok2) {
+      edges.splice(bi, 1);
+    }
+  }
+
+  // ==================== PASS 2C: TRUE PLANAR TOPOLOGY & ZERO DEAD-END ROADS (消除全部断头路!) ====================
+  type EdgeItem = TensorRoadEdge & { streamId: number };
+
+  // Helper 1: Weld nearby road endpoints so crossing/touching segments share exact (x, z) vertex coordinates
+  const weldGraphVertices = (weldTol = 6.5) => {
+    const verts: { x: number; z: number; locked: boolean }[] = [];
+    const findOrAddVert = (x: number, z: number, lockPos: boolean): { x: number; z: number } => {
+      for (const v of verts) {
+        if (Math.hypot(v.x - x, v.z - z) <= weldTol) {
+          if (lockPos && !v.locked) {
+            v.x = x;
+            v.z = z;
+            v.locked = true;
+          }
+          return v;
+        }
+      }
+      const nv = { x, z, locked: lockPos };
+      verts.push(nv);
+      return nv;
+    };
+    // Register bridgeheads first as locked anchor vertices so bridge spans stay crisp
+    for (const e of edges) {
+      if (!e.isBridge) continue;
+      const v1 = findOrAddVert(e.x1, e.z1, true);
+      const v2 = findOrAddVert(e.x2, e.z2, true);
+      e.x1 = v1.x;
+      e.z1 = v1.z;
+      e.x2 = v2.x;
+      e.z2 = v2.z;
+    }
+    for (let i = edges.length - 1; i >= 0; i--) {
+      const e = edges[i];
+      if (e.isBridge) continue;
+      const v1 = findOrAddVert(e.x1, e.z1, false);
+      const v2 = findOrAddVert(e.x2, e.z2, false);
+      e.x1 = v1.x;
+      e.z1 = v1.z;
+      e.x2 = v2.x;
+      e.z2 = v2.z;
+      if (Math.hypot(e.x2 - e.x1, e.z2 - e.z1) < 3.5) {
+        edges.splice(i, 1);
+      }
+    }
+  };
+
+  // Helper 2: Planar intersection splitting + T-junction endpoint-to-segment splitting
+  const splitPlanarIntersections = () => {
+    for (let pass = 0; pass < 4; pass++) {
+      let splitAny = false;
+      outer: for (let i = 0; i < edges.length; i++) {
+        const a = edges[i];
+        if (a.isBridge) continue;
+        for (let j = i + 1; j < edges.length; j++) {
+          const b = edges[j];
+          if (b.isBridge) continue;
+          const shareEnd =
+            Math.hypot(a.x1 - b.x1, a.z1 - b.z1) < 4.5 ||
+            Math.hypot(a.x1 - b.x2, a.z1 - b.z2) < 4.5 ||
+            Math.hypot(a.x2 - b.x1, a.z2 - b.z1) < 4.5 ||
+            Math.hypot(a.x2 - b.x2, a.z2 - b.z2) < 4.5;
+          if (shareEnd) continue;
+
+          const dx1 = a.x2 - a.x1;
+          const dz1 = a.z2 - a.z1;
+          const dx2 = b.x2 - b.x1;
+          const dz2 = b.z2 - b.z1;
+          const denom = dx1 * dz2 - dz1 * dx2;
+          if (Math.abs(denom) > 1e-3) {
+            const t = ((b.x1 - a.x1) * dz2 - (b.z1 - a.z1) * dx2) / denom;
+            const u = ((b.x1 - a.x1) * dz1 - (b.z1 - a.z1) * dx1) / denom;
+            if (t >= -0.02 && t <= 1.02 && u >= -0.02 && u <= 1.02) {
+              const ix = a.x1 + Math.max(0, Math.min(1, t)) * dx1;
+              const iz = a.z1 + Math.max(0, Math.min(1, t)) * dz1;
+              const splitEdgeAt = (e: EdgeItem): boolean => {
+                if (Math.hypot(ix - e.x1, iz - e.z1) < 5.5) {
+                  e.x1 = ix;
+                  e.z1 = iz;
+                  return false;
+                }
+                if (Math.hypot(ix - e.x2, iz - e.z2) < 5.5) {
+                  e.x2 = ix;
+                  e.z2 = iz;
+                  return false;
+                }
+                const ox2 = e.x2;
+                const oz2 = e.z2;
+                e.x2 = ix;
+                e.z2 = iz;
+                edges.push({ x1: ix, z1: iz, x2: ox2, z2: oz2, width: e.width, kind: e.kind, streamId: e.streamId });
+                return true;
+              };
+              const sa = splitEdgeAt(a);
+              const sb = splitEdgeAt(b);
+              if (sa || sb) {
+                splitAny = true;
+                break outer;
+              }
+            }
+          }
+        }
+      }
+      // Also snap any endpoint sitting within 7m of another segment's interior (unsplit T-junction!)
+      for (let i = 0; i < edges.length && !splitAny; i++) {
+        const a = edges[i];
+        for (const [endIdx, ex, ez] of [
+          [1, a.x1, a.z1],
+          [2, a.x2, a.z2],
+        ] as const) {
+          for (let j = 0; j < edges.length; j++) {
+            if (i === j) continue;
+            const b = edges[j];
+            if (b.isBridge) continue;
+            if (Math.hypot(ex - b.x1, ez - b.z1) < 6.5 || Math.hypot(ex - b.x2, ez - b.z2) < 6.5) continue;
+            const dx = b.x2 - b.x1;
+            const dz = b.z2 - b.z1;
+            const lenSq = dx * dx + dz * dz || 1;
+            const t = ((ex - b.x1) * dx + (ez - b.z1) * dz) / lenSq;
+            if (t > 0.08 && t < 0.92) {
+              const px = b.x1 + dx * t;
+              const pz = b.z1 + dz * t;
+              if (Math.hypot(ex - px, ez - pz) < 7.5) {
+                if (!a.isBridge) {
+                  if (endIdx === 1) {
+                    a.x1 = px;
+                    a.z1 = pz;
+                  } else {
+                    a.x2 = px;
+                    a.z2 = pz;
+                  }
+                }
+                const ox2 = b.x2;
+                const oz2 = b.z2;
+                b.x2 = px;
+                b.z2 = pz;
+                edges.push({ x1: px, z1: pz, x2: ox2, z2: oz2, width: b.width, kind: b.kind, streamId: b.streamId });
+                splitAny = true;
+                break;
+              }
+            }
+          }
+          if (splitAny) break;
+        }
+      }
+      weldGraphVertices(6.0);
+      if (!splitAny) break;
+    }
+  };
+
+  weldGraphVertices(6.5);
+  splitPlanarIntersections();
+
+  // Helper 3: Compute vertex map from current edges
+  const vKey = (x: number, z: number) => `${Math.round(x * 2)},${Math.round(z * 2)}`;
+  const buildVertexMap = () => {
+    const map = new Map<
+      string,
+      { x: number; z: number; inc: { edgeIdx: number; end: 1 | 2; otherX: number; otherZ: number }[] }
+    >();
+    for (let i = 0; i < edges.length; i++) {
+      const e = edges[i];
+      const k1 = vKey(e.x1, e.z1);
+      const k2 = vKey(e.x2, e.z2);
+      if (!map.has(k1)) map.set(k1, { x: e.x1, z: e.z1, inc: [] });
+      if (!map.has(k2)) map.set(k2, { x: e.x2, z: e.z2, inc: [] });
+      map.get(k1)!.inc.push({ edgeIdx: i, end: 1, otherX: e.x2, otherZ: e.z2 });
+      map.get(k2)!.inc.push({ edgeIdx: i, end: 2, otherX: e.x1, otherZ: e.z1 });
+    }
+    return map;
+  };
+
+  // Step 2C-2: Snap-extend degree-1 dangling endpoints forward/nearby onto the closest dry-land road to close city blocks!
+  for (let extPass = 0; extPass < 2; extPass++) {
+    const vMap = buildVertexMap();
+    let addedExtension = false;
+    for (const v of vMap.values()) {
+      if (v.inc.length !== 1) continue;
+      const ref = v.inc[0];
+      const srcEdge = edges[ref.edgeIdx];
+      if (!srcEdge || srcEdge.isBridge) continue;
+      const vx = v.x;
+      const vz = v.z;
+      const dx = vx - ref.otherX;
+      const dz = vz - ref.otherZ;
+      const len = Math.hypot(dx, dz) || 1;
+      const dirX = dx / len;
+      const dirZ = dz / len;
+
+      let bestSnap: { x: number; z: number; score: number; targetIdx: number } | null = null;
+      for (let oi = 0; oi < edges.length; oi++) {
+        if (oi === ref.edgeIdx) continue;
+        const cand = edges[oi];
+        if (cand.isBridge) continue;
+        if (Math.hypot(cand.x1 - vx, cand.z1 - vz) < 4 || Math.hypot(cand.x2 - vx, cand.z2 - vz) < 4) continue;
+        if (Math.hypot(cand.x1 - ref.otherX, cand.z1 - ref.otherZ) < 4 || Math.hypot(cand.x2 - ref.otherX, cand.z2 - ref.otherZ) < 4) {
+          continue;
+        }
+
+        // Check both forward ray hit and closest segment projection
+        const cdx = cand.x2 - cand.x1;
+        const cdz = cand.z2 - cand.z1;
+        const cLenSq = cdx * cdx + cdz * cdz || 1;
+        const candidatesPts: { x: number; z: number; weight: number }[] = [];
+
+        // (a) Forward ray V + s * dir intersecting cand
+        const rDenom = dirX * cdz - dirZ * cdx;
+        if (Math.abs(rDenom) > 1e-3) {
+          const sRay = ((cand.x1 - vx) * cdz - (cand.z1 - vz) * cdx) / rDenom;
+          const uSeg = ((cand.x1 - vx) * dirZ - (cand.z1 - vz) * dirX) / rDenom;
+          if (sRay > 5 && sRay <= 135 && uSeg >= -0.05 && uSeg <= 1.05) {
+            const uClamp = Math.max(0, Math.min(1, uSeg));
+            candidatesPts.push({ x: cand.x1 + cdx * uClamp, z: cand.z1 + cdz * uClamp, weight: 0.72 });
+          }
+        }
+        // (b) Closest projection on cand within 84m (not folding backward)
+        const tProj = Math.max(0, Math.min(1, ((vx - cand.x1) * cdx + (vz - cand.z1) * cdz) / cLenSq));
+        const px = cand.x1 + cdx * tProj;
+        const pz = cand.z1 + cdz * tProj;
+        const dProj = Math.hypot(px - vx, pz - vz);
+        if (dProj > 5 && dProj <= 84) {
+          const cosFwd = ((px - vx) * dirX + (pz - vz) * dirZ) / dProj;
+          if (cosFwd > -0.15) {
+            candidatesPts.push({ x: px, z: pz, weight: 1.0 - cosFwd * 0.2 });
+          }
+        }
+
+        for (const cp of candidatesPts) {
+          const dist = Math.hypot(cp.x - vx, cp.z - vz);
+          if (dist < 5 || dist > 135) continue;
+          // Link must stay strictly on dry urban land (NEVER crossing water!)
+          const dryOk =
+            insideCity(cp.x, cp.z) &&
+            riverSignedDist((vx + cp.x) * 0.5, (vz + cp.z) * 0.5) > 5 &&
+            riverSignedDist(vx * 0.75 + cp.x * 0.25, vz * 0.75 + cp.z * 0.25) > 5 &&
+            riverSignedDist(vx * 0.25 + cp.x * 0.75, vz * 0.25 + cp.z * 0.75) > 5;
+          if (!dryOk) continue;
+          const score = dist * cp.weight;
+          if (!bestSnap || score < bestSnap.score) {
+            bestSnap = { x: cp.x, z: cp.z, score, targetIdx: oi };
+          }
+        }
+      }
+
+      if (bestSnap) {
+        const tgt = edges[bestSnap.targetIdx];
+        let sx = bestSnap.x;
+        let sz = bestSnap.z;
+        if (Math.hypot(sx - tgt.x1, sz - tgt.z1) < 9) {
+          sx = tgt.x1;
+          sz = tgt.z1;
+        } else if (Math.hypot(sx - tgt.x2, sz - tgt.z2) < 9) {
+          sx = tgt.x2;
+          sz = tgt.z2;
+        } else {
+          const ox2 = tgt.x2;
+          const oz2 = tgt.z2;
+          tgt.x2 = sx;
+          tgt.z2 = sz;
+          edges.push({ x1: sx, z1: sz, x2: ox2, z2: oz2, width: tgt.width, kind: tgt.kind, streamId: tgt.streamId });
+        }
+        edges.push({
+          x1: vx,
+          z1: vz,
+          x2: sx,
+          z2: sz,
+          width: srcEdge.width,
+          kind: srcEdge.kind,
+          streamId: srcEdge.streamId,
+        });
+        addedExtension = true;
+      }
+    }
+    if (addedExtension) {
+      weldGraphVertices(6.0);
+      splitPlanarIntersections();
+    } else {
+      break;
+    }
+  }
+
+  // Step 2C-3: Pre-filter river-encroaching ground segments + deduplicate multi-edges, THEN run Iterative 2-Core Dead-End Pruning!
+  for (let i = edges.length - 1; i >= 0; i--) {
+    const e = edges[i];
+    if (!e.isBridge && riverSignedDist((e.x1 + e.x2) * 0.5, (e.z1 + e.z2) * 0.5) < 2.0) {
+      edges.splice(i, 1);
+    }
+  }
+  const dedupParallelEdges = () => {
+    const seenPairs = new Set<string>();
+    for (let i = edges.length - 1; i >= 0; i--) {
+      const e = edges[i];
+      const ka = vKey(e.x1, e.z1);
+      const kb = vKey(e.x2, e.z2);
+      const pairKey = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+      if (ka === kb || seenPairs.has(pairKey)) {
+        edges.splice(i, 1);
+      } else {
+        seenPairs.add(pairKey);
+      }
+    }
+  };
+  dedupParallelEdges();
+
+  // Peel ALL remaining degree-1 stubs iteratively until ZERO dead-end roads remain anywhere in the city!
+  for (let pruneIter = 0; pruneIter < 80; pruneIter++) {
+    if (edges.length <= 24) break;
+    const vMap = buildVertexMap();
+    const removeSet = new Set<number>();
+    for (const v of vMap.values()) {
+      if (v.inc.length === 1) {
+        removeSet.add(v.inc[0].edgeIdx);
+      }
+    }
+    if (removeSet.size === 0) break;
+    const sortedRem = Array.from(removeSet).sort((a, b) => b - a);
+    for (const idx of sortedRem) {
+      if (edges.length <= 24) break;
+      edges.splice(idx, 1);
+    }
+    dedupParallelEdges();
+  }
+
+  // ==================== PASS 3: EXTRACT CLEAN PLANAR JUNCTION NODES STRICTLY FROM SURVIVING GRAPH ====================
   const junctions: TensorJunction[] = [];
-  for (const nd of nodes) {
-    if (nd.streamIds.size < 2) continue;
-    if (riverSignedDist(nd.x, nd.z) < 16) continue;
-    if (junctions.some((j) => Math.hypot(j.x - nd.x, j.z - nd.z) < 56)) continue;
-    const padW = nd.hasArterial ? 36 : 22;
+  for (const br of edges) {
+    if (!br.isBridge) continue;
+    const bRot = Math.atan2(br.x2 - br.x1, br.z2 - br.z1);
+    for (const [bx, bz] of [
+      [br.x1, br.z1],
+      [br.x2, br.z2],
+    ]) {
+      if (riverSignedDist(bx, bz) >= 2 && !junctions.some((j) => Math.hypot(j.x - bx, j.z - bz) < 28)) {
+        junctions.push({ x: bx, z: bz, width: br.width + 6, depth: br.width + 6, rotY: bRot, kind: 'tee' });
+      }
+    }
+  }
+  const finalVMap = buildVertexMap();
+  for (const v of finalVMap.values()) {
+    if (v.inc.length < 3) continue;
+    if (riverSignedDist(v.x, v.z) < 8) continue;
+    if (junctions.some((j) => Math.hypot(j.x - v.x, j.z - v.z) < 38)) continue;
+    let hasArterial = false;
+    let primaryRotY = 0;
+    for (const inc of v.inc) {
+      const e = edges[inc.edgeIdx];
+      if (e && e.kind === 'arterial') {
+        hasArterial = true;
+        primaryRotY = Math.atan2(e.x2 - e.x1, e.z2 - e.z1);
+        break;
+      }
+    }
+    if (!hasArterial) {
+      const e0 = edges[v.inc[0].edgeIdx];
+      if (e0) primaryRotY = Math.atan2(e0.x2 - e0.x1, e0.z2 - e0.z1);
+    }
+    const padW = hasArterial ? 36 : 22;
     junctions.push({
-      x: nd.x,
-      z: nd.z,
+      x: v.x,
+      z: v.z,
       width: padW,
       depth: padW,
-      rotY: nd.rotY,
-      kind: nd.degree >= 4 ? 'cross' : 'tee',
+      rotY: primaryRotY,
+      kind: v.inc.length >= 4 ? 'cross' : 'tee',
     });
   }
 

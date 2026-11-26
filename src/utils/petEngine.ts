@@ -36,7 +36,7 @@ import type {
 } from '../types/pet';
 
 export const SAVE_STORAGE_KEY = 'pocket_paw_save_v1';
-export const MAX_PET_SLOTS = 24;
+export const MAX_PET_SLOTS = 60;
 export const MAX_TRAINER_STAMINA = 20;
 export const STAMINA_REGEN_MS = 60_000; // +1 trainer stamina every 60s (time-only recovery)
 

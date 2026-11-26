@@ -29,6 +29,7 @@ import {
   getUnlockedSkillSlotCount,
   getWalkableSurfaceHeight3D,
   isOnInterTownRoad3D,
+  setWalkableBuildingFloorZones3D,
   type DifficultyId,
   type LiveRunTacticsBridge,
   type SafeZone3D,
@@ -45,12 +46,27 @@ import {
   getAnimatedGifTextures,
   getBiomeTextures,
   getHeroSpriteFrames,
+  getNpcWalkSpriteFrames,
   getPixelEmoteTexture,
   getSeamlessBiomeAt3D,
   sampleAnimatedFrame,
+  sampleHumanWalkFrame,
   type AnimatedSpriteSheet3D,
   type BiomeId,
 } from '../data/worldTextures3D';
+import {
+  findAutoWalkPath3D,
+  type AutoNavBuildingPortalInfo,
+  type AutoNavWaypoint,
+} from '../utils/autoPathfinder3D';
+import { updateProximityAutoDoors3D } from '../utils/architecturalBuildings3D';
+import {
+  CAM_MODE_LIST,
+  CAM_MODE_SPECS,
+  createCameraRigSmoothState,
+  updatePhysicalCameraRig3D,
+} from '../utils/cameraRig3D';
+import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
 import { MAX_PET_SLOTS } from '../utils/petEngine';
 import { getSkillVfxAtlas } from '../data/skillVfx3D';
 import {
@@ -67,6 +83,7 @@ import {
   getActiveGeoTerrainOrigin,
   setActiveGeoTerrainOrigin,
   subscribeGeoDemLoaded,
+  worldToGeo,
 } from '../data/geoTerrain3D';
 import {
   DEFAULT_WORLD_TOUR_STATE,
@@ -78,6 +95,7 @@ import { WorldMapOverlay, type WorldLaunchPayload } from './WorldMapOverlay';
 import {
   DEFAULT_GAME_PREFS,
   DEFAULT_TRAINER_PROFILE,
+  type CameraFollowMode,
   type GamePrefs,
   type GameSave,
   type LcdMode,
@@ -112,17 +130,19 @@ import { WorldMapHud, type LiveMapSnapshot, type WorldMapData } from './WorldMap
 import type { GachaOutcome, GachaTenOutcome, SurvivorsResultPayload } from '../utils/petEngine';
 import type { AccessoryId, FoodId, GachaBoxId, RoomThemeId } from '../types/pet';
 import { sound } from '../utils/sound';
-import { hashCitySeed } from '../utils/townStreetGen';
+import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
 import {
   buildInterTownRoadNetwork3D,
   buildProceduralTown3D,
   computeCameraWallClipT,
   isInsideBuildingInterior,
   resolveTownWallCollisions,
-  setBuildingExteriorOpacity,
+  setGlobalNightLampGlow3D,
+  type EnterableBuildingInterior,
   type ProceduralTownInstance,
   type TownInteractPoint,
 } from '../utils/townBuilder3D';
+import { TimeEcologyModal, getSolarEcologicalSpeciesPool } from './TimeEcologyModal';
 import {
   buildFallbackWeather,
   buildWeatherInfo,
@@ -274,6 +294,7 @@ interface Enemy3D {
   isTrainer: boolean;
   trainerSprite?: string;
   trainerName?: string;
+  trainerWalkFrames?: Record<string, THREE.CanvasTexture>;
   shootCd: number;
   hitFlash: number;
   dmg: number;
@@ -800,8 +821,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     }, 165);
   };
 
-  // Multi-Layer Flow: Main Hub -> Map Select / World Map Tour -> Live 3D Playing
+  // Multi-Layer Flow: Main Hub -> Map Select -> Live 3D Playing (Global World Map & Time Almanac are non-destructive overlays returning to caller!)
   const [phase, setPhase] = useState<ArenaScreenPhase>('hub');
+  const [worldMapOpen, setWorldMapOpen] = useState(false);
+  const worldMapOpenRef = useRef(false);
+  worldMapOpenRef.current = worldMapOpen;
+  const [timeAlmanacOpen, setTimeAlmanacOpen] = useState(false);
+  const timeAlmanacOpenRef = useRef(false);
+  timeAlmanacOpenRef.current = timeAlmanacOpen;
+  const [adventureStyle, setAdventureStyle] = useState<'care_world' | 'vampire_rogue'>('care_world');
+  const adventureStyleRef = useRef<'care_world' | 'vampire_rogue'>('care_world');
+  adventureStyleRef.current = adventureStyle;
+  const [solarInfo, setSolarInfo] = useState<SolarDayNightState>(() =>
+    computeSolarDayNight(31.23, 121.47, Date.now(), save.prefs?.worldTimeMode ?? 'auto'),
+  );
+  const solarInfoRef = useRef<SolarDayNightState>(solarInfo);
+  solarInfoRef.current = solarInfo;
   const [activeWorldRun, setActiveWorldRun] = useState<WorldLaunchPayload | null>(null);
   const [liveOverlandCity, setLiveOverlandCity] = useState<WorldCityDef | null>(null);
   const liveOverlandCityRef = useRef<WorldCityDef | null>(null);
@@ -811,12 +846,43 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const [difficultyId, setDifficultyId] = useState<DifficultyId>('normal');
   const [camPreset, setCamPreset] = useState<'wide' | 'close'>('wide');
   const camPresetRef = useRef<'wide' | 'close'>('wide');
-  // Standard PC 3D Third-Person Camera (Click-to-Pointer-Lock Mouse Look + Left/Right-Drag Orbit Fallback + Wheel Zoom + Terrain Clamp!)
+  const CAM_MODE_META = CAM_MODE_SPECS;
+  const CAM_MODE_ORDER = CAM_MODE_LIST;
+  const [camFollowMode, setCamFollowMode] = useState<CameraFollowMode>(
+    save.prefs?.cameraFollowMode ?? 'hd2d',
+  );
+  const camFollowModeRef = useRef<CameraFollowMode>(save.prefs?.cameraFollowMode ?? 'hd2d');
+  // 1-Click A* Auto-Pathfinding State & Quick Destination Directory (Exposed inside 2D World Map!)
+  interface AutoNavTargetItem {
+    id: string;
+    label: string;
+    subLabel: string;
+    icon: string;
+    x: number;
+    z: number;
+  }
+  const [autoNavActiveLabel, setAutoNavActiveLabel] = useState<string | null>(null);
+  const [autoNavTargets, setAutoNavTargets] = useState<AutoNavTargetItem[]>([]);
+  const autoNavTargetsRef = useRef<AutoNavTargetItem[]>([]);
+  autoNavTargetsRef.current = autoNavTargets;
+  const autoNavRef = useRef<{
+    label: string;
+    goalX: number;
+    goalZ: number;
+    waypoints: AutoNavWaypoint[];
+    idx: number;
+    stuckTimer: number;
+    lastCheckX: number;
+    lastCheckZ: number;
+  } | null>(null);
+  const startAutoNavRef = useRef<(target: { label: string; x: number; z: number }) => void>(() => {});
+  const stopAutoNavRef = useRef<(silent?: boolean) => void>(() => {});
+  // Standard PC 3D Third-Person Camera (Click-to-Pointer-Lock Mouse Look + Left/Right-Drag Orbit Fallback + Wheel Zoom + Physical Wall/Viaduct/Room Zoom!)
   const [pointerLocked, setPointerLocked] = useState(false);
   const restorePointerLockRef = useRef(false);
-  const camOrbitRef = useRef({ yaw: 0, pitch: 0.24, zoom: 1.0 });
+  const camOrbitRef = useRef({ yaw: 0, pitch: 0.58, zoom: 1.0 });
   const camPivotRef = useRef(new THREE.Vector3(0, 1.55, 0));
-  const camSmoothZoomRef = useRef(1.0);
+  const camSmoothRef = useRef(createCameraRigSmoothState());
   const camDragRef = useRef<{
     active: boolean;
     startX: number;
@@ -835,6 +901,40 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   useEffect(() => {
     camPresetRef.current = camPreset;
   }, [camPreset]);
+  useEffect(() => {
+    camFollowModeRef.current = camFollowMode;
+  }, [camFollowMode]);
+  useEffect(() => {
+    const prefCam = save.prefs?.cameraFollowMode;
+    if (prefCam && prefCam !== camFollowModeRef.current) {
+      camFollowModeRef.current = prefCam;
+      setCamFollowMode(prefCam);
+      camOrbitRef.current.pitch = CAM_MODE_META[prefCam].pitch;
+      camOrbitRef.current.zoom = 1.0;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [save.prefs?.cameraFollowMode]);
+
+  const applyCameraFollowMode = (nextMode: CameraFollowMode, announce = true) => {
+    const metaCam = CAM_MODE_META[nextMode];
+    camFollowModeRef.current = nextMode;
+    setCamFollowMode(nextMode);
+    onUpdatePrefs?.({ cameraFollowMode: nextMode });
+    camOrbitRef.current.pitch = metaCam.pitch;
+    camOrbitRef.current.zoom = 1.0;
+    const mappedPreset = nextMode === 'chase' || nextMode === 'free' ? 'close' : 'wide';
+    camPresetRef.current = mappedPreset;
+    setCamPreset(mappedPreset);
+    if (announce) {
+      sound.play('cursor');
+      showBanner(`🎥 镜头模式：${metaCam.label} — ${metaCam.desc}`, 2400);
+    }
+  };
+  const cycleCameraFollowMode = () => {
+    const curIdx = CAM_MODE_ORDER.indexOf(camFollowModeRef.current);
+    const nextMode = CAM_MODE_ORDER[(curIdx + 1) % CAM_MODE_ORDER.length];
+    applyCameraFollowMode(nextMode, true);
+  };
 
   // Floating Dynamic 360° Mobile Joystick (appears where touched on left zone; hidden when idle & hidden on desktop!)
   const [vPad, setVPad] = useState({ originX: 0, originY: 0, x: 0, y: 0, active: false });
@@ -1079,6 +1179,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     camYaw: 0,
     dots: [],
   });
+  const latestMapSnapshotRef = useRef<LiveMapSnapshot>(mapSnapshot);
+  latestMapSnapshotRef.current = mapSnapshot;
   const [nearbyInteract, setNearbyInteract] = useState<{
     id: string;
     kind:
@@ -1154,11 +1256,26 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   };
   const toggleWorldMap = () => {
     sound.play('confirm');
+    const curSim = simRef.current;
+    const baseSnap = latestMapSnapshotRef.current;
+    const liveSnap: LiveMapSnapshot = curSim
+      ? {
+          ...baseSnap,
+          px: curSim.px,
+          pz: curSim.pz,
+          facingAngle: curSim.facingAngle,
+          camYaw: camOrbitRef.current.yaw,
+        }
+      : baseSnap;
+    setMapSnapshot(liveSnap);
     onSyncWorldMapData?.({
-      biome: selectedBiome,
-      regionName: regionMeta.name,
-      snapshot: mapSnapshot,
+      biome: liveOverlandCityRef.current?.biome ?? selectedBiome,
+      regionName: liveOverlandCityRef.current?.name ?? regionMeta.name,
+      snapshot: liveSnap,
       onFastTravelCity: handleFastTravelCity,
+      navTargets: autoNavTargetsRef.current,
+      onAutoWalkTo: (x, z, label) => startAutoNavRef.current({ label, x, z }),
+      onOpenGlobalWorldMap: () => setWorldMapOpen(true),
     });
     onOpenPokemonManager('map', true);
   };
@@ -1739,6 +1856,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (externalPausedRef.current) return;
+      if (timeAlmanacOpenRef.current) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          sound.play('cancel');
+          setTimeAlmanacOpen(false);
+        }
+        return;
+      }
+      if (worldMapOpenRef.current) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          sound.play('cancel');
+          setWorldMapOpen(false);
+        }
+        return;
+      }
 
       if (phase === 'hub') {
         if (hubModal !== 'none') {
@@ -1757,14 +1890,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         }
         if (e.key === '1' || e.key === 'Enter') {
           e.preventDefault();
-          sound.play('confirm');
-          setGameMode('story');
-          setPhase('map_select');
+          handleLaunchRun();
         } else if (e.key === '2') {
           e.preventDefault();
-          sound.play('confirm');
-          setGameMode('endless');
-          setPhase('map_select');
+          handleLaunchRandomRogueRun();
         } else if (e.key === '3') {
           e.preventDefault();
           sound.play('confirm');
@@ -1944,8 +2073,19 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       }
       if (k === 'r') {
         e.preventDefault();
-        camOrbitRef.current = { yaw: 0, pitch: 0.24, zoom: 1.0 };
-        showBanner('3D 视角已复位', 1200);
+        const curMeta = CAM_MODE_META[camFollowModeRef.current];
+        camOrbitRef.current = { yaw: 0, pitch: curMeta.pitch, zoom: 1.0 };
+        showBanner(`🎥 3D 视角已复位（${curMeta.label}）`, 1400);
+        return;
+      }
+      if (k === 'g') {
+        e.preventDefault();
+        cycleCameraFollowMode();
+        return;
+      }
+      if (k === 'n') {
+        e.preventDefault();
+        toggleWorldMap();
         return;
       }
       if (k === 'z' || k === '[' || k === 'c' || k === ']') {
@@ -2089,7 +2229,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   // Mobile Back / Swipe-Back coordination with App.tsx
   const arenaHasCloseableLayer =
-    phase !== 'hub' || hubModal !== 'none' || profileOpen || squadEditorOpen || shopOpen || inRunTownShopOpen;
+    phase !== 'hub' ||
+    worldMapOpen ||
+    hubModal !== 'none' ||
+    profileOpen ||
+    squadEditorOpen ||
+    shopOpen ||
+    inRunTownShopOpen;
 
   useEffect(() => {
     onBackLayerActiveChange?.(arenaHasCloseableLayer);
@@ -2098,6 +2244,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   useEffect(() => {
     if (!onRegisterBackHandler) return;
     const handler = (): boolean => {
+      if (timeAlmanacOpen) {
+        sound.play('cancel');
+        setTimeAlmanacOpen(false);
+        return phase !== 'hub';
+      }
+      if (worldMapOpen) {
+        sound.play('cancel');
+        setWorldMapOpen(false);
+        return phase !== 'hub';
+      }
       if (inRunTownShopOpen) {
         sound.play('cancel');
         setInRunTownShopOpen(false);
@@ -2209,11 +2365,18 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
     window.addEventListener('resize', onResize);
 
-    // Rich HD-2D Sunlit 3D Lighting with Real-Time Directional Building & Bridge Shadows!
+    // Rich HD-2D Sunlit 3D Lighting + Dynamic Pooled Indoor Shop & Night Streetlamp PointLights!
     const hemi = new THREE.HemisphereLight(pal.ambientHex, 0x3b7a42, 1.18);
     scene.add(hemi);
     const sun = new THREE.DirectionalLight(pal.sunHex, 1.24);
     sun.position.set(34, 50, 28);
+    const indoorWarmLight = new THREE.PointLight(0xffebc2, 0, 42, 1.25);
+    const streetPointLights = [
+      new THREE.PointLight(0xffd982, 0, 34, 1.45),
+      new THREE.PointLight(0xffd982, 0, 34, 1.45),
+      new THREE.PointLight(0xffd982, 0, 34, 1.45),
+    ];
+    scene.add(indoorWarmLight, ...streetPointLights);
     if (enableShadows) {
       const smSize = prefsRef.current.graphicsQuality === 'low' ? 1024 : 1536;
       sun.castShadow = true;
@@ -2337,10 +2500,176 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       townsGroup.add(t.group);
       return t;
     });
+    const syncUpperFloors = () => {
+      setWalkableBuildingFloorZones3D(proceduralTowns.flatMap((t) => t.upperFloorZones));
+    };
+    const getBuildingPortals = (): AutoNavBuildingPortalInfo[] =>
+      proceduralTowns.flatMap((t) =>
+        t.interiors.map((b) => ({
+          id: b.id,
+          cx: b.cx,
+          cz: b.cz,
+          halfW: b.halfW,
+          halfD: b.halfD,
+          rotY: b.rotY,
+          dualDoors: b.dualDoors,
+        })),
+      );
+    syncUpperFloors();
     const activeTownIdRef = { current: null as string | null };
     let lastPosPersistAt = 0;
     const isInsideAnyTownPlaza = (wx: number, wz: number, pad = 2.5) =>
       proceduralTowns.some((t) => Math.hypot(wx - t.centerX, wz - t.centerZ) < t.safeRadius + pad);
+
+    // 2B-Nav. 3D Golden Breadcrumb Trail & Destination Beacon for 1-Click A* Auto-Pathfinding!
+    const autoNavTrailGroup = new THREE.Group();
+    autoNavTrailGroup.visible = false;
+    scene.add(autoNavTrailGroup);
+    const autoNavLineMat = new THREE.LineBasicMaterial({
+      color: 0xffd43b,
+      transparent: true,
+      opacity: 0.92,
+      depthTest: false,
+    });
+    const autoNavLineGeo = new THREE.BufferGeometry();
+    const autoNavLine = new THREE.Line(autoNavLineGeo, autoNavLineMat);
+    autoNavLine.renderOrder = 26;
+    autoNavTrailGroup.add(autoNavLine);
+    const autoNavBeaconRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.55, 0.92, 24),
+      new THREE.MeshBasicMaterial({
+        color: 0xffd43b,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.92,
+        depthTest: false,
+      }),
+    );
+    autoNavBeaconRing.rotation.x = -Math.PI / 2;
+    autoNavBeaconRing.renderOrder = 26;
+    autoNavTrailGroup.add(autoNavBeaconRing);
+
+    const rebuildAutoNavTrailVisuals = (fromX: number, fromZ: number, waypoints: AutoNavWaypoint[], fromIdx: number) => {
+      const pts: THREE.Vector3[] = [
+        new THREE.Vector3(fromX, getWalkableSurfaceHeight3D(fromX, fromZ) + 0.26, fromZ),
+      ];
+      for (let wi = fromIdx; wi < waypoints.length; wi++) {
+        const wp = waypoints[wi];
+        const prev = pts[pts.length - 1];
+        const segDist = Math.hypot(wp.x - prev.x, wp.z - prev.z);
+        const subSteps = Math.max(1, Math.min(24, Math.ceil(segDist / 3.5)));
+        for (let s = 1; s <= subSteps; s++) {
+          const t = s / subSteps;
+          const ix = prev.x + (wp.x - prev.x) * t;
+          const iz = prev.z + (wp.z - prev.z) * t;
+          pts.push(new THREE.Vector3(ix, getWalkableSurfaceHeight3D(ix, iz) + 0.26, iz));
+        }
+      }
+      autoNavLineGeo.setFromPoints(pts);
+      const goalWp = waypoints[waypoints.length - 1];
+      if (goalWp) {
+        autoNavBeaconRing.position.set(
+          goalWp.x,
+          getWalkableSurfaceHeight3D(goalWp.x, goalWp.z) + 0.24,
+          goalWp.z,
+        );
+      }
+      autoNavTrailGroup.visible = pts.length >= 2;
+    };
+
+    const syncAutoNavTargets = () => {
+      const items: AutoNavTargetItem[] = [];
+      const iconByKind: Record<string, { icon: string; sub: string; order: number }> = {
+        pokemon_center: { icon: '/sprites/items/potion.png', sub: '室内 · 乔伊恢复柜台', order: 1 },
+        poke_mart: { icon: '/sprites/items/poke-ball.png', sub: '室内 · 四层货架超市收银台', order: 2 },
+        hotel_rest: { icon: '/sprites/items/luxury-ball.png', sub: '室内 · 豪华休息大厅', order: 3 },
+        restaurant: { icon: '/sprites/items/sitrus-berry.png', sub: '室内 · 树果料理吧台', order: 4 },
+        transit_station: { icon: '/sprites/items/vs-seeker.png', sub: '室外 · 有轨电车站台', order: 5 },
+        npc_chat: { icon: '/sprites/items/poke-radar.png', sub: '街区居民交谈点', order: 7 },
+      };
+      for (const town of proceduralTowns) {
+        for (const pt of town.interactPoints) {
+          // Skip generic duplicate apartment NPC chat points (covered cleanly by numbered apartment entries below!)
+          if (pt.kind === 'npc_chat') continue;
+          const meta = iconByKind[pt.kind] ?? { icon: '/sprites/items/poke-ball.png', sub: town.name, order: 8 };
+          items.push({
+            id: pt.id,
+            label: pt.label,
+            subLabel: `${town.name} · ${meta.sub}`,
+            icon: meta.icon,
+            x: pt.x,
+            z: pt.z,
+          });
+        }
+        const houses = town.interiors.filter((b) => b.kind === 'house').slice(0, 3);
+        houses.forEach((h, hi) => {
+          const foyerX = h.cx + Math.sin(h.rotY) * (h.halfD * 0.28);
+          const foyerZ = h.cz + Math.cos(h.rotY) * (h.halfD * 0.28);
+          items.push({
+            id: `nav_house_${town.id}_${h.id}`,
+            label: `🏠 ${h.name || `${town.name}·训练家公寓 ${hi + 1}号`}`,
+            subLabel: '可步入精装四区公寓室内',
+            icon: '/sprites/items/soothe-bell.png',
+            x: foyerX,
+            z: foyerZ,
+          });
+        });
+      }
+      const priorityOf = (id: string) =>
+        id.includes('center')
+          ? 1
+          : id.includes('mart')
+            ? 2
+            : id.includes('hotel')
+              ? 3
+              : id.includes('rest')
+                ? 4
+                : id.includes('house')
+                  ? 5
+                  : id.includes('station')
+                    ? 6
+                    : id.includes('plaza')
+                      ? 7
+                      : 8;
+      items.sort((a, b) => priorityOf(a.id) - priorityOf(b.id));
+      setAutoNavTargets(items);
+    };
+    syncAutoNavTargets();
+
+    stopAutoNavRef.current = (silent = false) => {
+      if (autoNavRef.current) {
+        autoNavRef.current = null;
+        setAutoNavActiveLabel(null);
+        autoNavTrailGroup.visible = false;
+        if (!silent) {
+          sound.play('cancel');
+          showBanner('🧭 已停止自动寻路', 1500);
+        }
+      }
+    };
+
+    startAutoNavRef.current = ({ label, x, z }) => {
+      const curSim = simRef.current;
+      if (!curSim) return;
+      const allCols = proceduralTowns.flatMap((t) => t.colliders);
+      const portals = getBuildingPortals();
+      const canSurf = curSim.followers.some((f) => SPECIES_CATALOG[f.species].element === 'water');
+      const waypoints = findAutoWalkPath3D(curSim.px, curSim.pz, x, z, allCols, canSurf, portals);
+      autoNavRef.current = {
+        label,
+        goalX: x,
+        goalZ: z,
+        waypoints,
+        idx: 0,
+        stuckTimer: 0,
+        lastCheckX: curSim.px,
+        lastCheckZ: curSim.pz,
+      };
+      setAutoNavActiveLabel(label);
+      rebuildAutoNavTrailVisuals(curSim.px, curSim.pz, waypoints, 0);
+      sound.play('confirm');
+      showBanner(`🧭 自动寻路：前往「${label}」（按 WASD/方向键可随时手动接管）`, 2600);
+    };
 
     // 2C. Live 3D Weather Particle System (Rain Streaks / Falling Snowflakes synced to real GPS/city weather!)
     const WEATHER_PARTICLE_COUNT = 180;
@@ -3194,6 +3523,33 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         // ignore storage errors
       }
     }
+    // Guarantee spawn is on open dry land outside rivers & solid building footprints (prevents HK / coastal / building spawn traps!)
+    const isSafeDrySpawn = (cxTest: number, czTest: number) => {
+      if (getTerrainHeight3D(cxTest, czTest) < WATER_LEVEL_3D + 0.55) return false;
+      for (const t of proceduralTowns) {
+        if (Math.hypot(cxTest - t.centerX, czTest - t.centerZ) > t.safeRadius + 60) continue;
+        const probe = { x: cxTest, z: czTest };
+        resolveTownWallCollisions(probe, 1.4, t.colliders);
+        if (Math.hypot(probe.x - cxTest, probe.z - czTest) > 0.05) return false;
+      }
+      return true;
+    };
+    if (!isSafeDrySpawn(startPx, startPz)) {
+      let rescued = false;
+      for (let rad = 8; rad <= 120 && !rescued; rad += 10) {
+        for (let ai = 0; ai < 16; ai++) {
+          const ang = (ai / 16) * Math.PI * 2;
+          const candX = startPx + Math.cos(ang) * rad;
+          const candZ = startPz + Math.sin(ang) * rad;
+          if (isSafeDrySpawn(candX, candZ)) {
+            startPx = candX;
+            startPz = candZ;
+            rescued = true;
+            break;
+          }
+        }
+      }
+    }
     const startPy = getTerrainHeight3D(startPx, startPz);
     initialFollowers.forEach((f, idx) => {
       const ang = (idx * Math.PI * 2) / Math.max(1, initialFollowers.length) + 0.6;
@@ -3252,12 +3608,56 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     syncFollowersView();
     updateWorldAround(0, 0);
 
-    // When real-Earth NASA/SRTM DEM elevation tiles finish streaming, rebuild terrain, flora AND re-snap city height!
+    // When real-Earth NASA/SRTM DEM elevation tiles finish streaming, rebuild coast-clipped city ONCE in 1:1 lockstep with 2D map!
+    let rebuiltCoastClippedTown = false;
     const unsubGeoDem = subscribeGeoDemLoaded(() => {
       lastChunkX = NaN;
       lastChunkZ = NaN;
-      for (const town of proceduralTowns) {
-        town.group.position.y = getTerrainHeight3D(town.centerX, town.centerZ);
+      if (!rebuiltCoastClippedTown && activeGeoNow) {
+        rebuiltCoastClippedTown = true;
+        clearTownLayoutCache();
+        for (const oldT of proceduralTowns) {
+          townsGroup.remove(oldT.group);
+        }
+        proceduralTowns.length = 0;
+        for (const spec of townSpecs) {
+          const rebuilt = buildProceduralTown3D(
+            spec.id,
+            spec.x,
+            spec.z,
+            spec.seed,
+            (x, z) => getTerrainHeight3D(x, z),
+            spec.name,
+            spec.plazaRadius,
+            spec.landmarkCityId,
+          );
+          townsGroup.add(rebuilt.group);
+          proceduralTowns.push(rebuilt);
+        }
+        syncUpperFloors();
+        syncAutoNavTargets();
+        const curSimNow = simRef.current;
+        if (curSimNow && !isSafeDrySpawn(curSimNow.px, curSimNow.pz)) {
+          for (let rad = 10; rad <= 120; rad += 12) {
+            let escaped = false;
+            for (let ai = 0; ai < 16; ai++) {
+              const ang = (ai / 16) * Math.PI * 2;
+              const cxCand = curSimNow.px + Math.cos(ang) * rad;
+              const czCand = curSimNow.pz + Math.sin(ang) * rad;
+              if (isSafeDrySpawn(cxCand, czCand)) {
+                curSimNow.px = cxCand;
+                curSimNow.pz = czCand;
+                escaped = true;
+                break;
+              }
+            }
+            if (escaped) break;
+          }
+        }
+      } else {
+        for (const town of proceduralTowns) {
+          town.group.position.y = getTerrainHeight3D(town.centerX, town.centerZ);
+        }
       }
       for (const [, entry] of placedFloraCells) {
         for (const obj of entry.objs) floraGroup.remove(obj);
@@ -3982,7 +4382,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const spawnEnemy3D = (
       x: number,
       z: number,
-      species: SpeciesId,
+      rawSpecies: SpeciesId,
       hp: number,
       speed: number,
       dmg: number,
@@ -3993,6 +4393,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       const isBoss = Boolean(opts?.isBoss);
       const isTrainer = Boolean(opts?.isTrainer);
       const isAquatic = Boolean(opts?.isAquatic);
+      let species: SpeciesId = rawSpecies;
+      if (!isBoss && !isTrainer && !isAquatic && adventureStyleRef.current === 'care_world' && Math.random() < 0.62) {
+        const ecoPool = getSolarEcologicalSpeciesPool(solarInfoRef.current.phase);
+        if (ecoPool.length > 0) {
+          species = ecoPool[Math.floor(Math.random() * ecoPool.length)];
+        }
+      }
       const rawQ: MonsterQuality = isBoss
         ? 'epic'
         : isTrainer
@@ -4515,7 +4922,131 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     let lastTs = performance.now();
     let lastRenderTs = performance.now();
     let fpsSmooth = 60;
+    let lastSolarUiSyncMs = 0;
     const projVec = new THREE.Vector3();
+    const tmpSkyCol = new THREE.Color();
+    const tmpMidCol = new THREE.Color();
+    const tmpHorCol = new THREE.Color();
+    const tmpFogCol = new THREE.Color();
+    const tmpCloudLit = new THREE.Color();
+    const tmpCloudShade = new THREE.Color();
+
+    const applyLiveSolarAtmosphere = (
+      lat: number,
+      lng: number,
+      focusX: number,
+      focusY: number,
+      focusZ: number,
+      dtSec: number,
+      nowMs: number,
+    ) => {
+      const solar = computeSolarDayNight(
+        lat,
+        lng,
+        nowMs,
+        prefsRef.current.worldTimeMode ?? 'auto',
+      );
+      solarInfoRef.current = solar;
+      if (nowMs - lastSolarUiSyncMs > 1800) {
+        lastSolarUiSyncMs = nowMs;
+        setSolarInfo(solar);
+      }
+
+      const wKind = liveWeatherRef.current.kind;
+      const weatherDim =
+        wKind === 'storm' ? 0.62 : wKind === 'rain' ? 0.76 : wKind === 'cloudy' ? 0.88 : 1.0;
+      const wantSunInt = solar.sunIntensity * weatherDim;
+      const wantHemiInt = solar.hemiIntensity * (wKind === 'snow' ? 1.1 : 1.0);
+      const kLerp = Math.min(1, dtSec * 3.2);
+
+      sun.intensity += (wantSunInt - sun.intensity) * kLerp;
+      hemi.intensity += (wantHemiInt - hemi.intensity) * kLerp;
+      sun.color.lerp(tmpSkyCol.setHex(solar.sunHex), kLerp);
+      hemi.color.lerp(tmpSkyCol.setHex(solar.hemiSkyHex), kLerp);
+      hemi.groundColor.lerp(tmpSkyCol.setHex(solar.hemiGroundHex), kLerp);
+
+      tmpSkyCol.setHex(solar.skyHex);
+      tmpHorCol.setHex(solar.horizonHex);
+      tmpMidCol.copy(tmpHorCol).lerp(tmpSkyCol, 0.52);
+      tmpFogCol.setHex(solar.fogHex);
+
+      if (scene.background instanceof THREE.Color) {
+        scene.background.lerp(tmpSkyCol, kLerp);
+      }
+      if (scene.fog instanceof THREE.Fog) {
+        scene.fog.color.lerp(tmpFogCol, kLerp);
+      }
+      const skyU = horizonBackdrop.userData?.skyUniforms;
+      if (skyU) {
+        skyU.uZenith?.value?.lerp?.(tmpSkyCol, kLerp);
+        skyU.uMid?.value?.lerp?.(tmpMidCol, kLerp);
+        skyU.uHorizon?.value?.lerp?.(tmpHorCol, kLerp);
+        skyU.uFogColor?.value?.lerp?.(tmpFogCol, kLerp);
+        const df = solar.daylightFactor;
+        tmpCloudLit.setRGB(0.28 + df * 0.72, 0.32 + df * 0.67, 0.46 + df * 0.54);
+        tmpCloudShade.setRGB(0.16 + df * 0.58, 0.21 + df * 0.61, 0.34 + df * 0.58);
+        skyU.uCloudLit?.value?.lerp?.(tmpCloudLit, kLerp);
+        skyU.uCloudShade?.value?.lerp?.(tmpCloudShade, kLerp);
+      }
+
+      // Position DirectionalLight along real solar azimuth & altitude (with crisp elevated moonlight angle at night!)
+      const elevClamped = Math.max(0.42, (Math.abs(solar.solarElevationDeg) * Math.PI) / 180);
+      const az = solar.solarAzimuthRad || 0.75;
+      const sDist = 62;
+      const sSnapX = Math.round(focusX * 0.5) * 2;
+      const sSnapZ = Math.round(focusZ * 0.5) * 2;
+      sun.position.set(
+        sSnapX + Math.sin(az) * Math.cos(elevClamped) * sDist,
+        focusY + Math.sin(elevClamped) * sDist,
+        sSnapZ + Math.cos(az) * Math.cos(elevClamped) * sDist,
+      );
+      sun.target.position.set(sSnapX, focusY, sSnapZ);
+      sun.target.updateMatrixWorld();
+
+      // Synchronize city-wide night building windows, streetlamp halos/pools, and dynamic 3D PointLights!
+      setGlobalNightLampGlow3D(solar.lampGlow);
+
+      let nearestBld: EnterableBuildingInterior | null = null;
+      let nearestBldDist = 48;
+      let nearestLamps: { x: number; y: number; z: number; d: number }[] = [];
+      for (const twn of proceduralTowns) {
+        if (Math.hypot(twn.centerX - focusX, twn.centerZ - focusZ) > twn.safeRadius + 120) continue;
+        for (const bInt of twn.interiors) {
+          const db = Math.hypot(bInt.cx - focusX, bInt.cz - focusZ);
+          if (db < nearestBldDist) {
+            nearestBldDist = db;
+            nearestBld = bInt;
+          }
+        }
+        if (solar.lampGlow > 0.05 && twn.streetLampPositions) {
+          for (const lp of twn.streetLampPositions) {
+            const dl = Math.hypot(lp.x - focusX, lp.z - focusZ);
+            if (dl < 56) nearestLamps.push({ x: lp.x, y: lp.y, z: lp.z, d: dl });
+          }
+        }
+      }
+      if (nearestBld) {
+        indoorWarmLight.position.set(nearestBld.cx, nearestBld.baseY + 3.6, nearestBld.cz);
+        indoorWarmLight.intensity = 1.6 + solar.lampGlow * 1.1;
+      } else {
+        indoorWarmLight.intensity = 0;
+      }
+      if (solar.lampGlow > 0.05 && nearestLamps.length > 0) {
+        nearestLamps.sort((a, b) => a.d - b.d);
+        for (let li = 0; li < streetPointLights.length; li++) {
+          const pl = streetPointLights[li];
+          const src = nearestLamps[li];
+          if (src) {
+            pl.position.set(src.x, src.y, src.z);
+            pl.intensity = solar.lampGlow * 1.75;
+          } else {
+            pl.intensity = 0;
+          }
+        }
+      } else {
+        for (const pl of streetPointLights) pl.intensity = 0;
+      }
+    };
 
     const animate = (now: number) => {
       const dt = Math.min(0.05, (now - lastTs) / 1000);
@@ -4531,11 +5062,24 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
         // Scenic Elevated Panoramic 3D Diorama Overlook during Hub & Map Select (Living Hero, Camera-Facing Squad, Meadow & Flying Wild Pokémon!)
         if (phase !== 'playing') {
-          // Completely pause WebGL 3D rendering while the Handheld Console / Manager modal covers the screen!
-          if (externalPausedRef.current) {
+          // Completely pause WebGL 3D rendering while the Handheld Console or World Map covers the screen!
+          if (externalPausedRef.current || worldMapOpenRef.current) {
             rafId = window.requestAnimationFrame(animate);
             return;
           }
+          const tourNow = metaRef.current.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+          const hubCity =
+            (tourNow.currentCityId ? WORLD_CITIES.find((c) => c.id === tourNow.currentCityId) : null) ??
+            WORLD_CITIES[0];
+          applyLiveSolarAtmosphere(
+            tourNow.homeCoords?.lat ?? hubCity.lat,
+            tourNow.homeCoords?.lng ?? hubCity.lng,
+            0,
+            0,
+            0,
+            dt,
+            Date.now(),
+          );
           const t = now * 0.001;
           const isMapPreview = phase === 'map_select';
           const orbit = t * 0.085 + 0.42;
@@ -4602,28 +5146,40 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             const fz = Math.sin(baseAng + Math.cos(t * 0.32 + idx) * 0.12) * rad;
             const gy = getTerrainHeight3D(fx, fz);
             const cheer = (t + idx * 1.35) % 4.2;
-            const hop = cheer < 0.65 ? Math.abs(Math.sin((cheer / 0.65) * Math.PI * 2)) * 0.38 : Math.abs(Math.sin(t * 3.4 + idx)) * 0.08;
+            const isCheering = cheer < 0.62;
+            const isHubFlightForm =
+              (f.species === 'charmander' && f.stage === 'adult') ||
+              (f.species === 'dratini' && f.stage === 'adult') ||
+              f.species === 'gastly' ||
+              f.species === 'mew';
+            const hop = isHubFlightForm
+              ? 0.65 + Math.sin(t * 3.8 + idx) * 0.18
+              : isCheering
+                ? Math.abs(Math.sin((cheer / 0.62) * Math.PI * 2)) * 0.36
+                : 0;
             const sc = getPokemonWorldScale3D(f.species, f.stage);
             if (f.sprite) {
               f.sprite.position.set(fx, gy + hop - 0.04, fz);
               f.sprite.rotation.set(tiltX, prevYaw, 0);
               if (f.pmdSheet?.ready) {
-                // Face gently toward camera / hero so every companion looks expressive from any orbit angle!
-                const lookDirX = Math.sin(t * 0.55 + idx * 1.4);
-                const lookDirZ = Math.cos(t * 0.55 + idx * 1.4);
+                // Stand calmly in neutral frame 0 when idle; only animate limbs during brief cheer hop or flight!
+                const lookDirX = Math.sin(t * 0.25 + idx * 1.4);
+                const lookDirZ = Math.cos(t * 0.25 + idx * 1.4);
                 const relFwd = lookDirX * cfX + lookDirZ * cfZ;
                 const relRight = lookDirX * crX + lookDirZ * crZ;
                 const dirIdx = pickPmdDirIndex(relFwd, relRight);
+                const hubAnimT = isHubFlightForm || isCheering ? t * 1.1 + idx * 0.5 : 0;
                 (f.sprite.material as THREE.MeshBasicMaterial).map = samplePmd8DirFrame(
                   f.pmdSheet,
                   dirIdx,
-                  t * 1.1 + idx * 0.5,
+                  hubAnimT,
                 );
                 f.sprite.scale.set(sc, sc, 1);
               } else if (f.animSheet) {
+                const hubAnimT = isHubFlightForm || isCheering ? t * 1.15 + idx * 0.4 : 0;
                 (f.sprite.material as THREE.MeshBasicMaterial).map = sampleAnimatedFrame(
                   f.animSheet,
-                  t * 1.15 + idx * 0.4,
+                  hubAnimT,
                 );
                 f.sprite.scale.set(sc, sc, 1);
               }
@@ -4829,8 +5385,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         heroEmoteSprite.visible = false;
         petEmoteSprite.visible = false;
 
-        // Pause 3D GPU rendering when Handheld Console / Manager overlay is open on top of combat!
-        if (externalPausedRef.current) {
+        // Pause 3D GPU rendering when Handheld Console or Global World Map overlay covers the screen!
+        if (externalPausedRef.current || worldMapOpenRef.current) {
           rafId = window.requestAnimationFrame(animate);
           return;
         }
@@ -4845,7 +5401,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         lastRenderTs = now;
         fpsSmooth = fpsSmooth * 0.88 + (1000 / renderGap) * 0.12;
 
-        if (!pausedRef.current && !externalPausedRef.current && !inRunTownShopOpenRef.current && !endedRef.current) {
+        if (!pausedRef.current && !externalPausedRef.current && !worldMapOpenRef.current && !inRunTownShopOpenRef.current && !endedRef.current) {
           sim.elapsed += dt;
           if (sim.invuln > 0) sim.invuln = Math.max(0, sim.invuln - dt);
           if (sim.timers.safeHealCd > 0) sim.timers.safeHealCd = Math.max(0, sim.timers.safeHealCd - dt);
@@ -4910,10 +5466,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             mz = pointerSteerRef.current.nz;
           }
 
-          const mLen = Math.hypot(mx, mz);
+          let mLen = Math.hypot(mx, mz);
           if (mLen > 1) {
             mx /= mLen;
             mz /= mLen;
+            mLen = 1;
           }
 
           // Camera-yaw rotation keys (Z/[ left, C/] right) + align movement to active 3D camera yaw!
@@ -4921,8 +5478,67 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           if (ks.has('c') || ks.has(']')) camOrbitRef.current.yaw += dt * 1.9;
           const cy = Math.cos(camOrbitRef.current.yaw);
           const sy = Math.sin(camOrbitRef.current.yaw);
-          const worldMx = mx * cy + mz * sy;
-          const worldMz = -mx * sy + mz * cy;
+          let worldMx = mx * cy + mz * sy;
+          let worldMz = -mx * sy + mz * cy;
+
+          // 1B. A* Auto-Pathfinding Steering (Cancels instantly on manual input; threads cleanly through building doorways!)
+          const navNow = autoNavRef.current;
+          if (mLen > 0.08 && navNow) {
+            autoNavRef.current = null;
+            setAutoNavActiveLabel(null);
+            autoNavTrailGroup.visible = false;
+            showBanner('🕹️ 已切换为手动移动控制', 1400);
+          } else if (navNow && mLen <= 0.08) {
+            while (
+              navNow.idx < navNow.waypoints.length - 1 &&
+              Math.hypot(navNow.waypoints[navNow.idx].x - sim.px, navNow.waypoints[navNow.idx].z - sim.pz) < 1.55
+            ) {
+              navNow.idx += 1;
+              rebuildAutoNavTrailVisuals(sim.px, sim.pz, navNow.waypoints, navNow.idx);
+            }
+            const curWp = navNow.waypoints[navNow.idx];
+            const finalWp = navNow.waypoints[navNow.waypoints.length - 1];
+            const distToFinal = finalWp ? Math.hypot(finalWp.x - sim.px, finalWp.z - sim.pz) : 0;
+            if (!curWp || distToFinal < 1.35) {
+              const arrivedLabel = navNow.label;
+              autoNavRef.current = null;
+              setAutoNavActiveLabel(null);
+              autoNavTrailGroup.visible = false;
+              sound.play('confirm');
+              showBanner(`✅ 已抵达「${arrivedLabel}」！`, 2400);
+            } else {
+              const ndx = curWp.x - sim.px;
+              const ndz = curWp.z - sim.pz;
+              const nd = Math.hypot(ndx, ndz) || 1;
+              worldMx = ndx / nd;
+              worldMz = ndz / nd;
+              mLen = 1.0;
+              autoNavBeaconRing.scale.setScalar(0.92 + Math.sin(sim.elapsed * 6.5) * 0.14);
+              navNow.stuckTimer += dt;
+              if (navNow.stuckTimer >= 0.9) {
+                const moved = Math.hypot(sim.px - navNow.lastCheckX, sim.pz - navNow.lastCheckZ);
+                navNow.lastCheckX = sim.px;
+                navNow.lastCheckZ = sim.pz;
+                navNow.stuckTimer = 0;
+                if (moved < 0.25) {
+                  const allCols = proceduralTowns.flatMap((t) => t.colliders);
+                  const portals = getBuildingPortals();
+                  const canSurf = sim.followers.some((f) => SPECIES_CATALOG[f.species].element === 'water');
+                  navNow.waypoints = findAutoWalkPath3D(
+                    sim.px,
+                    sim.pz,
+                    navNow.goalX,
+                    navNow.goalZ,
+                    allCols,
+                    canSurf,
+                    portals,
+                  );
+                  navNow.idx = 0;
+                  rebuildAutoNavTrailVisuals(sim.px, sim.pz, navNow.waypoints, 0);
+                }
+              }
+            }
+          }
 
           // Animate 3D pixel wave swells & sparkling crests on localized scenic lakes!
           waterMat.uniforms.uTime.value = sim.elapsed;
@@ -4934,7 +5550,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const moveSpeed = 7.6 * sim.speedMult;
           const nextPx = sim.px + worldMx * moveSpeed * dt;
           const nextPz = sim.pz + worldMz * moveSpeed * dt;
-          const nextGroundY = getWalkableSurfaceHeight3D(nextPx, nextPz);
+          const nextGroundY = getWalkableSurfaceHeight3D(nextPx, nextPz, sim.py);
           const enteringDeepWater = nextGroundY < WATER_LEVEL_3D - 0.14;
           if (enteringDeepWater && !hasWaterSurfer) {
             if (surfWarnCdRef.current <= 0 && mLen > 0.1) {
@@ -4946,7 +5562,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             sim.px = nextPx;
             sim.pz = nextPz;
           }
-          const rawGroundY = getWalkableSurfaceHeight3D(sim.px, sim.pz);
+          const rawGroundY = getWalkableSurfaceHeight3D(sim.px, sim.pz, sim.py);
           const surfingNow = rawGroundY < WATER_LEVEL_3D - 0.1 && hasWaterSurfer;
           const groundY = surfingNow ? WATER_LEVEL_3D + 0.12 : rawGroundY;
           surfRingMesh.visible = surfingNow;
@@ -4980,10 +5596,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             sim.walkDist += mLen * moveSpeed * dt;
           }
 
-          // Camera-Relative 360° Directional Sprite Selection for Protagonist + Upright Y-Billboard Foreshortening!
+          // Camera-Relative 360° Directional Sprite Selection for Protagonist, Citizens & Trainers + Upright Y-Billboard Foreshortening!
           const camYawNow = camOrbitRef.current.yaw;
           const camPitchNow = camOrbitRef.current.pitch;
           const bbTiltX = -camPitchNow * BILLBOARD_PITCH_TILT;
+          const camFwdX = -Math.sin(camYawNow);
+          const camFwdZ = -Math.cos(camYawNow);
+          const camRightX = Math.cos(camYawNow);
+          const camRightZ = -Math.sin(camYawNow);
           windClock += dt;
           syncFloraBillboards(camYawNow, camPitchNow, windClock);
           // Animate live 3D Weather Particles (Rain / Storm / Snow) + Procedural Town Trains + Town Colliders!
@@ -5012,27 +5632,18 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             posAttr.needsUpdate = true;
             weatherPoints.position.set(sim.px, sim.py, sim.pz);
           }
-          // Live Real-World Weather Lighting Adaptation (sunny gold / silver overcast / cool rain / winter snow!)
-          const targetSunInt =
-            curWeatherKind === 'storm'
-              ? 0.72
-              : curWeatherKind === 'rain'
-                ? 0.84
-                : curWeatherKind === 'cloudy'
-                  ? 1.02
-                  : curWeatherKind === 'snow'
-                    ? 1.16
-                    : 1.28;
-          const targetHemiInt =
-            curWeatherKind === 'storm'
-              ? 0.96
-              : curWeatherKind === 'rain'
-                ? 1.08
-                : curWeatherKind === 'snow'
-                  ? 1.32
-                  : 1.18;
-          sun.intensity += (targetSunInt - sun.intensity) * Math.min(1, dt * 2.0);
-          hemi.intensity += (targetHemiInt - hemi.intensity) * Math.min(1, dt * 2.0);
+          // Real Astronomical Lat/Lng Day-Night & Sunrise-Sunset Lighting + Weather Adaptation!
+          const liveGeo = worldToGeo(sim.px, sim.pz);
+          const tourCoords = metaRef.current.worldTour?.homeCoords;
+          applyLiveSolarAtmosphere(
+            liveGeo?.lat ?? tourCoords?.lat ?? 31.23,
+            liveGeo?.lng ?? tourCoords?.lng ?? 121.47,
+            sim.px,
+            sim.py,
+            sim.pz,
+            dt,
+            Date.now(),
+          );
 
           // Periodically save player world coordinates so re-entering resumes at last exit spot!
           if (!getActiveGeoTerrainOrigin() && now - lastPosPersistAt > 2000) {
@@ -5050,7 +5661,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           let closestTownPoint: TownInteractPoint | null = null;
           let closestTownDist = 999;
           let activeTownNow: ProceduralTownInstance | null = null;
-          let activeInteriorIdNow: string | null = null;
+          let activeInteriorNow: EnterableBuildingInterior | null = null;
           for (const town of proceduralTowns) {
             if (town.trainGroup && town.trainBaseX !== undefined) {
               town.trainGroup.position.x = town.trainBaseX + Math.sin(windClock * 0.28) * 6.5;
@@ -5080,15 +5691,50 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 const wy = getTerrainHeight3D(town.centerX + v.group.position.x, town.centerZ + v.group.position.z);
                 v.group.position.y = wy - town.group.position.y + 0.16;
               }
-              // Strolling GBA chibi pixel citizens around the Grand Plaza!
+              // Strolling GBA chibi pixel citizens (Plaza & Sidewalk Pedestrians!) with authentic 4-direction leg stride animations
               for (const w of town.animatedParts.walkers) {
                 w.angle += w.speed * dt;
-                w.phase += dt * 7.5;
-                const wxLocal = w.cx + Math.cos(w.angle) * w.radius;
-                const wzLocal = w.cz + Math.sin(w.angle) * w.radius;
+                w.phase += dt * 6.4;
+                let wxLocal: number;
+                let wzLocal: number;
+                let wDirX: number;
+                let wDirZ: number;
+                if (
+                  w.mode === 'sidewalk_patrol' &&
+                  w.x1 !== undefined &&
+                  w.z1 !== undefined &&
+                  w.x2 !== undefined &&
+                  w.z2 !== undefined
+                ) {
+                  const t = 0.5 + 0.5 * Math.sin(w.angle);
+                  wxLocal = w.x1 + (w.x2 - w.x1) * t;
+                  wzLocal = w.z1 + (w.z2 - w.z1) * t;
+                  const dirSign = Math.cos(w.angle) * w.speed >= 0 ? 1 : -1;
+                  const segDx = w.x2 - w.x1;
+                  const segDz = w.z2 - w.z1;
+                  const segLen = Math.hypot(segDx, segDz) || 1;
+                  wDirX = (segDx / segLen) * dirSign;
+                  wDirZ = (segDz / segLen) * dirSign;
+                } else {
+                  wxLocal = w.cx + Math.cos(w.angle) * w.radius;
+                  wzLocal = w.cz + Math.sin(w.angle) * w.radius;
+                  const sgn = w.speed >= 0 ? 1 : -1;
+                  wDirX = -Math.sin(w.angle) * sgn;
+                  wDirZ = Math.cos(w.angle) * sgn;
+                }
                 const wy = getTerrainHeight3D(town.centerX + wxLocal, town.centerZ + wzLocal) - town.group.position.y + 0.22;
-                const hop = Math.abs(Math.sin(w.phase)) * 0.15;
-                w.mesh.position.set(wxLocal, wy + hop, wzLocal);
+                const wRelFwd = wDirX * camFwdX + wDirZ * camFwdZ;
+                const wRelRight = wDirX * camRightX + wDirZ * camRightZ;
+                if (w.walkFrames) {
+                  (w.mesh.material as THREE.MeshBasicMaterial).map = sampleHumanWalkFrame(
+                    w.walkFrames,
+                    wRelFwd,
+                    wRelRight,
+                    w.phase,
+                    Math.abs(w.speed) > 0.005,
+                  );
+                }
+                w.mesh.position.set(wxLocal, wy, wzLocal);
                 w.mesh.rotation.set(bbTiltX, camYawNow, 0);
                 w.shadow.position.set(wxLocal, wy + 0.04, wzLocal);
               }
@@ -5099,26 +5745,64 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               activeTownNow = town;
             }
             if (distToTown < collisionRadius) {
-              // Player wall collision across the ENTIRE expanded metropolitan landmass (NEVER clip into any building!)
+              // Player floor-aware wall & solid 3D furniture collision across 1F & 2F!
               const pPos = { x: sim.px, z: sim.pz };
-              resolveTownWallCollisions(pPos, 0.92, town.colliders);
+              resolveTownWallCollisions(pPos, 0.88, town.colliders, sim.py);
               sim.px = pPos.x;
               sim.pz = pPos.z;
+              // Re-sample walkable floor/stair height after collision push-out so 2F stairs & slabs stay rock-solid
+              const postColFloorY = getWalkableSurfaceHeight3D(sim.px, sim.pz, sim.py);
+              if (!surfingNow && sim.vy <= 0 && Math.abs(postColFloorY - sim.py) < 0.85) {
+                sim.py = postColFloorY;
+              }
 
-              // Walkable Building Interiors: Smooth cutaway transparent roof ONLY when player walks inside via the doorway!
+              // Proximity-activated 1F & 2F doors: default CLOSED, smoothly slide/swing OPEN when Red or Pikachu walks up!
+              const doorActors: { x: number; y: number; z: number }[] = [{ x: sim.px, y: sim.py, z: sim.pz }];
+              if (sim.followers[0]) {
+                doorActors.push({ x: sim.followers[0].x, y: sim.followers[0].y, z: sim.followers[0].z });
+              }
+              updateProximityAutoDoors3D(town.autoDoors, doorActors, dt);
+
+              // Keep ALL buildings & elevated viaducts 100% SOLID & OPAQUE (cameraRig3D zooms smoothly inside rooms & under viaducts!)
               for (const bInt of town.interiors) {
                 const inside = isInsideBuildingInterior(sim.px, sim.pz, bInt);
-                if (inside) activeInteriorIdNow = bInt.id;
-                const targetAlpha = inside ? 0.14 : 1.0;
-                if (Math.abs(bInt.cutawayAlpha - targetAlpha) > 0.015) {
-                  bInt.cutawayAlpha += (targetAlpha - bInt.cutawayAlpha) * Math.min(1, dt * 10);
-                  if (Math.abs(bInt.cutawayAlpha - targetAlpha) <= 0.02) bInt.cutawayAlpha = targetAlpha;
-                  setBuildingExteriorOpacity(bInt.exteriorGroup, bInt.cutawayAlpha);
-                }
-                bInt.interiorGroup.visible = bInt.cutawayAlpha < 0.95;
-                if (bInt.interiorGroup.visible) {
-                  for (const npc of bInt.npcSprites) {
-                    npc.rotation.set(bbTiltX, camYawNow, 0);
+                if (inside) activeInteriorNow = bInt;
+                bInt.exteriorGroup.visible = true;
+                bInt.interiorGroup.visible = true;
+                for (let ni = 0; ni < bInt.npcSprites.length; ni++) {
+                  const npc = bInt.npcSprites[ni];
+                  // Indoor NPCs live inside rotated `shellGroup`, so subtract `bInt.rotY` to face the camera squarely!
+                  npc.rotation.set(bbTiltX, camYawNow - bInt.rotY, 0);
+                  if (npc.userData?.walkFrames) {
+                    if (ni > 0) {
+                      if (npc.userData.baseX === undefined) {
+                        npc.userData.baseX = npc.position.x;
+                        npc.userData.baseZ = npc.position.z;
+                      }
+                      const sAng = windClock * 0.95 + ni * 2.1;
+                      const offsetX = Math.sin(sAng) * 1.45;
+                      const velSign = Math.cos(sAng) >= 0 ? 1 : -1;
+                      npc.position.x = (npc.userData.baseX as number) + offsetX;
+                      const wDirX = Math.cos(bInt.rotY) * velSign;
+                      const wDirZ = -Math.sin(bInt.rotY) * velSign;
+                      const nRelFwd = wDirX * camFwdX + wDirZ * camFwdZ;
+                      const nRelRight = wDirX * camRightX + wDirZ * camRightZ;
+                      (npc.material as THREE.MeshBasicMaterial).map = sampleHumanWalkFrame(
+                        npc.userData.walkFrames as Record<string, THREE.CanvasTexture>,
+                        nRelFwd,
+                        nRelRight,
+                        windClock * 5.8 + ni,
+                        true,
+                      );
+                    } else {
+                      (npc.material as THREE.MeshBasicMaterial).map = sampleHumanWalkFrame(
+                        npc.userData.walkFrames as Record<string, THREE.CanvasTexture>,
+                        camFwdZ,
+                        camRightZ,
+                        windClock * 1.5,
+                        false,
+                      );
+                    }
                   }
                 }
               }
@@ -5208,7 +5892,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     try { document.exitPointerLock(); } catch {}
                   }
                   sound.play('confirm');
-                  setPhase('world_map');
+                  setWorldMapOpen(true);
                   return;
                 }
                 if (tp.kind === 'hotel_rest') {
@@ -5332,10 +6016,6 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 }
               }
             : null;
-          const camFwdX = -Math.sin(camYawNow);
-          const camFwdZ = -Math.cos(camYawNow);
-          const camRightX = Math.cos(camYawNow);
-          const camRightZ = -Math.sin(camYawNow);
           const pFaceX = Math.sin(sim.facingAngle);
           const pFaceZ = Math.cos(sim.facingAngle);
           const pRelFwd = pFaceX * camFwdX + pFaceZ * camFwdZ;
@@ -5452,26 +6132,34 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
           }
 
-          // 2. Calm, Tactical Region Wild Pokémon Spawns (Tankier HP, Lower Density, Plus Leaping River/Lake Aquatic Spawns!)
+          // 2. Mode-Specific Spawning:
+          //    - 'vampire_rogue' (随机冒险模式): Classic Vampire-Survivors monster waves, ring surges, XP gem rain & fast Bosses!
+          //    - 'care_world' (默认开始冒险 · 养成实景模式): Peaceful cities + calm, sparse natural wild encounters outside town!
+          const isRogueMode = adventureStyleRef.current === 'vampire_rogue';
           const regionIdx = Math.max(0, MAP_REGIONS.findIndex((r) => r.id === selectedBiome));
           const regionMult = 1 + regionIdx * 0.2;
           sim.timers.spawn -= dt;
-          const spawnRate = Math.max(
-            1.15,
-            (2.15 - sim.elapsed * 0.005) / (difficultyId === 'nightmare' ? 1.25 : difficultyId === 'hard' ? 1.12 : 1),
-          );
+          const spawnRate = isRogueMode
+            ? Math.max(
+                0.42,
+                (0.95 - sim.elapsed * 0.004) /
+                  (difficultyId === 'nightmare' ? 1.35 : difficultyId === 'hard' ? 1.18 : 1),
+              )
+            : 4.2;
+          const maxWildCap = isRogueMode ? 42 : 6;
           const activeWildCount = sim.enemies.filter((e) => !e.knockedOut && !e.isBoss).length;
-          if (sim.timers.spawn <= 0 && activeWildCount < 16) {
+          if (sim.timers.spawn <= 0 && activeWildCount < maxWildCap) {
             sim.timers.spawn = spawnRate;
-            const batch = sim.elapsed > 75 ? 2 : 1;
+            const isRogueSurge = isRogueMode && sim.elapsed > 18 && Math.floor(sim.elapsed) % 25 === 0;
+            const batch = isRogueSurge ? 6 : isRogueMode ? (sim.elapsed > 40 ? 3 : 2) : 1;
             for (let b = 0; b < batch; b++) {
-              const ang = Math.random() * Math.PI * 2;
-              const dist = 16 + Math.random() * 8;
+              const ang = isRogueSurge ? (b / batch) * Math.PI * 2 + Math.random() * 0.3 : Math.random() * Math.PI * 2;
+              const dist = isRogueMode ? 14 + Math.random() * 7 : 18 + Math.random() * 9;
               const ex = sim.px + Math.cos(ang) * dist;
               const ez = sim.pz + Math.sin(ang) * dist;
               if (
                 nearbyZones.some((z) => Math.hypot(ex - z.x, ez - z.z) < z.radius + 1.5) ||
-                isInsideAnyTownPlaza(ex, ez, 4)
+                (!isRogueMode && isInsideAnyTownPlaza(ex, ez, 8))
               ) {
                 continue;
               }
@@ -5482,23 +6170,28 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               const sp = inWater
                 ? waterPool[Math.floor(Math.random() * waterPool.length)]
                 : activeWildPool[Math.floor(Math.random() * activeWildPool.length)];
-              const hpScale = (1 + sim.elapsed / 32) * regionMult * diffMeta.enemyHpMult;
+              const hpScale = (1 + sim.elapsed / (isRogueMode ? 40 : 50)) * regionMult * diffMeta.enemyHpMult;
               spawnEnemy3D(
                 ex,
                 ez,
                 sp,
-                Math.round(135 * hpScale),
-                2.75 + Math.min(1.4, sim.elapsed * 0.012),
-                Math.round((9 + Math.floor(sim.elapsed / 30) * 2) * regionMult * diffMeta.enemyDmgMult),
+                Math.round((isRogueMode ? 78 : 120) * hpScale),
+                isRogueMode ? 3.45 + Math.min(1.8, sim.elapsed * 0.015) : 2.35,
+                Math.round((isRogueMode ? 8 + Math.floor(sim.elapsed / 28) * 2 : 6) * regionMult * diffMeta.enemyDmgMult),
                 { isAquatic: inWater },
               );
+              if (isRogueMode && sim.enemies.length > 0) {
+                sim.enemies[sim.enemies.length - 1].aggroed = true;
+              }
             }
           }
 
-          // 2B. Spawn Enemy Trainers STRICTLY on dry land (NEVER submerged inside rivers or ocean!)
-          sim.timers.trainer -= dt;
-          if (sim.timers.trainer <= 0) {
-            sim.timers.trainer = difficultyId === 'nightmare' ? 32 : 44;
+          // 2B. Spawn Enemy Trainers (Active in Vampire-Rogue mode, or far out in deep wilderness in Care mode!)
+          if (isRogueMode || !inTownPeaceZone) {
+            sim.timers.trainer -= dt * (isRogueMode ? 1.45 : 0.45);
+          }
+          if (sim.timers.trainer <= 0 && (isRogueMode || !inTownPeaceZone)) {
+            sim.timers.trainer = isRogueMode ? (difficultyId === 'nightmare' ? 22 : 28) : 75;
             const tr = ENEMY_TRAINER_ROSTER[sim.trainerWaveIdx % ENEMY_TRAINER_ROSTER.length];
             sim.trainerWaveIdx += 1;
             let tx = 0;
@@ -5637,7 +6330,6 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const fCount = sim.followers.length;
           for (let i = 0; i < fCount; i++) {
             const f = sim.followers[i];
-            f.animTime += dt;
             if (f.castAnim > 0) f.castAnim = Math.max(0, f.castAnim - dt);
 
             // Peaceful Town Mode: recall extra followers (i > 0) cleanly into Pokéballs, keeping ONLY lead partner!
@@ -5728,11 +6420,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               // Keep followers from clipping through town walls & buildings!
               if (activeTownNow) {
                 const fPos = { x: f.x, z: f.z };
-                resolveTownWallCollisions(fPos, 0.75, activeTownNow.colliders);
+                resolveTownWallCollisions(fPos, 0.72, activeTownNow.colliders, f.y);
                 f.x = fPos.x;
                 f.z = fPos.z;
               }
-              const rawFy = getWalkableSurfaceHeight3D(f.x, f.z);
+              const rawFy = getWalkableSurfaceHeight3D(f.x, f.z, f.y);
               f.y =
                 rawFy < WATER_LEVEL_3D - 0.05
                   ? isWaterOrFly
@@ -5843,6 +6535,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               const desiredVz = toGDist > 0.55 && maxSpd > 0 ? (toGZ / toGDist) * Math.min(maxSpd, toGDist * 3.2) : 0;
               f.vx += (desiredVx - f.vx) * Math.min(1, dt * 8.0);
               f.vz += (desiredVz - f.vz) * Math.min(1, dt * 8.0);
+              if (desiredVx === 0 && desiredVz === 0 && Math.hypot(f.vx, f.vz) < 0.45) {
+                f.vx = 0;
+                f.vz = 0;
+              }
 
               // Water-loving / Flying companions glide over rivers & lakes freely; Land companions DISLIKE water (steer toward dry shore unless actively forced across, and wade slower if in water!)
               const isWaterOrFly =
@@ -5867,11 +6563,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               // Keep followers from clipping through town walls & buildings!
               if (activeTownNow) {
                 const fPos = { x: f.x, z: f.z };
-                resolveTownWallCollisions(fPos, 0.75, activeTownNow.colliders);
+                resolveTownWallCollisions(fPos, 0.72, activeTownNow.colliders, f.y);
                 f.x = fPos.x;
                 f.z = fPos.z;
               }
-              const rawFy = getWalkableSurfaceHeight3D(f.x, f.z);
+              const rawFy = getWalkableSurfaceHeight3D(f.x, f.z, f.y);
               f.y =
                 rawFy < WATER_LEVEL_3D - 0.05
                   ? isWaterOrFly
@@ -5881,7 +6577,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
 
             const spdNow = Math.hypot(f.vx, f.vz);
-            if (spdNow > 0.35) {
+            if (spdNow > 0.38) {
               f.faceX = f.vx / spdNow;
               f.faceZ = f.vz / spdNow;
             }
@@ -5891,13 +6587,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               (f.species === 'dratini' && f.stage === 'adult') ||
               f.species === 'gastly' ||
               f.species === 'mew';
+            const isFollowerWalking = spdNow > 0.45;
+            if (isFollowerWalking || f.castAnim > 0 || isFlightForm) {
+              f.animTime += dt;
+            }
             const stepBob = isFlightForm
               ? 0.78 + Math.sin(f.animTime * 4.8) * 0.2
-              : spdNow > 0.6
+              : isFollowerWalking
                 ? Math.abs(Math.sin(f.animTime * 9)) * 0.14
                 : 0;
             if (f.sprite) {
-              // Authentic 8-Direction PMD Overworld / Flight Sprite (S/SE/E/NE/N/NW/W/SW — 100% cohesive scale & style across 360°!)
+              // Authentic 8-Direction PMD Overworld / Flight Sprite (Hold neutral standing frame 0 when idle — NEVER walk in place!)
               const fxDir = f.faceX ?? Math.sin(sim.facingAngle);
               const fzDir = f.faceZ ?? Math.cos(sim.facingAngle);
               const fRelFwd = fxDir * camFwdX + fzDir * camFwdZ;
@@ -5909,11 +6609,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               f.sprite.rotation.set(bbTiltX, camYawNow, flightBank);
               if (f.pmdSheet?.ready) {
                 const dirIdx = pickPmdDirIndex(fRelFwd, fRelRight);
-                const animSpeed = spdNow > 1.0 || f.castAnim > 0 ? 1.35 : 0.72;
+                const walkAnimT =
+                  isFollowerWalking || f.castAnim > 0 || isFlightForm
+                    ? f.animTime * (spdNow > 1.0 || f.castAnim > 0 ? 1.35 : 0.95)
+                    : 0;
                 (f.sprite.material as THREE.MeshBasicMaterial).map = samplePmd8DirFrame(
                   f.pmdSheet,
                   dirIdx,
-                  f.animTime * animSpeed,
+                  walkAnimT,
                 );
                 f.sprite.scale.set(
                   fScale * stretch,
@@ -5924,10 +6627,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 const useBack = fRelFwd > 0.25 && Boolean(f.backAnimSheet);
                 const activeSheet = useBack ? f.backAnimSheet : f.animSheet;
                 if (activeSheet) {
-                  const animSpeed = spdNow > 1.2 || f.castAnim > 0 ? 1.25 : 0.85;
+                  const walkAnimT =
+                    isFollowerWalking || f.castAnim > 0 || isFlightForm
+                      ? f.animTime * (spdNow > 1.2 || f.castAnim > 0 ? 1.25 : 0.9)
+                      : 0;
                   (f.sprite.material as THREE.MeshBasicMaterial).map = sampleAnimatedFrame(
                     activeSheet,
-                    f.animTime * animSpeed,
+                    walkAnimT,
                   );
                 }
                 if (Math.abs(fRelRight) > 0.12) {
@@ -6206,6 +6912,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             if (inTownPeaceZone && !en.isBoss) {
               en.aggroed = false;
             }
+            const prevEnX = en.x;
+            const prevEnZ = en.z;
             if (en.isAquatic) {
               // Amphibious Water Pokémon (Squirtle/Blastoise, Psyduck) thrive BOTH in lakes AND freely walk on dry land!
               const enRawY = getWalkableSurfaceHeight3D(en.x, en.z);
@@ -6242,19 +6950,25 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 en.x += (dx / dist) * en.speed * wadeFactor * dt;
                 en.z += (dz / dist) * en.speed * wadeFactor * dt;
               }
-            } else if (en.temperament === 'territorial') {
-              // Calm territorial stroll near home slope (avoids wandering into lakes!)
-              const pxT = (en.homeX ?? en.x) + Math.sin(en.animTime * 0.45 + en.id) * 2.6;
-              const pzT = (en.homeZ ?? en.z) + Math.cos(en.animTime * 0.4 + en.id) * 2.6;
+            } else if (en.isTrainer || en.temperament === 'territorial') {
+              // Trainers & territorial Pokémon stroll naturally along their patrol route (avoids water & buildings!)
+              const patrolR = en.isTrainer ? 5.8 : 2.6;
+              const patrolSpd = en.isTrainer ? 0.52 : 0.35;
+              const pxT = (en.homeX ?? en.x) + Math.sin(en.animTime * 0.52 + en.id) * patrolR;
+              const pzT = (en.homeZ ?? en.z) + Math.cos(en.animTime * 0.44 + en.id) * patrolR;
               const pdx = pxT - en.x;
               const pdz = pzT - en.z;
               const pDist = Math.hypot(pdx, pdz) || 1;
               if (pDist > 0.25) {
-                const nX = en.x + (pdx / pDist) * en.speed * 0.35 * dt;
-                const nZ = en.z + (pdz / pDist) * en.speed * 0.35 * dt;
+                const nX = en.x + (pdx / pDist) * en.speed * patrolSpd * dt;
+                const nZ = en.z + (pdz / pDist) * en.speed * patrolSpd * dt;
                 if (getWalkableSurfaceHeight3D(nX, nZ) >= WATER_LEVEL_3D + 0.06) {
-                  en.x = nX;
-                  en.z = nZ;
+                  const posObj = { x: nX, z: nZ };
+                  if (activeTownNow) {
+                    resolveTownWallCollisions(posObj, 0.85, activeTownNow.colliders);
+                  }
+                  en.x = posObj.x;
+                  en.z = posObj.z;
                 }
               }
             }
@@ -6276,8 +6990,18 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 ? Math.sin(((en.waterJumpTimer! - 2.0) / 0.85) * Math.PI) * 2.15
                 : 0;
             en.y = en.isAquatic && enInLake ? WATER_LEVEL_3D + 0.08 + Math.max(0, jumpArc) : rawEnY;
-            en.hopPhase += dt * 7;
-            const hop = Math.abs(Math.sin(en.hopPhase)) * 0.12;
+            const enStepDist = Math.hypot(en.x - prevEnX, en.z - prevEnZ);
+            const enMoving = enStepDist > dt * 0.35;
+            if (enMoving) {
+              en.faceX = (en.x - prevEnX) / (enStepDist || 1);
+              en.faceZ = (en.z - prevEnZ) / (enStepDist || 1);
+              en.hopPhase += dt * 7;
+            }
+            const hop = en.isTrainer
+              ? 0
+              : enMoving || en.isAquatic
+                ? Math.abs(Math.sin(en.hopPhase)) * 0.11
+                : 0;
             const sc = en.worldScale;
             if (en.sprite) {
               const edm = prefsRef.current.enemyDisplayMode;
@@ -6289,35 +7013,47 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 (edm === 'near' && dist < 24) ||
                 (edm === 'very_near' && dist < 14);
               en.sprite.visible = showSprite;
-              const eFaceX = dx / dist;
-              const eFaceZ = dz / dist;
+              const eFaceX = enMoving && en.faceX !== undefined ? en.faceX : dx / dist;
+              const eFaceZ = enMoving && en.faceZ !== undefined ? en.faceZ : dz / dist;
               const eRelFwd = eFaceX * camFwdX + eFaceZ * camFwdZ;
               const eRelRight = eFaceX * camRightX + eFaceZ * camRightZ;
               en.sprite.position.set(en.x, en.y + hop + 0.02, en.z);
               en.sprite.rotation.set(bbTiltX, camYawNow, 0);
-              if (!en.isTrainer && en.pmdSheet?.ready) {
+              if (en.isTrainer) {
+                if (showSprite) {
+                  en.trainerWalkFrames ??= getNpcWalkSpriteFrames(en.trainerSprite ?? 'youngster');
+                  (en.sprite.material as THREE.MeshBasicMaterial).map = sampleHumanWalkFrame(
+                    en.trainerWalkFrames,
+                    eRelFwd,
+                    eRelRight,
+                    en.animTime * 6.0,
+                    enMoving,
+                  );
+                }
+                en.sprite.scale.set(sc, sc, 1);
+              } else if (en.pmdSheet?.ready) {
                 if (showSprite) {
                   const dirIdx = pickPmdDirIndex(eRelFwd, eRelRight);
+                  const enAnimT = enMoving || en.isAquatic ? en.animTime * 1.15 : 0;
                   (en.sprite.material as THREE.MeshBasicMaterial).map = samplePmd8DirFrame(
                     en.pmdSheet,
                     dirIdx,
-                    en.animTime * 1.15,
+                    enAnimT,
                   );
                 }
                 en.sprite.scale.set(sc, sc, 1);
               } else {
-                const useBack = !en.isTrainer && eRelFwd > 0.28 && Boolean(en.backAnimSheet);
+                const useBack = eRelFwd > 0.28 && Boolean(en.backAnimSheet);
                 const activeSheet = useBack ? en.backAnimSheet : en.animSheet;
                 if (showSprite && activeSheet) {
+                  const enAnimT = enMoving || en.isAquatic ? en.animTime * 1.15 : 0;
                   (en.sprite.material as THREE.MeshBasicMaterial).map = sampleAnimatedFrame(
                     activeSheet,
-                    en.animTime * 1.15,
+                    enAnimT,
                   );
                 }
-                if (!en.isTrainer) {
-                  const flipX = useBack ? eRelRight < 0 : eRelRight > 0;
-                  en.sprite.scale.set(flipX ? -sc : sc, sc, 1);
-                }
+                const flipX = useBack ? eRelRight < 0 : eRelRight > 0;
+                en.sprite.scale.set(flipX ? -sc : sc, sc, 1);
               }
             }
             if (en.shadow) en.shadow.position.set(en.x, en.y + 0.06, en.z);
@@ -6711,52 +7447,38 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             if (sim.dmgPops[i].life <= 0) sim.dmgPops.splice(i, 1);
           }
 
-          // Standard PC 3D Wide-Angle Perspective Camera (Strong 近大远小 depth + 1:1 Orbit + Solid Wall Spring-Arm Occlusion!)
-          camPivotRef.current.lerp(
-            new THREE.Vector3(sim.px, sim.py + 1.55, sim.pz),
-            Math.min(1, dt * 14),
-          );
-          camSmoothZoomRef.current +=
-            (camOrbitRef.current.zoom - camSmoothZoomRef.current) * Math.min(1, dt * 12);
-          const interiorZoomFactor = activeInteriorIdNow ? 0.72 : 1.0;
-          const baseDist = (camPresetRef.current === 'close' ? 7.8 : 10.4) * camSmoothZoomRef.current * interiorZoomFactor;
-          const yaw = camOrbitRef.current.yaw;
-          const pitch = camOrbitRef.current.pitch;
-          const horiz = Math.cos(pitch) * baseDist;
-          const rawCamX = camPivotRef.current.x + Math.sin(yaw) * horiz;
-          const rawCamZ = camPivotRef.current.z + Math.cos(yaw) * horiz;
-          const rawCamY = camPivotRef.current.y + Math.sin(pitch) * baseDist;
-
-          // Spring-Arm Wall Occlusion: check nearest town within 740m so walls & piers NEVER clip the camera!
+          // Unified Physical 3D Camera Rig (Spring-Arm Wall Zoom-In + Under-Viaduct Ducking + 1F/2F Room Zoom — ZERO Wall Piercing!)
           const occludeTown =
             activeTownNow ??
-            proceduralTowns.find((t) => Math.hypot(sim.px - t.centerX, sim.pz - t.centerZ) < Math.max(t.safeRadius + 60, 740)) ??
+            proceduralTowns.find(
+              (t) => Math.hypot(sim.px - t.centerX, sim.pz - t.centerZ) < Math.max(t.safeRadius + 60, 740),
+            ) ??
             null;
-          const wallClipT = occludeTown
-            ? computeCameraWallClipT(
-                camPivotRef.current.x,
-                camPivotRef.current.y,
-                camPivotRef.current.z,
-                rawCamX,
-                rawCamY,
-                rawCamZ,
-                occludeTown.group.position.y,
-                occludeTown.colliders,
-                activeInteriorIdNow,
-              )
-            : 1.0;
-          const camX = camPivotRef.current.x + (rawCamX - camPivotRef.current.x) * wallClipT;
-          const camZ = camPivotRef.current.z + (rawCamZ - camPivotRef.current.z) * wallClipT;
-          const desiredCamY = camPivotRef.current.y + (rawCamY - camPivotRef.current.y) * wallClipT;
-          const groundUnderCam = getWalkableSurfaceHeight3D(camX, camZ);
           const shakeAmp =
             prefsRef.current.screenShake && shakeRef.current > 0
               ? shakeRef.current * (prefsRef.current.shakeIntensity / 100) * 0.55
               : 0;
-          const sxOff = shakeAmp > 0 ? (Math.random() - 0.5) * shakeAmp : 0;
-          const syOff = shakeAmp > 0 ? (Math.random() - 0.5) * shakeAmp : 0;
-          camera.position.set(camX + sxOff, Math.max(desiredCamY, groundUnderCam + 1.25) + syOff, camZ);
-          camera.lookAt(camPivotRef.current.x, camPivotRef.current.y + 0.95, camPivotRef.current.z);
+          updatePhysicalCameraRig3D({
+            camera,
+            pivot: camPivotRef.current,
+            orbit: camOrbitRef.current,
+            smooth: camSmoothRef.current,
+            mode: camFollowModeRef.current,
+            px: sim.px,
+            py: sim.py,
+            pz: sim.pz,
+            worldMx,
+            worldMz,
+            mLen,
+            mzInput: mz,
+            isDragging: camDragRef.current.active,
+            pointerLocked,
+            autoNavActive: Boolean(autoNavRef.current),
+            occludeTown,
+            activeInterior: activeInteriorNow,
+            shakeAmp,
+            dt,
+          });
           horizonBackdrop.position.set(camPivotRef.current.x, 0, camPivotRef.current.z);
           if (horizonBackdrop.userData?.skyUniforms?.uTime) {
             horizonBackdrop.userData.skyUniforms.uTime.value = now * 0.001;
@@ -6952,6 +7674,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
 
+            latestMapSnapshotRef.current = nextMapSnap;
             setMapSnapshot(nextMapSnap);
             onSyncWorldMapData?.({
               biome: liveOverlandCityRef.current?.biome ?? selectedBiome,
@@ -7005,7 +7728,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     en.z,
                     occludeTown.group.position.y,
                     occludeTown.colliders,
-                    activeInteriorIdNow,
+                    activeInteriorNow?.id,
                   ) < 0.92;
                 if (occludedByWall) continue;
                 const koCountdown =
@@ -7037,8 +7760,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 const maxAxis = Math.max(Math.abs(nx), Math.abs(ny), 0.001);
                 const clampX = (nx / maxAxis) * 0.88;
                 const clampY = (ny / maxAxis) * 0.74;
-                // Keep clear of Left Squad List (168px) & Bottom-Left D-Pad!
-                const sx = Math.max(16, Math.min(93, ((clampX + 1) / 2) * 100));
+                // Keep clear of Left Squad List (~240px + tag half-width) & Bottom-Right Action Cluster!
+                const sx = Math.max(30, Math.min(91, ((clampX + 1) / 2) * 100));
                 const sy = Math.max(15, Math.min(76, ((-clampY + 1) / 2) * 100));
                 const angleDeg = (Math.atan2(-ny, nx) * 180) / Math.PI;
                 const distM = Math.max(1, Math.round(Math.hypot(en.x - sim.px, en.z - sim.pz)));
@@ -7069,7 +7792,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
             setFloatingTags(tags);
-            setEdgeIndicators(edges.slice(0, 3));
+            // De-overlap offscreen perimeter indicators vertically so trainer distance tags NEVER stack on top of each other!
+            const topEdges = edges.slice(0, 3).sort((a, b) => a.sy - b.sy);
+            for (let ei = 1; ei < topEdges.length; ei++) {
+              if (Math.abs(topEdges[ei].sx - topEdges[ei - 1].sx) < 18 && topEdges[ei].sy - topEdges[ei - 1].sy < 5.6) {
+                topEdges[ei].sy = Math.min(79, topEdges[ei - 1].sy + 5.6);
+              }
+            }
+            setEdgeIndicators(topEdges);
           }
         } else if (sim.activeCaptures.length > 0 && !externalPausedRef.current && !endedRef.current) {
           // REAL 3D CLOSE-UP CINEMATIC CAPTURE CAMERA (Enemies frozen while Three.js camera tracks the real flying Poké Ball -> impact -> 3 wobbles!)
@@ -7274,6 +8004,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     rafId = window.requestAnimationFrame(animate);
     return () => {
       unsubGeoDem();
+      setWalkableBuildingFloorZones3D([]);
       window.removeEventListener('resize', onResize);
       window.cancelAnimationFrame(rafId);
       renderer.dispose();
@@ -7281,7 +8012,6 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, selectedBiome, gameMode, difficultyId, runNonce]);
 
-  // Keep Real-Earth geo terrain ALWAYS active (never reset to null / random procedural noise!)
   useEffect(() => {
     if (phase !== 'playing') {
       setLiveOverlandCity(null);
@@ -7291,8 +8021,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     }
   }, [phase]);
 
-  // Unified Single Real-Earth Entry! Clicking「开始冒险」launches directly into REAL EARTH (default: 上海市 31.23°N, 121.47°E)!
+  // 1) Default Entry「开始冒险」: Real-Earth City Care & Open Exploration Mode (养成探索模式)!
   const handleLaunchRun = () => {
+    setAdventureStyle('care_world');
+    adventureStyleRef.current = 'care_world';
+    setWorldMapOpen(false);
     const wt = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
     const activeId = wt.currentCityId || 'shanghai';
     const city = WORLD_CITIES.find((c) => c.id === activeId) ?? WORLD_CITIES.find((c) => c.id === 'shanghai') ?? WORLD_CITIES[0];
@@ -7317,8 +8050,39 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     });
   };
 
+  // 2) Secondary Entry「随机冒险模式」: Classic Vampire-Survivors Roguelike Horde & 3-Choice Draft Mode!
+  const handleLaunchRandomRogueRun = (explicitBiome?: BiomeId) => {
+    sound.play('confirm');
+    setWorldMapOpen(false);
+    setAdventureStyle('vampire_rogue');
+    adventureStyleRef.current = 'vampire_rogue';
+    setActiveGeoTerrainOrigin(null);
+    setActiveWorldRun(null);
+    setLiveOverlandCity(null);
+    liveOverlandCityRef.current = null;
+    overlandCityIdRef.current = null;
+    const pickedRegion = explicitBiome
+      ? MAP_REGIONS.find((r) => r.id === explicitBiome) ?? MAP_REGIONS[0]
+      : MAP_REGIONS[Math.floor(Math.random() * MAP_REGIONS.length)];
+    setSelectedBiome(pickedRegion.id);
+    setGameMode('endless');
+    pausedRef.current = false;
+    endedRef.current = false;
+    setRunNonce((n) => n + 1);
+    setLaunchFlashSeq((s) => s + 1);
+    setPhase('playing');
+    showBanner(
+      `🎲 随机冒险模式 · 已降临【${pickedRegion.name}】！迎战潮水般涌来的宝可梦群，拾取经验结晶升级进化！`,
+      4200,
+    );
+  };
+
   const handleLaunchWorldRun = (payload: WorldLaunchPayload) => {
     sound.play('confirm');
+    setWorldMapOpen(false);
+    const nextStyle = payload.isGymChallenge ? 'vampire_rogue' : 'care_world';
+    setAdventureStyle(nextStyle);
+    adventureStyleRef.current = nextStyle;
     setActiveGeoTerrainOrigin({
       originLat: payload.originLat,
       originLng: payload.originLng,
@@ -7618,8 +8382,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         setTactics((t) => ({ ...t, ...patch }));
       },
       onChangeCamPreset: (preset) => {
-        sound.play('cursor');
-        setCamPreset(preset);
+        applyCameraFollowMode(preset === 'close' ? 'chase' : 'hd2d', true);
       },
       onResumeBattle: () => {
         pausedRef.current = false;
@@ -7808,11 +8571,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 style={{ borderColor: liveWeather.accentColor }}
                 onClick={() => {
                   sound.play('confirm');
-                  setPhase('world_map');
+                  setWorldMapOpen(true);
                 }}
-                title={`${liveWeather.locationLabel ?? '当地'} ${liveWeather.summary}（${liveWeather.source === 'live' ? '实时气象' : '本地推演'}）\n${liveWeather.buffText}\n点击查看世界地图与 GPS 定位`}
+                title={`${liveWeather.locationLabel ?? '当地'} ${liveWeather.summary} · ${solarInfo.phaseEmoji}${solarInfo.phaseLabel}（日出 ${solarInfo.sunriseStr} / 日落 ${solarInfo.sunsetStr}）\n点击打开全球地图`}
               >
-                <span>{liveWeather.emoji}</span>
+                <span>{solarInfo.phaseEmoji}</span>
                 <strong>{liveWeather.label} {liveWeather.tempC}°C</strong>
               </button>
 
@@ -7995,18 +8758,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   <button
                     type="button"
                     className="pkb-sub-cta is-world"
-                    onClick={() => {
-                      sound.play('confirm');
-                      setPhase('world_map');
-                    }}
+                    onClick={() => handleLaunchRandomRogueRun()}
+                    title="随机降临森林/火山/雪峰/荒漠秘境，体验爽快肉鸽割草与三选一进化！"
                   >
                     <div className="pkb-unskew-inner">
                       <div className="pkb-hero-ico-box">
-                        <PixelItemImg src="/sprites/items/town-map.png" size={44} />
+                        <PixelItemImg src="/sprites/items/vs-seeker.png" size={44} />
                       </div>
                       <div>
-                        <strong>世界巡礼</strong>
-                        <small>GPS老家 · 航线住宿 · 全球道馆</small>
+                        <strong>{tr(lang, 'randomAdventure')}</strong>
+                        <small>{tr(lang, 'randomAdventureSub')}</small>
                       </div>
                     </div>
                     <kbd className="px-keycap on-hero">2</kbd>
@@ -8101,6 +8862,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     onClick: () => {
                       sound.play('confirm');
                       setHubModal('shop');
+                    },
+                  },
+                  {
+                    id: 'world_tour',
+                    label: '世界巡礼',
+                    icon: '/sprites/items/town-map.png',
+                    title: '全球地图 · GPS老家定位 · 航线与城市道馆巡礼',
+                    onClick: () => {
+                      sound.play('confirm');
+                      setWorldMapOpen(true);
                     },
                   },
                   {
@@ -8340,6 +9111,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                       },
                     },
                     {
+                      id: 'world_tour',
+                      label: '世界巡礼',
+                      icon: '/sprites/items/town-map.png',
+                      onClick: () => {
+                        setHubModal('none');
+                        sound.play('confirm');
+                        setWorldMapOpen(true);
+                      },
+                    },
+                    {
                       id: 'achieve',
                       label: tr(lang, 'dockAchieve'),
                       icon: '/sprites/items/kings-rock.png',
@@ -8460,9 +9241,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       )}
 
       {/* =====================================================================
-          LAYER 1.5: PIXELATED REAL WORLD MAP & GPS TOUR OVERLAY
+          NON-DESTRUCTIVE GLOBAL WORLD MAP OVERLAY (Closes directly back to active Hub or Playing!)
          ===================================================================== */}
-      {phase === 'world_map' && (
+      {worldMapOpen && (
         <WorldMapOverlay
           coins={save.coins}
           lang={lang}
@@ -8471,7 +9252,28 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           onLaunchWorldRun={handleLaunchWorldRun}
           onClose={() => {
             sound.play('cancel');
-            setPhase('hub');
+            setWorldMapOpen(false);
+          }}
+        />
+      )}
+
+      {timeAlmanacOpen && (
+        <TimeEcologyModal
+          solar={solarInfo}
+          locationName={
+            liveOverlandCity?.name ??
+            activeWorldRun?.cityName ??
+            WORLD_TOWNS_3D.find((t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6)?.name ??
+            '真实地球'
+          }
+          timeOverride={save.prefs?.worldTimeMode ?? 'auto'}
+          onChangeTimeOverride={(mode) => {
+            sound.play('confirm');
+            onUpdatePrefs?.({ worldTimeMode: mode });
+          }}
+          onClose={() => {
+            sound.play('cancel');
+            setTimeAlmanacOpen(false);
           }}
         />
       )}
@@ -8804,83 +9606,58 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               transformOrigin: 'top center',
             }}
           >
-            {/* Top-Left: Protagonist Avatar Card + Full-Width HP Bar + Integrated EXP Bar */}
+            {/* Top-Left: Protagonist Avatar Card + Trainer Title/Badges + HP & EXP Bars */}
             <div className="hud-col-left">
-              <div className="surv-hero-card">
-                <div className="surv-hero-avatar">
-                  <img
-                    src={activeHeroDef.avatarSprite}
-                    alt={activeHeroDef.name}
-                    draggable={false}
-                  />
-                  <em>LV.{hud.runLevel}</em>
-                </div>
-                <div className="surv-hero-info">
-                  <div className="surv-hero-top">
-                    <strong>{activeHeroDef.name}</strong>
-                    {isSurfing ? (
-                      <span className="surv-surf-pill">🌊 水系冲浪</span>
-                    ) : hud.boostLeft > 0 ? (
-                      <span className="surv-boost-pill">强化 {Math.ceil(hud.boostLeft)}s</span>
-                    ) : (
-                      <span className="surv-hero-hp-num">{hud.hp}/{hud.maxHp}</span>
-                    )}
-                  </div>
-                  <div className="surv-hero-hp-track">
-                    <div
-                      className="surv-hero-hp-fill"
-                      style={{
-                        width: `${hpPct}%`,
-                        backgroundColor: hpPct > 35 ? '#48d167' : '#ff4d4d',
-                      }}
-                    />
-                  </div>
-                  <div className="surv-hero-xp-track" title={`经验 ${hud.xp}/${hud.xpNeed}`}>
-                    <div className="surv-hero-xp-fill" style={{ width: `${xpPct}%` }} />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Top-Center: Rich Neo-Brutalist Pixel Battle Status Deck (Region + Clock + Trainer Tag + Gym Badges!) */}
-            <div className="hud-col-center">
               {(() => {
                 const activeTag = getActiveTrainerTagDef(meta);
                 const badgeCount = (meta.unlockedBadges ?? []).length;
                 return (
-                  <div className="surv-top-status-deck">
-                    <div className="top-deck-wing is-left">
-                      <strong>真实地球</strong>
-                      <div className="top-deck-sub">
-                        <span
-                          className="top-weather-chip"
-                          style={{ backgroundColor: liveWeather.accentColor }}
-                          title={`${liveWeather.summary} · ${liveWeather.buffText}`}
-                        >
-                          {liveWeather.emoji} {liveWeather.label} {liveWeather.tempC}°C
-                        </span>
-                        <span className={`top-diff-tag is-${difficultyId}`}>{diffMeta.label}</span>
+                  <div className="surv-hero-card">
+                    <div className="surv-hero-avatar">
+                      <img
+                        src={activeHeroDef.avatarSprite}
+                        alt={activeHeroDef.name}
+                        draggable={false}
+                      />
+                      <em>LV.{hud.runLevel}</em>
+                    </div>
+                    <div className="surv-hero-info">
+                      <div className="surv-hero-top">
+                        <strong>{activeHeroDef.name}</strong>
+                        {isSurfing ? (
+                          <span className="surv-surf-pill">🌊 水系冲浪</span>
+                        ) : hud.boostLeft > 0 ? (
+                          <span className="surv-boost-pill">强化 {Math.ceil(hud.boostLeft)}s</span>
+                        ) : (
+                          <span className="surv-hero-hp-num">{hud.hp}/{hud.maxHp}</span>
+                        )}
                       </div>
-                    </div>
-                    <div className="top-deck-center">
-                      <PixelItemImg src="/sprites/items/poke-ball.png" size={16} />
-                      <strong>{minStr}</strong>
-                      <small>
-                        {liveOverlandCity?.name ??
-                          activeWorldRun?.cityName ??
-                          WORLD_TOWNS_3D.find(
-                            (t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6,
-                          )?.name ??
-                          '野外探索'}
-                      </small>
-                    </div>
-                    <div className="top-deck-wing is-right">
-                      <span className="top-trainer-tag" style={{ borderColor: activeTag.color, color: activeTag.color }}>
-                        {activeTag.name}
-                      </span>
-                      <div className="top-badge-mini" title={`已收集 ${badgeCount}/${GYM_BADGE_CATALOG.length} 枚关都道馆徽章`}>
-                        <PixelItemImg src="/sprites/items/kings-rock.png" size={12} />
-                        <span>徽章 {badgeCount}/{GYM_BADGE_CATALOG.length}</span>
+                      <div className="surv-hero-hp-track">
+                        <div
+                          className="surv-hero-hp-fill"
+                          style={{
+                            width: `${hpPct}%`,
+                            backgroundColor: hpPct > 35 ? '#48d167' : '#ff4d4d',
+                          }}
+                        />
+                      </div>
+                      <div className="surv-hero-xp-track" title={`经验 ${hud.xp}/${hud.xpNeed}`}>
+                        <div className="surv-hero-xp-fill" style={{ width: `${xpPct}%` }} />
+                      </div>
+                      <div className="surv-hero-sub-badges">
+                        <span
+                          className="top-trainer-tag"
+                          style={{ borderColor: activeTag.color, color: activeTag.color }}
+                        >
+                          {activeTag.name}
+                        </span>
+                        <span
+                          className="top-badge-mini"
+                          title={`已收集 ${badgeCount}/${GYM_BADGE_CATALOG.length} 枚道馆徽章`}
+                        >
+                          <PixelItemImg src="/sprites/items/kings-rock.png" size={11} />
+                          <span>徽章 {badgeCount}/{GYM_BADGE_CATALOG.length}</span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -8888,37 +9665,116 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               })()}
             </div>
 
-            {/* Top-Right: Clean Icon-Left Pull-Out Handheld Console Buttons */}
+            {/* Top-Center: Left/Center = Open Map; Right = Dedicated Day/Night Time & Ecological Spawn Almanac! */}
+            <div className="hud-col-center">
+              <div className="surv-top-status-deck">
+                <div
+                  className="top-deck-wing is-left"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    sound.play('confirm');
+                    if (adventureStyle === 'vampire_rogue') toggleWorldMap();
+                    else setWorldMapOpen(true);
+                  }}
+                  title="点击打开地图（关闭后直接返回当前游戏）"
+                >
+                  <strong>{adventureStyle === 'vampire_rogue' ? '随机秘境' : '真实地球'}</strong>
+                  <div className="top-deck-sub">
+                    <span
+                      className="top-weather-chip"
+                      style={{ backgroundColor: liveWeather.accentColor }}
+                      title={`${liveWeather.summary} · ${liveWeather.buffText}\n点击打开地图`}
+                    >
+                      {liveWeather.emoji} {liveWeather.label} {liveWeather.tempC}°C
+                    </span>
+                    <span className={`top-diff-tag is-${difficultyId}`}>{diffMeta.label}</span>
+                  </div>
+                </div>
+                <div
+                  className="top-deck-center"
+                  style={{ borderRight: '2px solid #2b2d44', cursor: 'pointer' }}
+                  onClick={() => {
+                    sound.play('confirm');
+                    toggleWorldMap();
+                  }}
+                  title="点击打开当前城市地图与自动寻路"
+                >
+                  <PixelItemImg src="/sprites/items/poke-ball.png" size={15} />
+                  <strong>{adventureStyle === 'vampire_rogue' ? minStr : solarInfo.localTimeStr}</strong>
+                  <small>
+                    {adventureStyle === 'vampire_rogue'
+                      ? regionMeta.name
+                      : liveOverlandCity?.name ??
+                        activeWorldRun?.cityName ??
+                        WORLD_TOWNS_3D.find(
+                          (t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6,
+                        )?.name ??
+                        '野外探索'}
+                  </small>
+                </div>
+                <div
+                  className="top-deck-wing is-right"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    sound.play('confirm');
+                    setTimeAlmanacOpen(true);
+                  }}
+                  title="点击查看昼夜星象与各时段出没宝可梦生态图鉴"
+                >
+                  <span className="top-trainer-tag" style={{ borderColor: '#ffe066', color: '#ffe066' }}>
+                    {solarInfo.phaseEmoji} {solarInfo.phaseLabel}
+                  </span>
+                  <div className="top-badge-mini">
+                    <span>🌅{solarInfo.sunriseStr} · 🌇{solarInfo.sunsetStr}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Top-Right: Large Icon-Only Action Buttons (Tactics, Handheld Care, Main Menu/Settings) */}
             <div className="hud-col-right">
               <div className="surv-right-stats">
                 <button
                   type="button"
                   className="surv-top-btn is-lg is-tactics"
                   onClick={() => onOpenPokemonManager('tactics', true)}
-                  title="战术终端（可在菜单-设置中查看快捷键）"
+                  aria-label="战术终端"
+                  title="战术终端"
                 >
-                  <PixelItemImg src="/sprites/items/vs-seeker.png" size={15} />
-                  <span>战术</span>
+                  <PixelItemImg src="/sprites/items/vs-seeker.png" size={24} />
                 </button>
                 <button
                   type="button"
                   className="surv-top-btn is-lg is-care-btn"
                   onClick={() => onOpenPokemonManager('home', true)}
-                  title="宝可梦球舱与球盒管理"
+                  aria-label="掌机球舱"
+                  title="掌机球舱与球盒管理"
                 >
-                  <PixelItemImg src={activeRoom.ballSprite} size={15} />
-                  <span>掌机</span>
+                  <PixelItemImg src={activeRoom.ballSprite} size={24} />
                 </button>
                 <button
                   type="button"
                   className="surv-top-btn is-lg is-gear-btn"
                   onClick={() => onOpenPokemonManager('menu', true)}
-                  title="训练家主菜单与按键设置"
+                  aria-label="训练家菜单与设置"
+                  title="训练家菜单与系统设置（镜头视角可在设置中切换）"
                 >
-                  <PixelItemImg src="/sprites/items/poke-radar.png" size={15} />
-                  <span>菜单</span>
+                  <PixelItemImg src="/sprites/items/poke-radar.png" size={24} />
                 </button>
               </div>
+
+              {autoNavActiveLabel && (
+                <div className="surv-autonav-active-pill" style={{ marginRight: 0 }}>
+                  <span>🧭 前往「{autoNavActiveLabel}」</span>
+                  <button
+                    type="button"
+                    onClick={() => stopAutoNavRef.current(false)}
+                    title="停止自动寻路"
+                  >
+                    取消
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -9254,7 +10110,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             </div>
           )}
 
-          {/* Bottom-Right MOBA-Style Radial Action Wheel (True Multi-Touch: Works simultaneously with Left Joystick!) */}
+          {/* Bottom-Right MOBA-Style Radial Action Wheel (Large Icon-Only Buttons, Zero Text Clutter!) */}
           {!externalPaused && !levelChoices && !shopOpen && !resultModal && !captureOffer && (
             <div className="surv-moba-wheel">
               {/* Outer Left Satellite (58x58): Full-MP Team Salvo */}
@@ -9263,10 +10119,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 className={`moba-btn is-aux-jump is-salvo ${hud.actionCds.salvo > 0 ? 'is-cd' : ''}`}
                 disabled={hud.actionCds.salvo > 0}
                 {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('salvo'), hud.actionCds.salvo > 0)}
-                title="全队瞬间满蓝，同步齐射招牌绝招！"
+                aria-label="齐射"
+                title="齐射：全队瞬间满蓝，同步释放招牌绝招！"
               >
-                <PixelItemImg src="/sprites/items/vs-seeker.png" size={26} />
-                <span>齐射</span>
+                <PixelItemImg src="/sprites/items/vs-seeker.png" size={32} />
                 {hud.actionCds.salvo > 0 && (
                   <em className="moba-badge">{Math.ceil(hud.actionCds.salvo)}s</em>
                 )}
@@ -9278,10 +10134,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 className={`moba-btn is-sat is-sat-0 is-ball ${hud.actionCds.ball > 0 ? 'is-cd' : ''} ${nearbyKoTarget ? 'is-pulse' : ''}`}
                 disabled={hud.actionCds.ball > 0}
                 {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('ball'), hud.actionCds.ball > 0)}
-                title="向附近倒地/残血/异色野生宝可梦投掷精灵球收服！"
+                aria-label="投球"
+                title="投球：向附近倒地/残血/异色野生宝可梦投掷精灵球收服！"
               >
-                <PixelItemImg src="/sprites/items/poke-ball.png" size={26} />
-                <span>投球</span>
+                <PixelItemImg src="/sprites/items/poke-ball.png" size={32} />
                 {hud.actionCds.ball > 0 && (
                   <em className="moba-badge">{Math.ceil(hud.actionCds.ball)}s</em>
                 )}
@@ -9296,10 +10152,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   () => triggerBattleActionRef.current?.('heal'),
                   hud.actionCds.heal > 0 || hud.healCharges <= 0,
                 )}
-                title="使用好伤药立即回复全队 45% 生命值"
+                aria-label="伤药"
+                title="伤药：使用好伤药立即回复全队 45% 生命值"
               >
-                <PixelItemImg src="/sprites/items/super-potion.png" size={26} />
-                <span>伤药</span>
+                <PixelItemImg src="/sprites/items/super-potion.png" size={32} />
                 <em className="moba-badge">
                   {hud.actionCds.heal > 0 ? `${Math.ceil(hud.actionCds.heal)}s` : `×${hud.healCharges}`}
                 </em>
@@ -9311,10 +10167,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 className={`moba-btn is-sat is-sat-90 is-boost ${hud.actionCds.boost > 0 ? 'is-cd' : ''} ${hud.boostLeft > 0 ? 'is-active' : ''}`}
                 disabled={hud.actionCds.boost > 0}
                 {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('boost'), hud.actionCds.boost > 0)}
-                title="激活 8 秒力量强化：全队攻击 +55%、技能充能大幅加速"
+                aria-label="强化"
+                title="强化：激活 8 秒力量强化（全队攻击 +55%、充能加速）"
               >
-                <PixelItemImg src="/sprites/items/rare-candy.png" size={26} />
-                <span>强化</span>
+                <PixelItemImg src="/sprites/items/rare-candy.png" size={32} />
                 {(hud.boostLeft > 0 || hud.actionCds.boost > 0) && (
                   <em className="moba-badge">
                     {hud.boostLeft > 0 ? `${Math.ceil(hud.boostLeft)}s` : `${Math.ceil(hud.actionCds.boost)}s`}
@@ -9329,10 +10185,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                 {...bindMultiTouchAction(() => {
                   jumpQueuedRef.current = true;
                 })}
-                title="3D 跳跃：翻越阶梯崖壁或躲避弹幕"
+                aria-label="跳跃"
+                title="跳跃：3D 跳跃翻越台阶或躲避弹幕"
               >
-                <PixelIcon name="arrow_up" size={28} />
-                <span>跳跃</span>
+                <PixelIcon name="arrow_up" size={38} />
               </button>
             </div>
           )}

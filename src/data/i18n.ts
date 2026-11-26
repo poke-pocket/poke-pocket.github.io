@@ -9,7 +9,9 @@ export const LANG_LABELS: Record<AppLang, string> = {
 const DICT: Record<AppLang, Record<string, string>> = {
   zh: {
     startAdventure: '开始冒险',
-    startAdventureSub: '无界漫游 · 生态探索',
+    startAdventureSub: '城市养成 · 实景探索',
+    randomAdventure: '随机冒险模式',
+    randomAdventureSub: '肉鸽割草 · 无限爽快进化',
     endlessMode: '无尽模式',
     endlessModeSub: '无限波次挑战',
     pokemonManager: '掌机养成',
@@ -36,7 +38,9 @@ const DICT: Record<AppLang, Record<string, string>> = {
   },
   en: {
     startAdventure: 'ADVENTURE',
-    startAdventureSub: 'Infinite World · Explore',
+    startAdventureSub: 'City Care · Real World',
+    randomAdventure: 'ROGUE SURVIVORS',
+    randomAdventureSub: 'Random Map · Horde Wave',
     endlessMode: 'ENDLESS',
     endlessModeSub: 'Infinite Waves',
     pokemonManager: 'HANDHELD',
@@ -63,7 +67,9 @@ const DICT: Record<AppLang, Record<string, string>> = {
   },
   ja: {
     startAdventure: 'ぼうけん',
-    startAdventureSub: '無限ワールド・生態探索',
+    startAdventureSub: '街で育成・リアル地球探索',
+    randomAdventure: 'ランダム冒険',
+    randomAdventureSub: 'ローグライト無双バトル',
     endlessMode: 'エンドレス',
     endlessModeSub: '無限ウェーブ挑戦',
     pokemonManager: '携帯機育成',

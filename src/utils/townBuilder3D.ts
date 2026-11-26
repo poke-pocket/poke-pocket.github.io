@@ -7,8 +7,13 @@ import {
   WORLD_RAIL_SEGMENTS_3D,
   WORLD_ROAD_SEGMENTS_3D,
   WORLD_TOWNS_3D,
+  type WalkableStairAndFloorZone3D,
 } from '../data/survivorsTactics';
-import { getBiomeTextures } from '../data/worldTextures3D';
+import { getBiomeTextures, getNpcWalkSpriteFrames } from '../data/worldTextures3D';
+import {
+  buildUnifiedWalkInBuilding3D,
+  type ProximityAutoDoor3D,
+} from './architecturalBuildings3D';
 import { generateTownLayout, type TownStreetSeg } from './townStreetGen';
 
 export type TownInteractKind = 'pokemon_center' | 'poke_mart' | 'transit_station' | 'npc_chat' | 'hotel_rest' | 'restaurant';
@@ -38,19 +43,27 @@ export interface TownCollider {
   rotY?: number;
   /** Wall height above ground for 3D camera spring-arm wall occlusion */
   height?: number;
-  /** Optional interior ID so camera inside a cutaway room ignores that room's faded exterior */
+  /** Optional world-Y vertical span so 1F vs 2F furniture & partition walls collide ONLY on their own floor! */
+  minY?: number;
+  maxY?: number;
+  /** Optional interior ID */
   interiorId?: string;
 }
 
 export interface EnterableBuildingInterior {
   id: string;
   name: string;
-  kind: 'pokemon_center' | 'poke_mart' | 'house';
+  kind: 'pokemon_center' | 'poke_mart' | 'hotel' | 'restaurant' | 'house';
   cx: number;
   cz: number;
   halfW: number;
   halfD: number;
   rotY: number;
+  baseY: number;
+  stories: 1 | 2;
+  floor1CeilingY: number;
+  floor2CeilingY: number;
+  dualDoors?: boolean;
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   exteriorGroup: THREE.Group;
   interiorGroup: THREE.Group;
@@ -73,14 +86,29 @@ export interface TownMovingVehicle {
 export interface TownStrollingCitizen {
   mesh: THREE.Mesh;
   shadow: THREE.Mesh;
+  walkFrames: Record<string, THREE.CanvasTexture>;
   mode: 'plaza_orbit' | 'sidewalk_patrol';
   cx: number;
   cz: number;
+  x1?: number;
+  z1?: number;
+  x2?: number;
+  z2?: number;
   radius: number;
   angle: number;
   speed: number;
   phase: number;
   baseY: number;
+}
+
+export interface ViaductOverheadSpan {
+  group: THREE.Group;
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+  halfWidth: number;
+  alpha: number;
 }
 
 export interface ProceduralTownInstance {
@@ -93,6 +121,10 @@ export interface ProceduralTownInstance {
   interactPoints: TownInteractPoint[];
   colliders: TownCollider[];
   interiors: EnterableBuildingInterior[];
+  autoDoors: ProximityAutoDoor3D[];
+  upperFloorZones: WalkableStairAndFloorZone3D[];
+  streetLampPositions?: { x: number; y: number; z: number }[];
+  viaductSpans?: ViaductOverheadSpan[];
   trainGroup?: THREE.Group;
   trainBaseX?: number;
   animatedParts?: {
@@ -143,56 +175,18 @@ function makeObbCollider(
   };
 }
 
-/**
- * Push 5 solid oriented perimeter walls around an enterable building:
- * Back wall, Left wall, Right wall, Front-Left wall, Front-Right wall — leaving ONLY the Front Doorway (+Z local) open!
- * Prevents walking through walls from the sides/back; players MUST enter through the front door!
- */
-function pushEnterableBuildingWalls(
-  colliders: TownCollider[],
-  cx: number,
-  cz: number,
-  roomW: number,
-  roomD: number,
-  rotY: number,
-  doorWidth = 4.2,
-  wallHeight = 9.5,
-  interiorId?: string,
-): void {
-  const cos = Math.cos(rotY);
-  const sin = Math.sin(rotY);
-  const wallT = 0.65;
-  const halfW = roomW * 0.5;
-  const halfD = roomD * 0.5;
-
-  const pushLocalWall = (lx: number, lz: number, hw: number, hd: number) => {
-    const wx = cx + lx * cos + lz * sin;
-    const wz = cz - lx * sin + lz * cos;
-    colliders.push(makeObbCollider(wx, wz, hw, hd, rotY, wallHeight, interiorId));
-  };
-
-  // Back wall (-Z)
-  pushLocalWall(0, -halfD, halfW + wallT * 0.5, wallT * 0.5);
-  // Left wall (-X)
-  pushLocalWall(-halfW, 0, wallT * 0.5, halfD + wallT * 0.5);
-  // Right wall (+X)
-  pushLocalWall(halfW, 0, wallT * 0.5, halfD + wallT * 0.5);
-
-  // Front wall (+Z) split around a clear center doorway!
-  const sideSpan = Math.max(1.2, (roomW - doorWidth) * 0.5);
-  const frontSideCenter = doorWidth * 0.5 + sideSpan * 0.5;
-  pushLocalWall(-frontSideCenter, halfD, sideSpan * 0.5 + 0.15, wallT * 0.5);
-  pushLocalWall(frontSideCenter, halfD, sideSpan * 0.5 + 0.15, wallT * 0.5);
-}
-
-/** Shared OBB + AABB wall collision push-out used for Player, Followers, AND Wild Pokémon so nobody clips through walls! */
+/** Shared OBB + AABB wall & floor-scoped furniture collision push-out used for Player, Followers, AND Wild Pokémon! */
 export function resolveTownWallCollisions(
   pos: { x: number; z: number },
   pad: number,
   colliders: TownCollider[],
+  currentPy?: number,
 ): void {
   for (let i = 0; i < colliders.length; i++) {
     const box = colliders[i];
+    if (currentPy !== undefined && box.minY !== undefined && box.maxY !== undefined) {
+      if (currentPy + 1.55 < box.minY || currentPy + 0.25 > box.maxY) continue;
+    }
     if (box.cx !== undefined && box.cz !== undefined && box.halfW !== undefined && box.halfD !== undefined && box.rotY !== undefined) {
       const dx = pos.x - box.cx;
       const dz = pos.z - box.cz;
@@ -237,9 +231,9 @@ export function resolveTownWallCollisions(
 
 /**
  * 3D Spring-Arm Camera Wall-Occlusion Solver:
- * Ray-marches from player's pivot (ox, oy, oz) toward desired camera (cx, cy, cz) against town walls.
- * If a solid wall occludes the camera, pulls the camera smoothly inward right in front of the wall
- * instead of letting the lens penetrate walls or hide the player!
+ * Ray-marches from player's pivot (ox, oy, oz) toward desired camera (cx, cy, cz) against ALL structural walls
+ * (including the current room's walls!) while ignoring low furniture (< 2.85m).
+ * Smoothly pulls the camera inward in front of walls (`缩放放大`) with ZERO wall piercing and ZERO transparent buildings!
  */
 export function computeCameraWallClipT(
   ox: number,
@@ -250,11 +244,11 @@ export function computeCameraWallClipT(
   cz: number,
   groundBaseY: number,
   colliders: TownCollider[],
-  activeInteriorId?: string | null,
+  _activeInteriorId?: string | null,
 ): number {
   if (colliders.length === 0) return 1.0;
-  const pad = 0.82;
-  const steps = 16;
+  const pad = 0.72;
+  const steps = 20;
   for (let s = 1; s <= steps; s++) {
     const t = s / steps;
     const px = ox + (cx - ox) * t;
@@ -262,9 +256,11 @@ export function computeCameraWallClipT(
     const pz = oz + (cz - oz) * t;
     for (let i = 0; i < colliders.length; i++) {
       const box = colliders[i];
-      if (activeInteriorId && box.interiorId === activeInteriorId) continue;
-      const wallTopY = groundBaseY + (box.height ?? 9.5);
-      if (py > wallTopY) continue;
+      const h = box.height ?? 9.5;
+      if (h < 2.85) continue; // Ignore low indoor tables/shelves/chairs for camera boom!
+      const wallMinY = box.minY ?? groundBaseY - 1.0;
+      const wallMaxY = box.maxY ?? groundBaseY + h;
+      if (py < wallMinY || py > wallMaxY) continue;
       let hit = false;
       if (box.cx !== undefined && box.cz !== undefined && box.halfW !== undefined && box.halfD !== undefined && box.rotY !== undefined) {
         const dx = px - box.cx;
@@ -278,7 +274,7 @@ export function computeCameraWallClipT(
         hit = px > box.minX - pad && px < box.maxX + pad && pz > box.minZ - pad && pz < box.maxZ + pad;
       }
       if (hit) {
-        return Math.max(0.28, (s - 1.15) / steps);
+        return Math.max(0.24, (s - 1.15) / steps);
       }
     }
   }
@@ -313,29 +309,108 @@ function createNpcBillboard(
   z: number,
   height = 2.75,
 ): THREE.Mesh {
-  const geo = new THREE.PlaneGeometry(height * 0.92, height);
+  const frames = getNpcWalkSpriteFrames(url);
+  const geo = new THREE.PlaneGeometry(height * 0.86, height);
   geo.translate(0, height * 0.5, 0);
   const mat = new THREE.MeshBasicMaterial({
-    map: getNpcTexture(url),
+    map: frames.down_idle0 ?? getNpcTexture(url),
     transparent: true,
     alphaTest: 0.15,
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.set(x, y, z);
+  mesh.userData.walkFrames = frames;
   return mesh;
 }
 
+const TOWN_NIGHT_UNIFORM = { value: 0.0 };
+
+function createSharedRadialGlowTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 64;
+  const ctx = c.getContext('2d');
+  if (ctx) {
+    const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255, 236, 170, 1.0)');
+    g.addColorStop(0.38, 'rgba(255, 210, 110, 0.58)');
+    g.addColorStop(0.72, 'rgba(255, 185, 80, 0.18)');
+    g.addColorStop(1, 'rgba(255, 170, 60, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+let SHARED_RADIAL_GLOW_TEX: THREE.CanvasTexture | null = null;
+function getRadialGlowTex(): THREE.CanvasTexture {
+  if (!SHARED_RADIAL_GLOW_TEX) SHARED_RADIAL_GLOW_TEX = createSharedRadialGlowTexture();
+  return SHARED_RADIAL_GLOW_TEX;
+}
+
+const STREET_LAMP_BULB_MAT = new THREE.MeshBasicMaterial({ color: 0xffe066 });
+const STREET_LAMP_HALO_MAT = new THREE.SpriteMaterial({
+  color: 0xffdf80,
+  transparent: true,
+  opacity: 0.0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const STREET_LAMP_POOL_MAT = new THREE.MeshBasicMaterial({
+  color: 0xffd880,
+  transparent: true,
+  opacity: 0.0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const BUILDING_ENTRANCE_POOL_MAT = new THREE.MeshBasicMaterial({
+  color: 0xffe39e,
+  transparent: true,
+  opacity: 0.0,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+const ADAPTIVE_NIGHT_WINDOW_MAT = new THREE.MeshLambertMaterial({
+  color: 0xcbe8ff,
+  emissive: 0xffd875,
+  emissiveIntensity: 0.08,
+  transparent: true,
+  opacity: 0.86,
+});
+
+/** Synchronize all city streetlamps, building entrance light pools, and skyscraper/house night windows with live astronomical day/night! */
+export function setGlobalNightLampGlow3D(glow: number): void {
+  const g = Math.max(0, Math.min(1, glow));
+  TOWN_NIGHT_UNIFORM.value = g;
+  if (!STREET_LAMP_HALO_MAT.map && typeof document !== 'undefined') {
+    const rTex = getRadialGlowTex();
+    STREET_LAMP_HALO_MAT.map = rTex;
+    STREET_LAMP_HALO_MAT.needsUpdate = true;
+    STREET_LAMP_POOL_MAT.map = rTex;
+    STREET_LAMP_POOL_MAT.needsUpdate = true;
+    BUILDING_ENTRANCE_POOL_MAT.map = rTex;
+    BUILDING_ENTRANCE_POOL_MAT.needsUpdate = true;
+  }
+  STREET_LAMP_BULB_MAT.color.setHex(g > 0.2 ? 0xffe066 : 0xd8eeff);
+  STREET_LAMP_HALO_MAT.opacity = g * 0.85;
+  STREET_LAMP_POOL_MAT.opacity = g * 0.52;
+  BUILDING_ENTRANCE_POOL_MAT.opacity = g * 0.44;
+  ADAPTIVE_NIGHT_WINDOW_MAT.color.setHex(g > 0.35 ? 0xffe8a3 : 0xcbe8ff);
+  ADAPTIVE_NIGHT_WINDOW_MAT.emissiveIntensity = 0.08 + g * 0.88;
+}
+
 /**
- * World-Space HD-2D Pixel-Art Architecture Shader Hook v2:
+ * World-Space HD-2D Pixel-Art Architecture Shader Hook v3:
  * - Crisp 15cm world-space pixel running-bond brick / tile masonry on vertical walls
- * - Crisp pixel shingle rows on roofs & ledges
- * - Ground-contact stone foundation AO shading so buildings sit solidly anchored on sidewalks
- * - Refined GBA 2x2 Bayer dither + HD-2D sunlit-warm / cool-shadow cel cohesion matching chibi sprites!
+ * - Automatic Nighttime Warm Household & Office Window Illumination (`uNightGlow`) on Kenney recessed glass panes!
  */
 function applyPixelArtArchShader(mat: THREE.MeshLambertMaterial): THREE.MeshLambertMaterial {
-  mat.customProgramCacheKey = () => 'pk_pixel_arch_hd2d_v2';
+  mat.customProgramCacheKey = () => 'pk_pixel_arch_hd2d_v3_night';
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uNightGlow = TOWN_NIGHT_UNIFORM;
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
@@ -355,6 +430,7 @@ vArchWorldNorm = normalize(mat3(modelMatrix) * objectNormal);`,
       .replace(
         '#include <common>',
         `#include <common>
+uniform float uNightGlow;
 varying vec3 vArchWorldPos;
 varying vec3 vArchWorldNorm;
 float archHash21(vec2 p) {
@@ -366,40 +442,50 @@ float archHash21(vec2 p) {
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
+vec3 rawArchBase = diffuseColor.rgb;
 vec3 aNorm = normalize(vArchWorldNorm);
 vec3 pxCoord = floor(vArchWorldPos * 6.5);
 float grain = 1.0;
 if (abs(aNorm.y) < 0.55) {
-  // Vertical facades: crisp pixel running-bond brick / stone courses + subtle architectural floor bands!
   float hCoord = abs(aNorm.x) > abs(aNorm.z) ? pxCoord.z : pxCoord.x;
   float rowIdx = floor(pxCoord.y * 0.333);
   float mortarH = step(2.62, mod(pxCoord.y, 3.0));
   float brickCol = floor((hCoord + mod(rowIdx, 2.0) * 3.0) * 0.1667);
-  float mortarV = step(5.55, mod(hCoord + mod(rowIdx, 2.0) * 3.0, 6.0));
+  float mortarV = step(5.55, mod(hCoord + mod(rowIdx, 2.0) * 6.0, 6.0));
   float brickVar = (archHash21(vec2(brickCol, rowIdx)) - 0.5) * 0.115;
   float mortarMask = max(mortarH, mortarV);
-  // Subtle stone plinth base ambient occlusion near ground level
   float groundAo = mix(0.86, 1.0, clamp((vArchWorldPos.y - 1.4) * 0.45, 0.0, 1.0));
   grain = (1.0 + brickVar - mortarMask * 0.095) * groundAo;
 } else {
-  // Roofs & horizontal trims: crisp pixel shingle / tile rows!
   float shingleRow = step(2.45, mod(pxCoord.x + pxCoord.z, 3.0));
   float tileVar = (archHash21(pxCoord.xz * 0.5) - 0.5) * 0.105;
   grain = 1.0 + tileVar - shingleRow * 0.075;
 }
-// Crisp GBA 2x2 Bayer pixel dither
 float bayer = mod(pxCoord.x + pxCoord.y + pxCoord.z, 2.0) * 0.028 - 0.014;
 diffuseColor.rgb *= clamp(grain + bayer, 0.78, 1.14);`,
       )
       .replace(
         '#include <dithering_fragment>',
-        `// HD-2D cel-stepped tone cohesion + warm sunlight / cool-slate shadow tint
-float lum = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
+        `float lum = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
 float qLum = floor(lum * 8.0 + 0.5) / 8.0;
 gl_FragColor.rgb *= mix(1.0, qLum / max(0.05, lum), 0.36);
 vec3 coolShadowTint = vec3(0.92, 0.96, 1.06);
 vec3 warmSunTint = vec3(1.04, 1.02, 0.96);
 gl_FragColor.rgb *= mix(coolShadowTint, warmSunTint, smoothstep(0.32, 0.78, lum));
+// Nighttime warm glowing apartment & office windows on vertical facades!
+if (uNightGlow > 0.02 && abs(aNorm.y) < 0.42 && vArchWorldPos.y > 1.2) {
+  float baseLum = dot(rawArchBase, vec3(0.299, 0.587, 0.114));
+  bool isBlueGlass = rawArchBase.b > rawArchBase.r * 1.10 && rawArchBase.b > 0.18;
+  bool isDarkPane = baseLum < 0.29 && rawArchBase.b >= rawArchBase.r * 0.92;
+  if (isBlueGlass || isDarkPane) {
+    vec3 roomCell = floor(vArchWorldPos * vec3(0.24, 0.28, 0.24));
+    float rHash = archHash21(roomCell.xz + vec2(roomCell.y * 19.7, roomCell.y * 7.3));
+    if (rHash > 0.26) {
+      vec3 warmWin = mix(vec3(1.0, 0.82, 0.42), vec3(1.0, 0.95, 0.78), fract(rHash * 9.1));
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, warmWin, uNightGlow * 0.92);
+    }
+  }
+}
 #include <dithering_fragment>`,
       );
   };
@@ -409,6 +495,14 @@ gl_FragColor.rgb *= mix(coolShadowTint, warmSunTint, smoothstep(0.32, 0.78, lum)
 function loadRawGlb(url: string): Promise<THREE.Group | null> {
   const cached = MODEL_PROMISE_CACHE.get(url);
   if (cached) return cached;
+  const isPropOrFurn =
+    url.includes('/furniture/') ||
+    url.includes('/mini-market/') ||
+    url.includes('/food/') ||
+    url.includes('/modular-buildings/detail-') ||
+    url.includes('/modular-buildings/window-') ||
+    url.includes('/car/') ||
+    url.includes('/train/');
   const p = new Promise<THREE.Group | null>((resolve) => {
     GLTF_LOADER.load(
       url,
@@ -428,15 +522,15 @@ function loadRawGlb(url: string): Promise<THREE.Group | null> {
                 std.map.colorSpace = THREE.SRGBColorSpace;
                 std.map.needsUpdate = true;
               }
-              return applyPixelArtArchShader(
-                new THREE.MeshLambertMaterial({
-                  color: std.color ? std.color.clone() : new THREE.Color(0xffffff),
-                  map: std.map ?? null,
-                  side: std.side,
-                  transparent: std.transparent,
-                  opacity: std.opacity,
-                }),
-              );
+              const lambert = new THREE.MeshLambertMaterial({
+                color: std.color ? std.color.clone() : new THREE.Color(0xffffff),
+                map: std.map ?? null,
+                side: std.side,
+                transparent: std.transparent,
+                opacity: std.opacity,
+              });
+              // Only apply brick-masonry grain to large exterior building shells (keep real 3D furniture, shelves & food crisp!)
+              return isPropOrFurn ? lambert : applyPixelArtArchShader(lambert);
             });
             m.material = Array.isArray(m.material) ? brightMats : brightMats[0];
           }
@@ -460,6 +554,7 @@ async function mountGlbModel(
     z: number;
     rotY?: number;
     targetWidth: number;
+    targetDepth?: number;
     heightMult?: number;
     addInkEdges?: boolean;
     tintHex?: number;
@@ -479,18 +574,21 @@ async function mountGlbModel(
   rawBox.getCenter(rawCenter);
 
   const horizSpan = Math.max(0.01, Math.max(rawSize.x, rawSize.z));
-  const scale = opts.targetWidth / horizSpan;
+  const scaleX = opts.targetDepth !== undefined ? opts.targetWidth / Math.max(0.01, rawSize.x) : opts.targetWidth / horizSpan;
+  const scaleZ = opts.targetDepth !== undefined ? opts.targetDepth / Math.max(0.01, rawSize.z) : scaleX;
+  const baseScaleY = opts.targetDepth !== undefined ? Math.min(scaleX, scaleZ) : scaleX;
   const hMult = opts.heightMult ?? 1.0;
+  const scaleY = baseScaleY * hMult;
 
   const wrapper = new THREE.Group();
   wrapper.position.set(opts.x, opts.y, opts.z);
   wrapper.rotation.y = opts.rotY ?? 0;
 
-  clone.scale.set(scale, scale * hMult, scale);
+  clone.scale.set(scaleX, scaleY, scaleZ);
   clone.position.set(
-    -rawCenter.x * scale,
-    -rawBox.min.y * scale * hMult - 0.04,
-    -rawCenter.z * scale,
+    -rawCenter.x * scaleX,
+    -rawBox.min.y * scaleY - 0.04,
+    -rawCenter.z * scaleZ,
   );
 
   if (opts.tintHex !== undefined || opts.addInkEdges || opts.cloneMaterials) {
@@ -521,10 +619,16 @@ async function mountGlbModel(
 
   wrapper.add(clone);
 
-  // Automatic Stone Retaining Foundation Plinth so buildings perched on hillsides sit solidly anchored into the slope (zero floating corners!)
-  if (opts.targetWidth >= 10) {
-    const fW = rawSize.x * scale * 0.94;
-    const fD = rawSize.z * scale * 0.94;
+  // Automatic Stone Retaining Foundation Plinth ONLY on exterior town buildings (never on indoor furniture/props!)
+  if (
+    opts.targetWidth >= 12 &&
+    !url.includes('/furniture/') &&
+    !url.includes('/mini-market/') &&
+    !url.includes('/food/') &&
+    !url.includes('/modular-buildings/')
+  ) {
+    const fW = rawSize.x * scaleX * 0.94;
+    const fD = rawSize.z * scaleZ * 0.94;
     const plinth = new THREE.Mesh(
       new THREE.BoxGeometry(fW, 2.8, fD),
       new THREE.MeshLambertMaterial({ color: 0x8d8f96 }),
@@ -534,13 +638,15 @@ async function mountGlbModel(
   }
 
   parent.add(wrapper);
-  const finalH = rawSize.y * scale * hMult;
+  const finalH = rawSize.y * scaleY;
   opts.onMounted?.(wrapper, finalH);
 }
 
-/** Smoothly fades an enterable building's exterior shell & edges transparent for clear interior cutaway */
+/** Smoothly fades an enterable building's exterior shell transparent (or hides roof completely at low alpha!) for crystal-clear interior cutaway */
 export function setBuildingExteriorOpacity(exteriorGroup: THREE.Group, alpha: number) {
   const isFaded = alpha < 0.96;
+  exteriorGroup.visible = alpha > 0.16;
+  if (!exteriorGroup.visible) return;
   exteriorGroup.traverse((obj) => {
     if ((obj as THREE.Mesh).isMesh) {
       const m = obj as THREE.Mesh;
@@ -1632,7 +1738,7 @@ export function buildInterTownRoadNetwork3D(
   return group;
 }
 
-function createPokeballBeacon(radius = 1.15): THREE.Group {
+export function createPokeballBeacon(radius = 1.15): THREE.Group {
   const g = new THREE.Group();
   const top = new THREE.Mesh(
     new THREE.SphereGeometry(radius, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
@@ -1727,217 +1833,27 @@ function createPlazaFountain(fountains: THREE.Object3D[]): THREE.Group {
   return g;
 }
 
-function buildPokemonCenterInterior(
-  tex: TownGroundTex,
-  w: number,
-  d: number,
-): { group: THREE.Group; npcs: THREE.Mesh[] } {
-  const g = new THREE.Group();
-  const npcs: THREE.Mesh[] = [];
-
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, d),
-    new THREE.MeshLambertMaterial({ map: tex.clinicFloor }),
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0.13;
-  floor.receiveShadow = true;
-  g.add(floor);
-
-  const rug = new THREE.Mesh(
-    new THREE.CircleGeometry(2.5, 16),
-    new THREE.MeshBasicMaterial({ color: 0xff8787 }),
-  );
-  rug.rotation.x = -Math.PI / 2;
-  rug.position.set(0, 0.15, 0.8);
-  const rugBand = new THREE.Mesh(
-    new THREE.PlaneGeometry(5.0, 0.42),
-    new THREE.MeshBasicMaterial({ color: 0x1e222e }),
-  );
-  rugBand.rotation.x = -Math.PI / 2;
-  rugBand.position.set(0, 0.155, 0.8);
-  const rugCenter = new THREE.Mesh(
-    new THREE.CircleGeometry(0.62, 12),
-    new THREE.MeshBasicMaterial({ color: 0xffffff }),
-  );
-  rugCenter.rotation.x = -Math.PI / 2;
-  rugCenter.position.set(0, 0.16, 0.8);
-  g.add(rug, rugBand, rugCenter);
-
-  const counterGeo = new THREE.BoxGeometry(w * 0.56, 1.35, 1.45);
-  const counter = new THREE.Mesh(counterGeo, applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xf8f9fa })));
-  counter.position.set(0, 0.72, -d * 0.24);
-  counter.add(new THREE.LineSegments(new THREE.EdgesGeometry(counterGeo, 30), INK_LINE_MAT));
-  const counterTopGeo = new THREE.BoxGeometry(w * 0.59, 0.22, 1.65);
-  const counterTop = new THREE.Mesh(counterTopGeo, applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xfa5252 })));
-  counterTop.position.set(0, 1.45, -d * 0.24);
-  counterTop.add(new THREE.LineSegments(new THREE.EdgesGeometry(counterTopGeo, 30), INK_LINE_MAT));
-  g.add(counter, counterTop);
-
-  const machine = new THREE.Mesh(
-    new THREE.BoxGeometry(2.4, 1.8, 0.9),
-    new THREE.MeshLambertMaterial({ color: 0xe9ecef }),
-  );
-  machine.position.set(-2.3, 0.95, -d * 0.38);
-  g.add(machine);
-  const slotMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
-  for (let i = 0; i < 6; i++) {
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), slotMat);
-    ball.position.set(-2.8 + (i % 3) * 0.5, 1.95, -d * 0.38 + (i >= 3 ? 0.22 : -0.22));
-    g.add(ball);
-  }
-
-  const sofaMat = new THREE.MeshLambertMaterial({ color: 0xff6b6b });
-  for (const sx of [-w * 0.34, w * 0.34]) {
-    const sofa = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.9, 3.4), sofaMat);
-    sofa.position.set(sx, 0.52, 1.0);
-    g.add(sofa);
-  }
-
-  const nurse = createNpcBillboard('/sprites/trainers/nurse-ow.png', 0, 0.15, -d * 0.32, 2.45);
-  const guest = createNpcBillboard('/sprites/trainers/lass-ow.png', w * 0.24, 0.15, 1.3, 2.35);
-  g.add(nurse, guest);
-  npcs.push(nurse, guest);
-
-  // Clear glowing welcome mat marking the Front Doorway entrance!
-  const matMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.8, 1.6),
-    new THREE.MeshBasicMaterial({ color: 0xff6b6b }),
-  );
-  matMesh.rotation.x = -Math.PI / 2;
-  matMesh.position.set(0, 0.17, d * 0.5 + 0.55);
-  g.add(matMesh);
-
-  return { group: g, npcs };
-}
-
-function buildPokeMartInterior(
-  tex: TownGroundTex,
-  w: number,
-  d: number,
-): { group: THREE.Group; npcs: THREE.Mesh[] } {
-  const g = new THREE.Group();
-  const npcs: THREE.Mesh[] = [];
-
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, d),
-    new THREE.MeshLambertMaterial({ map: tex.martFloor }),
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0.13;
-  floor.receiveShadow = true;
-  g.add(floor);
-
-  const counter = new THREE.Mesh(
-    new THREE.BoxGeometry(w * 0.44, 1.35, 1.35),
-    new THREE.MeshLambertMaterial({ color: 0x1c7ed6 }),
-  );
-  counter.position.set(-w * 0.16, 0.72, -d * 0.24);
-  const counterTop = new THREE.Mesh(
-    new THREE.BoxGeometry(w * 0.47, 0.2, 1.5),
-    new THREE.MeshLambertMaterial({ color: 0xf8f9fa }),
-  );
-  counterTop.position.set(-w * 0.16, 1.44, -d * 0.24);
-  g.add(counter, counterTop);
-
-  const shelfMat = new THREE.MeshLambertMaterial({ color: 0xe9ecef });
-  const itemColors = [0xfa5252, 0x339af0, 0x51cf66, 0xfcc419];
-  for (let s = 0; s < 2; s++) {
-    const sx = w * 0.26;
-    const sz = -1.6 + s * 3.0;
-    const shelf = new THREE.Mesh(new THREE.BoxGeometry(3.2, 1.8, 0.9), shelfMat);
-    shelf.position.set(sx, 0.95, sz);
-    g.add(shelf);
-    for (let k = 0; k < 4; k++) {
-      const box = new THREE.Mesh(
-        new THREE.BoxGeometry(0.45, 0.45, 0.45),
-        new THREE.MeshLambertMaterial({ color: itemColors[(k + s) % itemColors.length] }),
-      );
-      box.position.set(sx - 1.05 + k * 0.7, 2.05, sz);
-      g.add(box);
-    }
-  }
-
-  const clerk = createNpcBillboard('/sprites/trainers/erika-ow.png', -w * 0.16, 0.15, -d * 0.32, 2.45);
-  const shopper = createNpcBillboard('/sprites/trainers/blue-ow.png', w * 0.16, 0.15, 0.5, 2.45);
-  g.add(clerk, shopper);
-  npcs.push(clerk, shopper);
-
-  const matMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.8, 1.6),
-    new THREE.MeshBasicMaterial({ color: 0x339af0 }),
-  );
-  matMesh.rotation.x = -Math.PI / 2;
-  matMesh.position.set(0, 0.17, d * 0.5 + 0.55);
-  g.add(matMesh);
-
-  return { group: g, npcs };
-}
-
-function buildTownHouseInterior(
-  tex: TownGroundTex,
-  w: number,
-  d: number,
-): { group: THREE.Group; npcs: THREE.Mesh[] } {
-  const g = new THREE.Group();
-  const npcs: THREE.Mesh[] = [];
-
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, d),
-    new THREE.MeshLambertMaterial({ map: tex.woodFloor }),
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.y = 0.13;
-  floor.receiveShadow = true;
-  g.add(floor);
-
-  const rug = new THREE.Mesh(
-    new THREE.PlaneGeometry(4.2, 3.2),
-    new THREE.MeshBasicMaterial({ color: 0xf08c00 }),
-  );
-  rug.rotation.x = -Math.PI / 2;
-  rug.position.set(0, 0.15, 0);
-  g.add(rug);
-
-  const table = new THREE.Mesh(
-    new THREE.BoxGeometry(2.4, 1.0, 1.6),
-    new THREE.MeshLambertMaterial({ color: 0x8d5b4c }),
-  );
-  table.position.set(0, 0.55, 0.4);
-  g.add(table);
-
-  const resident = createNpcBillboard('/sprites/trainers/youngster-ow.png', 1.8, 0.15, 1.4, 2.38);
-  g.add(resident);
-  npcs.push(resident);
-
-  const matMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.4, 1.4),
-    new THREE.MeshBasicMaterial({ color: 0xfcc419 }),
-  );
-  matMesh.rotation.x = -Math.PI / 2;
-  matMesh.position.set(0, 0.17, d * 0.5 + 0.5);
-  g.add(matMesh);
-
-  return { group: g, npcs };
-}
-
 const DIVERSE_HOUSE_STYLES: {
   url: string;
   heightMult: number;
   isFlatUrban: boolean;
 }[] = [
-  // Pitched-roof cozy cottages & villas
-  { url: '/models/town/suburban/house-a.glb', heightMult: 1.24, isFlatUrban: false },
-  { url: '/models/town/suburban/house-c.glb', heightMult: 1.32, isFlatUrban: false },
-  { url: '/models/town/suburban/house-f.glb', heightMult: 1.20, isFlatUrban: false },
-  { url: '/models/town/suburban/house-i.glb', heightMult: 1.36, isFlatUrban: false },
-  { url: '/models/town/suburban/house-l.glb', heightMult: 1.28, isFlatUrban: false },
-  { url: '/models/town/suburban/house-o.glb', heightMult: 1.18, isFlatUrban: false },
-  // Flat-roof modern townhouses, corner shops & multi-story urban apartments!
-  { url: '/models/town/commercial/shop-a.glb', heightMult: 1.34, isFlatUrban: true },
-  { url: '/models/town/commercial/shop-d.glb', heightMult: 1.46, isFlatUrban: true },
-  { url: '/models/town/commercial/shop-g.glb', heightMult: 1.54, isFlatUrban: true },
-  { url: '/models/town/commercial/mart-boutique.glb', heightMult: 1.38, isFlatUrban: true },
+  // Multi-story crisp Kenney city-commercial urban buildings & apartments
+  { url: '/models/city-commercial/building-a.glb', heightMult: 1.08, isFlatUrban: true },
+  { url: '/models/city-commercial/building-b.glb', heightMult: 1.12, isFlatUrban: true },
+  { url: '/models/city-commercial/building-c.glb', heightMult: 1.15, isFlatUrban: true },
+  { url: '/models/city-commercial/building-d.glb', heightMult: 1.10, isFlatUrban: true },
+  { url: '/models/city-commercial/building-f.glb', heightMult: 1.18, isFlatUrban: true },
+  { url: '/models/city-commercial/building-g.glb', heightMult: 1.14, isFlatUrban: true },
+  { url: '/models/city-commercial/building-h.glb', heightMult: 1.16, isFlatUrban: true },
+  { url: '/models/city-commercial/building-j.glb', heightMult: 1.12, isFlatUrban: true },
+  { url: '/models/city-commercial/building-l.glb', heightMult: 1.20, isFlatUrban: true },
+  { url: '/models/city-commercial/building-m.glb', heightMult: 1.15, isFlatUrban: true },
+  // Pitched-roof cozy cottages & suburban villas for outer residential streets
+  { url: '/models/town/suburban/house-a.glb', heightMult: 1.12, isFlatUrban: false },
+  { url: '/models/town/suburban/house-c.glb', heightMult: 1.16, isFlatUrban: false },
+  { url: '/models/town/suburban/house-f.glb', heightMult: 1.10, isFlatUrban: false },
+  { url: '/models/town/suburban/house-i.glb', heightMult: 1.18, isFlatUrban: false },
 ];
 
 const FACADE_TINT_PALETTE: (number | undefined)[] = [
@@ -1951,14 +1867,7 @@ const FACADE_TINT_PALETTE: (number | undefined)[] = [
   0xdee2e6,    // modern slate white
 ];
 
-const SHOP_POOL = [
-  '/models/town/commercial/mart-boutique.glb',
-  '/models/town/commercial/shop-a.glb',
-  '/models/town/commercial/shop-d.glb',
-  '/models/town/commercial/shop-g.glb',
-];
-
-/** Helper: builds a terrain-hugging street ribbon mesh along a single street segment with clean layered Y-offset (zero Z-fighting!) */
+/** Helper: builds a crowned street ribbon mesh that samples 7 cross-sectional points so rolling hills NEVER poke through roads! */
 function buildStreetRibbonMesh(
   seg: TownStreetSeg,
   baseY: number,
@@ -1966,17 +1875,16 @@ function buildStreetRibbonMesh(
   originZ: number,
   tex: THREE.CanvasTexture,
   getGroundHeight: (x: number, z: number) => number,
-  layerLiftY = 0.12,
+  layerLiftY = 0.14,
   polyOffsetFactor = -1,
 ): THREE.Mesh {
   const dist = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
-  const steps = Math.max(4, Math.ceil(dist / 3.2));
+  const steps = Math.max(5, Math.ceil(dist / 2.6));
   const dirX = (seg.x2 - seg.x1) / Math.max(0.01, dist);
   const dirZ = (seg.z2 - seg.z1) / Math.max(0.01, dist);
   const wStart = seg.widthStart ?? seg.width;
   const wEnd = seg.widthEnd ?? seg.width;
-  // Tighter miter endPad (0.65m) seals gentle bends cleanly WITHOUT poking grey concrete sidewalk slabs into intersecting lanes!
-  const endPad = Math.min(0.65, Math.max(wStart, wEnd) * 0.03);
+  const endPad = Math.min(0.85, Math.max(wStart, wEnd) * 0.035);
   const sx1 = seg.x1 - dirX * endPad;
   const sz1 = seg.z1 - dirZ * endPad;
   const sx2 = seg.x2 + dirX * endPad;
@@ -1986,6 +1894,7 @@ function buildStreetRibbonMesh(
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
+  const sampleFracs = [-1, -0.66, -0.33, 0, 0.33, 0.66, 1];
 
   for (let s = 0; s <= steps; s++) {
     const t = s / steps;
@@ -1998,30 +1907,32 @@ function buildStreetRibbonMesh(
     const lz = wz - perpZ;
     const rx = wx + perpX;
     const rz = wz + perpZ;
-    // Hug the exact graded terrain across left / center / right so characters ALWAYS stand squarely on asphalt (ZERO floating air gaps!)
-    // plus solid -1.5m concrete curb skirts along both outer sidewalk edges!
-    const yL = Math.max(WATER_LEVEL_3D + 0.2, getGroundHeight(lx, lz) + layerLiftY) - baseY;
-    const yC = Math.max(WATER_LEVEL_3D + 0.2, getGroundHeight(wx, wz) + layerLiftY) - baseY;
-    const yR = Math.max(WATER_LEVEL_3D + 0.2, getGroundHeight(rx, rz) + layerLiftY) - baseY;
+
+    // Sample 7 points across the full boulevard width and crown road surface above the highest local terrain crest!
+    let maxH = WATER_LEVEL_3D + 0.12;
+    for (let fi = 0; fi < sampleFracs.length; fi++) {
+      const f = sampleFracs[fi];
+      const h = getGroundHeight(wx + perpX * f, wz + perpZ * f);
+      if (h > maxH) maxH = h;
+    }
+    const crownY = Math.max(WATER_LEVEL_3D + 0.24, maxH + layerLiftY + 0.14) - baseY;
+    const edgeY = crownY - 0.03;
+
     positions.push(
-      lx - originX, yL - 1.4, lz - originZ, // 0: left curb skirt bottom
-      lx - originX, yL, lz - originZ,       // 1: left sidewalk edge
-      wx - originX, yC, wz - originZ,       // 2: road centerline
-      rx - originX, yR, rz - originZ,       // 3: right sidewalk edge
-      rx - originX, yR - 1.4, rz - originZ, // 4: right curb skirt bottom
+      lx - originX, edgeY - 2.4, lz - originZ, // 0: left retaining curb skirt bottom
+      lx - originX, edgeY, lz - originZ,       // 1: left sidewalk edge
+      wx - originX, crownY, wz - originZ,      // 2: crowned road centerline
+      rx - originX, edgeY, rz - originZ,       // 3: right sidewalk edge
+      rx - originX, edgeY - 2.4, rz - originZ, // 4: right retaining curb skirt bottom
     );
     const u = (t * paddedDist) / (seg.kind === 'arterial' ? 16.5 : 10.5);
     uvs.push(u, 0, u, 0, u, 0.5, u, 1, u, 1);
     if (s < steps) {
       const i0 = s * 5;
       const n0 = (s + 1) * 5;
-      // Left retaining curb wall
       indices.push(i0, n0, i0 + 1, i0 + 1, n0, n0 + 1);
-      // Left carriageway half
       indices.push(i0 + 1, n0 + 1, i0 + 2, i0 + 2, n0 + 1, n0 + 2);
-      // Right carriageway half
       indices.push(i0 + 2, n0 + 2, i0 + 3, i0 + 3, n0 + 2, n0 + 3);
-      // Right retaining curb wall
       indices.push(i0 + 3, n0 + 3, i0 + 4, i0 + 4, n0 + 3, n0 + 4);
     }
   }
@@ -2078,7 +1989,6 @@ export function buildProceduralTown3D(
   const layout = generateTownLayout(anchor);
   const townName = layout.townName;
   const styleIdx = Math.abs(seed) % 4;
-  const isMajorCity = styleIdx === 0 || styleIdx === 2;
 
   const spinners: THREE.Object3D[] = [];
   const fountains: THREE.Object3D[] = [];
@@ -2086,6 +1996,9 @@ export function buildProceduralTown3D(
   const vehicles: TownMovingVehicle[] = [];
   const walkers: TownStrollingCitizen[] = [];
   const interiors: EnterableBuildingInterior[] = [];
+  const autoDoors: ProximityAutoDoor3D[] = [];
+  const upperFloorZones: WalkableStairAndFloorZone3D[] = [];
+  const viaductSpans: ViaductOverheadSpan[] = [];
   const interactPoints: TownInteractPoint[] = [];
   const colliders: TownCollider[] = [];
 
@@ -2139,66 +2052,96 @@ export function buildProceduralTown3D(
   for (let segIdx = 0; segIdx < layout.streets.length; segIdx++) {
     const seg = layout.streets[segIdx];
     if (seg.isBridge) {
-      // REAL 3D RIVER BRIDGE (Nanpu Bridge / Yangpu Bridge / Waibaidu Red Steel Truss Bridge across Huangpu River & Suzhou Creek!)
+      // REAL 3D RIVER BRIDGE (Flush onshore road connection + riveted steel Waibaidu truss on Suzhou Creek & white cable-stayed pylons on wide rivers!)
       const bLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
       const bYaw = Math.atan2(seg.x2 - seg.x1, seg.z2 - seg.z1);
       const bMidX = (seg.x1 + seg.x2) * 0.5 - centerX;
       const bMidZ = (seg.z1 + seg.z2) * 0.5 - centerZ;
-      const deckY = Math.max(1.8, baseY + 0.16) - baseY;
-      const deckMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(seg.width, 0.45, bLen),
-        new THREE.MeshLambertMaterial({ map: tex.collector2Lane }),
-      );
+      const endH1 = getGroundHeight(seg.x1, seg.z1);
+      const endH2 = getGroundHeight(seg.x2, seg.z2);
+      const deckY = Math.max(WATER_LEVEL_3D + 0.9, baseY + 0.24, Math.max(endH1, endH2) + 0.16) - baseY;
+      const bridgeDeckTex = tex.collector2Lane.clone();
+      bridgeDeckTex.center.set(0.5, 0.5);
+      bridgeDeckTex.rotation = Math.PI / 2;
+      bridgeDeckTex.repeat.set(Math.max(1, Math.round(bLen / 14)), 1);
+      bridgeDeckTex.wrapS = THREE.RepeatWrapping;
+      bridgeDeckTex.wrapT = THREE.RepeatWrapping;
+      bridgeDeckTex.needsUpdate = true;
+      const pierSideMat = new THREE.MeshLambertMaterial({ color: 0x9aa2ae });
+      const deckMesh = new THREE.Mesh(new THREE.BoxGeometry(seg.width, 0.48, bLen + 5.2), [
+        pierSideMat,
+        pierSideMat,
+        new THREE.MeshLambertMaterial({ map: bridgeDeckTex }),
+        pierSideMat,
+        pierSideMat,
+        pierSideMat,
+      ]);
       deckMesh.position.set(bMidX, deckY - 0.22, bMidZ);
       deckMesh.rotation.y = bYaw;
       deckMesh.receiveShadow = true;
       group.add(deckMesh);
 
-      const railCol = seg.bridgeStyle === 'waibaidu' ? 0xc92a2a : 0x5c677d;
+      // Authentic Shanghai bridge palettes: riveted slate-grey steel on Waibaidu Bridge; crisp architectural white-grey on Nanpu/Yangpu cable-stayed bridges!
+      const railCol = seg.bridgeStyle === 'waibaidu' ? 0x525d68 : 0xdce3ea;
       const railMat = new THREE.MeshLambertMaterial({ color: railCol });
-      const cableMat = new THREE.MeshBasicMaterial({ color: 0xe9ecef });
+      const cableMat = new THREE.MeshBasicMaterial({ color: 0xf1f3f5 });
       const pierMat = new THREE.MeshLambertMaterial({ color: 0x868e96 });
       const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe066 });
       const bDirX = (seg.x2 - seg.x1) / Math.max(0.01, bLen);
       const bDirZ = (seg.z2 - seg.z1) / Math.max(0.01, bLen);
       const bNx = -bDirZ;
       const bNz = bDirX;
+      // Inset side railings strictly within the water span (82% of bLen) so railings NEVER jut across onshore road intersections!
+      const railSpan = Math.max(6, bLen * 0.82);
 
       for (const side of [-1, 1]) {
         const rx = bMidX + bNx * side * (seg.width * 0.48);
         const rz = bMidZ + bNz * side * (seg.width * 0.48);
+        colliders.push(makeObbCollider(centerX + rx, centerZ + rz, 0.5, railSpan * 0.5, bYaw, 3.2));
         const topBeam = new THREE.Mesh(
-          new THREE.BoxGeometry(0.45, seg.bridgeStyle === 'waibaidu' ? 1.1 : 1.15, bLen),
+          new THREE.BoxGeometry(0.45, seg.bridgeStyle === 'waibaidu' ? 0.85 : 1.05, railSpan),
           railMat,
         );
-        topBeam.position.set(rx, deckY + (seg.bridgeStyle === 'waibaidu' ? 3.2 : 0.6), rz);
+        topBeam.position.set(rx, deckY + (seg.bridgeStyle === 'waibaidu' ? 5.6 : 0.55), rz);
         topBeam.rotation.y = bYaw;
         topBeam.castShadow = true;
         group.add(topBeam);
 
-        // Waibaidu Bridge iconic red steel truss vertical posts + lower guard rail!
         if (seg.bridgeStyle === 'waibaidu') {
-          const lowRail = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.85, bLen), railMat);
-          lowRail.position.set(rx, deckY + 0.45, rz);
+          const lowRail = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.92, railSpan), railMat);
+          lowRail.position.set(rx, deckY + 0.46, rz);
           lowRail.rotation.y = bYaw;
           group.add(lowRail);
-          const trussCount = Math.max(4, Math.floor(bLen / 7.5));
+          const trussCount = Math.max(4, Math.floor(railSpan / 7.2));
           for (let ti = 0; ti <= trussCount; ti++) {
             const f = -0.48 + (ti / trussCount) * 0.96;
-            const px = rx + bDirX * (bLen * f);
-            const pz = rz + bDirZ * (bLen * f);
-            const post = new THREE.Mesh(new THREE.BoxGeometry(0.42, 3.4, 0.42), railMat);
-            post.position.set(px, deckY + 1.7, pz);
+            const px = rx + bDirX * (railSpan * f);
+            const pz = rz + bDirZ * (railSpan * f);
+            const post = new THREE.Mesh(new THREE.BoxGeometry(0.42, 5.6, 0.42), railMat);
+            post.position.set(px, deckY + 2.8, pz);
             post.rotation.y = bYaw;
             post.castShadow = true;
             group.add(post);
           }
         }
 
-        // Bridge piers & Nanpu/Yangpu iconic cable-stayed towers + fan cables kept strictly INSIDE the river span (never cutting across onshore crosswalks!)
-        for (const frac of [-0.24, 0, 0.24]) {
-          const px = rx + bDirX * (bLen * frac);
-          const pz = rz + bDirZ * (bLen * frac);
+        // Bridge deck warm streetlights along the span!
+        for (const lFrac of [-0.34, 0, 0.34]) {
+          const lpx = rx + bDirX * (railSpan * lFrac);
+          const lpz = rz + bDirZ * (railSpan * lFrac);
+          const lPost = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.14, 4.2, 6), railMat);
+          lPost.position.set(lpx, deckY + 2.4, lpz);
+          const lBulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), STREET_LAMP_BULB_MAT);
+          lBulb.position.set(lpx, deckY + 4.55, lpz);
+          const lHalo = new THREE.Sprite(STREET_LAMP_HALO_MAT);
+          lHalo.scale.set(3.4, 3.4, 1);
+          lHalo.position.set(lpx, deckY + 4.55, lpz);
+          group.add(lPost, lBulb, lHalo);
+        }
+
+        for (const frac of [-0.22, 0, 0.22]) {
+          const px = rx + bDirX * (railSpan * frac);
+          const pz = rz + bDirZ * (railSpan * frac);
           const pier = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.85, 5.2, 8), pierMat);
           pier.position.set(px, deckY - 2.6, pz);
           group.add(pier);
@@ -2207,11 +2150,10 @@ export function buildProceduralTown3D(
             pylon.position.set(px, deckY + 8.0, pz);
             pylon.castShadow = true;
             group.add(pylon);
-            // Fan stay-cables descending cleanly onto the bridge deck itself (bounded within [-0.46..+0.46] of bLen!)
             for (const cSpan of [-0.18, -0.10, 0.10, 0.18]) {
               const clampedFrac = Math.max(-0.46, Math.min(0.46, frac + cSpan));
-              const targetX = rx + bDirX * (bLen * clampedFrac);
-              const targetZ = rz + bDirZ * (bLen * clampedFrac);
+              const targetX = rx + bDirX * (railSpan * clampedFrac);
+              const targetZ = rz + bDirZ * (railSpan * clampedFrac);
               const dx = targetX - px;
               const dz = targetZ - pz;
               const dy = -14.2;
@@ -2230,20 +2172,19 @@ export function buildProceduralTown3D(
           group.add(lamp);
         }
       }
-      // Overhead steel portal beams across Waibaidu Bridge & cable-stayed pylons!
       if (seg.bridgeStyle === 'waibaidu') {
-        for (const f of [-0.36, 0, 0.36]) {
-          const cxB = bMidX + bDirX * (bLen * f);
-          const czB = bMidZ + bDirZ * (bLen * f);
-          const cross = new THREE.Mesh(new THREE.BoxGeometry(seg.width, 0.52, 0.52), railMat);
-          cross.position.set(cxB, deckY + 3.55, czB);
+        for (const f of [-0.34, 0, 0.34]) {
+          const cxB = bMidX + bDirX * (railSpan * f);
+          const czB = bMidZ + bDirZ * (railSpan * f);
+          const cross = new THREE.Mesh(new THREE.BoxGeometry(seg.width * 0.98, 0.52, 0.52), railMat);
+          cross.position.set(cxB, deckY + 5.8, czB);
           cross.rotation.y = bYaw;
           group.add(cross);
         }
       } else {
-        for (const f of [-0.24, 0.24]) {
-          const cxB = bMidX + bDirX * (bLen * f);
-          const czB = bMidZ + bDirZ * (bLen * f);
+        for (const f of [-0.22, 0.22]) {
+          const cxB = bMidX + bDirX * (railSpan * f);
+          const czB = bMidZ + bDirZ * (railSpan * f);
           const tie = new THREE.Mesh(new THREE.BoxGeometry(seg.width, 0.9, 0.9), railMat);
           tie.position.set(cxB, deckY + 14.4, czB);
           tie.rotation.y = bYaw;
@@ -2259,14 +2200,12 @@ export function buildProceduralTown3D(
         : seg.kind === 'street'
           ? tex.collector2Lane
           : tex.alleyCobble;
-    // Crisp layered road elevations (+0.045 / +0.072 / +0.098 + 3mm stagger) so intersecting segments NEVER Z-fight,
-    // while junction crosswalk pads sit cleanly above at +0.155 so dashed lines NEVER bleed through zebra stripes!
     const microStagger = (segIdx % 11) * 0.003;
     const liftY = (seg.kind === 'arterial' ? 0.098 : seg.kind === 'street' ? 0.072 : 0.045) + microStagger;
     const polyOff = seg.kind === 'arterial' ? -3 : seg.kind === 'street' ? -2 : -1;
     group.add(buildStreetRibbonMesh(seg, baseY, centerX, centerZ, roadTex, getGroundHeight, liftY, polyOff));
 
-    // Lush Dense Avenue Greenery: Tall Pixel Street Trees spaced every ~14m + Continuous Small Pixel Shrubs & Flowers in between!
+    // Lush Detailed Pixel-Art Trees + Multi-Layered Berry Bushes & Wildflowers (matching the rich pixel trees 100%!)
     const segLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
     const dirX = (seg.x2 - seg.x1) / Math.max(0.01, segLen);
     const dirZ = (seg.z2 - seg.z1) / Math.max(0.01, segLen);
@@ -2274,29 +2213,30 @@ export function buildProceduralTown3D(
     const nz = dirX;
     const isNearAnyJunction = (wx: number, wz: number, rad = 20) =>
       layout.junctions.some((jn) => Math.hypot(jn.x - wx, jn.z - wz) < rad);
+    const pickDetailedShrubTex = (idx: number) =>
+      idx % 4 === 3
+        ? floraTex.flowers[idx % floraTex.flowers.length] ?? floraTex.flower
+        : floraTex.bushes[idx % floraTex.bushes.length] ?? floraTex.bush;
 
     if (seg.kind === 'arterial' && segLen >= 16) {
-      // A. Central Green Median: continuous tight hedge row (~2.2m spacing!) of 8 varied GBA urban shrubs + tall shade trees every ~13m!
-      const medianSteps = Math.max(4, Math.floor((segLen - 4) / 2.2));
+      const medianSteps = Math.max(4, Math.floor((segLen - 4) / 2.6));
       for (let mi = 0; mi < medianSteps; mi++) {
         const f = 0.06 + (medianSteps > 1 ? (mi / (medianSteps - 1)) * 0.88 : 0.44);
         const mx = seg.x1 + dirX * (segLen * f);
         const mz = seg.z1 + dirZ * (segLen * f);
         if (isNearAnyJunction(mx, mz, 18) || isBlockedForGreenery(mx, mz, seg)) continue;
-        const my = localGroundY(mx, mz) + 0.14;
-        if (mi % 6 === 2) {
+        const my = localGroundY(mx, mz) + 0.16;
+        if (mi % 5 === 2) {
           const treeTex = floraTex.treeSprites[(mi + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
           spawnPixelGreenery(treeTex, mx - centerX, my, mz - centerZ, 5.2, 6.2);
         } else {
-          // Rich landscaping band pattern (alternating green boxwood, red photinia, golden privet & flowering azalea!)
-          const shrubIdx = (Math.floor(mi / 2) + segIdx + styleIdx) % tex.urbanShrubs.length;
-          spawnPixelGreenery(tex.urbanShrubs[shrubIdx], mx - centerX, my, mz - centerZ, 2.15, 1.75);
+          const shrubTex = pickDetailedShrubTex(mi + segIdx + styleIdx);
+          spawnPixelGreenery(shrubTex, mx - centerX, my, mz - centerZ, 2.25, 1.95);
         }
       }
 
-      // B. BOTH Roadside Curb Verges (right along the edge between sidewalk & asphalt!): continuous tight urban shrub hedge (~2.3m) + tall shade trees (~14m)!
       const vergeOff = seg.width * 0.5 - 3.9;
-      const sideSteps = Math.max(4, Math.floor((segLen - 4) / 2.3));
+      const sideSteps = Math.max(4, Math.floor((segLen - 4) / 2.8));
       for (let si = 0; si < sideSteps; si++) {
         const f = 0.06 + (sideSteps > 1 ? (si / (sideSteps - 1)) * 0.88 : 0.44);
         const sx = seg.x1 + dirX * (segLen * f);
@@ -2305,22 +2245,21 @@ export function buildProceduralTown3D(
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;
           if (isNearAnyJunction(tx, tz, 19) || isBlockedForGreenery(tx, tz, seg)) continue;
-          const ty = localGroundY(tx, tz) + 0.14;
-          if (si % 6 === 1) {
+          const ty = localGroundY(tx, tz) + 0.16;
+          if (si % 5 === 1) {
             const treeTex = floraTex.treeSprites[(si + styleIdx + (side > 0 ? 1 : 0)) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
             spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.9, 5.9);
           } else {
-            const shrubIdx = (Math.floor(si / 2) + (side > 0 ? 2 : 0) + segIdx) % tex.urbanShrubs.length;
-            spawnPixelGreenery(tex.urbanShrubs[shrubIdx], tx - centerX, ty, tz - centerZ, 1.95, 1.6);
+            const shrubTex = pickDetailedShrubTex(si + (side > 0 ? 2 : 0) + segIdx);
+            spawnPixelGreenery(shrubTex, tx - centerX, ty, tz - centerZ, 2.05, 1.8);
           }
         }
       }
     }
 
-    // Collector Streets: Continuous neat urban shrub hedges (~2.5m) + spaced shade trees (~15m) on BOTH curb verges (ZERO logs!)
     if (seg.kind === 'street' && segLen >= 14) {
       const vergeOff = seg.width * 0.5 - 2.3;
-      const stepCount = Math.max(4, Math.floor((segLen - 4) / 2.5));
+      const stepCount = Math.max(4, Math.floor((segLen - 4) / 3.0));
       for (let ti = 0; ti < stepCount; ti++) {
         const tFrac = 0.08 + (stepCount > 1 ? (ti / (stepCount - 1)) * 0.84 : 0.42);
         const sx = seg.x1 + dirX * (segLen * tFrac);
@@ -2329,14 +2268,13 @@ export function buildProceduralTown3D(
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;
           if (isNearAnyJunction(tx, tz, 15) || isBlockedForGreenery(tx, tz, seg)) continue;
-          const ty = localGroundY(tx, tz) + 0.14;
-          const isTree = ti % 6 === 0;
-          if (isTree) {
+          const ty = localGroundY(tx, tz) + 0.16;
+          if (ti % 5 === 0) {
             const treeTex = floraTex.treeSprites[(ti + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
             spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.5, 5.4);
           } else {
-            const shrubIdx = (Math.floor(ti / 2) + (side > 0 ? 3 : 0) + segIdx) % tex.urbanShrubs.length;
-            spawnPixelGreenery(tex.urbanShrubs[shrubIdx], tx - centerX, ty, tz - centerZ, 1.75, 1.45);
+            const shrubTex = pickDetailedShrubTex(ti + (side > 0 ? 3 : 0) + segIdx);
+            spawnPixelGreenery(shrubTex, tx - centerX, ty, tz - centerZ, 1.85, 1.65);
           }
         }
       }
@@ -2439,6 +2377,15 @@ export function buildProceduralTown3D(
         spanGroup.add(rail);
       }
       group.add(spanGroup);
+      viaductSpans.push({
+        group: spanGroup,
+        x1: vSeg.x1,
+        z1: vSeg.z1,
+        x2: vSeg.x2,
+        z2: vSeg.z2,
+        halfWidth: VIADUCT_W * 0.5 + 3.5,
+        alpha: 1,
+      });
 
       // Place concrete T-pier cleanly at the MIDPOINT of each span (on the boulevard's green center median — NEVER inside road intersections!)
       const pierClearOfJunction = !layout.junctions.some((jn) => Math.hypot(jn.x - wMidX, jn.z - wMidZ) < 17);
@@ -2464,12 +2411,26 @@ export function buildProceduralTown3D(
     }
   }
 
-  // 1B. Clean Cities: Skylines Asphalt Intersection Pads with Zebra Crosswalks + Real 3D Traffic Lights (红绿灯)!
-  const junctionMat = new THREE.MeshLambertMaterial({
-    map: tex.junctionAsphalt,
+  // 1B. Natural Curved Road Bends + True Multi-Arm Circular Hubs & Per-Arm Aligned Zebra Crosswalks (ZERO Square Crossroad Boxes!)
+  const hubAsphaltMat = new THREE.MeshLambertMaterial({
+    color: 0x3b414c,
     polygonOffset: true,
-    polygonOffsetFactor: -6,
-    polygonOffsetUnits: -6,
+    polygonOffsetFactor: -5,
+    polygonOffsetUnits: -5,
+  });
+  const hubCurbMat = new THREE.MeshLambertMaterial({
+    color: 0xaeb6c2,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+  });
+  const zebraStripeMat = new THREE.MeshLambertMaterial({
+    color: 0xf1f5f9,
+    emissive: 0x94a3b8,
+    emissiveIntensity: 0.18,
+    polygonOffset: true,
+    polygonOffsetFactor: -7,
+    polygonOffsetUnits: -7,
   });
   const signalPoleMat = new THREE.MeshLambertMaterial({ color: 0x343a40 });
   const signalBoxMat = new THREE.MeshLambertMaterial({ color: 0x1b1f26 });
@@ -2479,54 +2440,136 @@ export function buildProceduralTown3D(
   const greenLightMat = new THREE.MeshBasicMaterial({ color: 0x51cf66 });
   const greenOffMat = new THREE.MeshBasicMaterial({ color: 0x17331e });
 
-  for (let ji = 0; ji < layout.junctions.length; ji++) {
-    const jn = layout.junctions[ji];
-    const padGeo = new THREE.PlaneGeometry(jn.width, jn.depth, 6, 6);
-    padGeo.rotateX(-Math.PI / 2);
-    const posAttr = padGeo.attributes.position as THREE.BufferAttribute;
-    const cosR = Math.cos(jn.rotY);
-    const sinR = Math.sin(jn.rotY);
-    for (let vi = 0; vi < posAttr.count; vi++) {
-      const vx = posAttr.getX(vi);
-      const vz = posAttr.getZ(vi);
-      const wx = jn.x + vx * cosR + vz * sinR;
-      const wz = jn.z - vx * sinR + vz * cosR;
-      posAttr.setXYZ(vi, wx - centerX, localGroundY(wx, wz) + 0.155, wz - centerZ);
+  // Group all dry-land street endpoints into topological road nodes (within 7m) so BOTH 2-arm curves AND >=3-arm intersections blend seamlessly!
+  interface RoadArmInfo {
+    ux: number;
+    uz: number;
+    ang: number;
+    width: number;
+    isArterial: boolean;
+  }
+  const nodeMap = new Map<string, { x: number; z: number; arms: RoadArmInfo[] }>();
+  for (const seg of layout.streets) {
+    if (seg.isBridge) continue;
+    // Only build detailed 3D intersection meshes within 620m of city center
+    if (Math.hypot(seg.x1 - centerX, seg.z1 - centerZ) > 640 && Math.hypot(seg.x2 - centerX, seg.z2 - centerZ) > 640) {
+      continue;
     }
-    padGeo.computeVertexNormals();
-    const pad = new THREE.Mesh(padGeo, junctionMat);
-    pad.receiveShadow = true;
-    pad.renderOrder = 8;
-    group.add(pad);
-
-    // Mount sleek 3D Traffic Signals at corners of major arterial intersections (only ONE active bulb lit per head — realistic green/red phases!)
-    if (jn.width >= 32) {
-      const off = jn.width * 0.48;
-      const corners: [number, number, boolean][] = [
-        [-off, -off, ji % 2 === 0],
-        [off, off, ji % 2 !== 0],
-      ];
-      for (const [cxS, czS, isGreenPhase] of corners) {
-        const wx = jn.x + cxS * cosR + czS * sinR;
-        const wz = jn.z - cxS * sinR + czS * cosR;
-        const sig = new THREE.Group();
-        sig.position.set(wx - centerX, localGroundY(wx, wz) + 0.15, wz - centerZ);
-        sig.rotation.y = Math.atan2(-cxS, -czS);
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 6.2, 6), signalPoleMat);
-        pole.position.y = 3.1;
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 3.6), signalPoleMat);
-        arm.position.set(0, 6.0, 1.7);
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.65, 1.45, 0.45), signalBoxMat);
-        head.position.set(0, 5.55, 3.2);
-        const rL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), isGreenPhase ? redOffMat : redLightMat);
-        rL.position.set(0, 5.95, 3.44);
-        const yL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), amberOffMat);
-        yL.position.set(0, 5.55, 3.44);
-        const gL = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6), isGreenPhase ? greenLightMat : greenOffMat);
-        gL.position.set(0, 5.15, 3.44);
-        sig.add(pole, arm, head, rL, yL, gL);
-        group.add(sig);
+    const sLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
+    if (sLen < 2) continue;
+    const addArm = (nx: number, nz: number, ox: number, oz: number) => {
+      let target: { x: number; z: number; arms: RoadArmInfo[] } | undefined;
+      for (const nd of nodeMap.values()) {
+        if (Math.hypot(nd.x - nx, nd.z - nz) <= 7.0) {
+          target = nd;
+          break;
+        }
       }
+      if (!target) {
+        target = { x: nx, z: nz, arms: [] };
+        nodeMap.set(`${Math.round(nx)},${Math.round(nz)}`, target);
+      }
+      const ux = (ox - target.x) / Math.max(0.01, Math.hypot(ox - target.x, oz - target.z));
+      const uz = (oz - target.z) / Math.max(0.01, Math.hypot(ox - target.x, oz - target.z));
+      // Deduplicate nearly identical arm angles
+      if (!target.arms.some((a) => a.ux * ux + a.uz * uz > 0.94)) {
+        target.arms.push({
+          ux,
+          uz,
+          ang: Math.atan2(ux, uz),
+          width: seg.width,
+          isArterial: seg.kind === 'arterial',
+        });
+      }
+    };
+    addArm(seg.x1, seg.z1, seg.x2, seg.z2);
+    addArm(seg.x2, seg.z2, seg.x1, seg.z1);
+  }
+
+  let ji = 0;
+  for (const nd of nodeMap.values()) {
+    if (nd.arms.length < 2) continue;
+    if (getGroundHeight(nd.x, nd.z) < WATER_LEVEL_3D + 0.2) continue;
+    const maxW = Math.max(...nd.arms.map((a) => a.width));
+    const hubY = Math.max(WATER_LEVEL_3D + 0.25 - baseY, localGroundY(nd.x, nd.z) + 0.14);
+
+    // Seamless circular sidewalk base + circular carriageway asphalt hub (rounds curves & intersections naturally — NO square boxes!)
+    const sidewalkHub = new THREE.Mesh(new THREE.CircleGeometry(maxW * 0.5 + 0.2, 22), hubCurbMat);
+    sidewalkHub.rotation.x = -Math.PI / 2;
+    sidewalkHub.position.set(nd.x - centerX, hubY - 0.015, nd.z - centerZ);
+    sidewalkHub.receiveShadow = true;
+    const roadHub = new THREE.Mesh(new THREE.CircleGeometry(maxW * 0.37, 22), hubAsphaltMat);
+    roadHub.rotation.x = -Math.PI / 2;
+    roadHub.position.set(nd.x - centerX, hubY + 0.01, nd.z - centerZ);
+    roadHub.receiveShadow = true;
+    group.add(sidewalkHub, roadHub);
+
+    // Only real intersections (>= 3 distinct road arms!) get per-arm aligned zebra crosswalks & traffic signals!
+    if (nd.arms.length >= 3) {
+      nd.arms.sort((a, b) => a.ang - b.ang);
+      for (let ai = 0; ai < nd.arms.length; ai++) {
+        const arm = nd.arms[ai];
+        const prevArm = nd.arms[(ai - 1 + nd.arms.length) % nd.arms.length];
+        const nextArm = nd.arms[(ai + 1) % nd.arms.length];
+        const diffPrev = Math.acos(Math.max(-1, Math.min(1, arm.ux * prevArm.ux + arm.uz * prevArm.uz)));
+        const diffNext = Math.acos(Math.max(-1, Math.min(1, arm.ux * nextArm.ux + arm.uz * nextArm.uz)));
+        // Skip acute Y-merge ramps (< 50° separation) so highway merges stay smooth without crooked crosswalks!
+        if (diffPrev < 0.87 || diffNext < 0.87) continue;
+
+        const cwDist = maxW * 0.42 + 2.8;
+        const cwx = nd.x + arm.ux * cwDist;
+        const cwz = nd.z + arm.uz * cwDist;
+        if (getGroundHeight(cwx, cwz) < WATER_LEVEL_3D + 0.25) continue;
+        const cwy = Math.max(hubY + 0.02, localGroundY(cwx, cwz) + 0.16);
+
+        const cwGroup = new THREE.Group();
+        cwGroup.position.set(cwx - centerX, cwy, cwz - centerZ);
+        cwGroup.rotation.y = arm.ang;
+
+        const carriagewayW = arm.width * 0.68;
+        const stripeCount = Math.max(4, Math.floor(carriagewayW / 1.55));
+        const spanW = carriagewayW * 0.88;
+        for (let si = 0; si < stripeCount; si++) {
+          const sx = -spanW * 0.5 + (stripeCount > 1 ? (si / (stripeCount - 1)) * spanW : 0);
+          const bar = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 2.55), zebraStripeMat);
+          bar.rotation.x = -Math.PI / 2;
+          bar.position.set(sx, 0, 0);
+          cwGroup.add(bar);
+        }
+        // Crisp stop-line slightly further back along the arm
+        const stopLine = new THREE.Mesh(new THREE.PlaneGeometry(carriagewayW * 0.9, 0.36), zebraStripeMat);
+        stopLine.rotation.x = -Math.PI / 2;
+        stopLine.position.set(0, 0, 2.05);
+        cwGroup.add(stopLine);
+        group.add(cwGroup);
+
+        // Place sleek traffic signal on the right-hand sidewalk curb of arterial arms!
+        if (arm.isArterial && ai < 2) {
+          const rNx = -arm.uz;
+          const rNz = arm.ux;
+          const sigX = cwx + rNx * (arm.width * 0.44);
+          const sigZ = cwz + rNz * (arm.width * 0.44);
+          const isGreenPhase = (ji + ai) % 2 === 0;
+          const sig = new THREE.Group();
+          sig.position.set(sigX - centerX, localGroundY(sigX, sigZ) + 0.14, sigZ - centerZ);
+          sig.rotation.y = Math.atan2(-rNx, -rNz);
+          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 5.8, 6), signalPoleMat);
+          pole.position.y = 2.9;
+          const cantArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 3.2), signalPoleMat);
+          cantArm.position.set(0, 5.6, 1.5);
+          const head = new THREE.Mesh(new THREE.BoxGeometry(0.58, 1.35, 0.42), signalBoxMat);
+          head.position.set(0, 5.2, 2.9);
+          const rL = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), isGreenPhase ? redOffMat : redLightMat);
+          rL.position.set(0, 5.56, 3.12);
+          const yL = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), amberOffMat);
+          yL.position.set(0, 5.2, 3.12);
+          const gL = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), isGreenPhase ? greenLightMat : greenOffMat);
+          gL.position.set(0, 4.84, 3.12);
+          sig.add(pole, cantArm, head, rL, yL, gL);
+          group.add(sig);
+        }
+      }
+      ji += 1;
     }
   }
 
@@ -2637,373 +2680,492 @@ export function buildProceduralTown3D(
     const ly = localGroundY(lot.x, lot.z);
 
     if (lot.kind === 'pokemon_center') {
-      const pcExt = new THREE.Group();
-      group.add(pcExt);
-      const pcModelUrl = isMajorCity
-        ? '/models/town/commercial/shop-k.glb'
-        : '/models/town/commercial/center-grand.glb';
-      void mountGlbModel(pcExt, pcModelUrl, {
-        x: lx,
-        y: ly,
-        z: lz,
-        rotY: lot.rotY,
-        targetWidth: lot.width,
-        heightMult: 1.32,
-        addInkEdges: true,
-        tintHex: 0xffd6d6,
-        cloneMaterials: true,
-        onMounted: (wrapper, h) => {
-          const beacon = createPokeballBeacon(2.05);
-          beacon.position.set(0, h + 1.85, 0);
-          wrapper.add(beacon);
-          spinners.push(beacon);
-          const awn = new THREE.Mesh(
-            new THREE.BoxGeometry(lot.width * 0.56, 0.32, 2.2),
-            new THREE.MeshLambertMaterial({ map: tex.awningRed }),
-          );
-          awn.position.set(0, 3.65, lot.depth * 0.48);
-          awn.rotation.x = 0.28;
-          awn.castShadow = true;
-          wrapper.add(awn);
-        },
-      });
-      const rW = lot.width * 0.82;
-      const rD = lot.depth * 0.80;
-      const pcInt = buildPokemonCenterInterior(tex, rW, rD);
-      pcInt.group.position.set(lx, ly, lz);
-      pcInt.group.rotation.y = lot.rotY;
-      pcInt.group.visible = false;
-      group.add(pcInt.group);
-
       const intId = `${lot.id}_int`;
+      const built = buildUnifiedWalkInBuilding3D({
+        kind: 'pokemon_center',
+        interiorId: intId,
+        lotX: lot.x,
+        lotZ: lot.z,
+        localX: lx,
+        localY: ly,
+        localZ: lz,
+        baseWorldY: baseY + ly,
+        width: lot.width,
+        depth: lot.depth,
+        rotY: lot.rotY,
+        floorTex: tex.clinicFloor,
+        woodFloorTex: tex.woodFloor,
+        onRegisterSpinner: (obj) => spinners.push(obj),
+      });
+      group.add(built.shellGroup);
+      colliders.push(...built.colliders);
+      autoDoors.push(...built.autoDoors);
+      if (built.stairZone) upperFloorZones.push(built.stairZone);
       interiors.push({
         id: intId,
         name: `${townName}·宝可梦中心`,
         kind: 'pokemon_center',
         cx: lot.x,
         cz: lot.z,
-        halfW: rW * 0.52,
-        halfD: rD * 0.52,
+        halfW: lot.width * 0.48,
+        halfD: lot.depth * 0.48,
         rotY: lot.rotY,
+        baseY: baseY + ly,
+        stories: built.stories,
+        floor1CeilingY: built.floor1CeilingY,
+        floor2CeilingY: built.floor2CeilingY,
+        dualDoors: built.dualDoors,
         bounds: {
-          minX: lot.x - rW * 0.56,
-          maxX: lot.x + rW * 0.56,
-          minZ: lot.z - rD * 0.56,
-          maxZ: lot.z + rD * 0.56,
+          minX: lot.x - lot.width * 0.54,
+          maxX: lot.x + lot.width * 0.54,
+          minZ: lot.z - lot.depth * 0.54,
+          maxZ: lot.z + lot.depth * 0.54,
         },
-        exteriorGroup: pcExt,
-        interiorGroup: pcInt.group,
-        npcSprites: pcInt.npcs,
+        exteriorGroup: built.shellGroup,
+        interiorGroup: built.shellGroup,
+        npcSprites: built.npcs,
         cutawayAlpha: 1,
       });
-      // Solid 4-sided perimeter walls leaving ONLY the front doorway (+Z local) open!
-      pushEnterableBuildingWalls(colliders, lot.x, lot.z, rW, rD, lot.rotY, 4.4, 11.5, intId);
       interactPoints.push({
         id: `${id}_pc`,
         townName,
         kind: 'pokemon_center',
         label: `🏥 乔伊小姐 · 宝可梦中心`,
-        hint: '全队免费治疗并补满伤药',
+        hint: '全队免费治疗并补满伤药（可走楼梯上 2F 联机沙龙）',
         x: lot.x,
         z: lot.z,
-        radius: 7.4,
+        radius: 17.5,
       });
     } else if (lot.kind === 'poke_mart') {
-      const mExt = new THREE.Group();
-      group.add(mExt);
-      const martUrl = SHOP_POOL[styleIdx % SHOP_POOL.length];
-      void mountGlbModel(mExt, martUrl, {
-        x: lx,
-        y: ly,
-        z: lz,
-        rotY: lot.rotY,
-        targetWidth: lot.width,
-        heightMult: 1.32,
-        addInkEdges: true,
-        cloneMaterials: true,
-        onMounted: (wrapper, h) => {
-          const signMesh = new THREE.Mesh(
-            new THREE.BoxGeometry(5.8, 2.0, 0.45),
-            new THREE.MeshBasicMaterial({ map: tex.martSign }),
-          );
-          signMesh.position.set(0, h + 1.15, 3.4);
-          wrapper.add(signMesh);
-          const awn = new THREE.Mesh(
-            new THREE.BoxGeometry(lot.width * 0.54, 0.32, 2.1),
-            new THREE.MeshLambertMaterial({ map: tex.awningBlue }),
-          );
-          awn.position.set(0, 3.6, lot.depth * 0.48);
-          awn.rotation.x = 0.28;
-          awn.castShadow = true;
-          wrapper.add(awn);
-        },
-      });
-      const rW = lot.width * 0.82;
-      const rD = lot.depth * 0.80;
-      const mInt = buildPokeMartInterior(tex, rW, rD);
-      mInt.group.position.set(lx, ly, lz);
-      mInt.group.rotation.y = lot.rotY;
-      mInt.group.visible = false;
-      group.add(mInt.group);
-
       const intId = `${lot.id}_int`;
+      const built = buildUnifiedWalkInBuilding3D({
+        kind: 'poke_mart',
+        interiorId: intId,
+        lotX: lot.x,
+        lotZ: lot.z,
+        localX: lx,
+        localY: ly,
+        localZ: lz,
+        baseWorldY: baseY + ly,
+        width: lot.width,
+        depth: lot.depth,
+        rotY: lot.rotY,
+        signTex: tex.martSign,
+        floorTex: tex.martFloor,
+        woodFloorTex: tex.woodFloor,
+      });
+      group.add(built.shellGroup);
+      colliders.push(...built.colliders);
+      autoDoors.push(...built.autoDoors);
+      if (built.stairZone) upperFloorZones.push(built.stairZone);
       interiors.push({
         id: intId,
-        name: `${townName}·友好商店`,
+        name: `${townName}·友好百货商店`,
         kind: 'poke_mart',
         cx: lot.x,
         cz: lot.z,
-        halfW: rW * 0.52,
-        halfD: rD * 0.52,
+        halfW: lot.width * 0.48,
+        halfD: lot.depth * 0.48,
         rotY: lot.rotY,
+        baseY: baseY + ly,
+        stories: built.stories,
+        floor1CeilingY: built.floor1CeilingY,
+        floor2CeilingY: built.floor2CeilingY,
+        dualDoors: built.dualDoors,
         bounds: {
-          minX: lot.x - rW * 0.56,
-          maxX: lot.x + rW * 0.56,
-          minZ: lot.z - rD * 0.56,
-          maxZ: lot.z + rD * 0.56,
+          minX: lot.x - lot.width * 0.54,
+          maxX: lot.x + lot.width * 0.54,
+          minZ: lot.z - lot.depth * 0.54,
+          maxZ: lot.z + lot.depth * 0.54,
         },
-        exteriorGroup: mExt,
-        interiorGroup: mInt.group,
-        npcSprites: mInt.npcs,
+        exteriorGroup: built.shellGroup,
+        interiorGroup: built.shellGroup,
+        npcSprites: built.npcs,
         cutawayAlpha: 1,
       });
-      pushEnterableBuildingWalls(colliders, lot.x, lot.z, rW, rD, lot.rotY, 4.2, 11.0, intId);
       interactPoints.push({
         id: `${id}_mart`,
         townName,
         kind: 'poke_mart',
-        label: `🏪 友好商店店员`,
+        label: `🏪 友好百货店员`,
         hint: '打开精品外观与树果补给商店',
         x: lot.x,
         z: lot.z,
-        radius: 7.0,
+        radius: 17.5,
       });
     } else if (lot.kind === 'hotel') {
-      void mountGlbModel(group, '/models/town/commercial/shop-g.glb', {
-        x: lx,
-        y: ly,
-        z: lz,
+      const intId = `${lot.id}_int`;
+      const built = buildUnifiedWalkInBuilding3D({
+        kind: 'hotel',
+        interiorId: intId,
+        lotX: lot.x,
+        lotZ: lot.z,
+        localX: lx,
+        localY: ly,
+        localZ: lz,
+        baseWorldY: baseY + ly,
+        width: lot.width,
+        depth: lot.depth,
         rotY: lot.rotY,
-        targetWidth: lot.width,
-        heightMult: 1.44,
-        addInkEdges: true,
-        tintHex: 0xfff3d6,
-        onMounted: (wrapper, h) => {
-          const sign = new THREE.Mesh(
-            new THREE.BoxGeometry(5.6, 2.0, 0.45),
-            new THREE.MeshBasicMaterial({ map: tex.hotelSign }),
-          );
-          sign.position.set(0, h + 1.1, 3.2);
-          wrapper.add(sign);
-        },
+        signTex: tex.hotelSign,
+        floorTex: tex.woodFloor,
+        woodFloorTex: tex.woodFloor,
       });
-      colliders.push(makeObbCollider(lot.x, lot.z, lot.width * 0.45, lot.depth * 0.44, lot.rotY, 13.5));
+      group.add(built.shellGroup);
+      colliders.push(...built.colliders);
+      autoDoors.push(...built.autoDoors);
+      if (built.stairZone) upperFloorZones.push(built.stairZone);
+      interiors.push({
+        id: intId,
+        name: `${townName}·驿站大酒店`,
+        kind: 'hotel',
+        cx: lot.x,
+        cz: lot.z,
+        halfW: lot.width * 0.48,
+        halfD: lot.depth * 0.48,
+        rotY: lot.rotY,
+        baseY: baseY + ly,
+        stories: built.stories,
+        floor1CeilingY: built.floor1CeilingY,
+        floor2CeilingY: built.floor2CeilingY,
+        dualDoors: built.dualDoors,
+        bounds: {
+          minX: lot.x - lot.width * 0.54,
+          maxX: lot.x + lot.width * 0.54,
+          minZ: lot.z - lot.depth * 0.54,
+          maxZ: lot.z + lot.depth * 0.54,
+        },
+        exteriorGroup: built.shellGroup,
+        interiorGroup: built.shellGroup,
+        npcSprites: built.npcs,
+        cutawayAlpha: 1,
+      });
       interactPoints.push({
         id: `${id}_hotel`,
         townName,
         kind: 'hotel_rest',
-        label: `🏨 ${townName}·驿站酒店`,
-        hint: '办理入住休整，全队体力回满并获攻击强化',
-        x: lot.doorX,
-        z: lot.doorZ,
-        radius: 5.8,
+        label: `🏨 ${townName}·驿站大酒店 (1F大堂 / 2F客房)`,
+        hint: '可上二楼豪华客房休整，全队体力回满并获攻击强化',
+        x: lot.x,
+        z: lot.z,
+        radius: 19.0,
       });
     } else if (lot.kind === 'restaurant') {
-      void mountGlbModel(group, '/models/town/commercial/shop-d.glb', {
-        x: lx,
-        y: ly,
-        z: lz,
+      const intId = `${lot.id}_int`;
+      const built = buildUnifiedWalkInBuilding3D({
+        kind: 'restaurant',
+        interiorId: intId,
+        lotX: lot.x,
+        lotZ: lot.z,
+        localX: lx,
+        localY: ly,
+        localZ: lz,
+        baseWorldY: baseY + ly,
+        width: lot.width,
+        depth: lot.depth,
         rotY: lot.rotY,
-        targetWidth: lot.width,
-        heightMult: 1.32,
-        addInkEdges: true,
-        tintHex: 0xffd8cc,
-        onMounted: (wrapper, h) => {
-          const sign = new THREE.Mesh(
-            new THREE.BoxGeometry(5.2, 1.9, 0.42),
-            new THREE.MeshBasicMaterial({ map: tex.cafeSign }),
-          );
-          sign.position.set(0, h + 1.05, 3.0);
-          wrapper.add(sign);
+        signTex: tex.cafeSign,
+        floorTex: tex.woodFloor,
+        woodFloorTex: tex.woodFloor,
+      });
+      group.add(built.shellGroup);
+      colliders.push(...built.colliders);
+      autoDoors.push(...built.autoDoors);
+      if (built.stairZone) upperFloorZones.push(built.stairZone);
+      interiors.push({
+        id: intId,
+        name: `${townName}·树果料理餐厅`,
+        kind: 'restaurant',
+        cx: lot.x,
+        cz: lot.z,
+        halfW: lot.width * 0.48,
+        halfD: lot.depth * 0.48,
+        rotY: lot.rotY,
+        baseY: baseY + ly,
+        stories: built.stories,
+        floor1CeilingY: built.floor1CeilingY,
+        floor2CeilingY: built.floor2CeilingY,
+        dualDoors: built.dualDoors,
+        bounds: {
+          minX: lot.x - lot.width * 0.54,
+          maxX: lot.x + lot.width * 0.54,
+          minZ: lot.z - lot.depth * 0.54,
+          maxZ: lot.z + lot.depth * 0.54,
         },
+        exteriorGroup: built.shellGroup,
+        interiorGroup: built.shellGroup,
+        npcSprites: built.npcs,
+        cutawayAlpha: 1,
       });
-      void mountGlbModel(group, '/models/town/commercial/parasol-a.glb', {
-        x: lot.doorX - centerX,
-        y: localGroundY(lot.doorX, lot.doorZ),
-        z: lot.doorZ - centerZ,
-        targetWidth: 3.6,
-        addInkEdges: true,
-      });
-      colliders.push(makeObbCollider(lot.x, lot.z, lot.width * 0.45, lot.depth * 0.44, lot.rotY, 12.0));
       interactPoints.push({
         id: `${id}_cafe`,
         townName,
         kind: 'restaurant',
-        label: `🍜 ${townName}·树果饭店`,
+        label: `🍜 ${townName}·树果料理餐厅`,
         hint: '享用热腾腾的树果料理，提升全队斗志',
-        x: lot.doorX,
-        z: lot.doorZ,
-        radius: 5.8,
+        x: lot.x,
+        z: lot.z,
+        radius: 17.0,
       });
     } else if (lot.kind === 'landmark' && anchor.landmarkCityId) {
       const lm = buildWorldLandmark3D(anchor.landmarkCityId);
       if (lm) {
         lm.position.set(lx, ly, lz);
+        lm.scale.setScalar(1.58);
         group.add(lm);
-        colliders.push(makeObbCollider(lot.x, lot.z, 5.4, 5.4, 0, 26));
+        colliders.push(makeObbCollider(lot.x, lot.z, 11.2, 11.2, 0, 44));
       }
-    } else if (lot.kind === 'skyscraper') {
-      // Dedicated Crisp HD-2D Pixel-Art Glass Curtain-Wall Skyscrapers (Lujiazui Pudong / Downtown Core!)
-      const skyGrp = new THREE.Group();
-      skyGrp.position.set(lx, ly, lz);
-      skyGrp.rotation.y = lot.rotY;
-      const baseH = 26 + (lot.houseVariant % 3) * 8;
-      const skyW = lot.width * 0.88;
-      const skyD = lot.depth * 0.86;
-      const skyTintList = [0xffffff, 0xd0ebff, 0xffe8cc];
-      const glassMat = new THREE.MeshLambertMaterial({
-        map: tex.skyGlassTex,
-        color: skyTintList[lot.houseVariant % skyTintList.length],
-      });
-      const trimMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0x3b495c }));
-      const lobbyMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xced4da }));
-
-      // Ground stone lobby podium
-      const podium = new THREE.Mesh(new THREE.BoxGeometry(skyW * 1.06, 4.2, skyD * 1.06), lobbyMat);
-      podium.position.y = 2.1;
-      podium.castShadow = true;
-      podium.receiveShadow = true;
-      // Main pixel glass tower shaft + crisp ink edges
-      const shaftGeo = new THREE.BoxGeometry(skyW, baseH, skyD);
-      const shaft = new THREE.Mesh(shaftGeo, glassMat);
-      shaft.position.y = 4.2 + baseH * 0.5;
-      shaft.castShadow = true;
-      shaft.receiveShadow = true;
-      shaft.add(new THREE.LineSegments(new THREE.EdgesGeometry(shaftGeo, 30), INK_LINE_MAT));
-      // Stepped architectural crown + mechanical penthouse + glowing red aviation spire!
-      const crownGeo = new THREE.BoxGeometry(skyW * 0.72, 6.2, skyD * 0.72);
-      const crown = new THREE.Mesh(crownGeo, glassMat);
-      crown.position.y = 4.2 + baseH + 3.1;
-      crown.castShadow = true;
-      crown.add(new THREE.LineSegments(new THREE.EdgesGeometry(crownGeo, 30), INK_LINE_MAT));
-      const parapet = new THREE.Mesh(new THREE.BoxGeometry(skyW * 0.78, 0.9, skyD * 0.78), trimMat);
-      parapet.position.y = 4.2 + baseH + 6.4;
-      const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.36, 7.5, 6), trimMat);
-      spire.position.y = 4.2 + baseH + 10.2;
-      const beaconRed = new THREE.Mesh(
-        new THREE.SphereGeometry(0.45, 6, 6),
-        new THREE.MeshBasicMaterial({ color: 0xff4d4f }),
+    } else if (lot.kind === 'skyscraper' || (lot.kind === 'house' && !lot.walkable && lot.shape && lot.shape !== 'rect')) {
+      const isSkyTower = lot.kind === 'skyscraper';
+      const bShape = lot.shape ?? 'rect';
+      // Warm entrance light pool at +Z front door for every tower & corner building!
+      const entPool = new THREE.Mesh(new THREE.PlaneGeometry(11.5, 9.5), BUILDING_ENTRANCE_POOL_MAT);
+      entPool.rotation.x = -Math.PI / 2;
+      entPool.position.set(
+        lx + Math.sin(lot.rotY) * (lot.depth * 0.48),
+        ly + 0.08,
+        lz + Math.cos(lot.rotY) * (lot.depth * 0.48),
       );
-      beaconRed.position.y = 4.2 + baseH + 14.1;
-      // Ground-floor retaining plinth
-      const plinth = new THREE.Mesh(new THREE.BoxGeometry(skyW * 1.02, 2.6, skyD * 1.02), trimMat);
-      plinth.position.y = -1.3;
-      skyGrp.add(plinth, podium, shaft, crown, parapet, spire, beaconRed);
-      group.add(skyGrp);
-      colliders.push(makeObbCollider(lot.x, lot.z, lot.width * 0.46, lot.depth * 0.45, lot.rotY, baseH + 10));
-    } else if (lot.kind === 'house') {
-      // Randomized Architectural Diversity: mix pitched villas, flat-roof modern townhouses, varied facade colors & street signs!
-      const hHash = Math.abs(anchor.seed * 19 + lot.houseVariant * 37 + Math.round(lot.x) * 7 + Math.round(lot.z) * 13);
-      const styleDef = DIVERSE_HOUSE_STYLES[hHash % DIVERSE_HOUSE_STYLES.length];
-      const facadeTint = FACADE_TINT_PALETTE[(hHash >>> 3) % FACADE_TINT_PALETTE.length];
-      const attachShopSign = styleDef.isFlatUrban || hHash % 5 === 0;
-      const signTex = tex.extraSigns[hHash % tex.extraSigns.length];
-      const varHeightMult = styleDef.heightMult * (0.94 + ((hHash % 7) / 6) * 0.16);
+      group.add(entPool);
 
-      if (lot.walkable) {
-        const hExt = new THREE.Group();
-        group.add(hExt);
-        void mountGlbModel(hExt, styleDef.url, {
+      if (bShape === 'cylinder') {
+        // Modern Panoramic Cylindrical Glass Rotunda Building (`现代圆柱形全景玻璃幕墙塔楼`)!
+        const rad = Math.min(lot.width, lot.depth) * 0.46;
+        const storiesCnt = isSkyTower ? 10 + (lot.houseVariant % 4) * 2 : 3 + (lot.houseVariant % 3);
+        const floorH = 4.1;
+        const totH = storiesCnt * floorH;
+        const cylGrp = new THREE.Group();
+        cylGrp.position.set(lx, ly, lz);
+        cylGrp.rotation.y = lot.rotY;
+        const bodyMat = applyPixelArtArchShader(
+          new THREE.MeshLambertMaterial({ color: isSkyTower ? 0xdbeafe : 0xf1ebe1 }),
+        );
+        const mulMat = new THREE.MeshLambertMaterial({ color: 0x1e2533 });
+        const core = new THREE.Mesh(new THREE.CylinderGeometry(rad * 0.94, rad * 0.96, totH, 24), bodyMat);
+        core.position.y = totH * 0.5;
+        core.castShadow = true;
+        core.receiveShadow = true;
+        cylGrp.add(core);
+
+        for (let s = 0; s < storiesCnt; s++) {
+          const sy = s * floorH;
+          const glassRing = new THREE.Mesh(
+            new THREE.CylinderGeometry(rad, rad, floorH * 0.74, 24, 1, true),
+            ADAPTIVE_NIGHT_WINDOW_MAT,
+          );
+          glassRing.position.y = sy + floorH * 0.52;
+          const slabBand = new THREE.Mesh(new THREE.CylinderGeometry(rad * 1.02, rad * 1.02, 0.42, 24), mulMat);
+          slabBand.position.y = sy + floorH;
+          cylGrp.add(glassRing, slabBand);
+        }
+        for (let m = 0; m < 12; m++) {
+          const ma = (m / 12) * Math.PI * 2;
+          const mul = new THREE.Mesh(new THREE.BoxGeometry(0.16, totH, 0.24), mulMat);
+          mul.position.set(Math.sin(ma) * rad, totH * 0.5, Math.cos(ma) * rad);
+          mul.rotation.y = ma;
+          cylGrp.add(mul);
+        }
+        if (isSkyTower) {
+          const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.38, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff4d4f }));
+          beacon.position.set(0, totH + 1.2, 0);
+          cylGrp.add(beacon);
+        }
+        group.add(cylGrp);
+        colliders.push(makeObbCollider(lot.x, lot.z, rad * 0.92, rad * 0.92, lot.rotY, totH));
+      } else if (bShape === 'triangle') {
+        // Iconic Wukang-Mansion / Flatiron Wedge Building (`武康大楼/熨斗式三角街角全景落地窗建筑`)!
+        const hw = lot.width * 0.46;
+        const hd = lot.depth * 0.46;
+        const tipW = hw * 0.26;
+        const storiesCnt = isSkyTower ? 9 + (lot.houseVariant % 4) * 2 : 3 + (lot.houseVariant % 3);
+        const floorH = 4.1;
+        const totH = storiesCnt * floorH;
+
+        const wedgeShape = new THREE.Shape();
+        wedgeShape.moveTo(-hw, -hd);
+        wedgeShape.lineTo(hw, -hd);
+        wedgeShape.lineTo(tipW, hd);
+        wedgeShape.lineTo(-tipW, hd);
+        wedgeShape.closePath();
+
+        const triGrp = new THREE.Group();
+        triGrp.position.set(lx, ly, lz);
+        triGrp.rotation.y = lot.rotY;
+
+        const wallPalette = isSkyTower ? 0xe2e8f0 : [0xe8d5c4, 0xf3e8d8, 0xd8e2dc][lot.houseVariant % 3];
+        const wMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: wallPalette }));
+        const mulMat = new THREE.MeshLambertMaterial({ color: 0x222938 });
+
+        for (let s = 0; s < storiesCnt; s++) {
+          const sy = s * floorH;
+          const spandrelGeo = new THREE.ExtrudeGeometry(wedgeShape, { depth: 0.75, bevelEnabled: false });
+          spandrelGeo.rotateX(Math.PI / 2);
+          const spandrel = new THREE.Mesh(spandrelGeo, wMat);
+          spandrel.position.y = sy + 0.75;
+          spandrel.castShadow = true;
+          spandrel.receiveShadow = true;
+
+          const glassGeo = new THREE.ExtrudeGeometry(wedgeShape, { depth: floorH - 0.85, bevelEnabled: false });
+          glassGeo.rotateX(Math.PI / 2);
+          glassGeo.scale(0.985, 1, 0.985);
+          const glassMesh = new THREE.Mesh(glassGeo, ADAPTIVE_NIGHT_WINDOW_MAT);
+          glassMesh.position.y = sy + floorH - 0.08;
+
+          const corniceGeo = new THREE.ExtrudeGeometry(wedgeShape, { depth: 0.24, bevelEnabled: false });
+          corniceGeo.rotateX(Math.PI / 2);
+          corniceGeo.scale(1.02, 1, 1.02);
+          const cornice = new THREE.Mesh(corniceGeo, mulMat);
+          cornice.position.y = sy + floorH;
+          triGrp.add(spandrel, glassMesh, cornice);
+        }
+        group.add(triGrp);
+        colliders.push(makeObbCollider(lot.x, lot.z, hw * 0.78, hd * 0.88, lot.rotY, totH));
+      } else {
+        // Rectangular Real CC0 Kenney 3D Skyscrapers (`building-skyscraper-a..e.glb`) with glowing night windows!
+        const skyPool = [
+          '/models/city-commercial/building-skyscraper-a.glb',
+          '/models/city-commercial/building-skyscraper-b.glb',
+          '/models/city-commercial/building-skyscraper-c.glb',
+          '/models/city-commercial/building-skyscraper-d.glb',
+          '/models/city-commercial/building-skyscraper-e.glb',
+        ];
+        const skyUrl = skyPool[lot.houseVariant % skyPool.length];
+        const skyTintList: (number | undefined)[] = [undefined, 0xe7f5ff, 0xfff3d6];
+        void mountGlbModel(group, skyUrl, {
           x: lx,
           y: ly,
           z: lz,
           rotY: lot.rotY,
-          targetWidth: lot.width,
-          heightMult: varHeightMult,
-          tintHex: facadeTint,
+          targetWidth: lot.width * 0.90,
+          targetDepth: lot.depth * 0.88,
+          heightMult: 1.05 + (lot.houseVariant % 3) * 0.12,
+          tintHex: skyTintList[lot.houseVariant % skyTintList.length],
           addInkEdges: true,
           cloneMaterials: true,
+          onMounted: (wrapper, h) => {
+            const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff4d4f }));
+            beacon.position.set(0, h + 0.65, 0);
+            wrapper.add(beacon);
+          },
         });
-        const rW = lot.width * 0.82;
-        const rD = lot.depth * 0.78;
-        const hInt = buildTownHouseInterior(tex, rW, rD);
-        hInt.group.position.set(lx, ly, lz);
-        hInt.group.rotation.y = lot.rotY;
-        hInt.group.visible = false;
-        group.add(hInt.group);
+        colliders.push(makeObbCollider(lot.x, lot.z, lot.width * 0.45, lot.depth * 0.44, lot.rotY, 54));
+      }
+    } else if (lot.kind === 'house') {
+      const hHash = Math.abs(anchor.seed * 19 + lot.houseVariant * 37 + Math.round(lot.x) * 7 + Math.round(lot.z) * 13);
+      const styleDef = DIVERSE_HOUSE_STYLES[hHash % DIVERSE_HOUSE_STYLES.length];
+      const facadeTint = FACADE_TINT_PALETTE[(hHash >>> 3) % FACADE_TINT_PALETTE.length];
+      const attachShopSign = styleDef.isFlatUrban && hHash % 3 === 0;
+      const signTex = tex.extraSigns[hHash % tex.extraSigns.length];
+      const varHeightMult = styleDef.heightMult * (styleDef.isFlatUrban ? 0.78 : 0.56);
 
+      if (lot.walkable) {
         const intId = `${lot.id}_int`;
+        const aptIndex = interiors.filter((b) => b.kind === 'house').length + 1;
+        const built = buildUnifiedWalkInBuilding3D({
+          kind: 'house',
+          interiorId: intId,
+          lotX: lot.x,
+          lotZ: lot.z,
+          localX: lx,
+          localY: ly,
+          localZ: lz,
+          baseWorldY: baseY + ly,
+          width: lot.width,
+          depth: lot.depth,
+          rotY: lot.rotY,
+          floorTex: tex.woodFloor,
+          woodFloorTex: tex.woodFloor,
+        });
+        group.add(built.shellGroup);
+        colliders.push(...built.colliders);
+        autoDoors.push(...built.autoDoors);
+        if (built.stairZone) upperFloorZones.push(built.stairZone);
         interiors.push({
           id: intId,
-          name: `${townName}·训练家公寓`,
+          name: `${townName}·训练家复式公寓 ${aptIndex}号`,
           kind: 'house',
           cx: lot.x,
           cz: lot.z,
-          halfW: rW * 0.52,
-          halfD: rD * 0.52,
+          halfW: lot.width * 0.48,
+          halfD: lot.depth * 0.48,
           rotY: lot.rotY,
+          baseY: baseY + ly,
+          stories: built.stories,
+          floor1CeilingY: built.floor1CeilingY,
+          floor2CeilingY: built.floor2CeilingY,
+          dualDoors: built.dualDoors,
           bounds: {
-            minX: lot.x - rW * 0.56,
-            maxX: lot.x + rW * 0.56,
-            minZ: lot.z - rD * 0.56,
-            maxZ: lot.z + rD * 0.56,
+            minX: lot.x - lot.width * 0.54,
+            maxX: lot.x + lot.width * 0.54,
+            minZ: lot.z - lot.depth * 0.54,
+            maxZ: lot.z + lot.depth * 0.54,
           },
-          exteriorGroup: hExt,
-          interiorGroup: hInt.group,
-          npcSprites: hInt.npcs,
+          exteriorGroup: built.shellGroup,
+          interiorGroup: built.shellGroup,
+          npcSprites: built.npcs,
           cutawayAlpha: 1,
         });
-        pushEnterableBuildingWalls(colliders, lot.x, lot.z, rW, rD, lot.rotY, 3.8, 10.5, intId);
+        const foyerWorldX = lot.x + Math.sin(lot.rotY) * (lot.depth * 0.16);
+        const foyerWorldZ = lot.z + Math.cos(lot.rotY) * (lot.depth * 0.16);
         interactPoints.push({
-          id: `${id}_house_npc`,
+          id: `${lot.id}_npc`,
           townName,
           kind: 'npc_chat',
-          label: `💬 与城市居民交谈`,
-          hint: '打听城市地标与野外远行情报',
-          dialogText: `🏠 城市居民：「欢迎来到${townName}！沿着东西南北四条大道跨过桥梁与山洞，就能一路远行到北京、广州、东京和京都，每个城市都有专属地标哦！」`,
-          x: lot.x,
-          z: lot.z,
-          radius: 5.5,
+          label: `💬 与公寓居民交谈`,
+          hint: '打听城市地标与周边情报（可走楼梯上 2F 卧室与书房）',
+          dialogText: `🏠 城市居民：「欢迎来${townName}训练家复式公寓 ${aptIndex}号做客！走左侧楼梯可以上二楼卧室与书房看看哦！」`,
+          x: foyerWorldX,
+          z: foyerWorldZ,
+          radius: 9.5,
         });
       } else {
+        // Warm porch light pool outside every non-walkable urban house / shop!
+        const porchPool = new THREE.Mesh(new THREE.PlaneGeometry(9.0, 7.5), BUILDING_ENTRANCE_POOL_MAT);
+        porchPool.rotation.x = -Math.PI / 2;
+        porchPool.position.set(
+          lx + Math.sin(lot.rotY) * (lot.depth * 0.48),
+          ly + 0.07,
+          lz + Math.cos(lot.rotY) * (lot.depth * 0.48),
+        );
+        group.add(porchPool);
+
         void mountGlbModel(group, styleDef.url, {
           x: lx,
           y: ly,
           z: lz,
           rotY: lot.rotY,
-          targetWidth: lot.width,
+          targetWidth: lot.width * 0.92,
+          targetDepth: lot.depth * 0.90,
           heightMult: varHeightMult,
           tintHex: facadeTint,
           addInkEdges: true,
-          onMounted: attachShopSign
-            ? (wrapper, h) => {
-                const sign = new THREE.Mesh(
-                  new THREE.BoxGeometry(4.8, 1.7, 0.36),
-                  new THREE.MeshBasicMaterial({ map: signTex }),
-                );
-                sign.position.set(0, Math.min(h * 0.72, 6.2), lot.depth * 0.44);
-                wrapper.add(sign);
-                // Striped pixel cloth storefront awning + flat-roof AC compressor unit!
-                const awnTex = [tex.awningRed, tex.awningBlue, tex.awningGold][hHash % 3];
-                const awn = new THREE.Mesh(
-                  new THREE.BoxGeometry(lot.width * 0.52, 0.28, 1.85),
-                  new THREE.MeshLambertMaterial({ map: awnTex }),
-                );
-                awn.position.set(0, 3.25, lot.depth * 0.48);
-                awn.rotation.x = 0.28;
-                awn.castShadow = true;
-                wrapper.add(awn);
-                if (styleDef.isFlatUrban) {
-                  const acMat = applyPixelArtArchShader(new THREE.MeshLambertMaterial({ color: 0xb0b8c4 }));
-                  const acUnit = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 1.4), acMat);
-                  acUnit.position.set(lot.width * 0.18, h + 0.55, -lot.depth * 0.14);
-                  acUnit.castShadow = true;
-                  wrapper.add(acUnit);
-                }
-              }
-            : undefined,
+          onMounted: (wrapper, h) => {
+            // Warm glowing front entrance sconce lantern on every house!
+            const sconce = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), STREET_LAMP_BULB_MAT);
+            sconce.position.set(0, Math.min(3.4, h * 0.35), lot.depth * 0.44);
+            const sconceHalo = new THREE.Sprite(STREET_LAMP_HALO_MAT);
+            sconceHalo.scale.set(2.8, 2.8, 1);
+            sconceHalo.position.copy(sconce.position);
+            wrapper.add(sconce, sconceHalo);
+
+            if (attachShopSign) {
+              const sign = new THREE.Mesh(
+                new THREE.BoxGeometry(8.8, 2.5, 0.42),
+                new THREE.MeshBasicMaterial({ map: signTex }),
+              );
+              sign.position.set(0, h + 1.45, lot.depth * 0.30);
+              const postL = new THREE.Mesh(
+                new THREE.BoxGeometry(0.28, 1.4, 0.28),
+                new THREE.MeshLambertMaterial({ color: 0x343a40 }),
+              );
+              postL.position.set(-3.2, h + 0.55, lot.depth * 0.30);
+              const postR = postL.clone();
+              postR.position.x = 3.2;
+              wrapper.add(sign, postL, postR);
+            }
+          },
         });
-        colliders.push(makeObbCollider(lot.x, lot.z, lot.width * 0.44, lot.depth * 0.43, lot.rotY, 11.5));
+        colliders.push(makeObbCollider(lot.x, lot.z, lot.width * 0.45, lot.depth * 0.44, lot.rotY, 16.5));
       }
     }
   }
@@ -3061,19 +3223,38 @@ export function buildProceduralTown3D(
     targetWidth: 9.4,
     addInkEdges: true,
   });
-  const streetLampBulbMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
+  const streetLampPositions: { x: number; y: number; z: number }[] = [];
+  const lampPoolGeo = new THREE.PlaneGeometry(10.8, 10.8);
+  lampPoolGeo.rotateX(-Math.PI / 2);
   for (const lamp of layout.streetLamps) {
+    const lampBaseLocalY = localGroundY(lamp.x, lamp.z);
+    const lampWorldY = baseY + lampBaseLocalY + 5.8;
+    streetLampPositions.push({ x: lamp.x, y: lampWorldY, z: lamp.z });
+
+    // Ground warm golden streetlight pool on sidewalk & asphalt!
+    const pool = new THREE.Mesh(lampPoolGeo, STREET_LAMP_POOL_MAT);
+    pool.position.set(
+      lamp.x - centerX + Math.sin(lamp.rotY) * 1.4,
+      lampBaseLocalY + 0.08,
+      lamp.z - centerZ + Math.cos(lamp.rotY) * 1.4,
+    );
+    group.add(pool);
+
     void mountGlbModel(group, '/models/town/roads/lamp-curved.glb', {
       x: lamp.x - centerX,
-      y: localGroundY(lamp.x, lamp.z),
+      y: lampBaseLocalY,
       z: lamp.z - centerZ,
       rotY: lamp.rotY,
-      targetWidth: 2.5,
+      targetWidth: 3.4,
+      heightMult: 1.36,
       addInkEdges: true,
       onMounted: (wrapper, h) => {
-        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 6, 6), streetLampBulbMat);
-        bulb.position.set(0, h * 0.92, 0.72);
-        wrapper.add(bulb);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 8), STREET_LAMP_BULB_MAT);
+        bulb.position.set(0, h * 0.92, 0.96);
+        const halo = new THREE.Sprite(STREET_LAMP_HALO_MAT);
+        halo.scale.set(4.2, 4.2, 1);
+        halo.position.copy(bulb.position);
+        wrapper.add(bulb, halo);
       },
     });
   }
@@ -3177,45 +3358,131 @@ export function buildProceduralTown3D(
     });
   });
 
-  // Strolling Chibi Pixel Citizens around the Grand Central Plaza & Wide Promenade Sidewalks!
+  // Strolling Authentic GBA FireRed 16x32 Pixel Citizens around the Grand Central Plaza & Wide Promenade Sidewalks!
   const citizenPool = [
-    '/sprites/trainers/youngster-ow.png',
-    '/sprites/trainers/lass-ow.png',
-    '/sprites/trainers/erika-ow.png',
-    '/sprites/trainers/blue-ow.png',
-    '/sprites/trainers/misty-ow.png',
-    '/sprites/trainers/brock-ow.png',
-    '/sprites/trainers/nurse-ow.png',
+    '/sprites/people/youngster.png',
+    '/sprites/people/lass.png',
+    '/sprites/people/picnicker.png',
+    '/sprites/people/camper.png',
+    '/sprites/people/cooltrainer_m.png',
+    '/sprites/people/cooltrainer_f.png',
+    '/sprites/people/woman_1.png',
+    '/sprites/people/woman_2.png',
+    '/sprites/people/man.png',
+    '/sprites/people/gentleman.png',
+    '/sprites/people/beauty.png',
+    '/sprites/people/policeman.png',
+    '/sprites/people/sailor.png',
   ];
   const shadowMat = new THREE.MeshBasicMaterial({ color: 0x10141c, transparent: true, opacity: 0.34, depthWrite: false });
   const shadowGeo = new THREE.CircleGeometry(0.85, 12);
   shadowGeo.rotateX(-Math.PI / 2);
 
+  // 1) Plaza strollers + 2) 32 Lively Sidewalk Pedestrians walking along downtown streets & civic storefronts!
   const pkCx = layout.plazaX - centerX;
   const pkCz = layout.plazaZ - centerZ;
-  for (let wi = 0; wi < 7; wi++) {
+  for (let wi = 0; wi < 6; wi++) {
     const spriteUrl = citizenPool[(wi + styleIdx) % citizenPool.length];
-    const orbitR = 9.5 + (wi % 4) * 3.2;
-    const initAng = (wi / 7) * Math.PI * 2;
+    const orbitR = 9.5 + (wi % 3) * 3.4;
+    const initAng = (wi / 6) * Math.PI * 2;
+    const wxCheck = centerX + pkCx + Math.cos(initAng) * orbitR;
+    const wzCheck = centerZ + pkCz + Math.sin(initAng) * orbitR;
+    if (getGroundHeight(wxCheck, wzCheck) < WATER_LEVEL_3D + 0.35) continue;
     const px = pkCx + Math.cos(initAng) * orbitR;
     const pz = pkCz + Math.sin(initAng) * orbitR;
     const py = localGroundY(centerX + px, centerZ + pz) + 0.16;
-    const citizenMesh = createNpcBillboard(spriteUrl, px, py, pz, 2.35);
+    const citizenMesh = createNpcBillboard(spriteUrl, px, py, pz, 2.45);
     const cShadow = new THREE.Mesh(shadowGeo, shadowMat);
     cShadow.position.set(px, py + 0.04, pz);
     group.add(citizenMesh, cShadow);
     walkers.push({
       mesh: citizenMesh,
       shadow: cShadow,
+      walkFrames: getNpcWalkSpriteFrames(spriteUrl),
       mode: 'plaza_orbit',
       cx: pkCx,
       cz: pkCz,
       radius: orbitR,
       angle: initAng,
-      speed: (wi % 2 === 0 ? 1 : -1) * (0.14 + (wi % 3) * 0.05),
+      speed: (wi % 2 === 0 ? 1 : -1) * (0.18 + (wi % 3) * 0.05),
       phase: wi * 1.3,
       baseY: py,
     });
+  }
+
+  // Spawn 32 sidewalk-patrolling citizens along dry downtown streets (closest first so spawn & shops feel bustling!)
+  const patrolStreets = layout.streets
+    .filter(
+      (st) =>
+        !st.isBridge &&
+        st.kind !== 'alley' &&
+        Math.hypot((st.x1 + st.x2) * 0.5 - centerX, (st.z1 + st.z2) * 0.5 - centerZ) < 340 &&
+        Math.hypot(st.x2 - st.x1, st.z2 - st.z1) >= 24,
+    )
+    .sort(
+      (a, b) =>
+        Math.hypot((a.x1 + a.x2) * 0.5 - centerX, (a.z1 + a.z2) * 0.5 - centerZ) -
+        Math.hypot((b.x1 + b.x2) * 0.5 - centerX, (b.z1 + b.z2) * 0.5 - centerZ),
+    );
+  let sidewalkCount = 0;
+  for (let si = 0; si < patrolStreets.length && sidewalkCount < 32; si++) {
+    const st = patrolStreets[si];
+    const sdx = st.x2 - st.x1;
+    const sdz = st.z2 - st.z1;
+    const slen = Math.hypot(sdx, sdz);
+    const ux = sdx / slen;
+    const uz = sdz / slen;
+    const nx = -uz;
+    const nz = ux;
+    const sideSign = si % 2 === 0 ? 1 : -1;
+    const swOff = (st.width * 0.43) * sideSign;
+    const trim = Math.min(8, slen * 0.2);
+    const wx1 = st.x1 + ux * trim + nx * swOff;
+    const wz1 = st.z1 + uz * trim + nz * swOff;
+    const wx2 = st.x2 - ux * trim + nx * swOff;
+    const wz2 = st.z2 - uz * trim + nz * swOff;
+    const wMidX = (wx1 + wx2) * 0.5;
+    const wMidZ = (wz1 + wz2) * 0.5;
+    if (
+      getGroundHeight(wx1, wz1) < WATER_LEVEL_3D + 0.4 ||
+      getGroundHeight(wx2, wz2) < WATER_LEVEL_3D + 0.4 ||
+      getGroundHeight(wMidX, wMidZ) < WATER_LEVEL_3D + 0.4
+    ) {
+      continue;
+    }
+    const spriteUrl = citizenPool[(sidewalkCount + styleIdx) % citizenPool.length];
+    const lx1 = wx1 - centerX;
+    const lz1 = wz1 - centerZ;
+    const lx2 = wx2 - centerX;
+    const lz2 = wz2 - centerZ;
+    const initAng = (sidewalkCount * 0.77) % (Math.PI * 2);
+    const t0 = 0.5 + 0.5 * Math.sin(initAng);
+    const px = lx1 + (lx2 - lx1) * t0;
+    const pz = lz1 + (lz2 - lz1) * t0;
+    const py = localGroundY(centerX + px, centerZ + pz) + 0.16;
+    const citizenMesh = createNpcBillboard(spriteUrl, px, py, pz, 2.48);
+    const cShadow = new THREE.Mesh(shadowGeo, shadowMat);
+    cShadow.position.set(px, py + 0.04, pz);
+    group.add(citizenMesh, cShadow);
+    const segSpan = Math.max(16, Math.hypot(lx2 - lx1, lz2 - lz1));
+    walkers.push({
+      mesh: citizenMesh,
+      shadow: cShadow,
+      walkFrames: getNpcWalkSpriteFrames(spriteUrl),
+      mode: 'sidewalk_patrol',
+      cx: (lx1 + lx2) * 0.5,
+      cz: (lz1 + lz2) * 0.5,
+      x1: lx1,
+      z1: lz1,
+      x2: lx2,
+      z2: lz2,
+      radius: segSpan * 0.5,
+      angle: initAng,
+      speed: (sidewalkCount % 2 === 0 ? 1 : -1) * (3.1 / (segSpan * 0.5)),
+      phase: sidewalkCount * 0.9,
+      baseY: py,
+    });
+    sidewalkCount += 1;
   }
 
   // Pixel-Art Street Vending Machines (Poké-Drink!) tucked neatly along the 4 Plaza Entrance Sidewalks!
@@ -3297,9 +3564,9 @@ export function buildProceduralTown3D(
       kind: 'transit_station',
       label: `🚌 ${townName}·城镇巴士站`,
       hint: '乘车前往其他城镇或世界巡礼',
-      x: layout.busX,
-      z: layout.busZ + 2.6,
-      radius: 5.5,
+      x: layout.busX + Math.cos(layout.busRotY) * 5.2,
+      z: layout.busZ - Math.sin(layout.busRotY) * 5.2,
+      radius: 6.5,
     },
   );
 
@@ -3313,6 +3580,10 @@ export function buildProceduralTown3D(
     interactPoints,
     colliders,
     interiors,
+    autoDoors,
+    upperFloorZones,
+    streetLampPositions,
+    viaductSpans,
     trainGroup,
     trainBaseX: trainGroup.position.x,
     animatedParts: {

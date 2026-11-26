@@ -596,12 +596,78 @@ export function getTerrainHeight3D(wx: number, wz: number): number {
   return elev;
 }
 
+export interface WalkableStairAndFloorZone3D {
+  cx: number;
+  cz: number;
+  rotY: number;
+  baseY: number;
+  halfW: number;
+  halfD: number;
+  upperFloorOffsetY: number; // e.g. 5.0m above baseY
+  stairMinX: number;
+  stairMaxX: number;
+  stairBottomZ: number; // local Z at bottom of stairs (1F)
+  stairTopZ: number;    // local Z at top of stairs (2F)
+  openingMinX: number;
+  openingMaxX: number;
+  openingMinZ: number;
+  openingMaxZ: number;
+}
+
+let activeBuildingFloorZones3D: WalkableStairAndFloorZone3D[] = [];
+export function setWalkableBuildingFloorZones3D(zones: WalkableStairAndFloorZone3D[]): void {
+  activeBuildingFloorZones3D = zones;
+}
+
 /**
  * Walkable surface height for Player, Followers & Enemies:
- * - Elevates smoothly onto Bridge Decks over lakes
- * - Matches paved urban road/plaza thickness (+0.11m inside cities) so characters ALWAYS stand ON TOP of asphalt, crosswalks & plaza stone (NEVER sinking underneath!)
+ * - Supports REAL 2-Story Walkable Staircases & 2nd-Floor Slabs when `currentPy` is supplied!
+ * - Elevates smoothly onto Bridge Decks over rivers & lakes
+ * - Matches paved urban road/plaza thickness so characters ALWAYS stand ON TOP of asphalt & floors!
  */
-export function getWalkableSurfaceHeight3D(wx: number, wz: number): number {
+export function getWalkableSurfaceHeight3D(wx: number, wz: number, currentPy?: number): number {
+  // Check 2-Story Building Staircases & 2F Floor Slabs first when entity height `currentPy` is known!
+  if (currentPy !== undefined && activeBuildingFloorZones3D.length > 0) {
+    for (let i = 0; i < activeBuildingFloorZones3D.length; i++) {
+      const z = activeBuildingFloorZones3D[i];
+      const dx = wx - z.cx;
+      const dz = wz - z.cz;
+      if (Math.abs(dx) > z.halfW + 6 && Math.abs(dz) > z.halfD + 6) continue;
+      const cos = Math.cos(z.rotY);
+      const sin = Math.sin(z.rotY);
+      const lx = dx * cos - dz * sin;
+      const lz = dx * sin + dz * cos;
+      if (Math.abs(lx) > z.halfW || Math.abs(lz) > z.halfD) continue;
+
+      const floor1Y = z.baseY + 0.18;
+      const floor2Y = z.baseY + z.upperFloorOffsetY;
+
+      // 1. On the 3D Staircase Ramp? Smoothly climb/descend between 1F and 2F!
+      const zLo = Math.min(z.stairBottomZ, z.stairTopZ);
+      const zHi = Math.max(z.stairBottomZ, z.stairTopZ);
+      if (lx >= z.stairMinX && lx <= z.stairMaxX && lz >= zLo - 0.8 && lz <= zHi + 0.8) {
+        const span = z.stairTopZ - z.stairBottomZ || 1;
+        const t = Math.max(0, Math.min(1, (lz - z.stairBottomZ) / span));
+        const rampY = floor1Y + (floor2Y - floor1Y) * t;
+        // Engage staircase if entity is within vertical reach of the ramp (so walking *under* high stairs on 1F stays on 1F!)
+        if (currentPy >= rampY - 1.35 && currentPy <= floor2Y + 2.5) {
+          return rampY;
+        }
+      }
+
+      // 2. On the 2nd-Floor Slab (excluding the stairwell opening)?
+      const inOpening =
+        lx > z.openingMinX &&
+        lx < z.openingMaxX &&
+        lz > z.openingMinZ &&
+        lz < z.openingMaxZ;
+      if (!inOpening && currentPy >= floor2Y - 1.45) {
+        return floor2Y;
+      }
+      return floor1Y;
+    }
+  }
+
   const ground = getTerrainHeight3D(wx, wz);
   if (!sampleGeoTerrainHeight3D(wx, wz)) {
     const roadDist = getNearestRoadDist3D(wx, wz);
@@ -623,13 +689,13 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number): number {
     }
   } else {
     // Active Real-Earth city centered at (0, 0):
-    // 1. Walkable Bridge Decks across the active city's unique river bridges!
+    // 1. Walkable Bridge Decks across the active city's unique river bridges (flush at ~1.92m with smooth bank transitions)!
     const geoCityId = getActiveGeoTerrainOrigin()?.startCityId ?? 'shanghai';
     if (isOnShanghaiBridgeLocal(wx, wz, geoCityId)) {
-      return Math.max(ground + 0.16, 1.85);
+      return Math.max(ground + 0.16, 1.92);
     }
     // 2. Dry paved city avenues & parks sit flush at ground + 0.16 across the full real metropolitan dry land!
-    if (Math.hypot(wx, wz) < 760 && ground >= WATER_LEVEL_3D) {
+    if (Math.hypot(wx, wz) < 860 && ground >= WATER_LEVEL_3D) {
       return ground + 0.16;
     }
   }

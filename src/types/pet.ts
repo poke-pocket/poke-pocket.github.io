@@ -341,6 +341,7 @@ export interface KeyBindings {
 export type BossHpDisplayMode = 'hp' | 'pct';
 export type GraphicsQualityMode = 'high' | 'medium' | 'low';
 export type EnemyDisplayMode = 'all' | 'near' | 'very_near' | 'shadow_only';
+export type CameraFollowMode = 'hd2d' | 'chase' | 'free' | 'overhead';
 
 export type AppLanguage = 'zh' | 'en' | 'ja';
 
@@ -378,7 +379,9 @@ export interface GamePrefs {
   worldDifficulty?: 'normal' | 'hard' | 'nightmare';
   worldGameMode?: 'story' | 'endless';
   worldWeatherMode?: 'auto' | 'clear' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'windy';
+  worldTimeMode?: 'auto' | 'day' | 'dusk' | 'night';
   townPeaceMode?: boolean;
+  cameraFollowMode?: CameraFollowMode;
 }
 
 export const DEFAULT_GAME_PREFS: GamePrefs = {
@@ -410,7 +413,9 @@ export const DEFAULT_GAME_PREFS: GamePrefs = {
   worldDifficulty: 'normal',
   worldGameMode: 'story',
   worldWeatherMode: 'auto',
+  worldTimeMode: 'auto',
   townPeaceMode: true,
+  cameraFollowMode: 'hd2d',
 };
 
 export interface TrainerProfile {

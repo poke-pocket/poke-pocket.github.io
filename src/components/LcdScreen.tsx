@@ -1435,6 +1435,37 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
                 {settingsTab === 'hud' && (
                   <div className="settings-grid-2">
+                    <div className="settings-card is-span-2">
+                      <div className="settings-card-head is-stacked">
+                        <div>
+                          <strong>3D 镜头视角模式</strong>
+                          <small className="audio-track-hint">进屋或经过高架桥底时会自动平滑缩放推进，绝不穿墙</small>
+                        </div>
+                        <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                          {(
+                            [
+                              ['hd2d', 'HD-2D俯视'],
+                              ['chase', '自动追尾'],
+                              ['free', '自由环绕'],
+                              ['overhead', '高空鸟瞰'],
+                            ] as const
+                          ).map(([cId, cLbl]) => (
+                            <button
+                              key={cId}
+                              type="button"
+                              className={`lcd-subtab ${(prefs.cameraFollowMode ?? 'hd2d') === cId ? 'active' : ''}`}
+                              onClick={() => {
+                                sound.play('cursor');
+                                setPref({ cameraFollowMode: cId });
+                              }}
+                            >
+                              {cLbl}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="settings-card">
                       <div className="settings-card-head">
                         <strong>界面大小</strong>
@@ -1836,6 +1867,68 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
               {settingsTab === 'world' && (
                 <div className="settings-stack scroll-y">
+                  <div className="settings-card">
+                    <div className="settings-card-head is-stacked">
+                      <div>
+                        <strong>3D 镜头视角模式</strong>
+                        <small>户外四档视角任选，进入室内或高架桥下时自动平滑缩放推进</small>
+                      </div>
+                      <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                        {(
+                          [
+                            ['hd2d', 'HD-2D俯视'],
+                            ['chase', '自动追尾'],
+                            ['free', '自由环绕'],
+                            ['overhead', '高空鸟瞰'],
+                          ] as const
+                        ).map(([cId, cLbl]) => (
+                          <button
+                            key={cId}
+                            type="button"
+                            className={`lcd-subtab ${(prefs.cameraFollowMode ?? 'hd2d') === cId ? 'active' : ''}`}
+                            onClick={() => {
+                              sound.play('cursor');
+                              setPref({ cameraFollowMode: cId });
+                            }}
+                          >
+                            {cLbl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-card">
+                    <div className="settings-card-head is-stacked">
+                      <div>
+                        <strong>昼夜与日出日落时间</strong>
+                        <small>默认根据当前经纬度实时计算天文日出日落与昼夜光影，也可手动预览</small>
+                      </div>
+                      <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                        {(
+                          [
+                            ['auto', '🌍 经纬度实时日出日落'],
+                            ['day', '☀️ 白天'],
+                            ['dusk', '🌇 黄昏'],
+                            ['night', '🌙 夜晚'],
+                          ] as const
+                        ).map(([tId, tLbl]) => (
+                          <button
+                            key={tId}
+                            type="button"
+                            className={`lcd-subtab ${(prefs.worldTimeMode ?? 'auto') === tId ? 'active' : ''}`}
+                            onClick={() => {
+                              sound.play('cursor');
+                              setPref({ worldTimeMode: tId });
+                            }}
+                          >
+                            {tLbl}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="settings-card">
                     <div className="settings-card-head is-stacked">
                       <div>

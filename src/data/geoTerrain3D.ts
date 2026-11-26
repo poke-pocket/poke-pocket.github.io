@@ -313,12 +313,14 @@ export function sampleRealElevationMeters(
  * Beijing-Tianjin, Pearl River Delta, Chengdu-Chongqing & Greater Tokyo naturally hug real coastlines, bays & lakes!
  */
 const REAL_URBAN_CORES: [number, number, number][] = [
-  // 长三角大上海都市圈 (上海市区 + 浦东 + 宝山 + 嘉定 + 闵行 + 松江 + 青浦 + 奉贤 + 昆山 + 苏州 + 无锡 + 常州 + 南通 + 嘉兴 + 杭州 + 宁波)
-  [31.23, 121.47, 26], // 上海中心城 (浦西 + 陆家嘴)
-  [31.18, 121.66, 22], // 浦东新区 / 张江 / 祝桥
-  [31.38, 121.36, 17], // 宝山 / 嘉定
-  [31.05, 121.38, 18], // 闵行 / 奉贤
-  [31.04, 121.22, 16], // 松江 / 青浦
+  // 长三角大上海都市圈 (覆盖上海全域浦西+浦东川沙/祝桥/临港+宝山+嘉定+闵行+松江+青浦+奉贤 + 昆山/苏州/杭州/南京)
+  [31.23, 121.47, 30], // 上海中心城 (浦西 + 陆家嘴)
+  [31.21, 121.66, 26], // 浦东新区 / 张江 / 川沙 / 曹路
+  [31.08, 121.74, 22], // 祝桥 / 惠南 / 浦东东海沿岸
+  [31.39, 121.46, 20], // 宝山 / 吴淞 / 罗店
+  [31.38, 121.26, 19], // 嘉定 / 安亭
+  [31.05, 121.42, 22], // 闵行 / 三林 / 周浦 / 奉贤
+  [31.04, 121.22, 18], // 松江 / 青浦
   [31.38, 120.98, 15], // 昆山
   [31.30, 120.60, 21], // 苏州
   [31.56, 120.30, 17], // 无锡
@@ -400,17 +402,16 @@ export function sampleUrbanClusterDensity(lat: number, lng: number): number {
 /** True if real Earth (lat, lng) is buildable dry urban landmass (strictly inland from ocean/estuary coastlines so ZERO roads ever spill into water!) */
 export function isRealUrbanDryLand(lat: number, lng: number): boolean {
   const dens = sampleUrbanClusterDensity(lat, lng);
-  if (dens < 0.16) return false;
-  const m = sampleRealElevationMeters(lat, lng, 'macro');
-  // While Z5 DEM hasn't loaded yet, allow inner core only; once loaded, require dry land + 2km coastal inset buffer!
-  if (m === null) return dens > 0.35;
-  if (m <= 1.2) return false;
-  const buf = 0.022;
-  const mN = sampleRealElevationMeters(lat + buf, lng, 'macro');
-  const mS = sampleRealElevationMeters(lat - buf, lng, 'macro');
-  const mE = sampleRealElevationMeters(lat, lng + buf, 'macro');
-  const mW = sampleRealElevationMeters(lat, lng - buf, 'macro');
-  if ((mN !== null && mN <= 0.7) || (mS !== null && mS <= 0.7) || (mE !== null && mE <= 0.7) || (mW !== null && mW <= 0.7)) {
+  if (dens < 0.12) return false;
+  const m = sampleRealElevationMeters(lat, lng, 'detail') ?? sampleRealElevationMeters(lat, lng, 'macro');
+  if (m === null) return dens > 0.25;
+  if (m <= 0.65) return false;
+  const buf = 0.007;
+  const mN = sampleRealElevationMeters(lat + buf, lng, 'detail') ?? sampleRealElevationMeters(lat + buf, lng, 'macro');
+  const mS = sampleRealElevationMeters(lat - buf, lng, 'detail') ?? sampleRealElevationMeters(lat - buf, lng, 'macro');
+  const mE = sampleRealElevationMeters(lat, lng + buf, 'detail') ?? sampleRealElevationMeters(lat, lng + buf, 'macro');
+  const mW = sampleRealElevationMeters(lat, lng - buf, 'detail') ?? sampleRealElevationMeters(lat, lng - buf, 'macro');
+  if ((mN !== null && mN <= 0.5) || (mS !== null && mS <= 0.5) || (mE !== null && mE <= 0.5) || (mW !== null && mW <= 0.5)) {
     return false;
   }
   return true;
@@ -577,26 +578,51 @@ export function classifyRealEarthPixelColor(
     return dither ? '#568742' : '#4a7a3b';
   }
 
-  // 10. Forested Hills & Low Mountains (320m .. 1250m — Zhejiang/Fujian hills, Hunan/Jiangxi, Sichuan rim, Japan hills)
-  if (meters >= 320) {
-    if (hillShadeMeters > 45) return '#4dad4e';
-    if (hillShadeMeters < -45) return '#256e31';
+  // 10. Forested Hills & Low Mountains (260m .. 1250m — Zhejiang/Fujian hills, Hunan/Jiangxi, Sichuan rim, Japan hills)
+  if (meters >= 260) {
+    if (hillShadeMeters > 28) return '#54b54f';
+    if (hillShadeMeters < -28) return '#22692e';
     return dither ? '#348f3e' : '#2d8237';
   }
 
-  // 11. Fertile Plains, River Valleys & Coastal Lowlands (0 .. 320m — Yangtze Delta, North China Plain, Sichuan Basin, Kanto Plain)
-  if (hillShadeMeters > 22) return '#60c752';
-  if (hillShadeMeters < -22) return '#328f39';
+  // 10B. Jiangnan / Coastal Rolling Foothills & Knolls (55m .. 260m — Sheshan, Suzhou/Wuxi hills, Hangzhou hills, Nanjing Purple Mt.)
+  if (meters >= 55) {
+    if (hillShadeMeters > 12) return '#66c954';
+    if (hillShadeMeters < -12) return '#2b7d34';
+    return dither ? '#429e42' : '#38913b';
+  }
+
+  // 11. Alluvial Plains, River Valleys & Rolling Lowland Swells (0 .. 55m — Yangtze Delta, North China Plain, Kanto Plain)
+  // Combine fine SRTM micro-slope shading with natural geological rolling hillock swells so plains NEVER look dead-flat!
+  const hillockWave =
+    Math.sin(lat * 85.0 + nLng * 68.0) * 0.55 +
+    Math.cos(lat * 142.0 - nLng * 118.0) * 0.45 +
+    Math.sin((lat + nLng) * 230.0) * 0.25;
+  const localRelief = hillShadeMeters + hillockWave * 5.2;
+  if (meters >= 18 || hillockWave > 0.52) {
+    if (localRelief > 4.2) return '#6ad158';
+    if (localRelief < -4.2) return '#2f8737';
+    return dither ? '#42ab43' : '#399c3c';
+  }
+  if (localRelief > 4.5) return '#63cc54';
+  if (localRelief < -4.5) return '#338f3a';
   return dither ? '#48b546' : '#3ea63e';
 }
 
-/** Deterministic subtle micro-ripple so real plains & foothills stay sculpted & lively at close 3D range */
+/** Natural multi-scale rolling hills + micro-ripple so lowland plains & suburbs have real rolling hillocks & valleys in 3D! */
 function microSculpt(wx: number, wz: number): number {
-  return (
-    Math.sin(wx * 0.085 + wz * 0.042) * 0.22 +
-    Math.cos(wx * 0.037 - wz * 0.091) * 0.18 +
-    Math.sin((wx + wz) * 0.16) * 0.08
-  );
+  const rollingHills =
+    Math.sin(wx * 0.014 + wz * 0.011) * 1.45 +
+    Math.cos(wx * 0.021 - wz * 0.017 + 1.4) * 0.95;
+  const micro =
+    Math.sin(wx * 0.075 + wz * 0.042) * 0.24 +
+    Math.cos(wx * 0.037 - wz * 0.088) * 0.18;
+  return rollingHills + micro;
+}
+
+function smoothstepLocal(e0: number, e1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - e0) / Math.max(1e-4, e1 - e0)));
+  return t * t * (3 - 2 * t);
 }
 
 /**
@@ -638,13 +664,23 @@ export function sampleGeoTerrainHeight3D(
   // Carves the real S-curving Huangpu River & Suzhou Creek water channel cleanly through downtown Shanghai!
   if (!preferMacro) {
     const uDens = sampleUrbanClusterDensity(geo.lat, geo.lng);
-    const isDryCoast = meters === null ? Math.hypot(wx, wz) < 320 : meters > 0.9;
-    if (uDens > 0.12 && isDryCoast) {
-      // Smooth river channel carving for the active city's real river across the ENTIRE metropolitan landmass!
+    const distFromOrigin = Math.hypot(wx, wz);
+    const macroM = sampleRealElevationMeters(geo.lat, geo.lng, 'macro');
+    // Guarantee dry continuous urban grading across the city center (< 240m, fixes HK coastal spawn pit!)
+    // AND across the macro dry landmass so noisy 1-pixel Z9 SRTM depressions NEVER punch random water holes in Pudong/downtown!
+    const isDryCoast =
+      distFromOrigin < 240 ||
+      (macroM === null ? distFromOrigin < 360 : macroM > 0.65 && (meters === null || meters > -1.5));
+    if ((uDens > 0.12 || distFromOrigin < 240) && isDryCoast) {
+      // Smooth river channel carving ONLY along the active city's real river spline!
       const activeCityId = activeOrigin.startCityId ?? 'shanghai';
       const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
       const riverElev = -1.65;
-      const dryCityY = 1.65;
+      // Preserve gentle rolling urban topography (+0..1.4m natural slope outside exact spawn plaza) while keeping riverbanks crisp!
+      const urbanRoll =
+        smoothstepLocal(45, 220, distFromOrigin) *
+        (Math.sin(wx * 0.009 + wz * 0.007) * 0.85 + Math.cos(wx * 0.013 - wz * 0.011) * 0.65);
+      const dryCityY = 1.65 + urbanRoll;
       let cityTargetY = dryCityY;
       if (rivSigned < 0) {
         cityTargetY = riverElev;
@@ -653,12 +689,12 @@ export function sampleGeoTerrainHeight3D(
         const smoothBank = bankT * bankT * (3 - 2 * bankT);
         cityTargetY = riverElev * (1 - smoothBank) + dryCityY * smoothBank;
       }
-      if (uDens >= 0.24) {
+      if (uDens >= 0.34 || distFromOrigin < 160) {
         return cityTargetY;
       }
-      const blend = (uDens - 0.12) / 0.12;
+      const blend = Math.max(0, Math.min(1, (uDens - 0.12) / 0.22));
       const smoothB = blend * blend * (3 - 2 * blend);
-      elev = elev * (1 - smoothB) + cityTargetY * smoothB;
+      elev = Math.max(0.65, elev) * (1 - smoothB) + cityTargetY * smoothB;
     }
   }
 
@@ -904,10 +940,38 @@ export const REAL_WORLD_RIVERS: RealWorldRiver[] = [
   {
     id: 'huangpu_macro',
     name: '黄浦江',
-    widthKm: 2.0,
+    widthKm: 0.95,
     points: [
-      [31.02, 120.98], [30.97, 121.22], [31.01, 121.42], [31.12, 121.46],
-      [31.23, 121.49], [31.38, 121.51],
+      [30.965, 121.185],
+      [30.985, 121.345],
+      [31.012, 121.432], // 闵行第一湾
+      [31.078, 121.458], // 徐浦大桥段
+      [31.148, 121.464], // 前滩段
+      [31.182, 121.456], // 徐汇滨江
+      [31.192, 121.482], // 卢浦大桥 / 世博弯
+      [31.208, 121.501], // 南浦大桥
+      [31.224, 121.496], // 十六铺
+      [31.239, 121.493], // 外滩—陆家嘴标志性大弯道西侧!
+      [31.245, 121.499], // 外白渡桥 / 苏州河口
+      [31.248, 121.522], // 北外滩—陆家嘴北滨江
+      [31.258, 121.554], // 杨浦大桥
+      [31.292, 121.564], // 复兴岛 / 军工路
+      [31.344, 121.542], // 高桥段
+      [31.398, 121.506], // 宝山吴淞口汇入长江口!
+      [31.425, 121.502],
+    ],
+  },
+  {
+    id: 'suzhou_macro',
+    name: '苏州河',
+    widthKm: 0.44,
+    points: [
+      [31.265, 121.185],
+      [31.242, 121.295],
+      [31.228, 121.372], // 长宁/普陀湾
+      [31.246, 121.418], // 普陀十八湾
+      [31.243, 121.456], // 静安/闸北四行仓库段
+      [31.245, 121.496], // 外白渡桥汇入黄浦江!
     ],
   },
   {
@@ -1136,4 +1200,252 @@ export function detectOverlandCityAt(
     }
   }
   return { city: best, distKm: bestDist, lat: geo.lat, lng: geo.lng };
+}
+
+/* =========================================================================
+   REAL TOPOGRAPHIC PIXEL HYDROGRAPHY (Meandering River Valleys, Sandbars,
+   Incised Gorges & Real Famous Lakes — ZERO Drawn Vector Lines!)
+   ========================================================================= */
+export interface RealInlandLake {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  rxDeg: number; // East-West half-axis in degrees
+  ryDeg: number; // North-South half-axis in degrees
+  rotRad?: number;
+}
+
+export const REAL_INLAND_LAKES: RealInlandLake[] = [
+  { id: 'taihu', name: '太湖', lat: 31.22, lng: 120.22, rxDeg: 0.30, ryDeg: 0.25, rotRad: 0.3 },
+  { id: 'west_lake', name: '西湖', lat: 30.236, lng: 120.118, rxDeg: 0.032, ryDeg: 0.034, rotRad: 0.12 },
+  { id: 'poyang', name: '鄱阳湖', lat: 29.08, lng: 116.28, rxDeg: 0.24, ryDeg: 0.48, rotRad: 0.22 },
+  { id: 'dongting', name: '洞庭湖', lat: 29.18, lng: 112.85, rxDeg: 0.36, ryDeg: 0.24, rotRad: -0.25 },
+  { id: 'qinghai_lake', name: '青海湖', lat: 36.88, lng: 100.18, rxDeg: 0.46, ryDeg: 0.27, rotRad: -0.32 },
+  { id: 'namtso', name: '纳木错', lat: 30.72, lng: 90.62, rxDeg: 0.32, ryDeg: 0.16, rotRad: -0.2 },
+  { id: 'dianchi', name: '滇池', lat: 24.82, lng: 102.68, rxDeg: 0.09, ryDeg: 0.19, rotRad: 0.15 },
+  { id: 'erhai', name: '洱海', lat: 25.78, lng: 100.19, rxDeg: 0.06, ryDeg: 0.18, rotRad: -0.15 },
+  { id: 'hulun', name: '呼伦湖', lat: 48.96, lng: 117.42, rxDeg: 0.28, ryDeg: 0.38, rotRad: 0.4 },
+  { id: 'biwa', name: '琵琶湖', lat: 35.26, lng: 136.08, rxDeg: 0.11, ryDeg: 0.26, rotRad: 0.25 },
+];
+
+interface CompiledHydroSeg {
+  lat1: number;
+  lng1: number;
+  lat2: number;
+  lng2: number;
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+  halfWidthKm: number;
+  prog: number; // 0 = headwaters -> 1 = mouth
+}
+
+let compiledHydroSegs: CompiledHydroSeg[] | null = null;
+function getCompiledHydroSegs(): CompiledHydroSeg[] {
+  if (compiledHydroSegs) return compiledHydroSegs;
+  const segs: CompiledHydroSeg[] = [];
+  for (const riv of REAL_WORLD_RIVERS) {
+    const pts = riv.points;
+    if (pts.length < 2) continue;
+    // Catmull-Rom smooth subdivision so real river valleys bend organically without sharp polygonal kinks
+    const smooth: [number, number][] = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[Math.max(0, i - 1)];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[Math.min(pts.length - 1, i + 2)];
+      for (let s = 0; s < 4; s++) {
+        const t = s / 4;
+        const t2 = t * t;
+        const t3 = t2 * t;
+        const lat =
+          0.5 *
+          (2 * p1[0] +
+            (-p0[0] + p2[0]) * t +
+            (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
+            (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3);
+        const lng =
+          0.5 *
+          (2 * p1[1] +
+            (-p0[1] + p2[1]) * t +
+            (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
+            (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3);
+        smooth.push([lat, lng]);
+      }
+    }
+    smooth.push(pts[pts.length - 1]);
+
+    const total = Math.max(1, smooth.length - 1);
+    for (let i = 0; i < total; i++) {
+      const [lat1, lng1] = smooth[i];
+      const [lat2, lng2] = smooth[i + 1];
+      const prog = (i + 0.5) / total;
+      // Progressive real hydrological widening from alpine headwater stream (0.22x) to broad alluvial lower reach (1.35x)
+      const halfWidthKm = riv.widthKm * 0.34 * (0.22 + 1.15 * Math.pow(prog, 1.15));
+      const padDeg = Math.max(0.18, (halfWidthKm / 85) * 4.5);
+      segs.push({
+        lat1,
+        lng1,
+        lat2,
+        lng2,
+        minLat: Math.min(lat1, lat2) - padDeg,
+        maxLat: Math.max(lat1, lat2) + padDeg,
+        minLng: Math.min(lng1, lng2) - padDeg,
+        maxLng: Math.max(lng1, lng2) + padDeg,
+        halfWidthKm,
+        prog,
+      });
+    }
+  }
+  compiledHydroSegs = segs;
+  return segs;
+}
+
+/**
+ * Evaluates genuine pixel-terrain hydrography at (lat, lng) / (wx, wz):
+ * - Carves real meandering rivers, shallow shoals, alluvial sandbars, canyon shadows & famous lakes
+ *   DIRECTLY into the 2D topographic pixel grid (100% consistent with ocean coastline & DEM relief — ZERO vector lines!).
+ * - Returns null when the cell is ordinary dry terrain (so classifyRealEarthPixelColor handles it normally).
+ */
+export function sampleRealHydrographyPixelColor(
+  lat: number,
+  lng: number,
+  wx: number,
+  wz: number,
+  unitsPerPx: number,
+  stepPx: number,
+  demMeters: number,
+  hillShadeMeters: number,
+  dither: boolean,
+): string | null {
+  // Never overwrite open ocean/estuary (already rendered by real DEM <= 0.6m!)
+  if (demMeters <= 0.6) return null;
+
+  const nLng = ((((lng + 180) % 360) + 360) % 360) - 180;
+
+  // 1. Famous Real Inland Lakes (West Lake, Taihu, Poyang, Dongting, Qinghai Lake, Namtso, Dianchi, Erhai, Biwa...)
+  const lakeRipple =
+    Math.sin(lat * 190 + nLng * 230) * 0.13 +
+    Math.cos(lat * 370 - nLng * 290) * 0.08 +
+    Math.sin(lat * 680 + nLng * 510) * 0.05;
+  for (let li = 0; li < REAL_INLAND_LAKES.length; li++) {
+    const lk = REAL_INLAND_LAKES[li];
+    if (Math.abs(lat - lk.lat) > lk.ryDeg * 1.45 || Math.abs(nLng - lk.lng) > lk.rxDeg * 1.45) continue;
+    const dx = nLng - lk.lng;
+    const dy = lat - lk.lat;
+    const c = Math.cos(lk.rotRad ?? 0);
+    const s = Math.sin(lk.rotRad ?? 0);
+    const rx = dx * c + dy * s;
+    const ry = -dx * s + dy * c;
+    const normR = Math.hypot(rx / lk.rxDeg, ry / lk.ryDeg) + lakeRipple;
+    if (normR < 0.72) {
+      return demMeters > 2200 ? (dither ? '#1c88b8' : '#2496c7') : dither ? '#1f7ae0' : '#2886eb';
+    }
+    if (normR < 0.98) {
+      return dither ? '#56aef2' : '#74c0fc';
+    }
+    if (normR < 1.14) {
+      return demMeters > 2200 ? '#d8c998' : dither ? '#e8d7a6' : '#6ec25a';
+    }
+  }
+
+  // 2. Active City High-Detail Local Waterways (e.g. Suzhou Creek & downtown Huangpu bends at street/city zoom!)
+  if (unitsPerPx < 6.5 && Math.hypot(wx, wz) < 760) {
+    const activeCityId = activeOrigin?.startCityId ?? 'shanghai';
+    const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
+    const pxWorldSize = Math.max(2.2, unitsPerPx * stepPx * 0.75);
+    if (rivSigned < 0) {
+      if (rivSigned > -Math.max(3.5, pxWorldSize * 0.65)) {
+        return hillShadeMeters < -4 ? '#1b64b8' : dither ? '#4dabf7' : '#66bcfa';
+      }
+      return dither ? '#1f7ae0' : '#2986eb';
+    }
+    if (rivSigned < Math.max(3.2, pxWorldSize * 0.55)) {
+      return dither ? '#6ec258' : '#dcd2ac';
+    }
+  }
+
+  // 3. Real Continental & Regional River Valleys (Organic fractal meanders + pixel-grid adaptive channel width!)
+  const cellKm = (unitsPerPx * stepPx) / GEO_UNITS_PER_KM;
+  // Subtle multi-scale geological meander warp so river channels follow natural valley wiggles instead of ruler-straight segments
+  const warpScale = Math.min(0.045, 0.006 + cellKm * 0.0018);
+  const wLat =
+    lat +
+    Math.sin(nLng * 28.5 + lat * 19.2) * warpScale +
+    Math.cos(nLng * 67.0 - lat * 53.0) * (warpScale * 0.38);
+  const wLng =
+    nLng +
+    Math.cos(lat * 26.8 - nLng * 21.4) * warpScale +
+    Math.sin(lat * 61.0 + nLng * 49.0) * (warpScale * 0.38);
+
+  const cosLat = Math.max(0.25, Math.cos((lat * Math.PI) / 180));
+  const segs = getCompiledHydroSegs();
+  const extraSearchDeg = Math.min(1.4, (cellKm * 2.1) / KM_PER_DEG_LAT);
+
+  let bestRatio = 999;
+  let bestProg = 0;
+
+  for (let i = 0; i < segs.length; i++) {
+    const sg = segs[i];
+    if (
+      wLat < sg.minLat - extraSearchDeg ||
+      wLat > sg.maxLat + extraSearchDeg ||
+      wLng < sg.minLng - extraSearchDeg ||
+      wLng > sg.maxLng + extraSearchDeg
+    ) {
+      continue;
+    }
+    const vx = (sg.lng2 - sg.lng1) * cosLat * KM_PER_DEG_LAT;
+    const vz = (sg.lat2 - sg.lat1) * KM_PER_DEG_LAT;
+    const px = (wLng - sg.lng1) * cosLat * KM_PER_DEG_LAT;
+    const pz = (wLat - sg.lat1) * KM_PER_DEG_LAT;
+    const lenSq = vx * vx + vz * vz;
+    const t = lenSq > 0.0001 ? Math.max(0, Math.min(1, (px * vx + pz * vz) / lenSq)) : 0;
+    const distKm = Math.hypot(px - vx * t, pz - vz * t);
+
+    // Effective channel half-width: true physical km at close zoom, gently floored to ~0.72..1.35 pixel cells at continent zoom
+    // so main rivers remain continuous 1-3px topographic pixel channels without looking like thick marker strokes!
+    const minVisKm = cellKm * (0.58 + 0.72 * sg.prog);
+    const bankJitter = 1.0 + Math.sin(lat * 310 + nLng * 270) * 0.16;
+    const effHalfKm = Math.max(sg.halfWidthKm, minVisKm) * bankJitter;
+    const ratio = distKm / Math.max(0.08, effHalfKm);
+    if (ratio < bestRatio) {
+      bestRatio = ratio;
+      bestProg = sg.prog;
+    }
+  }
+
+  if (bestRatio >= 1.68) return null;
+
+  // Core deep water pixel channel
+  if (bestRatio < 0.62) {
+    if (demMeters > 2600) {
+      return dither ? '#208ab8' : '#299bd0'; // Alpine glacial river (Yarlung Tsangpo / upper Yangtze & Yellow!)
+    }
+    return dither ? '#1d75db' : '#2784eb';
+  }
+
+  // Shallow shoal / incised canyon shadow edge
+  if (bestRatio < 1.02) {
+    if (hillShadeMeters < -35) return '#155196'; // NW-sun incised river gorge shadow!
+    return dither ? '#4da8f0' : '#70befa';
+  }
+
+  // Natural riverbank: incised rocky gorge in steep mountains, sandy point-bars & lush alluvial floodplains on plains!
+  if (bestRatio < 1.58 && cellKm < 18) {
+    if (demMeters > 1600 && Math.abs(hillShadeMeters) > 55) {
+      return dither ? '#7d7058' : '#6b5e49'; // Steep river gorge rock wall
+    }
+    const isSandbar = Math.sin(lat * 420 - nLng * 390) > 0.35 && bestProg > 0.35 && demMeters < 450;
+    if (isSandbar) {
+      return dither ? '#e6d39c' : '#d9c286'; // Natural alluvial sandbar pixel!
+    }
+    if (demMeters < 950) {
+      return dither ? '#54bd4e' : '#47ab42'; // Fertile green riparian valley floor!
+    }
+  }
+
+  return null;
 }

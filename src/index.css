@@ -5566,18 +5566,212 @@ button:disabled {
 }
 
 .surv-top-btn.is-lg {
-  height: 34px;
-  padding: 0 11px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
   border: 2.5px solid #161420;
   box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.8),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.85),
     3px 3px 0 #161420;
   border-radius: 0;
 }
 
 .surv-top-btn.is-gear-btn {
   background: #fffdf5;
+}
+
+.surv-top-btn.is-cam-btn {
+  background: #e7f5ff;
+  color: #161420;
+}
+
+.surv-top-btn.is-nav-btn {
+  background: #fff3bf;
+  color: #161420;
+}
+
+.surv-top-btn.is-nav-btn.is-nav-active {
+  background: #ffd43b;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 2px #f59f00,
+    3px 3px 0 #161420;
+}
+
+.hud-col-right {
+  position: relative;
+}
+
+.surv-autonav-active-pill {
+  margin-top: 6px;
+  margin-right: 188px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-end;
+  padding: 4px 10px;
+  background: #1c1926;
+  color: #ffe066;
+  font-size: 11px;
+  font-weight: 800;
+  border: 2px solid #161420;
+  box-shadow: 3px 3px 0 #161420;
+  z-index: 180;
+  pointer-events: auto;
+}
+
+.surv-autonav-active-pill button {
+  padding: 2px 6px;
+  background: #ff6b6b;
+  color: #fff;
+  border: 1.5px solid #161420;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.surv-autonav-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 188px;
+  width: min(330px, 88vw);
+  max-height: min(440px, 66vh);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #fffdf5;
+  border: 3px solid #161420;
+  box-shadow: 5px 5px 0 #161420;
+  z-index: 180;
+  pointer-events: auto;
+}
+
+@media (max-width: 760px) {
+  .surv-autonav-active-pill {
+    margin-right: 0;
+  }
+  .surv-autonav-popover {
+    right: 0;
+    top: calc(100% + 146px);
+  }
+}
+
+.surv-autonav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #161420;
+  font-size: 12px;
+  color: #161420;
+}
+
+.surv-autonav-close {
+  width: 24px;
+  height: 24px;
+  background: #f1f3f5;
+  border: 2px solid #161420;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.surv-autonav-cam-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.surv-cam-chip {
+  padding: 5px 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  background: #f1f3f5;
+  color: #161420;
+  border: 2px solid #161420;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.surv-cam-chip.is-on {
+  background: #74c0fc;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.surv-autonav-stop-btn {
+  padding: 6px 8px;
+  background: #ffe3e3;
+  color: #c92a2a;
+  border: 2px solid #161420;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.surv-autonav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+  max-height: 300px;
+  padding-right: 2px;
+}
+
+.surv-autonav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #f8f9fa;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  text-align: left;
+  cursor: pointer;
+}
+
+.surv-autonav-item:hover,
+.surv-autonav-item.is-active {
+  background: #fff3bf;
+}
+
+.surv-autonav-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.surv-autonav-meta strong {
+  font-size: 12px;
+  color: #161420;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.surv-autonav-meta small {
+  font-size: 10px;
+  color: #495057;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.surv-autonav-dist {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 900;
+  color: #1971c2;
+  background: #e7f5ff;
+  padding: 2px 6px;
+  border: 1.5px solid #161420;
 }
 
 .surv-top-btn.is-lg:active {
@@ -11086,10 +11280,18 @@ button.gba-status-box.is-clickable-card {
 
 .surv-hero-info {
   flex: 1;
-  min-width: 162px;
+  min-width: 176px;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
+}
+
+.surv-hero-sub-badges {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 1px;
 }
 
 .surv-hero-top {
@@ -11685,9 +11887,8 @@ button.gba-status-box.is-clickable-card {
   align-items: center;
   justify-content: center;
   padding: 4px 16px;
-  min-width: 108px;
+  min-width: 126px;
   background: rgba(12, 13, 22, 0.72);
-  border-right: 2px solid #2b2d44;
   gap: 1px;
 }
 
@@ -13865,11 +14066,12 @@ button.gba-status-box.is-clickable-card {
   flex-shrink: 0;
 }
 
-/* Interactive 3D World Foraging / Mining / Signpost Prompt Pill */
+/* Interactive 3D World Foraging / Mining / Signpost Prompt Pill (positioned cleanly above action buttons so it NEVER occludes 伤药!) */
 .surv-interact-pill {
   position: absolute;
-  left: 50%;
-  bottom: 104px;
+  left: 44%;
+  bottom: 172px;
+  max-width: min(500px, calc(100vw - 440px));
   transform: translateX(-50%);
   z-index: 26;
   display: inline-flex;
@@ -15724,7 +15926,7 @@ body,
   }
 
   .surv-interact-pill {
-    bottom: 16px;
+    bottom: 136px;
     padding: 5px 10px;
     font-size: 11px;
   }

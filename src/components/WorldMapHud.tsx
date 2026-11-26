@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   GEO_UNITS_PER_KM,
   PROVINCIAL_AND_WORLD_CAPITALS,
+  REAL_INLAND_LAKES,
   REAL_WORLD_CORRIDORS,
   REAL_WORLD_RIVERS,
   classifyRealEarthPixelColor,
@@ -9,6 +10,7 @@ import {
   getActiveGeoTerrainOrigin,
   getProjectedGeoCities,
   sampleRealElevationMeters,
+  sampleRealHydrographyPixelColor,
   subscribeGeoDemLoaded,
   worldToGeo,
   type GeoDemResolution,
@@ -22,6 +24,7 @@ import {
   WORLD_TOWNS_3D,
 } from '../data/survivorsTactics';
 import { generateTownLayout, hashCitySeed } from '../utils/townStreetGen';
+import { SHANGHAI_DISTRICT_LABELS } from '../data/shanghaiMasterplan';
 import { BIOME_PALETTES, type BiomeId } from '../data/worldTextures3D';
 import { sound } from '../utils/sound';
 import { PixelItemImg } from './PixelSprite';
@@ -50,11 +53,23 @@ export interface LiveMapSnapshot {
   dots: MapMarkerDot[];
 }
 
+export interface WorldMapNavTarget {
+  id: string;
+  label: string;
+  subLabel: string;
+  icon: string;
+  x: number;
+  z: number;
+}
+
 export interface WorldMapData {
   biome: BiomeId;
   regionName: string;
   snapshot: LiveMapSnapshot;
   onFastTravelCity?: (cityId: string) => void;
+  navTargets?: WorldMapNavTarget[];
+  onAutoWalkTo?: (x: number, z: number, label: string) => void;
+  onOpenGlobalWorldMap?: () => void;
 }
 
 export interface MapPin {
@@ -193,11 +208,13 @@ function paintRealWorldMapTiles(
   const tyMin = Math.max(0, Math.floor(Math.min(tlFrac.fy, brFrac.fy)));
   const tyMax = Math.min(n - 1, Math.ceil(Math.max(tlFrac.fy, brFrac.fy)));
 
-  // Safety cap so extreme pan never floods tile requests
-  if ((txMax - txMin + 1) * (tyMax - tyMin + 1) > 42) return true;
+  // Safety cap so extreme pan never floods tile requests (fall back cleanly to pixel topography instead of blanking out!)
+  const totalTiles = (txMax - txMin + 1) * (tyMax - tyMin + 1);
+  if (totalTiles > 42 || totalTiles <= 0) return false;
 
   ctx.save();
   ctx.imageSmoothingEnabled = true;
+  let drawnTiles = 0;
 
   for (let ty = tyMin; ty <= tyMax; ty++) {
     for (let txRaw = txMin; txRaw <= txMax; txRaw++) {
@@ -220,6 +237,7 @@ function paintRealWorldMapTiles(
             Math.ceil(p1.sx - p0.sx) + 1,
             Math.ceil(p1.sy - p0.sy) + 1,
           );
+          drawnTiles += 1;
         }
       } else if (!cached) {
         if (REAL_MAP_TILE_CACHE.size >= MAX_REAL_TILE_CACHE) {
@@ -242,7 +260,8 @@ function paintRealWorldMapTiles(
     }
   }
   ctx.restore();
-  return true;
+  // Only suppress pixel roads/rivers AFTER real street tiles have genuinely loaded onto screen (ZERO blank beige screen!)
+  return drawnTiles > 0 && drawnTiles >= Math.ceil(totalTiles * 0.5);
 }
 
 /** Helper: draw a tapered road trapezoid polygon from (x1,z1,wStart) to (x2,z2,wEnd) in map screen space! */
@@ -318,146 +337,96 @@ function paintRoadsAndTownsOnMap(
       return;
     }
 
-    // Helper: smooth Catmull-Rom cubic spline subdivision so rivers & highways bend organically (ZERO jagged V polylines!)
-    const smoothPolyline = (raw: { sx: number; sy: number }[], segsPerSpan = 5): { sx: number; sy: number }[] => {
-      if (raw.length < 3) return raw;
-      const out: { sx: number; sy: number }[] = [];
-      for (let i = 0; i < raw.length - 1; i++) {
-        const p0 = raw[Math.max(0, i - 1)];
-        const p1 = raw[i];
-        const p2 = raw[i + 1];
-        const p3 = raw[Math.min(raw.length - 1, i + 2)];
-        for (let s = 0; s < segsPerSpan; s++) {
-          const t = s / segsPerSpan;
-          const t2 = t * t;
-          const t3 = t2 * t;
-          const sx =
-            0.5 *
-            (2 * p1.sx +
-              (-p0.sx + p2.sx) * t +
-              (2 * p0.sx - 5 * p1.sx + 4 * p2.sx - p3.sx) * t2 +
-              (-p0.sx + 3 * p1.sx - 3 * p2.sx + p3.sx) * t3);
-          const sy =
-            0.5 *
-            (2 * p1.sy +
-              (-p0.sy + p2.sy) * t +
-              (2 * p0.sy - 5 * p1.sy + 4 * p2.sy - p3.sy) * t2 +
-              (-p0.sy + 3 * p1.sy - 3 * p2.sy + p3.sy) * t3);
-          out.push({ sx, sy });
+    // Pre-collect visible city screen positions so river, lake & highway labels NEVER overlap city names!
+    const cityPinScreenBoxes: { sx: number; sy: number }[] = [];
+    for (const gc of getProjectedGeoCities()) {
+      const p = toScreen(gc.x, gc.z);
+      cityPinScreenBoxes.push({ sx: p.sx, sy: p.sy - 8 });
+    }
+    if (unitsPerPx > 1.2) {
+      for (const cap of PROVINCIAL_AND_WORLD_CAPITALS) {
+        if (cap.tier === 'provincial' && unitsPerPx > 260) continue;
+        const wp = geoToWorld(cap.lat, cap.lng, activeGeo);
+        if (wp) {
+          const p = toScreen(wp.x, wp.z);
+          cityPinScreenBoxes.push({ sx: p.sx, sy: p.sy - 8 });
         }
       }
-      out.push(raw[raw.length - 1]);
-      return out;
+    }
+    const placedGeoLabels: { sx: number; sy: number; w: number; h: number }[] = [];
+    const canPlaceGeoLabel = (sx: number, sy: number, w: number, h = 14): boolean => {
+      for (const cp of cityPinScreenBoxes) {
+        if (Math.abs(sx - cp.sx) < w * 0.5 + 34 && Math.abs(sy - cp.sy) < h * 0.5 + 16) return false;
+      }
+      for (const pl of placedGeoLabels) {
+        if (Math.abs(sx - pl.sx) < (w + pl.w) * 0.5 + 8 && Math.abs(sy - pl.sy) < (h + pl.h) * 0.5 + 6) {
+          return false;
+        }
+      }
+      placedGeoLabels.push({ sx, sy, w, h });
+      return true;
     };
 
-    // 0. Real-World River Systems: Ocean-Clipped Coastline Estuaries + Riparian Banks + Catmull-Rom Smooth Bends + Upstream-to-Mouth Width Tapering!
-    const macroRiverIds = new Set(REAL_WORLD_RIVERS.map((r) => r.id));
+    // 0. Real-World River & Lake Labels ONLY (actual river channels, shoals, sandbars & lakes are carved directly into the pixel terrain raster — ZERO vector lines!)
     for (const riv of REAL_WORLD_RIVERS) {
-      const rawPts: { sx: number; sy: number; lat: number; lng: number }[] = [];
-      for (const [lat, lng] of riv.points) {
-        const wp = geoToWorld(lat, lng, activeGeo);
+      if (!detailed || unitsPerPx <= 2.2 || unitsPerPx >= 160) continue;
+      ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
+      const rw = ctx.measureText(riv.name).width + 8;
+      for (const frac of [0.55, 0.36, 0.72, 0.24]) {
+        const idx = Math.min(riv.points.length - 1, Math.max(0, Math.floor(riv.points.length * frac)));
+        const [mLat, mLng] = riv.points[idx];
+        const elev = sampleRealElevationMeters(mLat, mLng, 'macro');
+        if (elev !== null && elev <= 0.6) continue;
+        const wp = geoToWorld(mLat, mLng, activeGeo);
         if (!wp) continue;
-        const sc = toScreen(wp.x, wp.z);
-        rawPts.push({ sx: sc.sx, sy: sc.sy, lat, lng });
-      }
-      if (rawPts.length < 2) continue;
-
-      // Subdivide in lat/lng so we can clip cleanly where the river enters open ocean (ZERO blue river pipe floating over the sea!)
-      const rawScreen = rawPts.map((p) => ({ sx: p.sx, sy: p.sy }));
-      const rawLatLng = rawPts.map((p) => ({ sx: p.lat, sy: p.lng }));
-      const subSteps = unitsPerPx > 60 ? 3 : 5;
-      const smoothSc = smoothPolyline(rawScreen, subSteps);
-      const smoothGeo = smoothPolyline(rawLatLng, subSteps);
-
-      // Trim trailing estuary/ocean points as soon as the river hits open water (meters <= 0.6m) so ZERO river pipe floats over the sea!
-      let endIdx = smoothSc.length - 1;
-      while (endIdx > 2) {
-        const m = sampleRealElevationMeters(smoothGeo[endIdx].sx, smoothGeo[endIdx].sy, 'macro');
-        if (m !== null && m <= 0.6) {
-          endIdx -= 1;
-        } else {
-          break;
-        }
-      }
-      const pts = smoothSc.slice(0, endIdx + 1);
-      if (pts.length < 2) continue;
-
-      const baseMouthW = Math.max(
-        detailed ? 1.6 : 1.0,
-        Math.min(14, riv.widthKm * GEO_UNITS_PER_KM * 0.16 * invScale),
-      );
-      const totalSegs = Math.max(1, pts.length - 1);
-
-      // Pass 0: Soft fertile alluvial riparian riverbank glow (subtle lush green valley edge)
-      if (detailed && baseMouthW >= 2.2) {
-        ctx.strokeStyle = 'rgba(72, 168, 86, 0.34)';
-        for (let i = 0; i < totalSegs; i++) {
-          const prog = i / totalSegs;
-          const taper = 0.28 + 1.14 * Math.pow(prog, 1.15);
-          ctx.lineWidth = Math.max(2.0, baseMouthW * taper + 3.2);
-          ctx.beginPath();
-          ctx.moveTo(pts[i].sx, pts[i].sy);
-          ctx.lineTo(pts[i + 1].sx, pts[i + 1].sy);
-          ctx.stroke();
-        }
-      }
-
-      // Pass A: Dark incised riverbank casing tapering cleanly from thin mountain creek (0.26x) to wide estuary mouth (1.42x)!
-      ctx.strokeStyle = '#1b4965';
-      for (let i = 0; i < totalSegs; i++) {
-        const prog = i / totalSegs;
-        const taper = 0.26 + 1.16 * Math.pow(prog, 1.18);
-        const w = Math.max(0.9, baseMouthW * taper);
-        ctx.lineWidth = w + (detailed ? Math.min(1.8, 0.7 + w * 0.22) : 0.6);
-        ctx.beginPath();
-        ctx.moveTo(pts[i].sx, pts[i].sy);
-        ctx.lineTo(pts[i + 1].sx, pts[i + 1].sy);
-        ctx.stroke();
-      }
-
-      // Pass B: Vibrant GBA river water body tapering upstream -> estuary mouth
-      ctx.strokeStyle = '#2f8ae8';
-      for (let i = 0; i < totalSegs; i++) {
-        const prog = i / totalSegs;
-        const taper = 0.26 + 1.16 * Math.pow(prog, 1.18);
-        ctx.lineWidth = Math.max(0.8, baseMouthW * taper);
-        ctx.beginPath();
-        ctx.moveTo(pts[i].sx, pts[i].sy);
-        ctx.lineTo(pts[i + 1].sx, pts[i + 1].sy);
-        ctx.stroke();
-      }
-
-      // Pass C: Shimmering sunlit midstream current streaks + flared turquoise estuary mouth blending smoothly into sea!
-      if (detailed && baseMouthW >= 2.2) {
-        ctx.strokeStyle = 'rgba(186, 230, 253, 0.78)';
-        for (let i = Math.floor(totalSegs * 0.30); i < totalSegs; i++) {
-          const prog = i / totalSegs;
-          const taper = 0.26 + 1.16 * Math.pow(prog, 1.18);
-          ctx.lineWidth = Math.max(0.7, baseMouthW * taper * 0.26);
-          ctx.beginPath();
-          ctx.moveTo(pts[i].sx, pts[i].sy);
-          ctx.lineTo(pts[i + 1].sx, pts[i + 1].sy);
-          ctx.stroke();
-        }
-        // Soft turquoise delta flare right where river enters the sea
-        if (endIdx < smoothSc.length - 1) {
-          const mouthPt = pts[pts.length - 1];
-          ctx.fillStyle = 'rgba(77, 171, 247, 0.52)';
-          ctx.beginPath();
-          ctx.arc(mouthPt.sx, mouthPt.sy, Math.max(3, baseMouthW * 0.95), 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      if (detailed && unitsPerPx > 2.2 && unitsPerPx < 160) {
-        const mid = pts[Math.floor(pts.length * 0.60)];
-        ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
+        const mid = toScreen(wp.x, wp.z);
+        if (!canPlaceGeoLabel(mid.sx, mid.sy, rw, 14)) continue;
         ctx.fillStyle = '#0b3d66';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(riv.name, mid.sx + 1, mid.sy + 1);
         ctx.fillStyle = '#d0ebff';
         ctx.fillText(riv.name, mid.sx, mid.sy);
+        break;
+      }
+    }
+    if (detailed && unitsPerPx > 0.35 && unitsPerPx < 14) {
+      for (const dl of SHANGHAI_DISTRICT_LABELS) {
+        if (dl.tier === 'city' && unitsPerPx < 1.3) continue;
+        if (dl.tier === 'town' && unitsPerPx > 4.6) continue;
+        const wp = geoToWorld(dl.lat, dl.lng, activeGeo);
+        if (!wp) continue;
+        const lp = toScreen(wp.x, wp.z);
+        if (lp.sx < 18 || lp.sx > ctx.canvas.width - 18 || lp.sy < 18 || lp.sy > ctx.canvas.height - 18) continue;
+        ctx.font =
+          dl.tier === 'city'
+            ? 'bold 13px "PingFang SC", "Microsoft YaHei", sans-serif'
+            : 'bold 9px "PingFang SC", "Microsoft YaHei", sans-serif';
+        const lw = ctx.measureText(dl.name).width + 8;
+        if (!canPlaceGeoLabel(lp.sx, lp.sy, lw, 14)) continue;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = dl.tier === 'island' ? 'rgba(15, 45, 75, 0.85)' : 'rgba(255, 252, 245, 0.82)';
+        ctx.fillText(dl.name, lp.sx + 1, lp.sy + 1);
+        ctx.fillStyle = dl.tier === 'city' ? '#1e293b' : dl.tier === 'island' ? '#e7f5ff' : '#334155';
+        ctx.fillText(dl.name, lp.sx, lp.sy);
+      }
+    }
+    if (detailed && unitsPerPx > 0.22 && unitsPerPx < 85) {
+      for (const lk of REAL_INLAND_LAKES) {
+        if (lk.rxDeg < 0.08 && unitsPerPx > 6) continue;
+        const wp = geoToWorld(lk.lat, lk.lng, activeGeo);
+        if (!wp) continue;
+        const lp = toScreen(wp.x, wp.z);
+        ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
+        const lw = ctx.measureText(lk.name).width + 8;
+        if (!canPlaceGeoLabel(lp.sx, lp.sy, lw, 14)) continue;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#0b3d66';
+        ctx.fillText(lk.name, lp.sx + 1, lp.sy + 1);
+        ctx.fillStyle = '#e7f5ff';
+        ctx.fillText(lk.name, lp.sx, lp.sy);
       }
     }
 
@@ -499,18 +468,22 @@ function paintRoadsAndTownsOnMap(
         ctx.stroke();
 
         if (detailed && unitsPerPx > 1.8) {
-          const mid = pts[Math.floor(pts.length / 2)];
           ctx.font = 'bold 8px monospace';
           const tw = ctx.measureText(cor.label).width + 6;
-          ctx.fillStyle = '#2b8a3e';
-          ctx.fillRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 0.9;
-          ctx.strokeRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
-          ctx.fillStyle = '#ffffff';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(cor.label, mid.sx, mid.sy + 0.5);
+          for (const frac of [0.5, 0.33, 0.67]) {
+            const mid = pts[Math.min(pts.length - 1, Math.floor(pts.length * frac))];
+            if (!canPlaceGeoLabel(mid.sx, mid.sy, tw + 4, 14)) continue;
+            ctx.fillStyle = '#2b8a3e';
+            ctx.fillRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 0.9;
+            ctx.strokeRect(Math.round(mid.sx - tw / 2), Math.round(mid.sy - 6), tw, 12);
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(cor.label, mid.sx, mid.sy + 0.5);
+            break;
+          }
         }
       } else if (cor.kind === 'rail') {
         ctx.strokeStyle = '#1e2430';
@@ -600,58 +573,12 @@ function paintRoadsAndTownsOnMap(
           }
         }
 
-        // 2C. Aligned Urban Rivers & Waterfront Promenades (exact SAME path as REAL_WORLD_RIVERS — ZERO double rivers!)
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
+        // 2C. Crisp GBA Urban River Name Tags ONLY (water channel & banks are rendered directly by the pixel terrain engine!)
         for (const riv of layout.rivers) {
-          // Only draw widened local waterfront rendering when zoomed close enough to inspect the city (unitsPerPx < 2.4)
-          // or for local urban creeks not in REAL_WORLD_RIVERS — prevents stubby duplicate river sausages at medium zoom!
-          if (macroRiverIds.has(riv.id) && unitsPerPx > 2.2) continue;
-          const pts = smoothPolyline(
-            riv.points.map(([rx, rz]) => toScreen(rx, rz)),
-            3,
-          );
-          if (pts.length < 2) continue;
-          const rw = Math.max(detailed ? 3.5 : 2.0, riv.width * invScale);
-          ctx.strokeStyle = '#6ec056';
-          ctx.lineWidth = rw + (detailed ? 5.5 : 2.5);
-          ctx.beginPath();
-          ctx.moveTo(pts[0].sx, pts[0].sy);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-          ctx.stroke();
-
-          ctx.strokeStyle = '#1b4965';
-          ctx.lineWidth = rw + (detailed ? 2.2 : 1.0);
-          ctx.beginPath();
-          ctx.moveTo(pts[0].sx, pts[0].sy);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-          ctx.stroke();
-
-          ctx.strokeStyle = '#2f80ed';
-          ctx.lineWidth = rw;
-          ctx.beginPath();
-          ctx.moveTo(pts[0].sx, pts[0].sy);
-          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].sx, pts[i].sy);
-          ctx.stroke();
-
-          if (detailed && rw >= 8) {
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
-            ctx.lineWidth = 1.2;
-            for (let i = 1; i < pts.length - 1; i++) {
-              const wx = (pts[i].sx + pts[i + 1].sx) * 0.5;
-              const wy = (pts[i].sy + pts[i + 1].sy) * 0.5;
-              ctx.beginPath();
-              ctx.moveTo(wx - 4, wy);
-              ctx.lineTo(wx - 1, wy - 1.5);
-              ctx.lineTo(wx + 2, wy);
-              ctx.lineTo(wx + 5, wy - 1.5);
-              ctx.stroke();
-            }
-          }
-          // Crisp GBA River Name Tag (黄浦江 / 苏州河 / unique local river) when zoomed in!
-          if (detailed && unitsPerPx < 2.0 && pts.length >= 2 && riv.name) {
-            const mIdx = Math.floor(pts.length * 0.5);
-            const rp = pts[mIdx];
+          if (detailed && unitsPerPx < 2.2 && riv.points.length >= 2 && riv.name) {
+            const mIdx = Math.floor(riv.points.length * 0.5);
+            const [rx, rz] = riv.points[mIdx];
+            const rp = toScreen(rx, rz);
             ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -662,28 +589,29 @@ function paintRoadsAndTownsOnMap(
           }
         }
 
-        // 2D. Two-Pass Organic City Streets (Clean crisp road proportions across the full metropolitan landmass!)
+        // 2D. Two-Pass Organic City Streets (Crisp real-map highway & white urban street hierarchy across the full metropolitan landmass!)
         const landStreets = layout.streets.filter((s) => !s.isBridge);
         const bridgeStreets = layout.streets.filter((s) => s.isBridge);
         const roadScaleW = (stW: number, isArt: boolean) => {
           const raw = stW * invScale;
-          // At regional overview zoom (unitsPerPx > 3), keep roads crisp & slender like real city maps (no bloated noodles!)
-          if (unitsPerPx > 7.5) {
-            return Math.max(isArt ? 1.3 : 0.75, Math.min(isArt ? 3.1 : 1.7, raw * 0.54));
+          if (unitsPerPx > 6.5) {
+            return Math.max(isArt ? 1.25 : 0.65, Math.min(isArt ? 2.6 : 1.25, raw * 0.44));
           }
-          if (unitsPerPx > 3.0) {
-            return Math.max(isArt ? 1.6 : 0.9, Math.min(isArt ? 4.0 : 2.2, raw * 0.64));
+          if (unitsPerPx > 1.8) {
+            return Math.max(isArt ? 1.6 : 0.85, Math.min(isArt ? 3.2 : 1.65, raw * 0.52));
           }
-          return Math.max(detailed ? 2.0 : 1.1, raw);
+          return Math.max(detailed ? 1.8 : 1.0, raw * 0.82);
         };
 
-        ctx.strokeStyle = '#5c4b37';
-        ctx.fillStyle = '#5c4b37';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#64748b';
+        ctx.fillStyle = '#64748b';
         for (const st of landStreets) {
           const a = toScreen(st.x1, st.z1);
           const b = toScreen(st.x2, st.z2);
           const w = roadScaleW(st.width, st.kind === 'arterial');
-          ctx.lineWidth = w + (detailed ? (unitsPerPx > 3 ? 1.2 : 2.0) : 0.9);
+          ctx.lineWidth = w + (detailed ? (unitsPerPx > 2 ? 0.9 : 1.5) : 0.7);
           ctx.beginPath();
           ctx.moveTo(a.sx, a.sy);
           ctx.lineTo(b.sx, b.sy);
@@ -694,7 +622,7 @@ function paintRoadsAndTownsOnMap(
           const a = toScreen(st.x1, st.z1);
           const b = toScreen(st.x2, st.z2);
           const w = roadScaleW(st.width, st.kind === 'arterial');
-          ctx.strokeStyle = st.kind === 'arterial' ? '#f4b942' : st.kind === 'street' ? '#fff8e6' : '#f1e7cf';
+          ctx.strokeStyle = st.kind === 'arterial' ? '#f6b93b' : '#ffffff';
           ctx.lineWidth = w;
           ctx.beginPath();
           ctx.moveTo(a.sx, a.sy);
@@ -757,17 +685,34 @@ function paintRoadsAndTownsOnMap(
           }
         }
 
-        // 2F. Dense Urban Buildings, Skyscrapers & Landmarks
+        // 2F. Dense Urban Buildings, Skyscrapers & Landmarks (Exact Rect / Cylinder / Flatiron-Triangle Footprints!)
         for (const lot of layout.lots) {
           const lp = toScreen(lot.x, lot.z);
-          const bw = Math.max(detailed ? 4.0 : 2.2, lot.width * invScale);
-          const bd = Math.max(detailed ? 3.4 : 2.0, lot.depth * invScale);
+          const bw = Math.max(2.0, lot.width * invScale);
+          const bd = Math.max(2.0, lot.depth * invScale);
+          const lShape = lot.shape ?? 'rect';
+          const traceLotPath = (ox: number, oy: number) => {
+            ctx.beginPath();
+            if (lShape === 'cylinder') {
+              ctx.arc(ox, oy, Math.min(bw, bd) * 0.5, 0, Math.PI * 2);
+            } else if (lShape === 'triangle') {
+              const tipW = bw * 0.13;
+              ctx.moveTo(ox - bw / 2, oy + bd / 2);
+              ctx.lineTo(ox + bw / 2, oy + bd / 2);
+              ctx.lineTo(ox + tipW, oy - bd / 2);
+              ctx.lineTo(ox - tipW, oy - bd / 2);
+              ctx.closePath();
+            } else {
+              ctx.rect(ox - bw / 2, oy - bd / 2, bw, bd);
+            }
+          };
           ctx.save();
           ctx.translate(lp.sx, lp.sy);
           ctx.rotate(-lot.rotY);
           if (detailed && bw >= 4.5) {
             ctx.fillStyle = 'rgba(38, 28, 20, 0.3)';
-            ctx.fillRect(-bw / 2 + 2, -bd / 2 + 2, bw, bd);
+            traceLotPath(2, 2);
+            ctx.fill();
           }
           ctx.fillStyle =
             lot.kind === 'pokemon_center'
@@ -785,9 +730,10 @@ function paintRoadsAndTownsOnMap(
                         : '#b86b52';
           ctx.strokeStyle = '#3b2d22';
           ctx.lineWidth = detailed ? 1.0 : 0.5;
-          ctx.fillRect(-bw / 2, -bd / 2, bw, bd);
-          ctx.strokeRect(-bw / 2, -bd / 2, bw, bd);
-          if (detailed && bw >= 7) {
+          traceLotPath(0, 0);
+          ctx.fill();
+          ctx.stroke();
+          if (detailed && bw >= 7 && lShape === 'rect') {
             ctx.fillStyle = lot.kind === 'skyscraper' ? 'rgba(220,245,255,0.4)' : 'rgba(255,235,210,0.28)';
             ctx.fillRect(-bw / 2 + 1.2, -bd / 2 + 1.2, bw - 2.4, Math.max(1.8, bd * 0.34));
           }
@@ -1003,16 +949,32 @@ function paintRoadsAndTownsOnMap(
   for (const { town, layout } of layouts) {
     for (const lot of layout.lots) {
       const lp = toScreen(lot.x, lot.z);
-      const bw = Math.max(detailed ? 4 : 2.4, lot.width * invScale);
-      const bd = Math.max(detailed ? 3.5 : 2.1, lot.depth * invScale);
+      const bw = Math.max(2.0, lot.width * invScale);
+      const bd = Math.max(2.0, lot.depth * invScale);
+      const lShape = lot.shape ?? 'rect';
+      const traceLotPath = (ox: number, oy: number) => {
+        ctx.beginPath();
+        if (lShape === 'cylinder') {
+          ctx.arc(ox, oy, Math.min(bw, bd) * 0.5, 0, Math.PI * 2);
+        } else if (lShape === 'triangle') {
+          const tipW = bw * 0.13;
+          ctx.moveTo(ox - bw / 2, oy + bd / 2);
+          ctx.lineTo(ox + bw / 2, oy + bd / 2);
+          ctx.lineTo(ox + tipW, oy - bd / 2);
+          ctx.lineTo(ox - tipW, oy - bd / 2);
+          ctx.closePath();
+        } else {
+          ctx.rect(ox - bw / 2, oy - bd / 2, bw, bd);
+        }
+      };
       ctx.save();
       ctx.translate(lp.sx, lp.sy);
       ctx.rotate(-lot.rotY);
 
-      // Soft 2.5D southeast architectural cast shadow (Apple Maps / 高德地图 style!)
       if (detailed && bw >= 5) {
         ctx.fillStyle = 'rgba(22, 26, 36, 0.28)';
-        ctx.fillRect(-bw / 2 + 2.2, -bd / 2 + 2.2, bw, bd);
+        traceLotPath(2.2, 2.2);
+        ctx.fill();
       }
 
       ctx.fillStyle =
@@ -1026,14 +988,16 @@ function paintRoadsAndTownsOnMap(
                 ? '#ff922b'
                 : lot.kind === 'landmark'
                   ? '#be4bdb'
-                  : '#d8c5b0';
+                  : lot.kind === 'skyscraper'
+                    ? '#5aa9e6'
+                    : '#d8c5b0';
       ctx.strokeStyle = '#334155';
       ctx.lineWidth = detailed ? 1.0 : 0.6;
-      ctx.fillRect(-bw / 2, -bd / 2, bw, bd);
-      ctx.strokeRect(-bw / 2, -bd / 2, bw, bd);
+      traceLotPath(0, 0);
+      ctx.fill();
+      ctx.stroke();
 
-      // Subtle inner roof highlight bevel
-      if (detailed && bw >= 9) {
+      if (detailed && bw >= 9 && lShape === 'rect') {
         ctx.fillStyle = 'rgba(255,255,255,0.22)';
         ctx.fillRect(-bw / 2 + 1.5, -bd / 2 + 1.5, bw - 3, Math.max(2, bd * 0.35));
       }
@@ -1137,9 +1101,9 @@ function paintTopographicMap(
   const halfH = h / 2;
   const activeGeo = getActiveGeoTerrainOrigin();
 
-  // Select optimal Real-Earth DEM tier automatically from street-level (Z9) to full North-South Globe (Z2)!
+  // Use Z9 ('detail', ~300m/px) across the entire metropolitan zoom (unitsPerPx <= 10.5) so Changxing, Hengsha, Chongming & Pudong coastlines stay razor-sharp!
   const demRes: GeoDemResolution =
-    unitsPerPx > 95 ? 'global' : unitsPerPx > 22 ? 'world' : unitsPerPx > 2.2 ? 'macro' : 'detail';
+    unitsPerPx > 95 ? 'global' : unitsPerPx > 24 ? 'world' : unitsPerPx > 10.5 ? 'macro' : 'detail';
 
   for (let py = 0; py < h; py += stepPx) {
     const wz = centerZ + (py - halfH) * unitsPerPx;
@@ -1157,12 +1121,10 @@ function paintTopographicMap(
           ctx.fillRect(px, py, stepPx, stepPx);
           continue;
         }
-        const m = sampleRealElevationMeters(geo.lat, geo.lng, demRes);
-        if (m === null) {
-          ctx.fillStyle = dither ? '#3d9946' : '#358c3e';
-          ctx.fillRect(px, py, stepPx, stepPx);
-          continue;
-        }
+        const m =
+          sampleRealElevationMeters(geo.lat, geo.lng, demRes) ??
+          sampleRealElevationMeters(geo.lat, geo.lng, 'macro') ??
+          12;
         const geoE = worldToGeo(wx + sampleStep, wz, activeGeo)!;
         const geoS = worldToGeo(wx, wz + sampleStep, activeGeo)!;
         const geoW = worldToGeo(wx - sampleStep, wz, activeGeo)!;
@@ -1176,7 +1138,18 @@ function paintTopographicMap(
           m <= 0.6
             ? mE > 0.6 || mS > 0.6 || mW > 0.6 || mN > 0.6
             : mE <= 0.6 || mS <= 0.6 || mW <= 0.6 || mN <= 0.6;
-        ctx.fillStyle = classifyRealEarthPixelColor(geo.lat, geo.lng, m, hillShadeM, nearOcean, dither);
+        const hydroColor = sampleRealHydrographyPixelColor(
+          geo.lat,
+          geo.lng,
+          wx,
+          wz,
+          unitsPerPx,
+          stepPx,
+          m,
+          hillShadeM,
+          dither,
+        );
+        ctx.fillStyle = hydroColor ?? classifyRealEarthPixelColor(geo.lat, geo.lng, m, hillShadeM, nearOcean, dither);
         ctx.fillRect(px, py, stepPx, stepPx);
         continue;
       }
@@ -1910,6 +1883,20 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
 
         {/* Top-Right Floating Drawer Toggle, Map Layer Switch & Close Controls */}
         <div className="lcd-map-float-tr">
+          {data.onOpenGlobalWorldMap && (
+            <button
+              type="button"
+              className="lcd-map-float-btn"
+              onClick={() => {
+                sound.play('confirm');
+                onClose?.();
+                data.onOpenGlobalWorldMap?.();
+              }}
+              title="打开全球航线与道馆巡礼大地图（关闭后返回当前游戏）"
+            >
+              全球地图
+            </button>
+          )}
           {getActiveGeoTerrainOrigin() && (
             <button
               type="button"
@@ -1931,7 +1918,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
               setDrawerOpen((v) => !v);
             }}
           >
-            {drawerOpen ? '收起地点' : '地点导航'}
+            {drawerOpen ? '收起寻路' : '寻路/导航'}
           </button>
           {onClose && (
             <button type="button" className="lcd-map-float-btn is-close" onClick={onClose}>
@@ -1939,6 +1926,40 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
             </button>
           )}
         </div>
+
+        {/* Quick 1-Click Auto-Walk to Latest Custom Map Pin! */}
+        {pins.length > 0 && data.onAutoWalkTo && (
+          <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              bottom: 10,
+              transform: 'translateX(-50%)',
+              zIndex: 18,
+              display: 'flex',
+              gap: 6,
+            }}
+          >
+            <button
+              type="button"
+              className="lcd-map-float-btn is-active"
+              style={{
+                background: '#ffd43b',
+                color: '#161420',
+                fontWeight: 900,
+                padding: '5px 12px',
+              }}
+              onClick={() => {
+                const targetPin = pins[pins.length - 1];
+                sound.play('confirm');
+                data.onAutoWalkTo?.(targetPin.x, targetPin.z, `地图标点 (${Math.round(targetPin.x)}, ${Math.round(targetPin.z)})`);
+                onClose?.();
+              }}
+            >
+              🧭 自动寻路至最新标点
+            </button>
+          </div>
+        )}
 
         {/* Bottom-Left Retro Pixel Compass Rose + Live Zoom Scale */}
         <div className="wm-compass-rose is-lcd" aria-label="指南针">
@@ -2006,9 +2027,66 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
           </button>
         </div>
 
-        {/* Collapsible Floating POI Navigation Overlay Drawer (Default HIDDEN — never squeezes map layout!) */}
+        {/* Collapsible Floating POI Navigation & Auto-Pathfinding Drawer */}
         {drawerOpen && (
           <aside className="lcd-map-drawer scroll-y">
+            {data.navTargets && data.navTargets.length > 0 && data.onAutoWalkTo && (
+              <>
+                <div className="lcd-map-side-head">🧭 城市设施自动寻路 (A* 避障直达门内)</div>
+                <div className="lcd-map-poi-list">
+                  {data.navTargets.map((item) => {
+                    const distM = Math.round(Math.hypot(item.x - snapshot.px, item.z - snapshot.pz));
+                    return (
+                      <div
+                        key={item.id}
+                        style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}
+                      >
+                        <button
+                          type="button"
+                          className="lcd-map-poi-btn"
+                          style={{ flex: 1, minWidth: 0 }}
+                          onClick={() => {
+                            sound.play('cursor');
+                            setPan({ x: item.x - snapshot.px, z: item.z - snapshot.pz });
+                            setZoom(Math.max(zoom, 1.35));
+                            setDrawerOpen(false);
+                          }}
+                          title={`${item.subLabel}（点击在地图上预览位置）`}
+                        >
+                          <span className="lcd-map-poi-ico">
+                            <PixelItemImg src={item.icon} size={13} />
+                          </span>
+                          <span className="lcd-map-poi-lbl">{item.label}</span>
+                          <em>{distM}m</em>
+                        </button>
+                        <button
+                          type="button"
+                          className="lcd-map-poi-btn"
+                          style={{
+                            width: 'auto',
+                            flex: '0 0 auto',
+                            flexShrink: 0,
+                            justifyContent: 'center',
+                            padding: '0 8px',
+                            background: '#ffd43b',
+                            color: '#161420',
+                            fontWeight: 900,
+                          }}
+                          title={`自动寻路前往${item.label}`}
+                          onClick={() => {
+                            sound.play('confirm');
+                            data.onAutoWalkTo?.(item.x, item.z, item.label);
+                            onClose?.();
+                          }}
+                        >
+                          寻路
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
             {geoOrigin && (
               <>
                 <div className="lcd-map-side-head">真实城市 (点击预览 / 飞往探索)</div>
@@ -2019,7 +2097,6 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                         Math.hypot(a.x - snapshot.px, a.z - snapshot.pz) -
                         Math.hypot(b.x - snapshot.px, b.z - snapshot.pz),
                     )
-                    .slice(0, 10)
                     .map((gc) => {
                       const dKm = Math.round(
                         Math.hypot(gc.x - snapshot.px, gc.z - snapshot.pz) / GEO_UNITS_PER_KM,

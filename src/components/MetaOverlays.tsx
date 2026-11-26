@@ -845,7 +845,7 @@ export const HubInfoModal: React.FC<InfoModalProps> = ({ kind, closing, onClose 
                 <strong>感谢你的宝贵反馈！</strong>
                 <p>反馈记录已保存至本地日志，后续接入后端服务器后将自动同步给开发团队。</p>
                 <button type="button" className="lcd-inline-cta" onClick={onClose}>
-                  返回大厅
+                  返回
                 </button>
               </div>
             ) : (

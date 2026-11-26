@@ -2,12 +2,13 @@ import type { WorldTownAnchor3D } from '../data/survivorsTactics';
 import {
   GEO_UNITS_PER_KM,
   PROVINCIAL_AND_WORLD_CAPITALS,
+  REAL_INLAND_LAKES,
   getLocalRealHighwayAnglesForCity,
   getLocalRealRiversForCity,
   isRealUrbanDryLand,
-  subscribeGeoDemLoaded,
 } from '../data/geoTerrain3D';
 import { WORLD_CITIES } from '../data/worldTour';
+import { buildShanghaiRealRoadNetwork } from '../data/shanghaiMasterplan';
 import { generateTensorCityRoads } from './tensorRoadGen';
 
 export interface TownStreetSeg {
@@ -58,6 +59,8 @@ export type TownLotKind =
   | 'skyscraper'
   | 'house';
 
+export type BuildingFootprintShape = 'rect' | 'cylinder' | 'triangle';
+
 export interface TownBuildingLot {
   id: string;
   kind: TownLotKind;
@@ -66,6 +69,8 @@ export interface TownBuildingLot {
   rotY: number; // faces directly onto its street!
   width: number;
   depth: number;
+  /** Block-adaptive architectural geometry: rectangular, panoramic cylinder rotunda, or Flatiron triangular wedge! */
+  shape?: BuildingFootprintShape;
   houseVariant: number;
   walkable?: boolean;
   /** Front curb point right outside the doorway */
@@ -201,8 +206,8 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
         points: rr.points,
       });
     }
-    // For Shanghai, add Suzhou Creek joining the REAL Huangpu River cleanly at its real confluence!
-    if (cleanId === 'shanghai' && rivers.length > 0) {
+    // For Shanghai, add Suzhou Creek joining the REAL Huangpu River cleanly if not already in REAL_WORLD_RIVERS!
+    if (cleanId === 'shanghai' && rivers.length > 0 && !rivers.some((r) => r.id === 'suzhou_macro')) {
       const hp = rivers.find((r) => r.id === 'huangpu_macro') ?? rivers[0];
       // Find the point on the real Huangpu River closest to z = -26 (Waibaidu confluence north of Bund)
       let confPt = hp.points[Math.floor(hp.points.length * 0.5)];
@@ -289,7 +294,8 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
 
 /** Signed distance to ANY city's unique procedural river network (negative = inside river water!) */
 export function getShanghaiRiverSignedDist(dx: number, dz: number, cityId = 'shanghai'): number {
-  const { rivers } = getCityHydrography(cityId);
+  const cleanId = cityId.replace(/^geo_city_/, '').replace(/^city_/, '');
+  const { rivers } = getCityHydrography(cleanId);
   let minSigned = 9999;
   for (const riv of rivers) {
     const halfW = riv.width * 0.5;
@@ -300,13 +306,52 @@ export function getShanghaiRiverSignedDist(dx: number, dz: number, cityId = 'sha
       if (d < minSigned) minSigned = d;
     }
   }
+  // Also respect real famous urban lakes (e.g. Hangzhou's West Lake 西湖, Kunming's Dianchi 滇池) so streets/buildings NEVER pave over the lake!
+  const cityGeo = lookupCityLatLng(cleanId);
+  if (cityGeo) {
+    const kmPerDegLng = Math.max(12, 111.32 * Math.cos((cityGeo.lat * Math.PI) / 180));
+    const ptLng = cityGeo.lng + dx / (kmPerDegLng * GEO_UNITS_PER_KM);
+    const ptLat = cityGeo.lat - dz / (111.32 * GEO_UNITS_PER_KM);
+    // Keep exact city spawn plaza (0,0) dry within 26m
+    if (Math.hypot(dx, dz) > 26) {
+      const ripple =
+        Math.sin(ptLat * 190 + ptLng * 230) * 0.13 +
+        Math.cos(ptLat * 370 - ptLng * 290) * 0.08;
+      for (const lk of REAL_INLAND_LAKES) {
+        if (Math.abs(ptLat - lk.lat) > lk.ryDeg * 1.6 || Math.abs(ptLng - lk.lng) > lk.rxDeg * 1.6) continue;
+        const ldx = ptLng - lk.lng;
+        const ldy = ptLat - lk.lat;
+        const c = Math.cos(lk.rotRad ?? 0);
+        const s = Math.sin(lk.rotRad ?? 0);
+        const rx = ldx * c + ldy * s;
+        const ry = -ldx * s + ldy * c;
+        const normR = Math.hypot(rx / lk.rxDeg, ry / lk.ryDeg) + ripple;
+        const avgRadiusUnits = ((lk.rxDeg * kmPerDegLng + lk.ryDeg * 111.32) * 0.5) * GEO_UNITS_PER_KM;
+        const lakeSigned = (normR - 0.98) * avgRadiusUnits;
+        if (lakeSigned < minSigned) minSigned = lakeSigned;
+      }
+    }
+  }
   return minSigned;
 }
 
 export function isOnShanghaiBridgeLocal(dx: number, dz: number, cityId = 'shanghai'): boolean {
-  const { bridges } = getCityHydrography(cityId);
+  const cleanId = cityId.replace(/^geo_city_/, '').replace(/^city_/, '');
+  // 1. Check all Tensor-generated + hydrography bridges in cached town layout (includes +4m bank approach aprons!)
+  for (const [, lay] of LAYOUT_CACHE) {
+    const layClean = lay.townId.replace(/^geo_city_/, '').replace(/^city_/, '');
+    if (layClean !== cleanId) continue;
+    for (const st of lay.streets) {
+      if (!st.isBridge) continue;
+      if (distToSeg(lay.centerX + dx, lay.centerZ + dz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.58 + 1.5) {
+        return true;
+      }
+    }
+  }
+  // 2. Fallback hydrography bridge check before layout is first generated
+  const { bridges } = getCityHydrography(cleanId);
   for (const br of bridges) {
-    if (distToSeg(dx, dz, br.x1, br.z1, br.x2, br.z2) < br.width * 0.54) return true;
+    if (distToSeg(dx, dz, br.x1, br.z1, br.x2, br.z2) < br.width * 0.58 + 1.5) return true;
   }
   return false;
 }
@@ -329,28 +374,18 @@ function distToSeg(px: number, pz: number, x1: number, z1: number, x2: number, z
 }
 
 const LAYOUT_CACHE = new Map<string, GeneratedTownLayout>();
-// Lazily subscribe after module init (avoids circular ESM TDZ with geoTerrain3D.ts)
-// so coastline-clipped city layouts refresh once real NASA/SRTM DEM tiles finish streaming in!
-let demCacheClears = 0;
-let demSubscribed = false;
-function ensureDemCacheSubscription() {
-  if (demSubscribed || typeof window === 'undefined') return;
-  demSubscribed = true;
-  subscribeGeoDemLoaded(() => {
-    if (demCacheClears < 6) {
-      demCacheClears += 1;
-      LAYOUT_CACHE.clear();
-    }
-  });
+
+/** Explicitly clear cached layouts ONLY when the 3D town scene also rebuilds (guarantees 100% 1:1 sync between 3D buildings & 2D minimap!) */
+export function clearTownLayoutCache(): void {
+  LAYOUT_CACHE.clear();
 }
 
 /**
  * Procedural L-System / Branching Street-Graph + Curbside Lot-Subdivision Town Generator!
  * Produces completely organic, non-circular streetscapes (arterials, curved side lanes,
- * T-junctions, alleys, tangent railway) with 14–18 street-aligned building lots!
+ * T-junctions, alleys, tangent railway) with street-aligned 10x-area building lots!
  */
 export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayout {
-  ensureDemCacheSubscription();
   const cached = LAYOUT_CACHE.get(anchor.id);
   if (cached) return cached;
 
@@ -412,13 +447,14 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const isMegacity = ['shanghai', 'beijing', 'guangzhou', 'shenzhen', 'tokyo', 'seoul', 'hangzhou', 'chengdu', 'wuhan', 'osaka'].includes(cleanCityId);
   const cityRadius = isMegacity ? 680 : 460;
   const kmPerDegLngLocal = cityCoords ? Math.max(12, 111.32 * Math.cos((cityCoords.lat * Math.PI) / 180)) : 95;
-  const isUrbanLandLocal = cityCoords
-    ? (lx: number, lz: number) => {
-        const lat = cityCoords.lat - lz / (GEO_UNITS_PER_KM * 111.32);
-        const lng = cityCoords.lng + lx / (GEO_UNITS_PER_KM * kmPerDegLngLocal);
-        return isRealUrbanDryLand(lat, lng);
-      }
-    : undefined;
+  const isUrbanLandLocal =
+    cityCoords && isRealUrbanDryLand(cityCoords.lat, cityCoords.lng)
+      ? (lx: number, lz: number) => {
+          const lat = cityCoords.lat - lz / (GEO_UNITS_PER_KM * 111.32);
+          const lng = cityCoords.lng + lx / (GEO_UNITS_PER_KM * kmPerDegLngLocal);
+          return isRealUrbanDryLand(lat, lng);
+        }
+      : undefined;
 
   const baseGridAngle =
     cleanCityId === 'beijing'
@@ -427,50 +463,56 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
         ? -0.05
         : (rng() - 0.5) * 0.42;
 
-  const tensorGraph = generateTensorCityRoads({
-    cityId: cleanCityId,
-    seed: seedVal,
-    radius: cityRadius,
-    baseGridAngle,
-    rivers: hydro.rivers,
-    highwayAngles: realHighwayAngles,
-    riverSignedDist: (lx, lz) => getShanghaiRiverSignedDist(lx, lz, cleanCityId),
-    isUrbanLand: isUrbanLandLocal,
-  });
-
-  for (const e of tensorGraph.edges) {
-    addSeg(
-      cx + e.x1,
-      cz + e.z1,
-      cx + e.x2,
-      cz + e.z2,
-      e.width,
-      e.width,
-      e.kind,
-      Boolean(e.isBridge),
-      e.bridgeStyle,
-    );
-  }
-  // Ensure hydrography bridges are also present if not already bridged by tensor arterials
-  for (const br of hydro.bridges) {
-    const bmx = cx + (br.x1 + br.x2) * 0.5;
-    const bmz = cz + (br.z1 + br.z2) * 0.5;
-    const alreadyBridged = streets.some(
-      (s) => s.isBridge && Math.hypot((s.x1 + s.x2) * 0.5 - bmx, (s.z1 + s.z2) * 0.5 - bmz) < 42,
-    );
-    if (!alreadyBridged) {
-      addSeg(cx + br.x1, cz + br.z1, cx + br.x2, cz + br.z2, br.width, br.width, 'arterial', true, br.style);
+  if (cleanCityId === 'shanghai') {
+    const shEdges = buildShanghaiRealRoadNetwork((lx, lz) => getShanghaiRiverSignedDist(lx, lz, 'shanghai'));
+    for (const e of shEdges) {
+      addSeg(
+        cx + e.x1,
+        cz + e.z1,
+        cx + e.x2,
+        cz + e.z2,
+        e.width,
+        e.width,
+        e.kind,
+        Boolean(e.isBridge),
+        e.bridgeStyle,
+      );
     }
-  }
-  for (const jn of tensorGraph.junctions) {
-    junctions.push({
-      x: cx + jn.x,
-      z: cz + jn.z,
-      width: jn.width,
-      depth: jn.depth,
-      rotY: jn.rotY,
-      kind: jn.kind,
+  } else {
+    const tensorGraph = generateTensorCityRoads({
+      cityId: cleanCityId,
+      seed: seedVal,
+      radius: cityRadius,
+      baseGridAngle,
+      rivers: hydro.rivers,
+      highwayAngles: realHighwayAngles,
+      riverSignedDist: (lx, lz) => getShanghaiRiverSignedDist(lx, lz, cleanCityId),
+      isUrbanLand: isUrbanLandLocal,
     });
+
+    for (const e of tensorGraph.edges) {
+      addSeg(
+        cx + e.x1,
+        cz + e.z1,
+        cx + e.x2,
+        cz + e.z2,
+        e.width,
+        e.width,
+        e.kind,
+        Boolean(e.isBridge),
+        e.bridgeStyle,
+      );
+    }
+    for (const jn of tensorGraph.junctions) {
+      junctions.push({
+        x: cx + jn.x,
+        z: cz + jn.z,
+        width: jn.width,
+        depth: jn.depth,
+        rotY: jn.rotY,
+        kind: jn.kind,
+      });
+    }
   }
 
   // Place 2 lush urban parks STRICTLY INSIDE dry road-free blocks (ZERO park footpath ever extending onto an asphalt road!)
@@ -620,92 +662,248 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const stationZ = (midRail.z1 + midRail.z2) * 0.5;
   const stationRotY = -Math.atan2(midRail.z2 - midRail.z1, midRail.x2 - midRail.x1);
 
-  const busX = cx - 28;
-  const busZ = cz + 28;
-  const busRotY = 0;
+  // Snap transit tram stop cleanly onto a straight mid-block arterial curbside (STRICTLY away from intersections!)
+  let busX = cx - 28;
+  let busZ = cz + 28;
+  let busRotY = 0;
+  for (const st of streets) {
+    if (st.isBridge || st.kind !== 'arterial') continue;
+    const sLen = Math.hypot(st.x2 - st.x1, st.z2 - st.z1);
+    if (sLen < 42) continue;
+    const mx = (st.x1 + st.x2) * 0.5;
+    const mz = (st.z1 + st.z2) * 0.5;
+    const dCenter = Math.hypot(mx - cx, mz - cz);
+    const farFromJunction = !junctions.some((jn) => Math.hypot(jn.x - mx, jn.z - mz) < 28);
+    if (dCenter > 26 && dCenter < 165 && farFromJunction && getShanghaiRiverSignedDist(mx - cx, mz - cz, cleanCityId) > 16) {
+      const ux = (st.x2 - st.x1) / sLen;
+      const uz = (st.z2 - st.z1) / sLen;
+      const nx = -uz;
+      const nz = ux;
+      busX = mx + nx * (st.width * 0.34);
+      busZ = mz + nz * (st.width * 0.34);
+      busRotY = Math.atan2(ux, uz);
+      break;
+    }
+  }
 
-  // 8. Automatic Curbside Lot Subdivision — STRICTLY avoiding THIS city's Rivers, Bridges & Parks!
+  // 8. Block-Adaptive Curbside Lot Subdivision — Exact Polygon-vs-Road Clearance + Rect / Cylinder / Flatiron Triangle Shapes!
   const lots: TownBuildingLot[] = [];
   const streetLamps: { x: number; z: number; rotY: number }[] = [];
 
-  const isTooCloseToRoadOrLot = (lx: number, lz: number, halfW: number, halfD: number): boolean => {
-    const radius = Math.hypot(halfW, halfD) * 0.82;
-    if (getShanghaiRiverSignedDist(lx - cx, lz - cz, cleanCityId) < radius + 4.5) return true;
-    for (const pk of parks) {
-      if (
-        Math.abs(lx - pk.x) < pk.w * 0.5 + halfW + 3.0 &&
-        Math.abs(lz - pk.z) < pk.d * 0.5 + halfD + 3.0
-      ) {
-        return true;
+  // Sample exact world-space perimeter + interior points for a rotated rect / cylinder / Flatiron-triangle building
+  const sampleFootprintWorldPts = (
+    lx: number,
+    lz: number,
+    rotY: number,
+    w: number,
+    d: number,
+    shape: BuildingFootprintShape = 'rect',
+  ): [number, number][] => {
+    const hw = w * 0.5;
+    const hd = d * 0.5;
+    const cos = Math.cos(rotY);
+    const sin = Math.sin(rotY);
+    const toW = (px: number, pz: number): [number, number] => [
+      lx + px * cos + pz * sin,
+      lz - px * sin + pz * cos,
+    ];
+    if (shape === 'cylinder') {
+      const r = Math.min(hw, hd);
+      const pts: [number, number][] = [[lx, lz]];
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4;
+        pts.push(toW(Math.cos(a) * r, Math.sin(a) * r));
       }
+      return pts;
     }
-    for (const st of streets) {
-      if (distToSeg(lx, lz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.5 + Math.hypot(halfW, halfD) * 0.86 + 1.4) {
-        return true;
-      }
+    if (shape === 'triangle') {
+      // Flatiron / Wukang-Mansion wedge: wide streetfront (+hd) tapering to a sleek rounded/chamfered apex at (-hd)!
+      const tipW = hw * 0.26;
+      return [
+        [lx, lz],
+        toW(-hw, hd),
+        toW(0, hd),
+        toW(hw, hd),
+        toW(-tipW, -hd),
+        toW(tipW, -hd),
+        toW(-(hw + tipW) * 0.5, 0),
+        toW((hw + tipW) * 0.5, 0),
+        toW(0, -hd),
+      ];
     }
-    for (const rl of rail) {
-      if (distToSeg(lx, lz, rl.x1, rl.z1, rl.x2, rl.z2) < 6.5 + radius * 0.5) return true;
-    }
-    for (const ex of lots) {
-      const exR = Math.hypot(ex.width * 0.5, ex.depth * 0.5) * 0.92;
-      if (Math.hypot(lx - ex.x, lz - ex.z) < radius + exR + 1.8) return true;
-    }
-    return false;
+    return [
+      [lx, lz],
+      toW(-hw, -hd),
+      toW(hw, -hd),
+      toW(hw, hd),
+      toW(-hw, hd),
+      toW(0, hd),
+      toW(0, -hd),
+      toW(-hw, 0),
+      toW(hw, 0),
+    ];
   };
 
+  const isFootprintClear = (
+    lx: number,
+    lz: number,
+    rotY: number,
+    w: number,
+    d: number,
+    shape: BuildingFootprintShape = 'rect',
+  ): boolean => {
+    const hw = w * 0.5;
+    const hd = d * 0.5;
+    const pts = sampleFootprintWorldPts(lx, lz, rotY, w, d, shape);
+
+    // Every single corner & edge midpoint MUST stay clear of rivers, parks, rails, and ALL road edges!
+    for (const [px, pz] of pts) {
+      if (getShanghaiRiverSignedDist(px - cx, pz - cz, cleanCityId) < 4.5) return false;
+      for (const pk of parks) {
+        if (Math.abs(px - pk.x) < pk.w * 0.5 + 3.2 && Math.abs(pz - pk.z) < pk.d * 0.5 + 3.2) {
+          return false;
+        }
+      }
+      for (const st of streets) {
+        if (distToSeg(px, pz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.5 + 2.2) {
+          return false;
+        }
+      }
+      for (const rl of rail) {
+        if (distToSeg(px, pz, rl.x1, rl.z1, rl.x2, rl.z2) < 8.5) return false;
+      }
+    }
+
+    // Check against already-placed building footprints (accurate OBB / circle separation so buildings never overlap!)
+    for (const ex of lots) {
+      const eCos = Math.cos(ex.rotY);
+      const eSin = Math.sin(ex.rotY);
+      const eHw = ex.width * 0.5 + 2.8;
+      const eHd = ex.depth * 0.5 + 2.8;
+      for (const [px, pz] of pts) {
+        const dx = px - ex.x;
+        const dz = pz - ex.z;
+        const elx = dx * eCos - dz * eSin;
+        const elz = dx * eSin + dz * eCos;
+        if (ex.shape === 'cylinder') {
+          if (Math.hypot(elx, elz) < Math.min(ex.width, ex.depth) * 0.5 + 2.8) return false;
+        } else if (Math.abs(elx) < eHw && Math.abs(elz) < eHd) {
+          return false;
+        }
+      }
+      // Also check existing lot's center/corners against our new box
+      const nCos = Math.cos(rotY);
+      const nSin = Math.sin(rotY);
+      for (const [epx, epz] of sampleFootprintWorldPts(ex.x, ex.z, ex.rotY, ex.width, ex.depth, ex.shape ?? 'rect')) {
+        const dx = epx - lx;
+        const dz = epz - lz;
+        const nlx = dx * nCos - dz * nSin;
+        const nlz = dx * nSin + dz * nCos;
+        if (shape === 'cylinder') {
+          if (Math.hypot(nlx, nlz) < Math.min(hw, hd) + 2.6) return false;
+        } else if (Math.abs(nlx) < hw + 2.6 && Math.abs(nlz) < hd + 2.6) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  const isTooCloseToRoadOrLot = (lx: number, lz: number, halfW: number, halfD: number): boolean =>
+    !isFootprintClear(lx, lz, 0, halfW * 2, halfD * 2, 'cylinder');
+
   if (cleanCityId === 'shanghai') {
-    lots.push({
-      id: `${anchor.id}_landmark_main`,
-      kind: 'landmark',
-      x: cx + 68,
-      z: cz - 24,
-      rotY: 0,
-      width: 16,
-      depth: 16,
-      houseVariant: 0,
-      doorX: cx + 60,
-      doorZ: cz - 14,
-    });
+    // Anchor Oriental Pearl Tower (东方明珠) prominently on Pudong Lujiazui's east riverbank!
+    let hpRiverX = 36;
+    const hpRiv = hydro.rivers.find((r) => r.id === 'huangpu_macro') ?? hydro.rivers[0];
+    if (hpRiv && hpRiv.points.length > 0) {
+      let bestDz = 9999;
+      for (const [px, pz] of hpRiv.points) {
+        const dz = Math.abs(pz - -22);
+        if (dz < bestDz) {
+          bestDz = dz;
+          hpRiverX = px;
+        }
+      }
+    }
+    let pearlPlaced = false;
+    for (let offX = 48; offX <= 128; offX += 14) {
+      for (const offZ of [-22, -48, 8, -72, 34]) {
+        const tx = cx + hpRiverX + offX;
+        const tz = cz + offZ;
+        if (!isTooCloseToRoadOrLot(tx, tz, 14, 14)) {
+          lots.push({
+            id: `${anchor.id}_landmark_main`,
+            kind: 'landmark',
+            x: tx,
+            z: tz,
+            rotY: 0,
+            width: 28,
+            depth: 28,
+            houseVariant: 0,
+            doorX: tx - 14,
+            doorZ: tz + 14,
+          });
+          pearlPlaced = true;
+          break;
+        }
+      }
+      if (pearlPlaced) break;
+    }
+    if (!pearlPlaced) {
+      lots.push({
+        id: `${anchor.id}_landmark_main`,
+        kind: 'landmark',
+        x: cx + hpRiverX + 58,
+        z: cz - 24,
+        rotY: 0,
+        width: 28,
+        depth: 28,
+        houseVariant: 0,
+        doorX: cx + hpRiverX + 44,
+        doorZ: cz - 10,
+      });
+    }
+    // Lujiazui Monumental Skyscraper Trio ("厨房三件套" scale!)
     for (const [si, sx, sz] of [
-      [0, 96, -24],
-      [1, 118, -8],
-      [2, 84, 34],
+      [0, hpRiverX + 104, -36],
+      [1, hpRiverX + 142, 12],
+      [2, hpRiverX + 96, 56],
     ] as const) {
-      if (!isTooCloseToRoadOrLot(cx + sx, cz + sz, 9.5, 9.5)) {
+      if (!isTooCloseToRoadOrLot(cx + sx, cz + sz, 24, 22)) {
         lots.push({
           id: `${anchor.id}_sky_${si}`,
           kind: 'skyscraper',
           x: cx + sx,
           z: cz + sz,
           rotY: Math.PI * 0.25,
-          width: 18,
-          depth: 16,
+          width: 52,
+          depth: 46,
           houseVariant: si,
-          doorX: cx + sx - 8,
-          doorZ: cz + sz + 8,
+          doorX: cx + sx - 24,
+          doorZ: cz + sz + 24,
         });
       }
     }
   } else if (anchor.landmarkCityId) {
     // Find a prime dry landmark spot unique to this city!
-    for (let t = 0; t < 24; t++) {
-      const la = rng() * Math.PI * 2;
-      const ld = 36 + rng() * 44;
+    for (let t = 0; t < 36; t++) {
+      const la = (t / 36) * Math.PI * 2 + rng() * 0.25;
+      const ld = 48 + (t % 4) * 24;
       const lx = Math.round(cx + Math.cos(la) * ld);
       const lz = Math.round(cz + Math.sin(la) * ld);
-      if (!isTooCloseToRoadOrLot(lx, lz, 9, 9)) {
+      if (!isTooCloseToRoadOrLot(lx, lz, 14, 14)) {
         lots.push({
           id: `${anchor.id}_landmark_main`,
           kind: 'landmark',
           x: lx,
           z: lz,
           rotY: 0,
-          width: 16,
-          depth: 16,
+          width: 28,
+          depth: 28,
           houseVariant: 0,
           doorX: lx,
-          doorZ: lz + 10,
+          doorZ: lz + 16,
         });
         break;
       }
@@ -713,6 +911,12 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   }
 
   interface CandidateSlot {
+    mx: number;
+    mz: number;
+    nx: number;
+    nz: number;
+    side: 1 | -1;
+    streetHalfW: number;
     x: number;
     z: number;
     rotY: number;
@@ -730,47 +934,65 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     const dx = st.x2 - st.x1;
     const dz = st.z2 - st.z1;
     const len = Math.hypot(dx, dz);
-    if (len < 12) continue;
+    if (len < 24) continue;
     const ux = dx / len;
     const uz = dz / len;
     const nx = -uz;
     const nz = ux;
 
-    if (si % 2 === 0) {
-      const lampX = (st.x1 + st.x2) * 0.5 + nx * (st.width * 0.5 + 1.4);
-      const lampZ = (st.z1 + st.z2) * 0.5 + nz * (st.width * 0.5 + 1.4);
-      const clearOfOtherStreets = !streets.some(
-        (other) => other !== st && distToSeg(lampX, lampZ, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 1.4,
-      );
-      const clearOfJunctions = !junctions.some(
-        (jn) => Math.hypot(lampX - jn.x, lampZ - jn.z) < Math.max(jn.width, jn.depth) * 0.58 + 2.5,
-      );
-      const clearOfParks = !parks.some(
-        (pk) => Math.abs(lampX - pk.x) < pk.w * 0.5 + 2 && Math.abs(lampZ - pk.z) < pk.d * 0.5 + 2,
-      );
-      if (
-        clearOfOtherStreets &&
-        clearOfJunctions &&
-        clearOfParks &&
-        getShanghaiRiverSignedDist(lampX - cx, lampZ - cz, cleanCityId) > 4
-      ) {
-        streetLamps.push({ x: lampX, z: lampZ, rotY: Math.atan2(nx, nz) });
+    const segDistCenter = Math.hypot((st.x1 + st.x2) * 0.5 - cx, (st.z1 + st.z2) * 0.5 - cz);
+    if (segDistCenter > 760) continue;
+
+    // Dense urban boulevard streetlamps along sidewalks (every ~38m, curving inward over the roadway!)
+    const lampCount = segDistCenter < 480 && streetLamps.length < 150 ? Math.max(1, Math.floor(len / 38)) : 0;
+    for (let li = 0; li < lampCount; li++) {
+      const lt = (li + 0.5) / lampCount;
+      const lSides = st.kind === 'arterial' ? ([-1, 1] as const) : ([li % 2 === 0 ? 1 : -1] as const);
+      for (const lSide of lSides) {
+        const lampX = st.x1 + dx * lt + nx * lSide * (st.width * 0.5 + 1.35);
+        const lampZ = st.z1 + dz * lt + nz * lSide * (st.width * 0.5 + 1.35);
+        const clearOfOtherStreets = !streets.some(
+          (other) => other !== st && distToSeg(lampX, lampZ, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 1.2,
+        );
+        const clearOfJunctions = !junctions.some(
+          (jn) => Math.hypot(lampX - jn.x, lampZ - jn.z) < Math.max(jn.width, jn.depth) * 0.54 + 2.0,
+        );
+        const clearOfParks = !parks.some(
+          (pk) => Math.abs(lampX - pk.x) < pk.w * 0.5 + 1.8 && Math.abs(lampZ - pk.z) < pk.d * 0.5 + 1.8,
+        );
+        const clearOfOtherLamps = !streetLamps.some((prev) => Math.hypot(prev.x - lampX, prev.z - lampZ) < 16);
+        if (
+          clearOfOtherStreets &&
+          clearOfJunctions &&
+          clearOfParks &&
+          clearOfOtherLamps &&
+          getShanghaiRiverSignedDist(lampX - cx, lampZ - cz, cleanCityId) > 4
+        ) {
+          streetLamps.push({ x: lampX, z: lampZ, rotY: Math.atan2(-nx * lSide, -nz * lSide) });
+        }
       }
     }
 
-    const stepsAlong = Math.max(1, Math.floor(len / 24.0));
+    // 46m curbside lot cadence — exact setback & shape will adapt dynamically to each block's geometry!
+    const stepsAlong = Math.max(1, Math.floor(len / 46.0));
     for (let k = 0; k < stepsAlong; k++) {
       const t = (k + 0.5) / stepsAlong;
       const mx = st.x1 + dx * t;
       const mz = st.z1 + dz * t;
-      for (const side of [-1, 1]) {
-        const setback = st.width * 0.5 + 11.5;
+      for (const side of [-1, 1] as const) {
+        const setback = st.width * 0.5 + 22.0;
         const lx = mx + nx * side * setback;
         const lz = mz + nz * side * setback;
-        const doorX = mx + nx * side * (st.width * 0.5 + 2.2);
-        const doorZ = mz + nz * side * (st.width * 0.5 + 2.2);
+        const doorX = mx + nx * side * (st.width * 0.5 + 3.0);
+        const doorZ = mz + nz * side * (st.width * 0.5 + 3.0);
         const rotY = Math.atan2(-nx * side, -nz * side);
         candidates.push({
+          mx,
+          mz,
+          nx,
+          nz,
+          side,
+          streetHalfW: st.width * 0.5,
           x: lx,
           z: lz,
           rotY,
@@ -786,26 +1008,64 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
 
   candidates.sort((a, b) => a.distFromCenter - b.distFromCenter);
 
+  // Adaptive Block-Fitting Solver: adjusts setback, building dimensions & shape ('rect' / 'triangle' / 'cylinder') so ZERO corners EVER touch a road!
+  const tryFitLotAtCandidate = (
+    cand: CandidateSlot,
+    baseW: number,
+    baseD: number,
+    allowSpecialShapes: boolean,
+    preferShape: BuildingFootprintShape = 'rect',
+    minScale = 0.72,
+  ): { x: number; z: number; w: number; d: number; shape: BuildingFootprintShape } | null => {
+    const scales = [1.0, 0.90, 0.80, 0.72, 0.62, 0.52].filter((s) => s >= minScale - 0.001);
+    const shapeOrder: BuildingFootprintShape[] = allowSpecialShapes
+      ? preferShape === 'cylinder'
+        ? ['cylinder', 'triangle', 'rect']
+        : preferShape === 'triangle'
+          ? ['triangle', 'cylinder', 'rect']
+          : ['rect', 'triangle', 'cylinder']
+      : ['rect'];
+
+    for (const sc of scales) {
+      const wTry = Math.round(baseW * sc * 10) / 10;
+      const dTry = Math.round(baseD * sc * 10) / 10;
+      for (const sh of shapeOrder) {
+        const effW = sh === 'cylinder' ? Math.min(wTry, dTry * 1.08) : wTry;
+        const effD = sh === 'cylinder' ? effW : dTry;
+        const cSetback = cand.streetHalfW + effD * 0.5 + 3.4;
+        const clx = cand.mx + cand.nx * cand.side * cSetback;
+        const clz = cand.mz + cand.nz * cand.side * cSetback;
+        if (isFootprintClear(clx, clz, cand.rotY, effW, effD, sh)) {
+          return { x: clx, z: clz, w: effW, d: effD, shape: sh };
+        }
+      }
+    }
+    return null;
+  };
+
+  // Flagship Civic Buildings — ALL 4 Enterable with Rich Furnished Interiors (adaptively sized so 0 road overlap!)
   const civicQueue: { kind: TownLotKind; w: number; d: number; walkable?: boolean }[] = [
-    { kind: 'pokemon_center', w: 23.0, d: 19.0, walkable: true },
-    { kind: 'poke_mart', w: 21.0, d: 17.5, walkable: true },
-    { kind: 'hotel', w: 22.0, d: 18.0 },
-    { kind: 'restaurant', w: 19.5, d: 16.0 },
+    { kind: 'pokemon_center', w: 50.0, d: 40.0, walkable: true },
+    { kind: 'poke_mart', w: 48.0, d: 39.0, walkable: true },
+    { kind: 'hotel', w: 50.0, d: 40.0, walkable: true },
+    { kind: 'restaurant', w: 44.0, d: 36.0, walkable: true },
   ];
 
   let lotCounter = 0;
   for (const cv of civicQueue) {
     for (const cand of candidates) {
       if (cleanCityId === 'shanghai' && cand.isPudong) continue;
-      if (isTooCloseToRoadOrLot(cand.x, cand.z, cv.w * 0.5, cv.d * 0.5)) continue;
+      const fit = tryFitLotAtCandidate(cand, cv.w, cv.d, false, 'rect', 0.74);
+      if (!fit) continue;
       lots.push({
         id: `${anchor.id}_lot_${lotCounter++}`,
         kind: cv.kind,
-        x: cand.x,
-        z: cand.z,
+        x: fit.x,
+        z: fit.z,
         rotY: cand.rotY,
-        width: cv.w,
-        depth: cv.d,
+        width: fit.w,
+        depth: fit.d,
+        shape: 'rect',
         houseVariant: lotCounter,
         walkable: cv.walkable,
         doorX: cand.doorX,
@@ -816,22 +1076,35 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   }
 
   let houseCount = 0;
+  const targetHouseMax = cleanCityId === 'shanghai' ? 96 : 52;
   for (const cand of candidates) {
-    if (houseCount >= 52) break;
+    if (houseCount >= targetHouseMax) break;
     if (isUrbanLandLocal && !isUrbanLandLocal(cand.x - cx, cand.z - cz)) continue;
-    const hw = 15.5 + (houseCount % 3) * 1.4;
-    const hd = 13.5 + (houseCount % 2) * 1.2;
-    if (isTooCloseToRoadOrLot(cand.x, cand.z, hw * 0.5, hd * 0.5)) continue;
+    const isSky = cand.isPudong && houseCount % 2 === 0;
+    const wantWalkable = !isSky && houseCount < 6;
+    const hw = isSky ? 46 + (houseCount % 3) * 3.5 : 40.0 + (houseCount % 3) * 3.0;
+    const hd = isSky ? 42 + (houseCount % 2) * 3.5 : 34.0 + (houseCount % 2) * 2.5;
+    // Architectural diversity + automatic wedge/rotunda adaptation in triangular & curved blocks!
+    const preferredShape: BuildingFootprintShape = wantWalkable
+      ? 'rect'
+      : houseCount % 7 === 3
+        ? 'cylinder'
+        : houseCount % 9 === 5
+          ? 'triangle'
+          : 'rect';
+    const fit = tryFitLotAtCandidate(cand, hw, hd, !wantWalkable, preferredShape, wantWalkable ? 0.78 : 0.50);
+    if (!fit) continue;
     lots.push({
       id: `${anchor.id}_house_${houseCount}`,
-      kind: cand.isPudong && houseCount % 2 === 0 ? 'skyscraper' : 'house',
-      x: cand.x,
-      z: cand.z,
+      kind: isSky ? 'skyscraper' : 'house',
+      x: fit.x,
+      z: fit.z,
       rotY: cand.rotY,
-      width: hw,
-      depth: hd,
+      width: fit.w,
+      depth: fit.d,
+      shape: fit.shape,
       houseVariant: (seedVal + houseCount) % 10,
-      walkable: houseCount === 0,
+      walkable: wantWalkable,
       doorX: cand.doorX,
       doorZ: cand.doorZ,
     });
