@@ -24,14 +24,18 @@ const _tmpFogColor = new THREE.Color();
 
 export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
   const { activeInteriorNow, activeTownNow, activeWorldRun, activeZone, autoNavTargetsRef, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, returnToHubCityRef, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, setWorldMapOpen, showBanner, sim, startAutoNavRef, terrainMat, worldBubblesRef } = rawCtx as ArenaSharedCtx;
-          // Smooth Minecraft-style live biome atmosphere transition (fog color + exploration toast!)
+          // Smooth Minecraft-style live biome atmosphere transition (only override fog color in Fantasy Rogue mode; Real-Earth mode uses unified Solar Horizon Mist!)
           const curBiomeAtPlayer = getSeamlessBiomeAt3D(sim.px, sim.pz, sim.py, selectedBiome);
-          _tmpFogColor.setHex(BIOME_PALETTES[curBiomeAtPlayer].fogHex);
-          if (scene.fog instanceof THREE.Fog) {
-            scene.fog.color.lerp(_tmpFogColor, Math.min(1, dt * 1.4));
-          }
-          if (terrainMat.uniforms?.uFogColor?.value) {
-            (terrainMat.uniforms.uFogColor.value as THREE.Color).lerp(_tmpFogColor, Math.min(1, dt * 1.4));
+          if (getActiveGeoTerrainOrigin() === null) {
+            _tmpFogColor.setHex(BIOME_PALETTES[curBiomeAtPlayer].fogHex);
+            if (scene.fog instanceof THREE.Fog) {
+              scene.fog.color.lerp(_tmpFogColor, Math.min(1, dt * 1.4));
+              const srgb = { r: 0.78, g: 0.9, b: 0.98 };
+              scene.fog.color.getRGB(srgb, THREE.SRGBColorSpace);
+              if (terrainMat.uniforms?.uFogColor?.value instanceof THREE.Color) {
+                terrainMat.uniforms.uFogColor.value.setRGB(srgb.r, srgb.g, srgb.b);
+              }
+            }
           }
           if (sim.lastSeamlessBiome !== curBiomeAtPlayer) {
             const prevBiome = sim.lastSeamlessBiome;

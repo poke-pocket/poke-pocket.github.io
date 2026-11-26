@@ -1713,7 +1713,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(pal.skyHex);
-    scene.fog = new THREE.Fog(pal.fogHex, 150, 4800);
+    scene.fog = new THREE.Fog(pal.fogHex, 64, 720);
 
     const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.5, 22000);
     camera.position.set(0, 4.8, 10.5);
@@ -2912,6 +2912,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const tmpMidCol = new THREE.Color();
     const tmpHorCol = new THREE.Color();
     const tmpFogCol = new THREE.Color();
+    const tmpFogSrgb = { r: 0.78, g: 0.91, b: 0.98 };
     const tmpCloudLit = new THREE.Color();
     const tmpCloudShade = new THREE.Color();
 
@@ -2959,6 +2960,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       }
       if (scene.fog instanceof THREE.Fog) {
         scene.fog.color.lerp(tmpFogCol, kLerp);
+        // Sync exact sRGB-encoded mist color to custom Terrain & Water ShaderMaterials so Sky, Ground, Water & Buildings dissolve with ZERO seam!
+        scene.fog.color.getRGB(tmpFogSrgb, THREE.SRGBColorSpace);
+        if (terrainMat.uniforms?.uFogColor?.value instanceof THREE.Color) {
+          terrainMat.uniforms.uFogColor.value.setRGB(tmpFogSrgb.r, tmpFogSrgb.g, tmpFogSrgb.b);
+        }
+        if (waterMat.uniforms?.uFogColor?.value instanceof THREE.Color) {
+          waterMat.uniforms.uFogColor.value.setRGB(tmpFogSrgb.r, tmpFogSrgb.g, tmpFogSrgb.b);
+        }
       }
       const skyU = horizonBackdrop.userData?.skyUniforms;
       if (skyU) {

@@ -143,6 +143,8 @@ export function createPixelWaterMaterial(biome: BiomeId): THREE.ShaderMaterial {
   const midCol = new THREE.Color(isLava ? '#d9480f' : isIce ? '#4dabf7' : '#1c7ed6');
   const shallowCol = new THREE.Color(isLava ? '#ff922b' : isIce ? '#74c0fc' : '#3bc9db');
   const foamCol = new THREE.Color(isLava ? '#ffe066' : '#e7f5ff');
+  const initFogSrgb = new THREE.Color();
+  new THREE.Color(BIOME_PALETTES[biome].fogHex).getRGB(initFogSrgb, THREE.SRGBColorSpace);
 
   return new THREE.ShaderMaterial({
     transparent: true,
@@ -153,22 +155,28 @@ export function createPixelWaterMaterial(biome: BiomeId): THREE.ShaderMaterial {
       uMid: { value: midCol },
       uShallow: { value: shallowCol },
       uFoam: { value: foamCol },
+      uFogColor: { value: new THREE.Color().setRGB(initFogSrgb.r, initFogSrgb.g, initFogSrgb.b) },
       uOpacity: { value: isLava ? 0.94 : 0.86 },
     },
     vertexShader: `
       uniform float uTime;
       varying vec3 vWorldPos;
       varying float vWaveH;
+      varying float vFogDepth;
       void main() {
         vec4 wp = modelMatrix * vec4(position, 1.0);
         float w1 = sin(wp.x * 0.55 + uTime * 2.1 + cos(wp.z * 0.38)) * 0.085;
         float w2 = cos(wp.z * 0.62 - uTime * 1.7 + wp.x * 0.22) * 0.065;
         float w3 = sin((wp.x - wp.z) * 0.85 + uTime * 2.8) * 0.035;
         float wave = w1 + w2 + w3;
-        wp.y += wave;
+        vec4 mv = viewMatrix * wp;
+        vFogDepth = -mv.z;
+        float waveAtten = 1.0 - smoothstep(65.0, 210.0, vFogDepth);
+        wp.y += wave * waveAtten;
+        mv = viewMatrix * wp;
         vWorldPos = wp.xyz;
-        vWaveH = wave;
-        gl_Position = projectionMatrix * viewMatrix * wp;
+        vWaveH = wave * waveAtten;
+        gl_Position = projectionMatrix * mv;
       }
     `,
     fragmentShader: `
@@ -177,9 +185,11 @@ export function createPixelWaterMaterial(biome: BiomeId): THREE.ShaderMaterial {
       uniform vec3 uMid;
       uniform vec3 uShallow;
       uniform vec3 uFoam;
+      uniform vec3 uFogColor;
       uniform float uOpacity;
       varying vec3 vWorldPos;
       varying float vWaveH;
+      varying float vFogDepth;
 
       float wHash(vec2 p) {
         p = fract(p * vec2(127.1, 311.7));
@@ -201,8 +211,8 @@ export function createPixelWaterMaterial(biome: BiomeId): THREE.ShaderMaterial {
       }
 
       void main() {
-        // Ultra-fine crisp 11px/m world-space pixelation with NON-REPEATING domain-warped FBM ripples!
-        vec2 p = floor(vWorldPos.xz * 11.0) / 11.0;
+        float detailKeep = 1.0 - smoothstep(52.0, 165.0, vFogDepth);
+        vec2 p = mix(vWorldPos.xz, floor(vWorldPos.xz * 11.0) / 11.0, detailKeep);
         vec2 warp = vec2(
           wNoise(p * 0.42 + vec2(uTime * 0.24, -uTime * 0.12)),
           wNoise(p * 0.42 + vec2(-uTime * 0.16, uTime * 0.21) + 7.3)
@@ -211,16 +221,24 @@ export function createPixelWaterMaterial(biome: BiomeId): THREE.ShaderMaterial {
         float fineRipple = wFbm(vec2(p.x * 0.95, p.y * 1.95) - warp * 0.4 + vec2(-uTime * 0.36, uTime * 0.18));
         float h = swell * 0.65 + fineRipple * 0.35 + vWaveH * 1.4;
 
-        // Subtle, refined 4-tone watercolor-pixel lake palette (zero chunky polka-dots!)
         vec3 col = uDeep;
-        if (h > 0.44) col = uMid;
-        if (h > 0.59) col = uShallow;
-        // Delicate 1px horizontal sunlit sparkle glints on fine ripple crests
+        if (h > 0.44) col = mix(uDeep, uMid, 0.35 + 0.65 * detailKeep);
+        if (h > 0.59) col = mix(col, uShallow, 0.25 + 0.75 * detailKeep);
         float sparkle = wNoise(vec2(p.x * 1.6, p.y * 5.5) + vec2(uTime * 0.6, -uTime * 0.25));
-        if (h > 0.72 && sparkle > 0.66) {
-          col = uFoam;
+        if (detailKeep > 0.15 && h > 0.72 && sparkle > 0.66) {
+          col = mix(col, uFoam, detailKeep);
         }
-        gl_FragColor = vec4(col, uOpacity);
+
+        // Seamless horizon mist dissolve (eliminates sharp cyan horizontal stripes on distant rivers & seas!)
+        float waterMist = clamp(
+          smoothstep(54.0, 210.0, vFogDepth) * 0.72 +
+          smoothstep(175.0, 480.0, vFogDepth) * 0.28,
+          0.0,
+          1.0
+        );
+        col = mix(col, uFogColor, waterMist);
+        float outAlpha = mix(uOpacity, 1.0, waterMist);
+        gl_FragColor = vec4(col, outAlpha);
       }
     `,
   });

@@ -17,7 +17,7 @@ export function getSharedVoxelArchMaterial(): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({
     vertexColors: true,
   });
-  mat.customProgramCacheKey = () => 'pk_magicavoxel_ao_night_v1';
+  mat.customProgramCacheKey = () => 'pk_magicavoxel_ao_night_v2';
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uNightGlow = TOWN_NIGHT_UNIFORM;
     shader.vertexShader = shader.vertexShader
@@ -40,11 +40,11 @@ uniform float uNightGlow;
 varying vec3 vNightEmit;`,
       )
       .replace(
-        '#include <dithering_fragment>',
+        '#include <fog_fragment>',
         `if (uNightGlow > 0.01 && (vNightEmit.r + vNightEmit.g + vNightEmit.b) > 0.02) {
   gl_FragColor.rgb = mix(gl_FragColor.rgb, vNightEmit, clamp(uNightGlow * 0.96, 0.0, 1.0));
 }
-#include <dithering_fragment>`,
+#include <fog_fragment>`,
       );
   };
   SHARED_VOXEL_ARCH_MAT = mat;
@@ -61,7 +61,7 @@ export function getSharedIndoorLitVoxelMaterial(): THREE.MeshLambertMaterial {
   const mat = new THREE.MeshLambertMaterial({
     vertexColors: true,
   });
-  mat.customProgramCacheKey = () => 'pk_magicavoxel_indoor_warm_v1';
+  mat.customProgramCacheKey = () => 'pk_magicavoxel_indoor_warm_v2';
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uNightGlow = TOWN_NIGHT_UNIFORM;
     shader.vertexShader = shader.vertexShader
@@ -84,13 +84,13 @@ uniform float uNightGlow;
 varying vec3 vNightEmit;`,
       )
       .replace(
-        '#include <dithering_fragment>',
+        '#include <fog_fragment>',
         `vec3 warmLampFloor = diffuseColor.rgb * vec3(1.03, 0.98, 0.90) * (0.58 + uNightGlow * 0.34);
 gl_FragColor.rgb = max(gl_FragColor.rgb, warmLampFloor);
 if ((vNightEmit.r + vNightEmit.g + vNightEmit.b) > 0.02) {
   gl_FragColor.rgb = mix(gl_FragColor.rgb, vNightEmit, 0.85);
 }
-#include <dithering_fragment>`,
+#include <fog_fragment>`,
       );
   };
   SHARED_VOXEL_INDOOR_MAT = mat;
