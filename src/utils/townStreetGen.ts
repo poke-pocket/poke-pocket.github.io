@@ -1,4 +1,11 @@
 import type { WorldTownAnchor3D } from '../data/survivorsTactics';
+import {
+  PROVINCIAL_AND_WORLD_CAPITALS,
+  getLocalRealHighwayAnglesForCity,
+  getLocalRealRiversForCity,
+} from '../data/geoTerrain3D';
+import { WORLD_CITIES } from '../data/worldTour';
+import { generateTensorCityRoads } from './tensorRoadGen';
 
 export interface TownStreetSeg {
   x1: number;
@@ -156,82 +163,120 @@ export const SHANGHAI_LOCAL_BRIDGES: CityBridgeDef[] = [
 
 const CITY_HYDRO_CACHE = new Map<string, { rivers: TownRiverSpline[]; bridges: CityBridgeDef[] }>();
 
+function lookupCityLatLng(cleanId: string): { lat: number; lng: number } | null {
+  const wc = WORLD_CITIES.find((c) => c.id === cleanId);
+  if (wc) return { lat: wc.lat, lng: wc.lng };
+  const cap = PROVINCIAL_AND_WORLD_CAPITALS.find((c) => c.id === cleanId);
+  if (cap) return { lat: cap.lat, lng: cap.lng };
+  return null;
+}
+
 /**
- * Per-city deterministic procedural river & bridge hydrography!
- * - Shanghai uses its signature S-curving Huangpu River + Suzhou Creek.
- * - Every other city (Beijing, Guangzhou, Hangzhou, Tokyo, Kyoto, Osaka, etc.) generates its OWN unique
- *   winding river angle, curvature, optional tributary creek & matching cross-river bridges!
+ * Per-city real-geography aligned hydrography!
+ * 1. First queries REAL_WORLD_RIVERS projected at the city's actual GPS (lat, lng), so the 3D city river
+ *    and the 2D real-Earth map river are ONE SINGLE CONTINUOUS ALIGNED WATERWAY (zero duplicate rivers!).
+ * 2. Adds Shanghai's iconic Suzhou Creek tributary joining the real Huangpu River at Waibaidu confluence.
+ * 3. Only if a city has no major river in REAL_WORLD_RIVERS within 260m (e.g. inland city), generates a
+ *    modest local urban canal/river consistent with its unique city seed.
  */
 export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[]; bridges: CityBridgeDef[] } {
   const cleanId = cityId.replace(/^geo_city_/, '').replace(/^city_/, '');
   const cached = CITY_HYDRO_CACHE.get(cleanId);
   if (cached) return cached;
 
-  if (cleanId === 'shanghai') {
-    const res = { rivers: SHANGHAI_LOCAL_RIVERS, bridges: SHANGHAI_LOCAL_BRIDGES };
-    CITY_HYDRO_CACHE.set(cleanId, res);
-    return res;
-  }
-
-  const rng = makeRng(hashCitySeed(cleanId) * 41 + 9);
   const rivers: TownRiverSpline[] = [];
   const bridges: CityBridgeDef[] = [];
+  const coords = lookupCityLatLng(cleanId);
 
-  // Choose unique river axis, offset, S-curve wave amplitude & width for this city!
-  const axisAng = rng() * Math.PI;
-  const dirX = Math.cos(axisAng);
-  const dirZ = Math.sin(axisAng);
-  const nx = -dirZ;
-  const nz = dirX;
-  const riverOffset = (rng() > 0.5 ? 1 : -1) * (34 + rng() * 34);
-  const waveAmp = 18 + rng() * 26;
-  const waveFreq = 0.011 + rng() * 0.008;
-  const wavePhase = rng() * Math.PI * 2;
-  const mainW = 22 + Math.round(rng() * 14);
-
-  const mainPts: [number, number][] = [];
-  for (let s = -220; s <= 220; s += 44) {
-    const bend = riverOffset + Math.sin(s * waveFreq + wavePhase) * waveAmp;
-    mainPts.push([Math.round(dirX * s + nx * bend), Math.round(dirZ * s + nz * bend)]);
-  }
-  rivers.push({ id: `${cleanId}_main_riv`, name: `${cleanId}主河`, width: mainW, points: mainPts });
-
-  // Place 2-3 unique walkable bridges crossing this city's river cleanly!
-  const bridgeFracs = [-88, 12, 108];
-  const styles: ('nanpu' | 'yangpu' | 'waibaidu')[] = ['nanpu', 'waibaidu', 'yangpu'];
-  bridgeFracs.forEach((s, idx) => {
-    if (idx === 2 && rng() < 0.35) return;
-    const bend = riverOffset + Math.sin(s * waveFreq + wavePhase) * waveAmp;
-    const mx = dirX * s + nx * bend;
-    const mz = dirZ * s + nz * bend;
-    const halfSpan = mainW * 0.85 + 20;
-    bridges.push({
-      x1: Math.round(mx - nx * halfSpan),
-      z1: Math.round(mz - nz * halfSpan),
-      x2: Math.round(mx + nx * halfSpan),
-      z2: Math.round(mz + nz * halfSpan),
-      width: idx === 1 ? 20 : 18,
-      style: styles[(idx + Math.floor(rng() * 3)) % 3],
-    });
-  });
-
-  // 65% of cities also get a winding tributary canal/creek branching off the main river!
-  if (rng() < 0.65) {
-    const branchSide = rng() > 0.5 ? 1 : -1;
-    const branchS = (rng() - 0.5) * 90;
-    const bend0 = riverOffset + Math.sin(branchS * waveFreq + wavePhase) * waveAmp;
-    const sx = dirX * branchS + nx * bend0;
-    const sz = dirZ * branchS + nz * bend0;
-    const tribPts: [number, number][] = [[Math.round(sx), Math.round(sz)]];
-    for (let k = 1; k <= 4; k++) {
-      const dist = k * 48;
-      const sway = Math.sin(k * 1.1 + wavePhase) * 18;
-      tribPts.push([
-        Math.round(sx + nx * branchSide * dist + dirX * sway),
-        Math.round(sz + nz * branchSide * dist + dirZ * sway),
-      ]);
+  if (coords) {
+    const realLocal = getLocalRealRiversForCity(coords.lat, coords.lng, 380);
+    for (const rr of realLocal) {
+      rivers.push({
+        id: rr.id,
+        name: rr.name,
+        width: rr.width,
+        points: rr.points,
+      });
     }
-    rivers.push({ id: `${cleanId}_trib`, name: `${cleanId}支流`, width: 14, points: tribPts });
+    // For Shanghai, add Suzhou Creek joining the REAL Huangpu River cleanly at its real confluence!
+    if (cleanId === 'shanghai' && rivers.length > 0) {
+      const hp = rivers[0];
+      // Find the point on the real Huangpu River closest to z = -22 (Waibaidu confluence north of Bund)
+      let confPt = hp.points[Math.floor(hp.points.length * 0.5)];
+      let bestD = 9999;
+      for (const p of hp.points) {
+        const d = Math.abs(p[1] - -26);
+        if (d < bestD) {
+          bestD = d;
+          confPt = p;
+        }
+      }
+      rivers.push({
+        id: 'suzhou_creek',
+        name: '苏州河',
+        width: 14,
+        points: [
+          [-215, confPt[1] - 24],
+          [-145, confPt[1] - 10],
+          [-75, confPt[1] + 2],
+          [Math.round(confPt[0] - 24), Math.round(confPt[1] - 4)],
+          [confPt[0], confPt[1]],
+        ],
+      });
+    }
+  }
+
+  // Fallback ONLY for cities far from any major river in REAL_WORLD_RIVERS (gentle local urban canal)
+  if (rivers.length === 0) {
+    const rng = makeRng(hashCitySeed(cleanId) * 41 + 9);
+    const axisAng = rng() * Math.PI;
+    const dirX = Math.cos(axisAng);
+    const dirZ = Math.sin(axisAng);
+    const nx = -dirZ;
+    const nz = dirX;
+    const riverOffset = (rng() > 0.5 ? 1 : -1) * (44 + rng() * 32);
+    const waveAmp = 14 + rng() * 20;
+    const waveFreq = 0.011 + rng() * 0.007;
+    const wavePhase = rng() * Math.PI * 2;
+    const mainW = 18 + Math.round(rng() * 10);
+    const mainPts: [number, number][] = [];
+    for (let s = -210; s <= 210; s += 42) {
+      const bend = riverOffset + Math.sin(s * waveFreq + wavePhase) * waveAmp;
+      mainPts.push([Math.round(dirX * s + nx * bend), Math.round(dirZ * s + nz * bend)]);
+    }
+    rivers.push({ id: `${cleanId}_canal`, name: `${cleanId}护城河`, width: mainW, points: mainPts });
+  }
+
+  // Generate perpendicular walkable cross-river bridges along each river spline!
+  const styles: ('nanpu' | 'yangpu' | 'waibaidu')[] = ['nanpu', 'waibaidu', 'yangpu'];
+  for (const riv of rivers) {
+    if (riv.points.length < 2) continue;
+    const fracs = riv.width >= 18 ? [0.28, 0.56, 0.80] : [0.45, 0.78];
+    fracs.forEach((f, idx) => {
+      const pIdx = Math.max(0, Math.min(riv.points.length - 2, Math.floor(f * (riv.points.length - 1))));
+      const [ax, az] = riv.points[pIdx];
+      const [bx, bz] = riv.points[pIdx + 1];
+      const mx = (ax + bx) * 0.5;
+      const mz = (az + bz) * 0.5;
+      if (Math.hypot(mx, mz) > 158) return;
+      const len = Math.hypot(bx - ax, bz - az) || 1;
+      const nx = -(bz - az) / len;
+      const nz = (bx - ax) / len;
+      const halfSpan = riv.width * 0.68 + 18;
+      const x1 = Math.round(mx - nx * halfSpan);
+      const z1 = Math.round(mz - nz * halfSpan);
+      const x2 = Math.round(mx + nx * halfSpan);
+      const z2 = Math.round(mz + nz * halfSpan);
+      if (bridges.some((b) => Math.hypot((b.x1 + b.x2) * 0.5 - mx, (b.z1 + b.z2) * 0.5 - mz) < 42)) return;
+      bridges.push({
+        x1,
+        z1,
+        x2,
+        z2,
+        width: riv.width >= 18 ? 22 : 16,
+        style: riv.width < 18 ? 'waibaidu' : styles[idx % styles.length],
+      });
+    });
   }
 
   const res = { rivers, bridges };
@@ -339,212 +384,148 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     });
   };
 
-  const addPolyRoad = (
-    pts: [number, number][],
-    width: number,
-    kind: TownStreetSeg['kind'],
-    taperEndWidth?: number,
-  ) => {
-    for (let i = 0; i < pts.length - 1; i++) {
-      const [ax, az] = pts[i];
-      const [bx, bz] = pts[i + 1];
-      const isLast = i === pts.length - 2;
-      addSeg(cx + ax, cz + az, cx + bx, cz + bz, width, isLast && taperEndWidth ? taperEndWidth : width, kind);
-    }
-  };
-
   const parks: TownParkZone[] = [];
   const metroLines: TownMetroLine[] = [];
 
-  if (cleanCityId === 'shanghai') {
-    // ==================== SIGNATURE SHANGHAI MASTERPLAN (Huangpu River + Suzhou Creek + People's Square + Lujiazui!) ====================
-    parks.push(
-      { id: `${anchor.id}_peoples_sq`, name: '人民广场公园', x: cx - 54, z: cz + 6, w: 54, d: 44, hasPond: true, hasFountain: true },
-      { id: `${anchor.id}_century_pk`, name: '世纪公园', x: cx + 138, z: cz + 46, w: 56, d: 52, hasPond: true, hasFountain: false },
+  // ==================== 2D TENSOR FIELD + RK2 STREAMLINE + INTERSECTION SNAPPING CITY GENERATOR ====================
+  // Aligns EVERY city's boulevards, waterfront avenues, bridges & neighborhood blocks directly to its REAL river & REAL highway corridors!
+  const cityCoords = lookupCityLatLng(cleanCityId);
+  const realHighwayAngles = cityCoords ? getLocalRealHighwayAnglesForCity(cityCoords.lat, cityCoords.lng) : [];
+  // Beijing uses crisp N-S imperial axial orientation; other cities blend unique orientation with river & highway tensors!
+  const baseGridAngle =
+    cleanCityId === 'beijing'
+      ? 0
+      : cleanCityId === 'shanghai'
+        ? -0.05
+        : (rng() - 0.5) * 0.42;
+
+  const tensorGraph = generateTensorCityRoads({
+    cityId: cleanCityId,
+    seed: seedVal,
+    radius: 320,
+    baseGridAngle,
+    rivers: hydro.rivers,
+    highwayAngles: realHighwayAngles,
+    riverSignedDist: (lx, lz) => getShanghaiRiverSignedDist(lx, lz, cleanCityId),
+  });
+
+  for (const e of tensorGraph.edges) {
+    addSeg(
+      cx + e.x1,
+      cz + e.z1,
+      cx + e.x2,
+      cz + e.z2,
+      e.width,
+      e.width,
+      e.kind,
+      Boolean(e.isBridge),
+      e.bridgeStyle,
     );
-
-    addPolyRoad([[-26, -182], [-18, -118], [-14, -46], [-18, 12], [-14, 72], [-12, 112], [-2, 182]], 34, 'arterial', 26);
-    // Split SW & NE diagonal arterial branches so they meet the N-S arterial cleanly with ZERO overlapping road meshes!
-    addPolyRoad([[-172, 146], [-104, 114], [-14, 72]], 32, 'arterial', 28);
-    addPolyRoad([[-14, -46], [38, -104], [96, -158]], 32, 'arterial', 24);
-    addPolyRoad([[62, -16], [92, 16], [126, 56], [168, 108], [204, 158]], 36, 'arterial', 26);
-
-    for (const br of hydro.bridges) {
+  }
+  // Ensure hydrography bridges are also present if not already bridged by tensor arterials
+  for (const br of hydro.bridges) {
+    const bmx = cx + (br.x1 + br.x2) * 0.5;
+    const bmz = cz + (br.z1 + br.z2) * 0.5;
+    const alreadyBridged = streets.some(
+      (s) => s.isBridge && Math.hypot((s.x1 + s.x2) * 0.5 - bmx, (s.z1 + s.z2) * 0.5 - bmz) < 42,
+    );
+    if (!alreadyBridged) {
       addSeg(cx + br.x1, cz + br.z1, cx + br.x2, cz + br.z2, br.width, br.width, 'arterial', true, br.style);
     }
+  }
+  for (const jn of tensorGraph.junctions) {
+    junctions.push({
+      x: cx + jn.x,
+      z: cz + jn.z,
+      width: jn.width,
+      depth: jn.depth,
+      rotY: jn.rotY,
+      kind: jn.kind,
+    });
+  }
 
-    addPolyRoad([[-168, -124], [-96, -120], [-18, -118], [58, -124]], 16, 'street');
-    addPolyRoad([[-174, -22], [-110, -24], [-54, -22], [-16, -24], [6, -26]], 18, 'street');
-    addPolyRoad([[-174, 34], [-110, 34], [-86, 34], [-18, 36], [8, 36]], 16, 'street');
-    addPolyRoad([[-170, 86], [-110, 86], [-62, 86], [-14, 72]], 16, 'street');
-    addPolyRoad([[-158, 134], [-96, 136], [-12, 112]], 15, 'street');
-
-    addPolyRoad([[-144, -152], [-138, -94], [-134, -22], [-136, 48], [-140, 128]], 16, 'street');
-    addPolyRoad([[-96, -156], [-104, -92], [-96, -24], [-92, 34], [-96, 98], [-98, 158]], 17, 'street');
-    addPolyRoad([[-56, -148], [-58, -94]], 14, 'street');
-    addPolyRoad([[-54, 34], [-54, 86], [-52, 146]], 14, 'street');
-    addPolyRoad([[8, -36], [4, -4], [8, 42], [18, 92], [14, 148]], 16, 'street');
-
-    addPolyRoad([[68, -46], [48, -6], [56, 42], [86, 94], [96, 112], [116, 162]], 18, 'street');
-    addPolyRoad([[68, -46], [116, -72], [156, -98], [188, -126]], 18, 'street');
-    addPolyRoad([[92, 16], [146, -24], [184, -62]], 16, 'street');
-    addPolyRoad([[96, 112], [154, 108], [192, 108]], 16, 'street');
-
-    addSeg(cx - 118, cz + 6, cx - 94, cz + 6, 10, 10, 'alley');
-    addSeg(cx - 74, cz + 58, cx - 54, cz + 58, 10, 10, 'alley');
-    addSeg(cx - 122, cz - 142, cx - 96, cz - 140, 10, 10, 'alley');
-
-    metroLines.push(
-      {
-        id: 'metro_line2',
-        color: '#2f9e44',
-        points: [
-          [cx - 170, cz + 4], [cx - 96, cz + 4], [cx - 54, cz + 4],
-          [cx - 16, cz + 4], [cx + 62, cz - 12], [cx + 126, cz + 52], [cx + 188, cz + 120],
-        ],
-        stations: [
-          { x: cx - 134, z: cz + 4, name: '静安寺' },
-          { x: cx - 54, z: cz + 4, name: '人民广场' },
-          { x: cx + 62, z: cz - 12, name: '陆家嘴' },
-          { x: cx + 126, z: cz + 52, name: '世纪大道' },
-        ],
-      },
-      {
-        id: 'metro_line1',
-        color: '#ae3ec9',
-        points: [
-          [cx - 14, cz - 170], [cx - 16, cz - 96], [cx - 18, cz + 12],
-          [cx - 54, cz + 36], [cx - 96, cz + 86], [cx - 156, cz + 150],
-        ],
-        stations: [
-          { x: cx - 16, z: cz - 96, name: '上海火车站' },
-          { x: cx - 96, z: cz + 86, name: '徐家汇' },
-        ],
-      },
-    );
-  } else {
-    // ==================== PROCEDURAL UNIQUE CITY GENERATOR FOR EVERY OTHER REAL CITY ON EARTH! ====================
-    // Random urban orientation, curved golden arterials, irregular organic block grid, unique river bridges, parks & metro lines!
-    const gridTilt = (rng() - 0.5) * 0.55;
-    const cosG = Math.cos(gridTilt);
-    const sinG = Math.sin(gridTilt);
-    const rotPt = (lx: number, lz: number): [number, number] => [
-      Math.round(lx * cosG - lz * sinG),
-      Math.round(lx * sinG + lz * cosG),
-    ];
-
-    // 1. Place 2 unique lush parks on guaranteed dry land away from this city's river!
-    for (let pi = 0; pi < 2; pi++) {
-      for (let tries = 0; tries < 24; tries++) {
-        const ang = (pi === 0 ? 0.4 : 3.4) + (rng() - 0.5) * 1.4;
-        const dist = pi === 0 ? 32 + rng() * 28 : 96 + rng() * 44;
-        const px = Math.round(Math.cos(ang) * dist);
-        const pz = Math.round(Math.sin(ang) * dist);
-        if (getShanghaiRiverSignedDist(px, pz, cleanCityId) > 30) {
+  // Place 2 lush urban parks STRICTLY INSIDE dry road-free blocks (ZERO park footpath ever extending onto an asphalt road!)
+  const parkSpotClear = (wx: number, wz: number, pw: number, pd: number) => {
+    const halfDiag = Math.hypot(pw * 0.5, pd * 0.5);
+    if (getShanghaiRiverSignedDist(wx - cx, wz - cz, cleanCityId) < halfDiag + 8) return false;
+    for (const st of streets) {
+      if (distToSeg(wx, wz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.5 + halfDiag + 3.5) return false;
+    }
+    for (const pk of parks) {
+      if (Math.hypot(wx - pk.x, wz - pk.z) < 64) return false;
+    }
+    return true;
+  };
+  const parkNames =
+    cleanCityId === 'shanghai'
+      ? ['人民广场公园', '世纪公园']
+      : [`${anchor.name}中心公园`, `${anchor.name}滨水公园`];
+  for (let pi = 0; pi < 2; pi++) {
+    let placed = false;
+    for (const [pw, pd] of [
+      [34, 30],
+      [26, 24],
+      [22, 20],
+    ]) {
+      if (placed) break;
+      for (let tries = 0; tries < 60; tries++) {
+        const ang = (pi === 0 ? 0.3 : 3.3) + (tries / 60) * Math.PI * 2 + (rng() - 0.5) * 0.4;
+        const dist = pi === 0 ? 38 + (tries % 5) * 14 : 78 + (tries % 6) * 14;
+        const wx = Math.round(cx + Math.cos(ang) * dist);
+        const wz = Math.round(cz + Math.sin(ang) * dist);
+        if (parkSpotClear(wx, wz, pw, pd)) {
           parks.push({
             id: `${anchor.id}_park_${pi}`,
-            name: pi === 0 ? `${anchor.name}中心公园` : `${anchor.name}滨水绿地`,
-            x: cx + px,
-            z: cz + pz,
-            w: 44 + Math.round(rng() * 18),
-            d: 38 + Math.round(rng() * 16),
+            name: parkNames[pi],
+            x: wx,
+            z: wz,
+            w: pw,
+            d: pd,
             hasPond: true,
             hasFountain: pi === 0,
           });
+          placed = true;
           break;
         }
       }
     }
-    if (parks.length === 0) {
-      parks.push({ id: `${anchor.id}_park_0`, name: `${anchor.name}中心公园`, x: cx - 42, z: cz + 12, w: 46, d: 40, hasPond: true, hasFountain: true });
-    }
-
-    // 2. Two sweeping curved golden arterial boulevards + a diagonal bypass unique to this city!
-    const bend1 = (rng() - 0.5) * 28;
-    const bend2 = (rng() - 0.5) * 32;
-    const art1: [number, number][] = [];
-    const art2: [number, number][] = [];
-    for (let s = -170; s <= 170; s += 56) {
-      art1.push(rotPt(-12 + Math.sin(s * 0.012) * bend1, s));
-      art2.push(rotPt(s, -8 + Math.cos(s * 0.013) * bend2));
-    }
-    addPolyRoad(art1, 34, 'arterial', 26);
-    addPolyRoad(art2, 32, 'arterial', 24);
-    // Diagonal grand avenue unique to this city
-    const diagSign = rng() > 0.5 ? 1 : -1;
-    addPolyRoad(
-      [
-        rotPt(-140 * diagSign, -110),
-        rotPt(-55 * diagSign, -35),
-        rotPt(45 * diagSign, 45),
-        rotPt(155 * diagSign, 130),
-      ],
-      30,
-      'arterial',
-      22,
-    );
-
-    // 3. Add this city's unique cross-river bridges!
-    for (const br of hydro.bridges) {
-      addSeg(cx + br.x1, cz + br.z1, cx + br.x2, cz + br.z2, br.width, br.width, 'arterial', true, br.style);
-    }
-
-    // 4. Irregular organic neighborhood street grid (varied spacing per city, avoiding river water!)
-    const colOffsets = [-136, -86 + Math.round((rng() - 0.5) * 18), 46 + Math.round((rng() - 0.5) * 18), 108 + Math.round((rng() - 0.5) * 16)];
-    const rowOffsets = [-126, -68 + Math.round((rng() - 0.5) * 18), 54 + Math.round((rng() - 0.5) * 18), 116 + Math.round((rng() - 0.5) * 16)];
-    for (const ox of colOffsets) {
-      const pts: [number, number][] = [];
-      for (let z = -150; z <= 150; z += 50) {
-        const p = rotPt(ox + Math.round((rng() - 0.5) * 10), z);
-        if (getShanghaiRiverSignedDist(p[0], p[1], cleanCityId) > 6) pts.push(p);
-        else if (pts.length >= 2) {
-          addPolyRoad(pts, 15, 'street');
-          pts.length = 0;
-        } else pts.length = 0;
-      }
-      if (pts.length >= 2) addPolyRoad(pts, 15, 'street');
-    }
-    for (const oz of rowOffsets) {
-      const pts: [number, number][] = [];
-      for (let x = -150; x <= 150; x += 50) {
-        const p = rotPt(x, oz + Math.round((rng() - 0.5) * 10));
-        if (getShanghaiRiverSignedDist(p[0], p[1], cleanCityId) > 6) pts.push(p);
-        else if (pts.length >= 2) {
-          addPolyRoad(pts, 15, 'street');
-          pts.length = 0;
-        } else pts.length = 0;
-      }
-      if (pts.length >= 2) addPolyRoad(pts, 15, 'street');
-    }
-
-    // 5. Unique colored metro lines for this city!
-    const metroPalette = ['#2f9e44', '#ae3ec9', '#1c7ed6', '#e8590c'];
-    const cA = metroPalette[Math.floor(rng() * metroPalette.length)];
-    const cB = metroPalette[(Math.floor(rng() * 3) + 1) % metroPalette.length];
-    const mPts1 = art1.map(([x, z]) => [cx + x, cz + z] as [number, number]);
-    const mPts2 = art2.map(([x, z]) => [cx + x, cz + z] as [number, number]);
-    metroLines.push(
-      {
-        id: `${cleanCityId}_m1`,
-        color: cA,
-        points: mPts1,
-        stations: [
-          { x: mPts1[1][0], z: mPts1[1][1], name: `${anchor.name}北站` },
-          { x: mPts1[3][0], z: mPts1[3][1], name: `${anchor.name}中心` },
-          { x: mPts1[5][0], z: mPts1[5][1], name: `${anchor.name}南站` },
-        ],
-      },
-      {
-        id: `${cleanCityId}_m2`,
-        color: cB,
-        points: mPts2,
-        stations: [
-          { x: mPts2[2][0], z: mPts2[2][1], name: `${anchor.name}西站` },
-          { x: mPts2[4][0], z: mPts2[4][1], name: `${anchor.name}东站` },
-        ],
-      },
-    );
   }
+
+  // Colored Urban Metro Lines following the city's actual tensor arterial axes!
+  const metroPalette = ['#2f9e44', '#ae3ec9', '#1c7ed6', '#e8590c'];
+  const mCol1 = cleanCityId === 'shanghai' ? '#2f9e44' : metroPalette[seedVal % metroPalette.length];
+  const mCol2 = cleanCityId === 'shanghai' ? '#ae3ec9' : metroPalette[(seedVal + 1) % metroPalette.length];
+  const cosB = Math.cos(baseGridAngle);
+  const sinB = Math.sin(baseGridAngle);
+  const m1Pts: [number, number][] = [-150, -75, 0, 75, 150].map((s) => [
+    cx + Math.round(s * cosB),
+    cz + Math.round(s * sinB),
+  ]);
+  const m2Pts: [number, number][] = [-145, -72, 0, 72, 145].map((s) => [
+    cx + Math.round(-s * sinB),
+    cz + Math.round(s * cosB),
+  ]);
+  metroLines.push(
+    {
+      id: `${cleanCityId}_m1`,
+      color: mCol1,
+      points: m1Pts,
+      stations: [
+        { x: m1Pts[1][0], z: m1Pts[1][1], name: cleanCityId === 'shanghai' ? '静安寺' : `${anchor.name}西站` },
+        { x: m1Pts[2][0], z: m1Pts[2][1], name: cleanCityId === 'shanghai' ? '人民广场' : `${anchor.name}中心` },
+        { x: m1Pts[3][0], z: m1Pts[3][1], name: cleanCityId === 'shanghai' ? '陆家嘴' : `${anchor.name}东站` },
+      ],
+    },
+    {
+      id: `${cleanCityId}_m2`,
+      color: mCol2,
+      points: m2Pts,
+      stations: [
+        { x: m2Pts[1][0], z: m2Pts[1][1], name: cleanCityId === 'shanghai' ? '上海火车站' : `${anchor.name}北站` },
+        { x: m2Pts[3][0], z: m2Pts[3][1], name: cleanCityId === 'shanghai' ? '徐家汇' : `${anchor.name}南站` },
+      ],
+    },
+  );
 
   // 6B. Auto-Detect Clean Road Intersections (Crossroads & Major Junctions) so EVERY crossing gets a crisp zebra-crosswalk pad & traffic signals!
   const segIntersect = (
@@ -582,7 +563,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       if (!hit) continue;
       if (getShanghaiRiverSignedDist(hit.x - cx, hit.z - cz, cleanCityId) < 12) continue;
       if (parks.some((pk) => Math.abs(hit.x - pk.x) < pk.w * 0.45 && Math.abs(hit.z - pk.z) < pk.d * 0.45)) continue;
-      if (junctions.some((ex) => Math.hypot(ex.x - hit.x, ex.z - hit.z) < 26)) continue;
+      if (junctions.some((ex) => Math.hypot(ex.x - hit.x, ex.z - hit.z) < 56)) continue;
       const isMajor = a.kind === 'arterial' || b.kind === 'arterial';
       const padW = isMajor ? 36 : 22;
       const primary = a.kind === 'arterial' ? a : b;

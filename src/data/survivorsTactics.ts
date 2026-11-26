@@ -628,8 +628,8 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number): number {
     if (isOnShanghaiBridgeLocal(wx, wz, geoCityId)) {
       return Math.max(ground + 0.16, 1.85);
     }
-    // 2. Dry paved city avenues & parks sit flush at ground + 0.16 (strictly above arterial=0.10..0.112 & junction=0.13)
-    if (Math.hypot(wx, wz) < 210 && ground >= WATER_LEVEL_3D) {
+    // 2. Dry paved city avenues & parks sit flush at ground + 0.16 (strictly above arterial=0.10..0.112 & junction=0.135)
+    if (Math.hypot(wx, wz) < 360 && ground >= WATER_LEVEL_3D) {
       return ground + 0.16;
     }
   }

@@ -605,6 +605,7 @@ interface TownGroundTex {
   awningRed: THREE.CanvasTexture;
   awningBlue: THREE.CanvasTexture;
   awningGold: THREE.CanvasTexture;
+  urbanShrubs: THREE.CanvasTexture[];
 }
 
 let CACHED_GROUND_TEX: TownGroundTex | null = null;
@@ -970,6 +971,101 @@ function getGroundTex(): TownGroundTex {
       }
     }, 2, 1);
 
+  // 8 Crisp Black-Outlined GBA Pixel-Art Urban Landscaping Shrubs (ZERO fallen wilderness logs!)
+  // Matches the user's preferred crisp pixel bush style: Boxwood, Golden Privet, Red-Tip Photinia, Pink Azalea, Yellow Forsythia, Blue Hydrangea, Trimmed Hedge & Deep Pine Mound!
+  const makeUrbanShrub = (
+    dark: string,
+    mid: string,
+    light: string,
+    hi: string,
+    shape: 'round' | 'hedge' | 'wide',
+    bloom?: string,
+  ) =>
+    makePixelTex(
+      24,
+      20,
+      (ctx) => {
+        const px = (x: number, y: number, w: number, h: number, col: string) => {
+          ctx.fillStyle = col;
+          ctx.fillRect(x, y, w, h);
+        };
+        const fillBlob = (mask: [number, number, number, number][], col: string) => {
+          ctx.fillStyle = col;
+          for (const [x, y, w, h] of mask) ctx.fillRect(x, y, w, h);
+        };
+        if (shape === 'hedge') {
+          // Crisp trimmed urban rectangular box hedge with 1px black pixel outline
+          px(2, 5, 20, 14, '#141923');
+          px(3, 4, 18, 15, '#141923');
+          px(3, 6, 18, 12, dark);
+          px(4, 5, 16, 11, mid);
+          px(4, 5, 16, 5, light);
+          px(6, 5, 6, 2, hi);
+          px(14, 6, 4, 2, hi);
+          // Leaf cluster texture accents
+          px(6, 11, 3, 2, dark);
+          px(13, 12, 3, 2, dark);
+          px(10, 9, 2, 1, dark);
+        } else if (shape === 'wide') {
+          // Lush double-mound flowering city bush
+          const out: [number, number, number, number][] = [
+            [2, 9, 20, 9],
+            [4, 6, 16, 12],
+            [6, 4, 5, 4],
+            [13, 5, 5, 4],
+          ];
+          fillBlob(out, '#141923');
+          px(3, 10, 18, 7, dark);
+          px(5, 7, 14, 9, mid);
+          px(7, 5, 4, 4, light);
+          px(13, 6, 4, 4, light);
+          px(5, 8, 14, 4, light);
+          px(7, 6, 3, 2, hi);
+          px(14, 7, 2, 2, hi);
+          px(7, 13, 3, 2, dark);
+          px(14, 12, 3, 2, dark);
+        } else {
+          // Classic round GBA pixel bush (exact Screenshot 3 aesthetic!)
+          const out: [number, number, number, number][] = [
+            [4, 8, 16, 10],
+            [6, 5, 12, 14],
+            [8, 3, 8, 16],
+          ];
+          fillBlob(out, '#141923');
+          px(5, 9, 14, 8, dark);
+          px(7, 6, 10, 10, mid);
+          px(9, 4, 6, 6, light);
+          px(6, 7, 12, 4, light);
+          px(8, 5, 3, 2, hi);
+          px(12, 6, 2, 1, hi);
+          px(8, 12, 2, 2, dark);
+          px(13, 12, 2, 2, dark);
+        }
+        if (bloom) {
+          px(6, 8, 2, 2, bloom);
+          px(11, 6, 2, 2, bloom);
+          px(15, 9, 2, 2, bloom);
+          px(9, 11, 2, 2, bloom);
+          px(14, 12, 2, 2, bloom);
+          px(7, 8, 1, 1, '#ffffff');
+          px(12, 6, 1, 1, '#ffffff');
+        }
+      },
+      1,
+      1,
+    );
+
+  const urbanShrubs: THREE.CanvasTexture[] = [
+    makeUrbanShrub('#1c6b2d', '#2ca03c', '#59cf48', '#a3f062', 'round'),           // 1. 翠绿冬青球
+    makeUrbanShrub('#5e8c1e', '#8ec42a', '#c3e848', '#ebff85', 'round'),           // 2. 金叶女贞球
+    makeUrbanShrub('#5e1928', '#9c263b', '#d94854', '#ff8787', 'wide'),            // 3. 红叶石楠/红继木
+    makeUrbanShrub('#1d6930', '#2e9c44', '#56c75e', '#94eb88', 'wide', '#ff6b9e'), // 4. 粉红杜鹃花丛
+    makeUrbanShrub('#226b2d', '#339e3f', '#5cc954', '#9bf084', 'round', '#ffe066'),// 5. 迎春黄花灌木
+    makeUrbanShrub('#1a5934', '#28854c', '#45b56c', '#82e09e', 'wide', '#74c0fc'), // 6. 蓝白绣球花丛
+    makeUrbanShrub('#185c29', '#278f3c', '#4cbf52', '#8ce87c', 'hedge'),           // 7. 修剪方绿篱
+    makeUrbanShrub('#14472c', '#1e7044', '#339c5f', '#66cc88', 'round'),           // 8. 深绿常青矮松
+  ];
+
   CACHED_GROUND_TEX = {
     cobblePlaza,
     roadTile,
@@ -998,6 +1094,7 @@ function getGroundTex(): TownGroundTex {
     awningRed: makeAwning('#e03131', '#fff5f5'),
     awningBlue: makeAwning('#1c7ed6', '#e7f5ff'),
     awningGold: makeAwning('#f08c00', '#fff9db'),
+    urbanShrubs,
   };
   return CACHED_GROUND_TEX;
 }
@@ -2177,68 +2274,69 @@ export function buildProceduralTown3D(
     const isNearAnyJunction = (wx: number, wz: number, rad = 20) =>
       layout.junctions.some((jn) => Math.hypot(jn.x - wx, jn.z - wz) < rad);
 
-    if (seg.kind === 'arterial' && segLen >= 18) {
-      // A. Central Green Median: lush alternating rhythm of Tall Pixel Trees (~14m) + Dense Small Bushes/Flowers (~3.8m)!
-      const medianSteps = Math.max(3, Math.floor((segLen - 8) / 3.8));
+    if (seg.kind === 'arterial' && segLen >= 16) {
+      // A. Central Green Median: continuous tight hedge row (~2.2m spacing!) of 8 varied GBA urban shrubs + tall shade trees every ~13m!
+      const medianSteps = Math.max(4, Math.floor((segLen - 4) / 2.2));
       for (let mi = 0; mi < medianSteps; mi++) {
-        const f = 0.08 + (medianSteps > 1 ? (mi / (medianSteps - 1)) * 0.84 : 0.42);
+        const f = 0.06 + (medianSteps > 1 ? (mi / (medianSteps - 1)) * 0.88 : 0.44);
         const mx = seg.x1 + dirX * (segLen * f);
         const mz = seg.z1 + dirZ * (segLen * f);
-        if (isNearAnyJunction(mx, mz, 21) || isBlockedForGreenery(mx, mz, seg)) continue;
+        if (isNearAnyJunction(mx, mz, 18) || isBlockedForGreenery(mx, mz, seg)) continue;
         const my = localGroundY(mx, mz) + 0.14;
-        if (mi % 4 === 1) {
+        if (mi % 6 === 2) {
           const treeTex = floraTex.treeSprites[(mi + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
           spawnPixelGreenery(treeTex, mx - centerX, my, mz - centerZ, 5.2, 6.2);
         } else {
-          const isFlower = mi % 4 === 3;
-          const shrubTex = isFlower
-            ? floraTex.flowers[mi % floraTex.flowers.length] ?? floraTex.flower
-            : floraTex.bushes[mi % floraTex.bushes.length] ?? floraTex.bush;
-          spawnPixelGreenery(shrubTex, mx - centerX, my, mz - centerZ, isFlower ? 1.85 : 2.15, isFlower ? 1.55 : 1.75);
+          // Rich landscaping band pattern (alternating green boxwood, red photinia, golden privet & flowering azalea!)
+          const shrubIdx = (Math.floor(mi / 2) + segIdx + styleIdx) % tex.urbanShrubs.length;
+          spawnPixelGreenery(tex.urbanShrubs[shrubIdx], mx - centerX, my, mz - centerZ, 2.15, 1.75);
         }
       }
 
-      // B. Both Outer Boulevard Sidewalk Verges: spaced tall shade trees + continuous small roadside shrubs!
-      const vergeOff = seg.width * 0.5 - 1.5;
-      const sideSteps = Math.max(3, Math.floor((segLen - 8) / 4.4));
+      // B. BOTH Roadside Curb Verges (right along the edge between sidewalk & asphalt!): continuous tight urban shrub hedge (~2.3m) + tall shade trees (~14m)!
+      const vergeOff = seg.width * 0.5 - 3.9;
+      const sideSteps = Math.max(4, Math.floor((segLen - 4) / 2.3));
       for (let si = 0; si < sideSteps; si++) {
-        const f = 0.08 + (sideSteps > 1 ? (si / (sideSteps - 1)) * 0.84 : 0.42);
+        const f = 0.06 + (sideSteps > 1 ? (si / (sideSteps - 1)) * 0.88 : 0.44);
         const sx = seg.x1 + dirX * (segLen * f);
         const sz = seg.z1 + dirZ * (segLen * f);
         for (const side of [-1, 1]) {
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;
-          if (isNearAnyJunction(tx, tz, 22) || isBlockedForGreenery(tx, tz, seg)) continue;
+          if (isNearAnyJunction(tx, tz, 19) || isBlockedForGreenery(tx, tz, seg)) continue;
           const ty = localGroundY(tx, tz) + 0.14;
-          if (si % 3 === 1) {
+          if (si % 6 === 1) {
             const treeTex = floraTex.treeSprites[(si + styleIdx + (side > 0 ? 1 : 0)) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
-            spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.8, 5.8);
+            spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.9, 5.9);
           } else {
-            const bushTex = floraTex.bushes[(si + (side > 0 ? 1 : 0)) % floraTex.bushes.length] ?? floraTex.bush;
-            spawnPixelGreenery(bushTex, tx - centerX, ty, tz - centerZ, 1.85, 1.55);
+            const shrubIdx = (Math.floor(si / 2) + (side > 0 ? 2 : 0) + segIdx) % tex.urbanShrubs.length;
+            spawnPixelGreenery(tex.urbanShrubs[shrubIdx], tx - centerX, ty, tz - centerZ, 1.95, 1.6);
           }
         }
       }
     }
 
-    // Collector Streets: Rich alternating street trees + dense small roadside shrub hedges on BOTH sides!
+    // Collector Streets: Continuous neat urban shrub hedges (~2.5m) + spaced shade trees (~15m) on BOTH curb verges (ZERO logs!)
     if (seg.kind === 'street' && segLen >= 14) {
-      const vergeOff = seg.width * 0.5 - 1.5;
-      const stepCount = Math.max(3, Math.floor((segLen - 6) / 4.6));
+      const vergeOff = seg.width * 0.5 - 2.3;
+      const stepCount = Math.max(4, Math.floor((segLen - 4) / 2.5));
       for (let ti = 0; ti < stepCount; ti++) {
-        const tFrac = 0.10 + (stepCount > 1 ? (ti / (stepCount - 1)) * 0.80 : 0.4);
+        const tFrac = 0.08 + (stepCount > 1 ? (ti / (stepCount - 1)) * 0.84 : 0.42);
         const sx = seg.x1 + dirX * (segLen * tFrac);
         const sz = seg.z1 + dirZ * (segLen * tFrac);
         for (const side of [-1, 1]) {
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;
-          if (isNearAnyJunction(tx, tz, 16) || isBlockedForGreenery(tx, tz, seg)) continue;
+          if (isNearAnyJunction(tx, tz, 15) || isBlockedForGreenery(tx, tz, seg)) continue;
           const ty = localGroundY(tx, tz) + 0.14;
-          const isTree = ti % 3 === 0;
-          const texPick = isTree
-            ? floraTex.treeSprites[(ti + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite
-            : floraTex.bushes[ti % floraTex.bushes.length] ?? floraTex.bush;
-          spawnPixelGreenery(texPick, tx - centerX, ty, tz - centerZ, isTree ? 4.5 : 1.75, isTree ? 5.3 : 1.45);
+          const isTree = ti % 6 === 0;
+          if (isTree) {
+            const treeTex = floraTex.treeSprites[(ti + styleIdx) % floraTex.treeSprites.length] ?? floraTex.treeSprite;
+            spawnPixelGreenery(treeTex, tx - centerX, ty, tz - centerZ, 4.5, 5.4);
+          } else {
+            const shrubIdx = (Math.floor(ti / 2) + (side > 0 ? 3 : 0) + segIdx) % tex.urbanShrubs.length;
+            spawnPixelGreenery(tex.urbanShrubs[shrubIdx], tx - centerX, ty, tz - centerZ, 1.75, 1.45);
+          }
         }
       }
     }
@@ -2419,7 +2517,7 @@ export function buildProceduralTown3D(
 
     // Park stone border (py + 0.05) < lush lawn (py + 0.085) < cross footpaths (py + 0.125) < central plaza (py + 0.145)
     // With clean 3.5-4cm physical elevation steps & NO polygonOffset on lawn, footpaths NEVER disappear when walking close!
-    const border = new THREE.Mesh(new THREE.PlaneGeometry(pk.w + 3.2, pk.d + 3.2), parkBorderMat);
+    const border = new THREE.Mesh(new THREE.PlaneGeometry(pk.w + 1.6, pk.d + 1.6), parkBorderMat);
     border.rotation.x = -Math.PI / 2;
     border.position.set(px, py + 0.05, pz);
     border.receiveShadow = true;
@@ -2431,13 +2529,13 @@ export function buildProceduralTown3D(
     lawn.receiveShadow = true;
     lawn.renderOrder = 2;
 
-    const pathEW = new THREE.Mesh(new THREE.PlaneGeometry(pk.w + 2.4, 5.6), parkWalkMat);
+    const pathEW = new THREE.Mesh(new THREE.PlaneGeometry(pk.w - 0.4, 5.0), parkWalkMat);
     pathEW.rotation.x = -Math.PI / 2;
     pathEW.position.set(px, py + 0.125, pz);
     pathEW.receiveShadow = true;
     pathEW.renderOrder = 3;
 
-    const pathNS = new THREE.Mesh(new THREE.PlaneGeometry(5.6, pk.d + 2.4), parkWalkMat);
+    const pathNS = new THREE.Mesh(new THREE.PlaneGeometry(5.0, pk.d - 0.4), parkWalkMat);
     pathNS.rotation.x = -Math.PI / 2;
     pathNS.position.set(px, py + 0.13, pz);
     pathNS.receiveShadow = true;

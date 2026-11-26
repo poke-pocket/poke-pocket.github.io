@@ -332,17 +332,20 @@ export function classifyRealEarthPixelColor(
     return hillShadeMeters < -45 ? '#d0e2f0' : '#f4f9fc';
   }
 
-  // 3. True Latitude-Aware Permanent Snowline in REAL METERS!
-  // Subtropical (<28°N e.g. Yunnan): snow only > 4800m; Mid-latitude West China (28..44°N): > 4450m;
-  // Maritime Japan (lng > 128): > 3550m (so Mt. Fuji 3776m gets its white cap while Zhejiang 1200m hills stay green!).
+  // 3. True Latitude & Region-Aware Permanent Snowline in REAL METERS!
+  // On the dry rain-shadow Qinghai-Tibet Plateau (average elevation 4,300-4,900m!), vast areas are ALPINE GRASSLAND —
+  // real permanent glacier snowline there is ~5,550m (Himalayas, Kunlun, Nyenchen Tanglha, Karakoram peaks ONLY!).
+  const inTibetanPlateau = lat >= 27.2 && lat <= 38.2 && nLng >= 77.0 && nLng <= 103.5;
   const isJapanMaritime = lat > 32 && lat < 45 && nLng > 128 && nLng < 147;
-  const snowlineM = isJapanMaritime
-    ? 3500
-    : absLat < 28
-      ? 4850
-      : absLat < 44
-        ? 4450 - (absLat - 28) * 35
-        : Math.max(1500, 3890 - (absLat - 44) * 95);
+  const snowlineM = inTibetanPlateau
+    ? 5550
+    : isJapanMaritime
+      ? 3550
+      : absLat < 28
+        ? 5000
+        : absLat < 45
+          ? 4500 - (absLat - 28) * 18
+          : Math.max(1650, 4190 - (absLat - 45) * 95);
 
   if (meters >= snowlineM) {
     return hillShadeMeters < -80 ? '#c4d8e8' : '#f2f8fc';
@@ -364,23 +367,34 @@ export function classifyRealEarthPixelColor(
   const inUsSouthwest = lat >= 27.0 && lat <= 37.5 && nLng >= -117.5 && nLng <= -103.5 && meters < 1800;
 
   if (inTaklamakan || inSaharaArabia || inAusOutback) {
-    // Golden sand sea dunes with subtle wind/hillshade contrast
     if (hillShadeMeters > 35) return '#f2d894';
     if (hillShadeMeters < -35) return '#cfa052';
     return dither ? '#e8c474' : '#deb462';
   }
   if (inJunggarDesert || inGobiDesert || inQaidam || inCentralAsiaDesert || inUsSouthwest) {
-    // Rocky Gobi & arid gravel basin (warm tan / ochre-sand)
     if (hillShadeMeters > 45) return '#dfd09c';
     if (hillShadeMeters < -45) return '#b59a69';
     return dither ? '#d1ba82' : '#c4aa74';
   }
 
-  // 6. Real Tibetan Plateau Alpine Steppe (28..37°N, 78..102°E, 3000..4450m) — tawny highland meadow, NOT solid snow!
-  if (lat >= 27.5 && lat <= 37.5 && nLng >= 77.5 && nLng <= 102.5 && meters >= 2900) {
-    if (hillShadeMeters > 80) return '#c2b982';
-    if (hillShadeMeters < -80) return '#857d56';
-    return dither ? '#a8a56e' : '#969660';
+  // 6. Real Qinghai-Tibet Plateau Biomes (Mostly LUSH ALPINE GRASSLANDS & HIGHLAND MEADOWS, NOT snow!)
+  if (inTibetanPlateau && meters >= 2600) {
+    if (meters < 4150) {
+      // Eastern Tibet, Ruoergai, Qinghai Lake & Yarlung valleys: vibrant lush green plateau grassland!
+      if (hillShadeMeters > 75) return '#84c462';
+      if (hillShadeMeters < -75) return '#4b823f';
+      return dither ? '#6eb054' : '#60a34a';
+    }
+    if (meters < 4950) {
+      // Naqu & Changtang vast plateau grasslands: natural golden-emerald alpine steppe grass!
+      if (hillShadeMeters > 80) return '#a9bf6b';
+      if (hillShadeMeters < -80) return '#6c8044';
+      return dither ? '#8ea858' : '#7f994d';
+    }
+    // 4950..5550m: rocky high alpine passes & mountain tundra below glacier snowline
+    if (hillShadeMeters > 85) return '#b8ab86';
+    if (hillShadeMeters < -85) return '#6b6352';
+    return dither ? '#998e70' : '#877e63';
   }
 
   // 7. Loess Plateau (黄土高原) & Dry Inner Mongolia Steppe (内蒙古草原)
@@ -474,8 +488,8 @@ export function sampleGeoTerrainHeight3D(
   // Carves the real S-curving Huangpu River & Suzhou Creek water channel cleanly through downtown Shanghai!
   if (!preferMacro) {
     const cityDist = Math.hypot(wx, wz);
-    if (cityDist < 224) {
-      // Smooth river channel carving for the active city's unique procedural river!
+    if (cityDist < 380) {
+      // Smooth river channel carving for the active city's real river!
       const activeCityId = activeOrigin.startCityId ?? 'shanghai';
       const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
       const riverElev = -1.65;
@@ -488,10 +502,10 @@ export function sampleGeoTerrainHeight3D(
         const smoothBank = bankT * bankT * (3 - 2 * bankT);
         cityTargetY = riverElev * (1 - smoothBank) + dryCityY * smoothBank;
       }
-      if (cityDist <= 184) {
+      if (cityDist <= 330) {
         return cityTargetY;
       }
-      const outerT = (cityDist - 184) / 40;
+      const outerT = (cityDist - 330) / 50;
       const smoothOuter = outerT * outerT * (3 - 2 * outerT);
       elev = cityTargetY * (1 - smoothOuter) + elev * smoothOuter;
     }
@@ -848,6 +862,81 @@ export const PROVINCIAL_AND_WORLD_CAPITALS: MapCapitalCity[] = [
   { id: 'losangeles', name: '洛杉矶', lat: 34.0522, lng: -118.2437, tier: 'world' },
   { id: 'sydney', name: '悉尼', lat: -33.8688, lng: 151.2093, tier: 'world' },
 ];
+
+/**
+ * Extract the ACTUAL real-world river segments (from REAL_WORLD_RIVERS) passing through or near a city,
+ * projected into local (dx, dz) world coordinates around (cityLat, cityLng) so the 3D city river
+ * and the 2D real-Earth map river are 100% ONE SINGLE ALIGNED WATERWAY!
+ */
+export function getLocalRealRiversForCity(
+  cityLat: number,
+  cityLng: number,
+  maxRadius = 260,
+): { id: string; name: string; width: number; points: [number, number][] }[] {
+  const kmPerDegLng = Math.max(12, KM_PER_DEG_LAT * Math.cos((cityLat * Math.PI) / 180));
+  const toLocal = (lat: number, lng: number): [number, number] => [
+    (lng - cityLng) * kmPerDegLng * GEO_UNITS_PER_KM,
+    -(lat - cityLat) * KM_PER_DEG_LAT * GEO_UNITS_PER_KM,
+  ];
+  const results: { id: string; name: string; width: number; points: [number, number][] }[] = [];
+
+  for (const riv of REAL_WORLD_RIVERS) {
+    // Subdivide raw GPS waypoints into fine ~20m local samples and keep contiguous stretches near the city
+    const localRaw = riv.points.map(([lat, lng]) => toLocal(lat, lng));
+    const dense: [number, number][] = [];
+    for (let i = 0; i < localRaw.length - 1; i++) {
+      const [ax, az] = localRaw[i];
+      const [bx, bz] = localRaw[i + 1];
+      // Quick bounding box rejection
+      if (
+        Math.min(ax, bx) > maxRadius + 80 ||
+        Math.max(ax, bx) < -(maxRadius + 80) ||
+        Math.min(az, bz) > maxRadius + 80 ||
+        Math.max(az, bz) < -(maxRadius + 80)
+      ) {
+        continue;
+      }
+      const segLen = Math.hypot(bx - ax, bz - az);
+      const steps = Math.max(2, Math.ceil(segLen / 24));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const px = ax + (bx - ax) * t;
+        const pz = az + (bz - az) * t;
+        if (Math.hypot(px, pz) <= maxRadius) {
+          if (dense.length === 0 || Math.hypot(px - dense[dense.length - 1][0], pz - dense[dense.length - 1][1]) > 14) {
+            dense.push([Math.round(px), Math.round(pz)]);
+          }
+        }
+      }
+    }
+    if (dense.length >= 2) {
+      const riverWidth = Math.max(20, Math.min(34, Math.round(riv.widthKm * 4.5 + 12)));
+      results.push({ id: riv.id, name: riv.name, width: riverWidth, points: dense });
+    }
+  }
+  return results;
+}
+
+/** Extract real incoming inter-city highway directions (radians) near a city to guide its Tensor Field! */
+export function getLocalRealHighwayAnglesForCity(cityLat: number, cityLng: number): number[] {
+  const kmPerDegLng = Math.max(12, KM_PER_DEG_LAT * Math.cos((cityLat * Math.PI) / 180));
+  const toLocal = (lat: number, lng: number): [number, number] => [
+    (lng - cityLng) * kmPerDegLng * GEO_UNITS_PER_KM,
+    -(lat - cityLat) * KM_PER_DEG_LAT * GEO_UNITS_PER_KM,
+  ];
+  const angles: number[] = [];
+  for (const cor of REAL_WORLD_CORRIDORS) {
+    if (cor.kind === 'ferry') continue;
+    const pts = cor.points.map(([lat, lng]) => toLocal(lat, lng));
+    for (let i = 0; i < pts.length; i++) {
+      if (Math.hypot(pts[i][0], pts[i][1]) < 160) {
+        if (i > 0) angles.push(Math.atan2(pts[i - 1][1] - pts[i][1], pts[i - 1][0] - pts[i][0]));
+        if (i < pts.length - 1) angles.push(Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0]));
+      }
+    }
+  }
+  return angles;
+}
 
 /** Project all Season-1 cities into the current 3D geo world coordinate space for minimap & overland travel! */
 export function getProjectedGeoCities(): {

@@ -1,0 +1,501 @@
+/**
+ * 2D Symmetric Tensor Field + RK2 Streamline Tracing + Intersection Snapping Road Generator
+ * Inspired by Chen et al. (2008) "Interactive Procedural Street Modeling" & Parish & Müller (2001).
+ *
+ * Key properties:
+ * 1. Blends a city's REAL geographic river tangent field, incoming REAL highway directions,
+ *    and local urban grid orientation into a continuous C1 2D symmetric tensor field T(x, z).
+ * 2. Traces major arterial streamlines & minor street streamlines using 2nd-order Runge-Kutta (RK2)
+ *    along the major & minor eigenvectors of T(x, z).
+ * 3. Performs proximity node snapping & segment intersection splitting to produce a clean,
+ *    organic, conflict-free planar road graph with crisp 3-way/4-way junctions and river bridges!
+ */
+
+export interface TensorRiverSpline {
+  id: string;
+  name: string;
+  width: number;
+  points: [number, number][]; // local [dx, dz] around city center (0, 0)
+}
+
+export interface TensorRoadEdge {
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+  width: number;
+  kind: 'arterial' | 'street' | 'alley';
+  isBridge?: boolean;
+  bridgeStyle?: 'nanpu' | 'yangpu' | 'waibaidu';
+}
+
+export interface TensorJunction {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  rotY: number;
+  kind: 'cross' | 'tee';
+}
+
+interface Vec2 {
+  x: number;
+  z: number;
+}
+
+interface Tensor2D {
+  /** Symmetric traceless tensor components: [r*cos(2θ), r*sin(2θ)] */
+  a: number;
+  b: number;
+}
+
+function makeGridTensor(theta: number, weight = 1): Tensor2D {
+  return {
+    a: Math.cos(2 * theta) * weight,
+    b: Math.sin(2 * theta) * weight,
+  };
+}
+
+function majorEigenvector(t: Tensor2D): Vec2 {
+  const len = Math.hypot(t.a, t.b);
+  if (len < 1e-6) return { x: 1, z: 0 };
+  const theta = 0.5 * Math.atan2(t.b, t.a);
+  return { x: Math.cos(theta), z: Math.sin(theta) };
+}
+
+function minorEigenvector(t: Tensor2D): Vec2 {
+  const maj = majorEigenvector(t);
+  return { x: -maj.z, z: maj.x };
+}
+
+function distToSegmentWithClosest(
+  px: number,
+  pz: number,
+  x1: number,
+  z1: number,
+  x2: number,
+  z2: number,
+): { dist: number; cx: number; cz: number; tx: number; tz: number; t: number } {
+  const vx = x2 - x1;
+  const vz = z2 - z1;
+  const lenSq = vx * vx + vz * vz;
+  if (lenSq < 1e-5) {
+    return { dist: Math.hypot(px - x1, pz - z1), cx: x1, cz: z1, tx: 1, tz: 0, t: 0 };
+  }
+  const t = Math.max(0, Math.min(1, ((px - x1) * vx + (pz - z1) * vz) / lenSq));
+  const cx = x1 + t * vx;
+  const cz = z1 + t * vz;
+  const len = Math.sqrt(lenSq);
+  return { dist: Math.hypot(px - cx, pz - cz), cx, cz, tx: vx / len, tz: vz / len, t };
+}
+
+function segCross(
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  cx: number,
+  cz: number,
+  dx: number,
+  dz: number,
+): { x: number; z: number; t: number; u: number } | null {
+  const rX = bx - ax;
+  const rZ = bz - az;
+  const sX = dx - cx;
+  const sZ = dz - cz;
+  const denom = rX * sZ - rZ * sX;
+  if (Math.abs(denom) < 1e-4) return null;
+  const t = ((cx - ax) * sZ - (cz - az) * sX) / denom;
+  const u = ((cx - ax) * rZ - (cz - az) * rX) / denom;
+  if (t >= 0.01 && t <= 1.0 && u >= 0.01 && u <= 0.99) {
+    return { x: ax + t * rX, z: az + t * rZ, t, u };
+  }
+  return null;
+}
+
+export interface TensorCityConfig {
+  cityId: string;
+  seed: number;
+  radius: number;
+  baseGridAngle: number;
+  rivers: TensorRiverSpline[];
+  /** Real incoming inter-city highway unit directions (from REAL_WORLD_CORRIDORS) */
+  highwayAngles: number[];
+  /** Signed distance to water (negative = inside river water) */
+  riverSignedDist: (x: number, z: number) => number;
+}
+
+export interface TensorRoadGraphResult {
+  edges: TensorRoadEdge[];
+  junctions: TensorJunction[];
+}
+
+/**
+ * Generates an organic, real-river-aligned & highway-connected planar urban street graph
+ * using 2D Tensor Field RK2 Streamline Integration + Node/Edge Proximity Snapping!
+ */
+export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphResult {
+  const { radius, baseGridAngle, rivers, highwayAngles, riverSignedDist, seed } = cfg;
+
+  // Deterministic PRNG for slight natural urban variation
+  let sRng = (seed * 1664525 + 1013904223) >>> 0;
+  const rng = () => {
+    sRng = (sRng * 1664525 + 1013904223) >>> 0;
+    return sRng / 0xffffffff;
+  };
+
+  // Sample blended 2D symmetric tensor field T(x, z):
+  // - Base city orientation grid (dominant inland)
+  // - Real river tangent alignment (dominant within 95m of any real river so boulevards hug the waterfront!)
+  // - Real incoming highway orientation near outer city ring
+  const sampleField = (x: number, z: number): Tensor2D => {
+    let a = 0;
+    let b = 0;
+    const baseT = makeGridTensor(baseGridAngle, 1.0);
+    a += baseT.a;
+    b += baseT.b;
+
+    // Subtle organic terrain/district warp so streets aren't ruler-straight clones
+    const warpAng = baseGridAngle + Math.sin(x * 0.012 + seed * 0.7) * 0.14 + Math.cos(z * 0.012 - seed * 0.4) * 0.12;
+    const warpT = makeGridTensor(warpAng, 0.55);
+    a += warpT.a;
+    b += warpT.b;
+
+    // River-hugging tensor influence (strongest near real riverbanks -> creates authentic Bund / riverside avenues!)
+    let bestRivDist = 9999;
+    let bestRivAngle = baseGridAngle;
+    for (const riv of rivers) {
+      for (let i = 0; i < riv.points.length - 1; i++) {
+        const [x1, z1] = riv.points[i];
+        const [x2, z2] = riv.points[i + 1];
+        const res = distToSegmentWithClosest(x, z, x1, z1, x2, z2);
+        if (res.dist < bestRivDist) {
+          bestRivDist = res.dist;
+          bestRivAngle = Math.atan2(res.tz, res.tx);
+        }
+      }
+    }
+    if (bestRivDist < 115) {
+      const w = Math.pow(1 - bestRivDist / 115, 1.6) * 2.6;
+      const rivT = makeGridTensor(bestRivAngle, w);
+      a += rivT.a;
+      b += rivT.b;
+    }
+
+    // Incoming real highway corridor pull in outer urban belt
+    const rCenter = Math.hypot(x, z);
+    if (highwayAngles.length > 0 && rCenter > 65) {
+      const ptAng = Math.atan2(z, x);
+      for (const hAng of highwayAngles) {
+        const dAng = Math.atan2(Math.sin(ptAng - hAng), Math.cos(ptAng - hAng));
+        if (Math.abs(dAng) < 0.55) {
+          const hw = (1 - Math.abs(dAng) / 0.55) * Math.min(1.4, (rCenter - 65) / 60);
+          const ht = makeGridTensor(hAng, hw);
+          a += ht.a;
+          b += ht.b;
+        }
+      }
+    }
+
+    return { a, b };
+  };
+
+  // Orient eigenvector consistently with previous step direction so streamlines never flip 180°
+  const sampleDir = (x: number, z: number, useMajor: boolean, prevDx: number, prevDz: number): Vec2 => {
+    const t = sampleField(x, z);
+    const v = useMajor ? majorEigenvector(t) : minorEigenvector(t);
+    return v.x * prevDx + v.z * prevDz < 0 ? { x: -v.x, z: -v.z } : v;
+  };
+
+  // RK2 midpoint integration step along the tensor field
+  const rk2Step = (x: number, z: number, stepLen: number, useMajor: boolean, prevDx: number, prevDz: number): Vec2 => {
+    const k1 = sampleDir(x, z, useMajor, prevDx, prevDz);
+    const mx = x + k1.x * stepLen * 0.5;
+    const mz = z + k1.z * stepLen * 0.5;
+    const k2 = sampleDir(mx, mz, useMajor, k1.x, k1.z);
+    return { x: x + k2.x * stepLen, z: z + k2.z * stepLen };
+  };
+
+  const edges: TensorRoadEdge[] = [];
+  const nodes: { x: number; z: number; degree: number; hasArterial: boolean; rotY: number }[] = [];
+
+  const registerNode = (x: number, z: number, isArterial: boolean, rotY: number, snapRad = 12): { x: number; z: number } => {
+    for (const nd of nodes) {
+      if (Math.hypot(nd.x - x, nd.z - z) < snapRad) {
+        nd.degree += 1;
+        if (isArterial) {
+          nd.hasArterial = true;
+          nd.rotY = rotY;
+        }
+        return { x: nd.x, z: nd.z };
+      }
+    }
+    nodes.push({ x, z, degree: 1, hasArterial: isArterial, rotY });
+    return { x, z };
+  };
+
+  const isTooParallelNearExisting = (
+    x1: number,
+    z1: number,
+    x2: number,
+    z2: number,
+    minParallelDist: number,
+  ): boolean => {
+    const mx = (x1 + x2) * 0.5;
+    const mz = (z1 + z2) * 0.5;
+    const vx = x2 - x1;
+    const vz = z2 - z1;
+    const vLen = Math.hypot(vx, vz) || 1;
+    for (const ex of edges) {
+      const res = distToSegmentWithClosest(mx, mz, ex.x1, ex.z1, ex.x2, ex.z2);
+      if (res.dist < minParallelDist) {
+        const dot = Math.abs((vx * res.tx + vz * res.tz) / vLen);
+        if (dot > 0.72) return true;
+      }
+    }
+    return false;
+  };
+
+  /**
+   * Trace one continuous streamline in both + and - directions from (sx, sz) with:
+   * - River bridge auto-bridging for arterials (and clean bank-stop for minor streets)
+   * - Proximity snapping to existing intersections & road crossings
+   */
+  const traceStreamline = (
+    sx: number,
+    sz: number,
+    useMajor: boolean,
+    kind: 'arterial' | 'street',
+    stepLen: number,
+    minParallelSep: number,
+    maxSteps = 16,
+  ) => {
+    const width = kind === 'arterial' ? 32 : 17;
+    if (riverSignedDist(sx, sz) < 6) return;
+
+    const initField = sampleField(sx, sz);
+    const initVec = useMajor ? majorEigenvector(initField) : minorEigenvector(initField);
+
+    for (const sign of [1, -1] as const) {
+      let cx = sx;
+      let cz = sz;
+      let prevDx = initVec.x * sign;
+      let prevDz = initVec.z * sign;
+
+      for (let step = 0; step < maxSteps; step++) {
+        const next = rk2Step(cx, cz, stepLen, useMajor, prevDx, prevDz);
+        const nx = next.x;
+        const nz = next.z;
+        if (Math.hypot(nx, nz) > radius + 14) break;
+
+        const segDx = nx - cx;
+        const segDz = nz - cz;
+        const segLen = Math.hypot(segDx, segDz);
+        if (segLen < 4) break;
+        const rotY = Math.atan2(segDx, segDz);
+
+        // Check water crossing
+        const dMid = riverSignedDist((cx + nx) * 0.5, (cz + nz) * 0.5);
+        const dEnd = riverSignedDist(nx, nz);
+
+        if (dMid < 2 || dEnd < 2) {
+          if (kind === 'arterial') {
+            // Scan ahead along the same vector to bridge cleanly across the REAL river!
+            const uX = segDx / segLen;
+            const uZ = segDz / segLen;
+            let landDist = -1;
+            for (let probe = stepLen; probe <= 96; probe += 5) {
+              const px = cx + uX * probe;
+              const pz = cz + uZ * probe;
+              if (riverSignedDist(px, pz) > 8 && Math.hypot(px, pz) <= radius + 16) {
+                landDist = probe;
+                break;
+              }
+            }
+            if (landDist > 16) {
+              const bx = cx + uX * landDist;
+              const bz = cz + uZ * landDist;
+              // Keep real-scale generous spacing (~95m+) between cross-river bridges!
+              const dupBridge = edges.some(
+                (e) =>
+                  e.isBridge &&
+                  Math.hypot((e.x1 + e.x2) * 0.5 - (cx + bx) * 0.5, (e.z1 + e.z2) * 0.5 - (cz + bz) * 0.5) < 95,
+              );
+              if (!dupBridge) {
+                const style =
+                  landDist < 42 ? 'waibaidu' : edges.filter((e) => e.isBridge).length % 2 === 0 ? 'nanpu' : 'yangpu';
+                edges.push({
+                  x1: cx,
+                  z1: cz,
+                  x2: bx,
+                  z2: bz,
+                  width: style === 'waibaidu' ? 18 : 22,
+                  kind: 'arterial',
+                  isBridge: true,
+                  bridgeStyle: style,
+                });
+                registerNode(cx, cz, true, rotY, 10);
+                registerNode(bx, bz, true, rotY, 10);
+                cx = bx;
+                cz = bz;
+                prevDx = uX;
+                prevDz = uZ;
+                continue;
+              }
+            }
+          }
+          // Secondary streets stop cleanly before the river bank
+          break;
+        }
+
+        // Check crossing with an existing edge -> SNAP cleanly to exact intersection!
+        let snappedHit: { x: number; z: number; t: number } | null = null;
+        for (const ex of edges) {
+          // Ignore edges sharing our exact start point
+          if (Math.hypot(ex.x1 - cx, ex.z1 - cz) < 2 || Math.hypot(ex.x2 - cx, ex.z2 - cz) < 2) continue;
+          const hit = segCross(cx, cz, nx, nz, ex.x1, ex.z1, ex.x2, ex.z2);
+          if (hit && (!snappedHit || hit.t < snappedHit.t)) {
+            snappedHit = hit;
+          }
+        }
+
+        if (snappedHit) {
+          if (Math.hypot(snappedHit.x - cx, snappedHit.z - cz) > 8) {
+            edges.push({ x1: cx, z1: cz, x2: snappedHit.x, z2: snappedHit.z, width, kind });
+            registerNode(cx, cz, kind === 'arterial', rotY, 10);
+            registerNode(snappedHit.x, snappedHit.z, true, rotY, 12);
+          }
+          // Major arterials continue across intersections; secondary streets terminate cleanly at T-junctions!
+          if (kind === 'street') break;
+          cx = snappedHit.x;
+          cz = snappedHit.z;
+          prevDx = segDx / segLen;
+          prevDz = segDz / segLen;
+          continue;
+        }
+
+        // Proximity snap to nearby existing node (within 15m)
+        let nearNode: { x: number; z: number } | null = null;
+        for (const nd of nodes) {
+          if (Math.hypot(nd.x - cx, nd.z - cz) < 8) continue;
+          if (Math.hypot(nd.x - nx, nd.z - nz) < 15) {
+            nearNode = nd;
+            break;
+          }
+        }
+        if (nearNode) {
+          if (!isTooParallelNearExisting(cx, cz, nearNode.x, nearNode.z, minParallelSep * 0.72)) {
+            edges.push({ x1: cx, z1: cz, x2: nearNode.x, z2: nearNode.z, width, kind });
+            registerNode(cx, cz, kind === 'arterial', rotY, 10);
+            registerNode(nearNode.x, nearNode.z, kind === 'arterial', rotY, 12);
+          }
+          break;
+        }
+
+        if (isTooParallelNearExisting(cx, cz, nx, nz, minParallelSep)) {
+          break;
+        }
+
+        edges.push({ x1: cx, z1: cz, x2: nx, z2: nz, width, kind });
+        registerNode(cx, cz, kind === 'arterial', rotY, 10);
+        registerNode(nx, nz, kind === 'arterial', rotY, 10);
+
+        cx = nx;
+        cz = nz;
+        prevDx = segDx / segLen;
+        prevDz = segDz / segLen;
+      }
+    }
+  };
+
+  // ==================== PASS 1: ARTERIAL BOULEVARDS (Major + Minor Tensor Axes + Waterfront Avenues!) ====================
+  // 1A. Primary central crossroads seeded on guaranteed dry land near city center
+  let seedCx = 0;
+  let seedCz = 0;
+  if (riverSignedDist(0, 0) < 18) {
+    for (let a = 0; a < 12; a++) {
+      const ang = (a / 12) * Math.PI * 2;
+      const tx = Math.cos(ang) * 34;
+      const tz = Math.sin(ang) * 34;
+      if (riverSignedDist(tx, tz) > 22) {
+        seedCx = tx;
+        seedCz = tz;
+        break;
+      }
+    }
+  }
+  traceStreamline(seedCx, seedCz, true, 'arterial', 42, 118, 12);
+  traceStreamline(seedCx, seedCz, false, 'arterial', 42, 118, 12);
+
+  // 1B. Waterfront Boulevard parallel to the real river on BOTH banks (e.g. Bund + Lujiazui Riverside!)
+  for (const riv of rivers.slice(0, 1)) {
+    const midIdx = Math.floor(riv.points.length * 0.5);
+    if (midIdx > 0 && midIdx < riv.points.length) {
+      const [rx1, rz1] = riv.points[midIdx - 1];
+      const [rx2, rz2] = riv.points[midIdx];
+      const rLen = Math.hypot(rx2 - rx1, rz2 - rz1) || 1;
+      const rnx = -(rz2 - rz1) / rLen;
+      const rnz = (rx2 - rx1) / rLen;
+      const mx = (rx1 + rx2) * 0.5;
+      const mz = (rz1 + rz2) * 0.5;
+      const bankOff = riv.width * 0.5 + 34;
+      for (const side of [-1, 1]) {
+        const bx = mx + rnx * side * bankOff;
+        const bz = mz + rnz * side * bankOff;
+        if (Math.hypot(bx, bz) < radius * 0.85 && riverSignedDist(bx, bz) > 16) {
+          traceStreamline(bx, bz, true, 'arterial', 42, 112, 11);
+        }
+      }
+    }
+  }
+
+  // 1C. Outer Arterial Ring / Grand Real-Scale Block Avenues (~165m apart — ZERO cramped back-to-back intersections!)
+  const outerOffs = [-165, 165];
+  for (const off of outerOffs) {
+    const sx1 = seedCx + Math.cos(baseGridAngle + Math.PI / 2) * off;
+    const sz1 = seedCz + Math.sin(baseGridAngle + Math.PI / 2) * off;
+    if (riverSignedDist(sx1, sz1) > 18) {
+      traceStreamline(sx1, sz1, true, 'arterial', 42, 118, 11);
+    }
+    const sx2 = seedCx + Math.cos(baseGridAngle) * off;
+    const sz2 = seedCz + Math.sin(baseGridAngle) * off;
+    if (riverSignedDist(sx2, sz2) > 18) {
+      traceStreamline(sx2, sz2, false, 'arterial', 42, 118, 11);
+    }
+  }
+
+  // ==================== PASS 2: SECONDARY COLLECTOR STREETS (Spacious ~85m Real-Scale Neighborhood Blocks!) ====================
+  const streetSeeds: { x: number; z: number; major: boolean }[] = [];
+  for (let gx = -240; gx <= 240; gx += 96) {
+    for (let gz = -240; gz <= 240; gz += 96) {
+      if (Math.hypot(gx, gz) > radius * 0.86) continue;
+      if (riverSignedDist(gx, gz) > 22) {
+        streetSeeds.push({ x: gx + (rng() - 0.5) * 14, z: gz + (rng() - 0.5) * 14, major: (gx + gz) % 192 === 0 });
+      }
+    }
+  }
+
+  for (const ss of streetSeeds) {
+    traceStreamline(ss.x, ss.z, ss.major, 'street', 36, 76, 9);
+    traceStreamline(ss.x, ss.z, !ss.major, 'street', 36, 76, 9);
+  }
+
+  // ==================== PASS 3: EXTRACT CLEAN PLANAR JUNCTION NODES (Minimum 56m spacing -> ZERO colliding crosswalks!) ====================
+  const junctions: TensorJunction[] = [];
+  for (const nd of nodes) {
+    if (nd.degree < 3) continue;
+    if (riverSignedDist(nd.x, nd.z) < 16) continue;
+    if (junctions.some((j) => Math.hypot(j.x - nd.x, j.z - nd.z) < 56)) continue;
+    const padW = nd.hasArterial ? 36 : 22;
+    junctions.push({
+      x: nd.x,
+      z: nd.z,
+      width: padW,
+      depth: padW,
+      rotY: nd.rotY,
+      kind: nd.degree >= 4 ? 'cross' : 'tee',
+    });
+  }
+
+  return { edges, junctions };
+}

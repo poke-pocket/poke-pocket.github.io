@@ -350,26 +350,63 @@ function paintRoadsAndTownsOnMap(
       return out;
     };
 
-    // 0. Real-World River Systems: Catmull-Rom Smooth Natural Bends + Progressive Upstream-to-Mouth Width Tapering!
+    // 0. Real-World River Systems: Ocean-Clipped Coastline Estuaries + Riparian Banks + Catmull-Rom Smooth Bends + Upstream-to-Mouth Width Tapering!
+    const macroRiverIds = new Set(REAL_WORLD_RIVERS.map((r) => r.id));
     for (const riv of REAL_WORLD_RIVERS) {
-      const rawPts: { sx: number; sy: number }[] = [];
+      const rawPts: { sx: number; sy: number; lat: number; lng: number }[] = [];
       for (const [lat, lng] of riv.points) {
         const wp = geoToWorld(lat, lng, activeGeo);
-        if (wp) rawPts.push(toScreen(wp.x, wp.z));
+        if (!wp) continue;
+        const sc = toScreen(wp.x, wp.z);
+        rawPts.push({ sx: sc.sx, sy: sc.sy, lat, lng });
       }
       if (rawPts.length < 2) continue;
-      const pts = smoothPolyline(rawPts, unitsPerPx > 60 ? 3 : 5);
+
+      // Subdivide in lat/lng so we can clip cleanly where the river enters open ocean (ZERO blue river pipe floating over the sea!)
+      const rawScreen = rawPts.map((p) => ({ sx: p.sx, sy: p.sy }));
+      const rawLatLng = rawPts.map((p) => ({ sx: p.lat, sy: p.lng }));
+      const subSteps = unitsPerPx > 60 ? 3 : 5;
+      const smoothSc = smoothPolyline(rawScreen, subSteps);
+      const smoothGeo = smoothPolyline(rawLatLng, subSteps);
+
+      // Trim trailing ocean points where real DEM elevation drops below -1.5m (open sea past the estuary mouth!)
+      let endIdx = smoothSc.length - 1;
+      while (endIdx > 2) {
+        const m = sampleRealElevationMeters(smoothGeo[endIdx].sx, smoothGeo[endIdx].sy, 'macro');
+        if (m !== null && m < -1.5) {
+          endIdx -= 1;
+        } else {
+          break;
+        }
+      }
+      const pts = smoothSc.slice(0, endIdx + 1);
+      if (pts.length < 2) continue;
+
       const baseMouthW = Math.max(
         detailed ? 1.6 : 1.0,
         Math.min(14, riv.widthKm * GEO_UNITS_PER_KM * 0.16 * invScale),
       );
       const totalSegs = Math.max(1, pts.length - 1);
 
-      // Pass A: Dark riverbank casing tapering cleanly from thin source (0.28x) to wide estuary mouth (1.42x)!
+      // Pass 0: Soft fertile alluvial riparian riverbank glow (subtle lush green valley edge)
+      if (detailed && baseMouthW >= 2.2) {
+        ctx.strokeStyle = 'rgba(72, 168, 86, 0.34)';
+        for (let i = 0; i < totalSegs; i++) {
+          const prog = i / totalSegs;
+          const taper = 0.28 + 1.14 * Math.pow(prog, 1.15);
+          ctx.lineWidth = Math.max(2.0, baseMouthW * taper + 3.2);
+          ctx.beginPath();
+          ctx.moveTo(pts[i].sx, pts[i].sy);
+          ctx.lineTo(pts[i + 1].sx, pts[i + 1].sy);
+          ctx.stroke();
+        }
+      }
+
+      // Pass A: Dark incised riverbank casing tapering cleanly from thin mountain creek (0.26x) to wide estuary mouth (1.42x)!
       ctx.strokeStyle = '#1b4965';
       for (let i = 0; i < totalSegs; i++) {
         const prog = i / totalSegs;
-        const taper = 0.28 + 1.14 * Math.pow(prog, 1.15);
+        const taper = 0.26 + 1.16 * Math.pow(prog, 1.18);
         const w = Math.max(0.9, baseMouthW * taper);
         ctx.lineWidth = w + (detailed ? Math.min(1.8, 0.7 + w * 0.22) : 0.6);
         ctx.beginPath();
@@ -378,11 +415,11 @@ function paintRoadsAndTownsOnMap(
         ctx.stroke();
       }
 
-      // Pass B: Vibrant GBA river water fill tapering upstream -> mouth
-      ctx.strokeStyle = '#339af0';
+      // Pass B: Vibrant GBA river water body tapering upstream -> estuary mouth
+      ctx.strokeStyle = '#2f8ae8';
       for (let i = 0; i < totalSegs; i++) {
         const prog = i / totalSegs;
-        const taper = 0.28 + 1.14 * Math.pow(prog, 1.15);
+        const taper = 0.26 + 1.16 * Math.pow(prog, 1.18);
         ctx.lineWidth = Math.max(0.8, baseMouthW * taper);
         ctx.beginPath();
         ctx.moveTo(pts[i].sx, pts[i].sy);
@@ -390,22 +427,30 @@ function paintRoadsAndTownsOnMap(
         ctx.stroke();
       }
 
-      // Pass C: Shimmering sunlit center highlight on wider mid/lower reaches
-      if (detailed && baseMouthW >= 2.6) {
-        ctx.strokeStyle = 'rgba(165, 216, 255, 0.72)';
-        for (let i = Math.floor(totalSegs * 0.35); i < totalSegs; i++) {
+      // Pass C: Shimmering sunlit midstream current streaks + flared turquoise estuary mouth blending smoothly into sea!
+      if (detailed && baseMouthW >= 2.2) {
+        ctx.strokeStyle = 'rgba(186, 230, 253, 0.78)';
+        for (let i = Math.floor(totalSegs * 0.30); i < totalSegs; i++) {
           const prog = i / totalSegs;
-          const taper = 0.28 + 1.14 * Math.pow(prog, 1.15);
+          const taper = 0.26 + 1.16 * Math.pow(prog, 1.18);
           ctx.lineWidth = Math.max(0.7, baseMouthW * taper * 0.26);
           ctx.beginPath();
           ctx.moveTo(pts[i].sx, pts[i].sy);
           ctx.lineTo(pts[i + 1].sx, pts[i + 1].sy);
           ctx.stroke();
         }
+        // Soft turquoise delta flare right where river enters the sea
+        if (endIdx < smoothSc.length - 1) {
+          const mouthPt = pts[pts.length - 1];
+          ctx.fillStyle = 'rgba(77, 171, 247, 0.52)';
+          ctx.beginPath();
+          ctx.arc(mouthPt.sx, mouthPt.sy, Math.max(3, baseMouthW * 0.95), 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       if (detailed && unitsPerPx > 2.2 && unitsPerPx < 160) {
-        const mid = pts[Math.floor(pts.length * 0.62)];
+        const mid = pts[Math.floor(pts.length * 0.60)];
         ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
         ctx.fillStyle = '#0b3d66';
         ctx.textAlign = 'center';
@@ -500,7 +545,7 @@ function paintRoadsAndTownsOnMap(
 
       const viewW = Math.max(ctx.canvas.width, 1200);
       const viewH = Math.max(ctx.canvas.height, 900);
-      const urbanR = Math.max(12, 182 * invScale);
+      const urbanR = Math.max(12, 325 * invScale);
       for (const rc of citiesToRender) {
         const cOrigin = toScreen(rc.x, rc.z);
         if (
@@ -585,12 +630,19 @@ function paintRoadsAndTownsOnMap(
           }
         }
 
-        // 2C. Unique Procedural Blue City Rivers & Tributaries with Crisp Riverbanks & White Wave Marks
+        // 2C. Aligned Urban Rivers & Waterfront Promenades (exact SAME path as REAL_WORLD_RIVERS — ZERO double rivers!)
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         for (const riv of layout.rivers) {
-          const pts = riv.points.map(([rx, rz]) => toScreen(rx, rz));
-          const rw = Math.max(detailed ? 4 : 2.2, riv.width * invScale);
+          // Only draw widened local waterfront rendering when zoomed close enough to inspect the city (unitsPerPx < 2.4)
+          // or for local urban creeks not in REAL_WORLD_RIVERS — prevents stubby duplicate river sausages at medium zoom!
+          if (macroRiverIds.has(riv.id) && unitsPerPx > 2.2) continue;
+          const pts = smoothPolyline(
+            riv.points.map(([rx, rz]) => toScreen(rx, rz)),
+            3,
+          );
+          if (pts.length < 2) continue;
+          const rw = Math.max(detailed ? 3.5 : 2.0, riv.width * invScale);
           ctx.strokeStyle = '#6ec056';
           ctx.lineWidth = rw + (detailed ? 5.5 : 2.5);
           ctx.beginPath();
