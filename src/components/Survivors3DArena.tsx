@@ -9,7 +9,7 @@ import { computeInstantKickoffWaypoints3D, createAutoWalkPathJob3D, findForwardS
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
 import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
 import { extractDexIdFromSpriteUrl, getPmd8DirSheet, type Pmd8DirSheet3D } from '../data/pmdSprites3D';
-import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGeoCities, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded, worldToGeo } from '../data/geoTerrain3D';
+import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGeoCities, prefetchGeoDetailAround, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded, worldToGeo } from '../data/geoTerrain3D';
 import { getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { clearWorldCheckpoint, loadWorldCheckpoint, saveWorldCheckpoint, setActiveCareSessionFlag, wasActiveCareSessionOpen } from '../utils/worldCheckpoint';
 import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D';
@@ -19,7 +19,7 @@ import { DEFAULT_GAME_PREFS, DEFAULT_TRAINER_PROFILE, type CameraFollowMode, typ
 import { HERO_ROSTER, LAB_UPGRADES, computeMetaCombatBonuses, countClaimableBounties, ensureFreshMetaProgress, getHeroDef, getLabUpgradeCost, getSkinDef, rerollBountySlot, type HeroId, type LabUpgradeId, type MetaProgressState } from '../data/metaProgression';
 import { type AppLang } from '../data/i18n';
 import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
-import { type LiveMapSnapshot } from './WorldMapHud';
+import { SCENIC_MOUNTAIN_SPOTS, type LiveMapSnapshot, type ScenicMountainSpot } from './WorldMapHud';
 import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { BGM_TRACK_LABELS, sound, type BgmTrackId } from '../utils/sound';
 import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
@@ -739,6 +739,30 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
   }, []);
 
+  // One-time live teleport into Mount Huangshan scenic foothills (`30.088°N, 118.165°E`) whether starting from Hub or Playing!
+  useEffect(() => {
+    try {
+      const tourKey = 'pocket_paw_mountain_tour_once_v1';
+      if (window.localStorage.getItem(tourKey) !== 'huangshan_done') {
+        if (phase !== 'playing') {
+          setActiveCareSessionFlag(true);
+          setPhase('playing');
+          return;
+        }
+        const defaultSpot = SCENIC_MOUNTAIN_SPOTS[0]; // 黄山 · 莲花光明顶 (1864m)
+        if (defaultSpot) {
+          const timer = window.setTimeout(() => {
+            window.localStorage.setItem(tourKey, 'huangshan_done');
+            teleportGeoSpotRef.current(defaultSpot);
+          }, 120);
+          return () => window.clearTimeout(timer);
+        }
+      }
+    } catch {
+      // ignore storage restrictions
+    }
+  }, [phase]);
+
   const reorderBattleFollowers = (fromIdx: number, toIdx: number) => {
     const sim = simRef.current;
     if (!sim) return;
@@ -767,6 +791,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     }
   };
   const fastTravelCityRef = useRef<(cityId: string) => void>(() => {});
+  const teleportGeoSpotRef = useRef<(spot: ScenicMountainSpot) => void>(() => {});
   const handleFastTravelCity = (cityId: string) => {
     fastTravelCityRef.current(cityId);
   };
@@ -789,6 +814,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       regionName: liveOverlandCityRef.current?.name ?? regionMeta.name,
       snapshot: liveSnap,
       onFastTravelCity: handleFastTravelCity,
+      onTeleportGeoSpot: (spot) => teleportGeoSpotRef.current(spot),
       navTargets: autoNavTargetsRef.current,
       onAutoWalkTo: (x, z, label) => startAutoNavRef.current({ label, x, z }),
       onOpenGlobalWorldMap: () => setWorldMapOpen(true),
@@ -2248,11 +2274,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       }
       placedFloraCells.clear();
       const curSim = simRef.current;
+      chunkState.x = 999999;
+      chunkState.z = 999999;
       if (curSim) {
         updateWorldAround(curSim.px, curSim.pz);
         geoHighwayStreamer?.updateAround(curSim.px, curSim.pz, true);
         const newFloor = getWalkableSurfaceHeight3D(curSim.px, curSim.pz, curSim.py);
         curSim.py = Math.max(WATER_LEVEL_3D - 0.15, newFloor);
+        curSim.followers.forEach((f) => {
+          f.y = Math.max(WATER_LEVEL_3D + 0.08, getWalkableSurfaceHeight3D(f.x, f.z, f.y));
+        });
       } else {
         updateWorldAround(0, 0);
         geoHighwayStreamer?.updateAround(0, 0, true);
@@ -2277,6 +2308,52 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       });
       spawnGroundDecalWave(sx, curSim.py, sz, vfxAtlas.arcaneRingDecal, 4.2, 0.45);
       showBanner(`⚔️ 「${npcName}」接受了你的切磋请求！派出搭档宝可梦上场较量！`, 3400);
+    };
+
+    teleportGeoSpotRef.current = (spot) => {
+      const curSim = simRef.current;
+      const curOrg = getActiveGeoTerrainOrigin();
+      if (!curSim || !curOrg) return;
+      stopAutoNavRef.current(true);
+      prefetchGeoDetailAround(spot.lat, spot.lng);
+      const wp = geoToWorld(spot.lat, spot.lng, curOrg);
+      if (!wp) return;
+      const destX = wp.x;
+      const destZ = wp.z;
+      chunkState.x = 999999;
+      chunkState.z = 999999;
+      updateWorldAround(destX, destZ);
+      geoHighwayStreamer?.updateAround(destX, destZ, true);
+      const gy = Math.max(WATER_LEVEL_3D + 0.18, getWalkableSurfaceHeight3D(destX, destZ));
+      curSim.px = destX;
+      curSim.pz = destZ;
+      curSim.py = gy;
+      curSim.vy = 0;
+      const faceFwdAngle = Math.atan2(-Math.sin(spot.yaw), -Math.cos(spot.yaw));
+      curSim.facingAngle = faceFwdAngle;
+      camOrbitRef.current.yaw = spot.yaw;
+      camOrbitRef.current.pitch = spot.pitch ?? 0.17;
+      camOrbitRef.current.zoom = 1.12;
+      camPivotRef.current.set(destX, gy + 1.52, destZ);
+      curSim.followers.forEach((f, idx) => {
+        const side = idx % 2 === 0 ? 1 : -1;
+        const row = Math.floor(idx / 2) + 1;
+        f.x = destX + Math.cos(spot.yaw) * side * (1.5 + row * 0.4) + Math.sin(spot.yaw) * (row * 1.4);
+        f.z = destZ - Math.sin(spot.yaw) * side * (1.5 + row * 0.4) + Math.cos(spot.yaw) * (row * 1.4);
+        f.y = Math.max(WATER_LEVEL_3D + 0.15, getWalkableSurfaceHeight3D(f.x, f.z));
+      });
+      saveWorldCheckpoint({
+        mode: 'geo',
+        cityId: curOrg.startCityId ?? 'shanghai',
+        cityName: spot.label,
+        lat: spot.lat,
+        lng: spot.lng,
+        x: destX,
+        z: destZ,
+        facingAngle: faceFwdAngle,
+      });
+      sound.play('levelup');
+      showBanner(`⛰️ 已传送至「${spot.label}」（${spot.subLabel}）！按 M 键打开地图可切换名山或返回城市`, 4200);
     };
 
     teleportIntraCityBusRef.current = (tx, tz, label) => {

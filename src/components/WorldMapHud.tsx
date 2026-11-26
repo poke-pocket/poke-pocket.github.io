@@ -63,11 +63,79 @@ export interface WorldMapNavTarget {
   z: number;
 }
 
+export interface ScenicMountainSpot {
+  id: string;
+  label: string;
+  subLabel: string;
+  lat: number;
+  lng: number;
+  yaw: number;
+  pitch?: number;
+}
+
+export const SCENIC_MOUNTAIN_SPOTS: ScenicMountainSpot[] = [
+  {
+    id: 'mt_huangshan',
+    label: '⛰️ 黄山 · 莲花光明顶',
+    subLabel: '海拔 1864m · 奇峰陡壁山麓仰望',
+    lat: 30.088,
+    lng: 118.165,
+    yaw: 0,
+    pitch: 0.16,
+  },
+  {
+    id: 'mt_taishan',
+    label: '⛰️ 泰山 · 岱宗红门麓',
+    subLabel: '海拔 1545m · 平原拔地通天落差',
+    lat: 36.208,
+    lng: 117.101,
+    yaw: 0,
+    pitch: 0.16,
+  },
+  {
+    id: 'mt_fuji',
+    label: '🗻 富士山 · 河口湖雪峰',
+    subLabel: '海拔 3776m · 巨型覆雪火山锥',
+    lat: 35.435,
+    lng: 138.742,
+    yaw: Math.PI,
+    pitch: 0.15,
+  },
+  {
+    id: 'mt_moganshan',
+    label: '⛰️ 莫干山 · 浙西天目山脉',
+    subLabel: '海拔 719–1506m · 江南连绵竹海深谷',
+    lat: 30.574,
+    lng: 119.865,
+    yaw: 0,
+    pitch: 0.18,
+  },
+  {
+    id: 'mt_wutong',
+    label: '⛰️ 深圳 · 梧桐山脊峭壁',
+    subLabel: '海拔 944m · 滨海高耸山脉',
+    lat: 22.536,
+    lng: 114.215,
+    yaw: 0,
+    pitch: 0.17,
+  },
+  {
+    id: 'mt_sheshan',
+    label: '⛰️ 上海 · 松江佘山九峰',
+    subLabel: '海拔 99m · 江南秀丽丘陵对比',
+    lat: 31.072,
+    lng: 121.196,
+    yaw: 0,
+    pitch: 0.22,
+  },
+];
+
 export interface WorldMapData {
   biome: BiomeId;
   regionName: string;
   snapshot: LiveMapSnapshot;
   onFastTravelCity?: (cityId: string) => void;
+  onTeleportGeoSpot?: (spot: ScenicMountainSpot) => void;
   navTargets?: WorldMapNavTarget[];
   onAutoWalkTo?: (x: number, z: number, label: string) => void;
   onOpenGlobalWorldMap?: () => void;
@@ -2166,6 +2234,56 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
         {/* Collapsible Floating POI Navigation & Auto-Pathfinding Drawer */}
         {drawerOpen && (
           <aside className="lcd-map-drawer scroll-y">
+            {geoOrigin && data.onTeleportGeoSpot && (
+              <>
+                <div className="lcd-map-side-head">⛰️ 名山景区直达 (一键传送看山)</div>
+                <div className="lcd-map-poi-list">
+                  {SCENIC_MOUNTAIN_SPOTS.map((sp) => (
+                    <div key={sp.id} style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}>
+                      <button
+                        type="button"
+                        className="lcd-map-poi-btn"
+                        style={{ flex: 1, minWidth: 0 }}
+                        title={sp.subLabel}
+                        onClick={() => {
+                          const wp = geoToWorld(sp.lat, sp.lng, geoOrigin);
+                          if (wp) {
+                            sound.play('cursor');
+                            setPan({ x: wp.x - snapshot.px, z: wp.z - snapshot.pz });
+                            setZoom(0.32);
+                            setDrawerOpen(false);
+                          }
+                        }}
+                      >
+                        <span className="lcd-map-poi-lbl">{sp.label}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="lcd-map-poi-btn"
+                        style={{
+                          width: 'auto',
+                          flex: '0 0 auto',
+                          flexShrink: 0,
+                          justifyContent: 'center',
+                          padding: '0 8px',
+                          background: '#69db7c',
+                          color: '#161420',
+                          fontWeight: 900,
+                        }}
+                        title={`立即传送至 ${sp.label} (${sp.subLabel})`}
+                        onClick={() => {
+                          sound.play('confirm');
+                          (onDismissTo3D ?? onClose)?.();
+                          data.onTeleportGeoSpot?.(sp);
+                        }}
+                      >
+                        传送
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
             {data.navTargets && data.navTargets.length > 0 && data.onAutoWalkTo && (
               <>
                 <div className="lcd-map-side-head">🧭 城市设施自动寻路 (A* 避障直达门内)</div>

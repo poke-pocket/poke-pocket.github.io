@@ -229,6 +229,25 @@ function prefetchRegionTiles(origin: GeoTerrainOrigin) {
   }
 }
 
+export function prefetchGeoDetailAround(lat: number, lng: number): void {
+  const detail = latLngToTileFrac(lat, lng, DEM_Z_DETAIL);
+  const dcx = Math.floor(detail.fx);
+  const dcy = Math.floor(detail.fy);
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      requestDemTile(DEM_Z_DETAIL, dcx + dx, dcy + dy);
+    }
+  }
+  const macro = latLngToTileFrac(lat, lng, DEM_Z_MACRO);
+  const mcx = Math.floor(macro.fx);
+  const mcy = Math.floor(macro.fy);
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      requestDemTile(DEM_Z_MACRO, mcx + dx, mcy + dy);
+    }
+  }
+}
+
 export function setActiveGeoTerrainOrigin(origin: GeoTerrainOrigin | null) {
   activeOrigin = origin ? { ...origin } : { ...DEFAULT_GEO_ORIGIN };
   PERSISTED_GEO.activeOrigin = activeOrigin;
