@@ -461,13 +461,15 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
               }
             }
           }
-          // Keep real-time sun shadow frustum smoothly centered on the player (snapped to 2m texel grid to prevent shadow swimming!)
+          // Keep real-time sun shadow frustum smoothly centered on the player (snapped to 8m grid to prevent frequent shadow-map re-projection spikes!)
           if (sun.castShadow) {
-            const sSnapX = Math.round(sim.px * 0.5) * 2;
-            const sSnapZ = Math.round(sim.pz * 0.5) * 2;
-            sun.position.set(sSnapX + 34, sim.py + 50, sSnapZ + 28);
-            sun.target.position.set(sSnapX, sim.py, sSnapZ);
-            sun.target.updateMatrixWorld();
+            const sSnapX = Math.round(sim.px / 8) * 8;
+            const sSnapZ = Math.round(sim.pz / 8) * 8;
+            if (sun.target.position.x !== sSnapX || sun.target.position.z !== sSnapZ) {
+              sun.position.set(sSnapX + 34, sim.py + 50, sSnapZ + 28);
+              sun.target.position.set(sSnapX, sim.py, sSnapZ);
+              sun.target.updateMatrixWorld();
+            }
           }
           // Lab Passive HP Regen + Hero Exclusive Periodic Signatures (Red Ball Burst / Misty Tide & Heal / Brock Quake!)
           const cb = metaBonusesRef.current;

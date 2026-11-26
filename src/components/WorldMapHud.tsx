@@ -1222,8 +1222,8 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
       sy: ((wz - snapshot.pz) / span + 0.5) * H,
     });
 
-    // Offscreen 2.4x Static Tile Buffer: eliminates 99% of walking stutter by blitting via GPU drawImage instead of re-rasterizing terrain/roads every step!
-    const cacheMult = 2.4;
+    // Offscreen 2.2x Static Tile Buffer: eliminates 99% of walking stutter by blitting via GPU drawImage instead of re-rasterizing terrain/roads every step!
+    const cacheMult = 2.2;
     const cacheSpan = span * cacheMult;
     const cacheW = Math.round(W * cacheMult);
     const cacheH = Math.round(H * cacheMult);
@@ -1248,7 +1248,7 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
           sx: ((wx - cx) / cacheSpan + 0.5) * cacheW,
           sy: ((wz - cz) / cacheSpan + 0.5) * cacheH,
         });
-        paintTopographicMap(offCtx, cacheW, cacheH, cx, cz, cacheSpan, biome, 4);
+        paintTopographicMap(offCtx, cacheW, cacheH, cx, cz, cacheSpan, biome, 6);
         paintRoadsAndTownsOnMap(offCtx, toCacheScreen, cacheSpan / Math.max(1, cacheW), false, false);
         cache = { canvas: offCanvas, cx, cz, span: cacheSpan, biome, demTick };
         bgCacheRef.current = cache;

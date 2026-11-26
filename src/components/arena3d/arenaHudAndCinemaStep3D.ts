@@ -14,16 +14,18 @@ import { sound } from '../../utils/sound';
 import { MONSTER_QUALITY_META, type FloatingTag2D } from './arenaTypesAndProps';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+const _tmpFogColor = new THREE.Color();
+
 export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
   const { activeInteriorNow, activeTownNow, activeWorldRun, activeZone, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, scene, selectedBiome, setEdgeIndicators, setFloatingTags, setHud, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, showBanner, sim, terrainMat } = rawCtx as ArenaSharedCtx;
           // Smooth Minecraft-style live biome atmosphere transition (fog color + exploration toast!)
           const curBiomeAtPlayer = getSeamlessBiomeAt3D(sim.px, sim.pz, sim.py, selectedBiome);
-          const targetFogCol = new THREE.Color(BIOME_PALETTES[curBiomeAtPlayer].fogHex);
+          _tmpFogColor.setHex(BIOME_PALETTES[curBiomeAtPlayer].fogHex);
           if (scene.fog instanceof THREE.Fog) {
-            scene.fog.color.lerp(targetFogCol, Math.min(1, dt * 1.4));
+            scene.fog.color.lerp(_tmpFogColor, Math.min(1, dt * 1.4));
           }
           if (terrainMat.uniforms?.uFogColor?.value) {
-            (terrainMat.uniforms.uFogColor.value as THREE.Color).lerp(targetFogCol, Math.min(1, dt * 1.4));
+            (terrainMat.uniforms.uFogColor.value as THREE.Color).lerp(_tmpFogColor, Math.min(1, dt * 1.4));
           }
           if (sim.lastSeamlessBiome !== curBiomeAtPlayer) {
             const prevBiome = sim.lastSeamlessBiome;
@@ -65,7 +67,7 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
               };
             }
 
-            setHud({
+            const nextHud = {
               hp: Math.ceil(sim.hp),
               maxHp: sim.maxHp,
               xp: sim.xp,
@@ -97,6 +99,33 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
               },
               healCharges: sim.healCharges,
               boostLeft: Number(sim.boostTimer.toFixed(1)),
+            };
+            setHud((prev: any) => {
+              if (
+                prev &&
+                prev.hp === nextHud.hp &&
+                prev.maxHp === nextHud.maxHp &&
+                prev.xp === nextHud.xp &&
+                prev.runLevel === nextHud.runLevel &&
+                prev.kills === nextHud.kills &&
+                prev.coins === nextHud.coins &&
+                prev.elapsedSec === nextHud.elapsedSec &&
+                prev.inSafeZone === nextHud.inSafeZone &&
+                prev.safeDirArrow === nextHud.safeDirArrow &&
+                Math.abs(prev.safeDistM - nextHud.safeDistM) <= 2 &&
+                prev.bossAliveName === nextHud.bossAliveName &&
+                prev.bossHp === nextHud.bossHp &&
+                prev.combo === nextHud.combo &&
+                prev.healCharges === nextHud.healCharges &&
+                prev.boostLeft === nextHud.boostLeft &&
+                prev.actionCds.ball === nextHud.actionCds.ball &&
+                prev.actionCds.heal === nextHud.actionCds.heal &&
+                prev.actionCds.boost === nextHud.actionCds.boost &&
+                prev.actionCds.salvo === nextHud.actionCds.salvo
+              ) {
+                return prev;
+              }
+              return nextHud;
             });
 
             // Detect nearest knocked-out catchable Pokémon within proximity range (5.8m)
@@ -110,7 +139,7 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
                 ? Math.min(32, pet.level + 4)
                 : Math.min(28, Math.max(4, pet.level + (nearKo.quality === 'epic' ? 2 : nearKo.isShiny ? 2 : 0)));
               nearbyKoIdRef.current = nearKo.id;
-              setNearbyKoTarget({
+              const nextKo = {
                 enemyId: nearKo.id,
                 species: nearKo.species,
                 name: spMeta.stageNames[nearKo.stage] ?? spMeta.defaultName,
@@ -122,14 +151,17 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
                 heightM: phys.heightM,
                 weightKg: phys.weightKg,
                 sprite: spMeta.stageSprites[nearKo.stage].animated,
-              });
+              };
+              setNearbyKoTarget((prev: any) =>
+                prev && prev.enemyId === nextKo.enemyId && prev.level === nextKo.level ? prev : nextKo,
+              );
             } else {
               nearbyKoIdRef.current = null;
-              setNearbyKoTarget(null);
+              setNearbyKoTarget((prev: any) => (prev === null ? prev : null));
             }
             // Sync nearby interactive town building OR foraging / mining / signpost prompt
             if (closestTownPoint) {
-              setNearbyInteract({
+              const nextInteract = {
                 id: closestTownPoint.id,
                 kind: closestTownPoint.kind,
                 label: `${closestTownPoint.label} · ${closestTownPoint.hint}`,
@@ -141,18 +173,24 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
                     : closestTownPoint.kind === 'poke_mart'
                       ? '/sprites/items/amulet-coin.png'
                       : '/sprites/items/town-map.png',
-              });
+              };
+              setNearbyInteract((prev: any) =>
+                prev && prev.id === nextInteract.id && prev.label === nextInteract.label ? prev : nextInteract,
+              );
             } else if (closestNode) {
-              setNearbyInteract({
+              const nextInteract = {
                 id: closestNode.id,
                 kind: closestNode.kind,
                 label: closestNode.label,
                 hp: closestNode.hp,
                 maxHp: closestNode.maxHp,
                 icon: closestNode.icon,
-              });
+              };
+              setNearbyInteract((prev: any) =>
+                prev && prev.id === nextInteract.id && prev.hp === nextInteract.hp ? prev : nextInteract,
+              );
             } else {
-              setNearbyInteract(null);
+              setNearbyInteract((prev: any) => (prev === null ? prev : null));
             }
             const nextMapSnap: LiveMapSnapshot = {
               px: sim.px,
@@ -207,7 +245,18 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
             }
 
             latestMapSnapshotRef.current = nextMapSnap;
-            setMapSnapshot(nextMapSnap);
+            setMapSnapshot((prev: LiveMapSnapshot) => {
+              if (
+                prev &&
+                Math.hypot(nextMapSnap.px - prev.px, nextMapSnap.pz - prev.pz) < 0.45 &&
+                Math.abs(nextMapSnap.facingAngle - prev.facingAngle) < 0.06 &&
+                Math.abs(nextMapSnap.camYaw - prev.camYaw) < 0.06 &&
+                nextMapSnap.dots.length === prev.dots.length
+              ) {
+                return prev;
+              }
+              return nextMapSnap;
+            });
             // Only sync full WorldMapData up to parent <App /> when handheld overlay is actually open (avoids full-app React re-render every 160ms while walking!)
             if (externalPausedRef.current) {
               onSyncWorldMapData?.({
@@ -326,7 +375,7 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
                 }
               }
             }
-            setFloatingTags(tags);
+            setFloatingTags((prev: FloatingTag2D[]) => (prev.length === 0 && tags.length === 0 ? prev : tags));
             // De-overlap offscreen perimeter indicators vertically so trainer distance tags NEVER stack on top of each other!
             const topEdges = edges.slice(0, 3).sort((a, b) => a.sy - b.sy);
             for (let ei = 1; ei < topEdges.length; ei++) {
@@ -334,7 +383,7 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
                 topEdges[ei].sy = Math.min(79, topEdges[ei - 1].sy + 5.6);
               }
             }
-            setEdgeIndicators(topEdges);
+            setEdgeIndicators((prev: any[]) => (prev.length === 0 && topEdges.length === 0 ? prev : topEdges));
           }
 }
 

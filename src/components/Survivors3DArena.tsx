@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { computeBattleStats } from '../data/battleMoves';
 import { ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getPokemonCryId, getPokemonWorldScale3D } from '../data/catalog';
-import { DEFAULT_TACTICAL_CONFIG, DIFFICULTIES, MAP_REGIONS, SURVIVOR_SKILLS, WATER_LEVEL_3D, WORLD_SECTOR_SIZE, WORLD_TOWNS_3D, getDefaultSkillsForElement, getRawNaturalTerrainHeight3D, getTerrainHeight3D, getUnlockedSkillSlotCount, getWalkableSurfaceHeight3D, setWalkableBuildingFloorZones3D, type DifficultyId, type SafeZone3D, type SurvivorSkillId, type SurvivorsGameMode, type TacticalConfig } from '../data/survivorsTactics';
+import { DEFAULT_TACTICAL_CONFIG, DIFFICULTIES, MAP_REGIONS, SURVIVOR_SKILLS, WATER_LEVEL_3D, WORLD_SECTOR_SIZE, WORLD_TOWNS_3D, clearTerrainHeightCache3D, getDefaultSkillsForElement, getRawNaturalTerrainHeight3D, getTerrainHeight3D, getUnlockedSkillSlotCount, getWalkableSurfaceHeight3D, setWalkableBuildingFloorZones3D, type DifficultyId, type SafeZone3D, type SurvivorSkillId, type SurvivorsGameMode, type TacticalConfig } from '../data/survivorsTactics';
 import { BIOME_PALETTES, createHorizonBackdropMesh, createPixelWaterMaterial, createSculptedTerrainMaterial, getAnimatedGifTextures, getBiomeTextures, getHeroSpriteFrames, type AnimatedSpriteSheet3D, type BiomeId } from '../data/worldTextures3D';
 import { findAutoWalkPath3D, type AutoNavBuildingPortalInfo, type AutoNavWaypoint } from '../utils/autoPathfinder3D';
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
@@ -1564,9 +1564,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const horizonBackdrop = createHorizonBackdropMesh(selectedBiome);
     scene.add(horizonBackdrop);
 
-    // 1. GRAND CONTINUOUS TOPOGRAPHIC HILLS, OPEN PLAINS & REAL DISTANT MOUNTAINS (196m real procedural terrain!)
-    const TERRAIN_SIZE = 196;
-    const TERRAIN_SEGS = prefsRef.current.graphicsQuality === 'low' ? 96 : 136;
+    // 1. GRAND CONTINUOUS TOPOGRAPHIC HILLS, OPEN PLAINS & REAL DISTANT MOUNTAINS (224m cached heightfield terrain!)
+    const TERRAIN_SIZE = 224;
+    const TERRAIN_SEGS = prefsRef.current.graphicsQuality === 'low' ? 64 : 88;
     const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGS, TERRAIN_SEGS);
     terrainGeo.rotateX(-Math.PI / 2);
     const terrainPosAttr = terrainGeo.attributes.position as THREE.BufferAttribute;
@@ -1628,6 +1628,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     scene.add(floraGroup);
 
     // 2B. Real-Earth Metropolis at Active GPS City Origin (0, 0) (or Procedural Cities fallback)!
+    clearTerrainHeightCache3D();
     const townsGroup = new THREE.Group();
     scene.add(townsGroup);
     const activeGeoNow = getActiveGeoTerrainOrigin();

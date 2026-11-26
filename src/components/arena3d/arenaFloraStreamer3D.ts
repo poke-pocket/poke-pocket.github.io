@@ -105,29 +105,71 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
       }
     >();
 
+    let floraSnapGx = 999999;
+    let floraSnapGz = 999999;
+    let floraPendingPass = true;
+    const terrainNormAttr = terrainGeo.attributes.normal as THREE.BufferAttribute;
+    const gridSide = Math.round(Math.sqrt(terrainPosAttr.count));
+    const cellSpacing = gridSide > 1 ? Math.abs(terrainPosAttr.getX(1) - terrainPosAttr.getX(0)) : 2.5;
+    const twoSpacing = cellSpacing * 2;
+
     const updateWorldAround = (cx: number, cz: number) => {
-      const snapX = Math.round(cx / 4) * 4;
-      const snapZ = Math.round(cz / 4) * 4;
-      if (snapX === chunkState.x && snapZ === chunkState.z) return;
-      chunkState.x = snapX;
-      chunkState.z = snapZ;
+      // 1. Snap 224m terrain mesh every 16m (instead of every 4m!) + ultra-fast O(N) heightfield central-difference normals (0.3ms, zero GC!)
+      const snapX = Math.round(cx / 16) * 16;
+      const snapZ = Math.round(cz / 16) * 16;
+      if (snapX !== chunkState.x || snapZ !== chunkState.z) {
+        chunkState.x = snapX;
+        chunkState.z = snapZ;
+        terrainMesh.position.set(snapX, 0, snapZ);
+        waterPlaneMesh.position.set(snapX, WATER_LEVEL_3D, snapZ);
 
-      terrainMesh.position.set(snapX, 0, snapZ);
-      waterPlaneMesh.position.set(snapX, WATER_LEVEL_3D, snapZ);
-      for (let i = 0; i < terrainPosAttr.count; i++) {
-        const wx = terrainPosAttr.getX(i) + snapX;
-        const wz = terrainPosAttr.getZ(i) + snapZ;
-        terrainPosAttr.setY(i, getTerrainHeight3D(wx, wz));
+        const posArr = terrainPosAttr.array as Float32Array;
+        const count = terrainPosAttr.count;
+        for (let i = 0, p = 0; i < count; i++, p += 3) {
+          posArr[p + 1] = getTerrainHeight3D(posArr[p] + snapX, posArr[p + 2] + snapZ);
+        }
+        terrainPosAttr.needsUpdate = true;
+
+        if (terrainNormAttr && gridSide * gridSide === count) {
+          const normArr = terrainNormAttr.array as Float32Array;
+          for (let rz = 0; rz < gridSide; rz++) {
+            const rPrev = Math.max(0, rz - 1) * gridSide;
+            const rCur = rz * gridSide;
+            const rNext = Math.min(gridSide - 1, rz + 1) * gridSide;
+            for (let rx = 0; rx < gridSide; rx++) {
+              const i = rCur + rx;
+              const p = i * 3;
+              const hL = posArr[(rCur + Math.max(0, rx - 1)) * 3 + 1];
+              const hR = posArr[(rCur + Math.min(gridSide - 1, rx + 1)) * 3 + 1];
+              const hU = posArr[(rPrev + rx) * 3 + 1];
+              const hD = posArr[(rNext + rx) * 3 + 1];
+              const nx = hL - hR;
+              const nz = hU - hD;
+              const invLen = 1 / Math.hypot(nx, twoSpacing, nz);
+              normArr[p] = nx * invLen;
+              normArr[p + 1] = twoSpacing * invLen;
+              normArr[p + 2] = nz * invLen;
+            }
+          }
+          terrainNormAttr.needsUpdate = true;
+        } else {
+          terrainGeo.computeVertexNormals();
+        }
       }
-      terrainPosAttr.needsUpdate = true;
-      terrainGeo.computeVertexNormals();
 
-      // 2-Tier LOD Streaming across the ENTIRE 148x148m visible terrain (zero bare distant hills!):
-      // - Near Ring (<= 12 cells / ~38m): full trees + boulders + bushes + mushrooms + wildflowers + tall grass + stumps
-      // - Far Ring (13..23 cells / 38..74m): ALL trees + boulders + bushes so distant hills stay lushly forested!
-      // - Cull Ring (> 26 cells / >83m): recycle cells behind player for rock-solid 60 FPS!
+      // 2. Time-sliced 2-Tier Flora LOD Streaming (caps new prop cell instantiations per frame so walking NEVER stutters!)
       const gx0 = Math.round(cx / TERRACE_CELL);
       const gz0 = Math.round(cz / TERRACE_CELL);
+      if (Math.abs(gx0 - floraSnapGx) < 2 && Math.abs(gz0 - floraSnapGz) < 2 && !floraPendingPass) {
+        return;
+      }
+      const isInitialBurst = !Number.isFinite(floraSnapGx) || Math.abs(gx0 - floraSnapGx) > 12 || Math.abs(gz0 - floraSnapGz) > 12;
+      floraSnapGx = gx0;
+      floraSnapGz = gz0;
+      floraPendingPass = false;
+      const cellBudget = isInitialBurst ? 9999 : 18;
+      let spawnedThisFrame = 0;
+
       const NEAR_R = prefsRef.current.graphicsQuality === 'low' ? 9 : 12;
       const FAR_R = prefsRef.current.graphicsQuality === 'low' ? 18 : 23;
       const CULL_R = FAR_R + 3;
@@ -153,6 +195,10 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
           const key = `${gx},${gz}`;
           const existing = placedFloraCells.get(key);
           if (existing && (existing.tier === 'full' || wantTier === 'far')) continue;
+          if (spawnedThisFrame >= cellBudget) {
+            floraPendingPass = true;
+            return;
+          }
 
           const wx = gx * TERRACE_CELL;
           const wz = gz * TERRACE_CELL;
@@ -508,6 +554,7 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
           } else {
             placedFloraCells.set(key, { gx, gz, tier: wantTier, objs, bbs, nodeIds });
           }
+          if (objs.length > 0) spawnedThisFrame += 1;
         }
       }
     };
