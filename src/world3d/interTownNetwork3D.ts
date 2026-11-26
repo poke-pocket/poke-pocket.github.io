@@ -9,11 +9,11 @@ import {
 import type { TownStreetSeg } from '../utils/townStreetGen';
 import {
   mountGlbModel,
-  STREET_LAMP_BULB_MAT,
   STREET_LAMP_HALO_MAT,
 } from './townAssetLoader';
 import { getGroundTex, makePixelTex } from './townGroundTextures';
 import { makeObbCollider, type TownCollider } from './townTypes';
+import { mountVoxModel } from './voxLoader3D';
 
 /**
  * Builds a sleek, modern, low-parapet architectural river bridge (`现代低护栏景观跨江大桥`):
@@ -98,22 +98,27 @@ export function buildModernCityBridge3D(opts: {
     cap.rotation.y = bYaw;
     group.add(parapet, cap);
 
-    // Subtle river piers underneath the bridge deck + clean 3.8m promenade lamp posts
+    // Stepped voxel river piers underneath the bridge deck + MagicaVoxel `.vox` promenade lamp posts!
     for (const frac of [-0.28, 0, 0.28]) {
       const px = rx + bDirX * (railSpan * frac);
       const pz = rz + bDirZ * (railSpan * frac);
-      const pier = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.82, 5.4, 8), pierMat);
+      const pier = new THREE.Mesh(new THREE.BoxGeometry(1.35, 5.4, 1.35), pierMat);
       pier.position.set(px * 0.92 + bMidX * 0.08, deckY - 3.1, pz * 0.92 + bMidZ * 0.08);
+      pier.rotation.y = bYaw;
       group.add(pier);
 
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.13, 3.6, 6), capRailMat);
-      post.position.set(px, deckY + 2.75, pz);
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.26, 6, 6), STREET_LAMP_BULB_MAT);
-      bulb.position.set(px, deckY + 4.6, pz);
+      void mountVoxModel(group, '/models/vox/obj_stlight2.vox', {
+        x: px,
+        y: deckY + 0.95,
+        z: pz,
+        rotY: bYaw + (side > 0 ? Math.PI : 0),
+        targetHeight: 4.4,
+        emitMode: 'lamp',
+      });
       const halo = new THREE.Sprite(STREET_LAMP_HALO_MAT);
       halo.scale.set(3.2, 3.2, 1);
-      halo.position.set(px, deckY + 4.6, pz);
-      group.add(post, bulb, halo);
+      halo.position.set(px, deckY + 4.9, pz);
+      group.add(halo);
     }
   }
 }
@@ -178,9 +183,11 @@ export function buildSuburbanHsrStation3D(opts: {
   hubGroup.add(platform, safetyLine);
 
   for (const px of [-9.5, 0, 9.5]) {
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.34, 6.2, 8), pillarMat);
+    const colBase = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.9, 1.1), pillarMat);
+    colBase.position.set(px, 0.75, 6.2);
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.68, 6.2, 0.68), pillarMat);
     col.position.set(px, 3.4, 6.2);
-    hubGroup.add(col);
+    hubGroup.add(colBase, col);
   }
   const canopyMain = new THREE.Mesh(new THREE.BoxGeometry(30, 0.55, 11.5), silverRoofMat);
   canopyMain.position.set(0, 6.5, 3.8);
@@ -209,25 +216,25 @@ export function buildSuburbanHsrStation3D(opts: {
   hubGroup.add(signBoard);
   group.add(hubGroup);
 
-  // Express CRH Bullet Train on the HSR Track
+  // Express MagicaVoxel High-Speed Train (`veh_train.vox`) on the Suburban HSR Track!
   const trainGroup = new THREE.Group();
-  trainGroup.position.set(stationX - centerX, stBaseY + 0.18, stationZ - centerZ);
+  trainGroup.position.set(stationX - centerX, stBaseY + 0.22, stationZ - centerZ);
   trainGroup.rotation.y = stationRotY;
-  void mountGlbModel(trainGroup, '/models/town/train/train-bullet-a.glb', {
-    x: 5.8,
+  void mountVoxModel(trainGroup, '/models/vox/veh_train.vox', {
+    x: 6.2,
     y: 0,
     z: 0,
     rotY: Math.PI / 2,
-    targetWidth: 11.2,
-    addInkEdges: true,
+    targetSpan: 11.6,
+    emitMode: 'vehicle',
   });
-  void mountGlbModel(trainGroup, '/models/town/train/train-bullet-b.glb', {
-    x: -5.6,
+  void mountVoxModel(trainGroup, '/models/vox/veh_train.vox', {
+    x: -6.2,
     y: 0,
     z: 0,
-    rotY: Math.PI / 2,
-    targetWidth: 11.2,
-    addInkEdges: true,
+    rotY: -Math.PI / 2,
+    targetSpan: 11.6,
+    emitMode: 'vehicle',
   });
   group.add(trainGroup);
   return trainGroup;

@@ -11,13 +11,19 @@ import { detectOverlandCityAt } from '../../data/geoTerrain3D';
 import { getSkinDef } from '../../data/metaProgression';
 import { computeCameraWallClipT } from '../../utils/townBuilder3D';
 import { sound } from '../../utils/sound';
+import {
+  buildInteractActionsForTarget,
+  type LiveWorldBubble,
+  type NearbyActionMenuState,
+  type ProjectedBubble2D,
+} from './ArenaTownSocialAndBusOverlay';
 import { MONSTER_QUALITY_META, type FloatingTag2D } from './arenaTypesAndProps';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const _tmpFogColor = new THREE.Color();
 
 export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
-  const { activeInteriorNow, activeTownNow, activeWorldRun, activeZone, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, scene, selectedBiome, setEdgeIndicators, setFloatingTags, setHud, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, showBanner, sim, terrainMat } = rawCtx as ArenaSharedCtx;
+  const { activeInteriorNow, activeTownNow, activeWorldRun, activeZone, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, showBanner, sim, terrainMat, worldBubblesRef } = rawCtx as ArenaSharedCtx;
           // Smooth Minecraft-style live biome atmosphere transition (fog color + exploration toast!)
           const curBiomeAtPlayer = getSeamlessBiomeAt3D(sim.px, sim.pz, sim.py, selectedBiome);
           _tmpFogColor.setHex(BIOME_PALETTES[curBiomeAtPlayer].fogHex);
@@ -159,38 +165,92 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
               nearbyKoIdRef.current = null;
               setNearbyKoTarget((prev: any) => (prev === null ? prev : null));
             }
-            // Sync nearby interactive town building OR foraging / mining / signpost prompt
-            if (closestTownPoint) {
-              const nextInteract = {
-                id: closestTownPoint.id,
-                kind: closestTownPoint.kind,
-                label: `${closestTownPoint.label} · ${closestTownPoint.hint}`,
-                hp: 1,
-                maxHp: 1,
-                icon:
-                  closestTownPoint.kind === 'pokemon_center'
-                    ? '/sprites/items/potion.png'
-                    : closestTownPoint.kind === 'poke_mart'
-                      ? '/sprites/items/amulet-coin.png'
-                      : '/sprites/items/town-map.png',
+            // Project 3D Beside-Character Multi-Option Action Menu (`Tab` cycles, `E` activates!)
+            if (closestTownPoint || closestNode) {
+              const targetId = closestTownPoint ? closestTownPoint.id : closestNode.id;
+              const wx = closestTownPoint ? closestTownPoint.x : closestNode.x;
+              const wy = closestTownPoint ? (closestTownPoint.y ?? sim.py) + 1.45 : closestNode.y + 1.25;
+              const wz = closestTownPoint ? closestTownPoint.z : closestNode.z;
+              projVec.set(wx, wy, wz).project(camera);
+              const inView = projVec.z < 1 && Math.abs(projVec.x) <= 0.96 && Math.abs(projVec.y) <= 0.94;
+              const sx = ((projVec.x + 1) / 2) * 100;
+              const sy = ((-projVec.y + 1) / 2) * 100;
+              const { speakerName, actions } = buildInteractActionsForTarget(closestTownPoint, closestNode);
+              if (interactActionCountRef) interactActionCountRef.current = actions.length;
+              const nextMenu: NearbyActionMenuState = {
+                targetId,
+                speakerName,
+                wx,
+                wy,
+                wz,
+                sx,
+                sy,
+                inView,
+                actions,
               };
-              setNearbyInteract((prev: any) =>
-                prev && prev.id === nextInteract.id && prev.label === nextInteract.label ? prev : nextInteract,
-              );
-            } else if (closestNode) {
-              const nextInteract = {
-                id: closestNode.id,
-                kind: closestNode.kind,
-                label: closestNode.label,
-                hp: closestNode.hp,
-                maxHp: closestNode.maxHp,
-                icon: closestNode.icon,
-              };
-              setNearbyInteract((prev: any) =>
-                prev && prev.id === nextInteract.id && prev.hp === nextInteract.hp ? prev : nextInteract,
-              );
+              setNearbyInteract((prev: NearbyActionMenuState | null) => {
+                if (!prev || prev.targetId !== targetId) {
+                  if (interactOptionIdxRef) interactOptionIdxRef.current = 0;
+                  setInteractOptionIdx?.(0);
+                  setAskQuickNavOpen?.(false);
+                  return nextMenu;
+                }
+                if (
+                  Math.abs(prev.sx - sx) < 0.4 &&
+                  Math.abs(prev.sy - sy) < 0.4 &&
+                  prev.inView === inView &&
+                  prev.actions.length === actions.length &&
+                  prev.actions[0]?.label === actions[0]?.label
+                ) {
+                  return prev;
+                }
+                return nextMenu;
+              });
             } else {
-              setNearbyInteract((prev: any) => (prev === null ? prev : null));
+              if (interactActionCountRef) interactActionCountRef.current = 0;
+              setNearbyInteract((prev: any) => {
+                if (prev !== null) setAskQuickNavOpen?.(false);
+                return prev === null ? prev : null;
+              });
+            }
+
+            // Advance & 3D-Project Sequential Overhead Pixel Speech & Emote Bubbles (`一个气泡接着一个气泡展示`!)
+            if (worldBubblesRef && setProjectedBubbles) {
+              const nowMs = performance.now();
+              const list: LiveWorldBubble[] = worldBubblesRef.current;
+              const outBubbles: ProjectedBubble2D[] = [];
+              for (let bi = list.length - 1; bi >= 0; bi--) {
+                const b = list[bi];
+                if (nowMs < b.startAtMs) continue;
+                if (nowMs >= b.nextAtMs) {
+                  if (b.pageIdx + 1 < b.pages.length) {
+                    b.pageIdx += 1;
+                    const nextText = b.pages[b.pageIdx] ?? '';
+                    b.nextAtMs = nowMs + Math.max(2050, Math.min(3500, 1150 + nextText.length * 110));
+                    if (b.isPlayerDialog) sound.play('cursor');
+                  } else {
+                    list.splice(bi, 1);
+                    continue;
+                  }
+                }
+                if (Math.hypot(b.wx - sim.px, b.wz - sim.pz) > 36) continue;
+                projVec.set(b.wx, b.wy, b.wz).project(camera);
+                if (projVec.z >= 1 || Math.abs(projVec.x) > 0.94 || Math.abs(projVec.y) > 0.92) continue;
+                outBubbles.push({
+                  id: b.id,
+                  speakerName: b.speakerName,
+                  emote: b.pageIdx === 0 ? b.emote : undefined,
+                  text: b.pages[b.pageIdx] ?? '',
+                  pageIdx: b.pageIdx,
+                  totalPages: b.pages.length,
+                  sx: ((projVec.x + 1) / 2) * 100,
+                  sy: ((-projVec.y + 1) / 2) * 100,
+                  isPlayerDialog: b.isPlayerDialog,
+                });
+              }
+              setProjectedBubbles((prev: ProjectedBubble2D[]) =>
+                prev.length === 0 && outBubbles.length === 0 ? prev : outBubbles,
+              );
             }
             const nextMapSnap: LiveMapSnapshot = {
               px: sim.px,

@@ -88,6 +88,7 @@ export interface Survivors3DArenaProps {
   onRegisterBackHandler?: (handler: (() => boolean) | null) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  onToggleBgm?: () => void;
 }
 
 export interface ActiveFollower {
@@ -147,6 +148,7 @@ export interface Enemy3D {
   regionalSkin?: PetSkinId;
   isBoss: boolean;
   isTrainer: boolean;
+  isStreetDuel?: boolean;
   trainerSprite?: string;
   trainerName?: string;
   trainerWalkFrames?: Record<string, THREE.CanvasTexture>;

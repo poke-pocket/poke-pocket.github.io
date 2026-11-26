@@ -246,11 +246,17 @@ export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
             const engageRadius = tac.formation === 'hunt' ? 16.5 : tac.formation === 'vanguard' ? 13.0 : 12.0;
             const distToRed = Math.hypot(f.x - sim.px, f.z - sim.pz);
 
-            // Pick nearest / priority enemy inside engagement range around Hero (NEVER engages inside peaceful towns!)
-            const candidates = inTownPeaceZone ? [] : pickTargetForFollower(f, sim.enemies, tac.targetPriority);
-            const engageTarget = inTownPeaceZone
-              ? undefined
-              : candidates.find((en: Enemy3D) => Math.hypot(en.x - sim.px, en.z - sim.pz) < engageRadius);
+            const duelEnemies = sim.enemies.filter((en: Enemy3D) => en.isStreetDuel && en.hp > 0);
+            const hasStreetDuel = duelEnemies.length > 0;
+            // Pick nearest / priority enemy inside engagement range around Hero (engages consenting street duelists even inside peaceful towns!)
+            const candidates =
+              inTownPeaceZone && !hasStreetDuel
+                ? []
+                : pickTargetForFollower(f, inTownPeaceZone ? duelEnemies : sim.enemies, tac.targetPriority);
+            const engageTarget =
+              inTownPeaceZone && !hasStreetDuel
+                ? undefined
+                : candidates.find((en: Enemy3D) => Math.hypot(en.x - sim.px, en.z - sim.pz) < engageRadius);
 
             // Trigger real physical Contact Charge / Body Slam lunge for melee/bruiser Pokémon!
             if (
@@ -571,8 +577,8 @@ export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
             }
 
             const activeSlotCount = Math.min(f.skills.length, getUnlockedSkillSlotCount(f.level));
-            if (inTownPeaceZone) {
-              // Complete ceasefire inside peaceful towns!
+            if (inTownPeaceZone && !hasStreetDuel) {
+              // Complete ceasefire inside peaceful towns unless in a friendly street duel!
             } else if (tac.castMode === 'salvo') {
               if (triggerSalvo) {
                 const fired = new Set<SurvivorSkillId>();
@@ -790,7 +796,7 @@ export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
             if (!en.aggroed && !inTownPeaceZone && dist < aggroRange) {
               en.aggroed = true;
             }
-            if (inTownPeaceZone && !en.isBoss) {
+            if (inTownPeaceZone && !en.isBoss && !en.isStreetDuel) {
               en.aggroed = false;
             }
             const prevEnX = en.x;

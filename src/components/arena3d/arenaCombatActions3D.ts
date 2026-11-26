@@ -319,6 +319,12 @@ export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
         }
         if (srcFollower) srcFollower.kills += 1;
         if (en.isTrainer) sim.trainersDefeated += 1;
+        if (en.isStreetDuel) {
+          sim.coins += 95;
+          sim.xp += 45;
+          sound.play('levelup');
+          showBanner(`🏆 街头切磋获胜！赢得 ${en.trainerName ?? '对手'} 的赞赏与 +95 金币对战奖金！`, 3400);
+        }
 
         const qMeta = MONSTER_QUALITY_META[en.quality];
         const lootMult = qMeta.lootMult * (en.isShiny ? 2.2 : 1.0);
@@ -467,7 +473,13 @@ export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
       const dmg = Math.round(
         sim.baseAtk * sim.atkMult * syn.atkMult * wMod.atkMult * meta.powerMult * (0.9 + f.level * 0.25) * modeMult,
       );
-      const targets = pickTargetForFollower(f, sim.enemies, tac.targetPriority);
+      const targets = pickTargetForFollower(
+        f,
+        sim.enemies.some((e) => e.isStreetDuel && e.hp > 0)
+          ? sim.enemies.filter((e) => e.isStreetDuel)
+          : sim.enemies,
+        tac.targetPriority,
+      );
 
       if (skillId === 'heal_bell') {
         const missingHp = Math.max(0, Math.round(sim.maxHp - sim.hp));
@@ -721,12 +733,20 @@ export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
       hp: number,
       speed: number,
       dmg: number,
-      opts?: { isBoss?: boolean; isTrainer?: boolean; trainerSprite?: string; trainerName?: string; isAquatic?: boolean },
+      opts?: {
+        isBoss?: boolean;
+        isTrainer?: boolean;
+        isStreetDuel?: boolean;
+        trainerSprite?: string;
+        trainerName?: string;
+        isAquatic?: boolean;
+      },
     ) => {
       const sim = simRef.current;
       if (!sim) return;
       const isBoss = Boolean(opts?.isBoss);
       const isTrainer = Boolean(opts?.isTrainer);
+      const isStreetDuel = Boolean(opts?.isStreetDuel);
       const isAquatic = Boolean(opts?.isAquatic);
       let species: SpeciesId = rawSpecies;
       if (!isBoss && !isTrainer && !isAquatic && adventureStyleRef.current === 'care_world' && Math.random() < 0.62) {
@@ -840,6 +860,7 @@ export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
         regionalSkin,
         isBoss,
         isTrainer,
+        isStreetDuel,
         trainerSprite: opts?.trainerSprite,
         trainerName: opts?.trainerName,
         shootCd: 1.8,
@@ -855,7 +876,7 @@ export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
         auraRing,
         shinyTimer: 0.35,
         temperament,
-        aggroed: isBoss || isTrainer,
+        aggroed: isBoss || isTrainer || isStreetDuel,
         homeX: x,
         homeZ: z,
         isAquatic,

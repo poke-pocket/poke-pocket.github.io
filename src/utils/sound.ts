@@ -20,29 +20,169 @@ export type SfxKind =
   | 'pokeball'
   | 'jump';
 
-export type BgmTrackId = 'town' | 'adventure' | 'safezone' | 'battle';
+export type BgmTrackId =
+  | 'hub'
+  | 'town'
+  | 'town_night'
+  | 'adventure'
+  | 'safezone'
+  | 'pokemon_center'
+  | 'poke_mart'
+  | 'restaurant'
+  | 'hotel'
+  | 'house'
+  | 'battle';
 
-// Note frequencies (Hz)
+export const BGM_TRACK_LABELS: Record<BgmTrackId, string> = {
+  hub: '晨曦序曲 · 掌上世界',
+  town: '晴空微风 · 城镇漫步',
+  town_night: '星夜霓虹 · 都市晚风',
+  adventure: '翠绿原野 · 郊外远征',
+  safezone: '乔伊治愈曲 · 宝可梦中心',
+  pokemon_center: '乔伊治愈曲 · 宝可梦中心',
+  poke_mart: '轻快购物曲 · 友好百货',
+  restaurant: '午后波萨 · 树果料理屋',
+  hotel: '八音盒小夜曲 · 驿站酒店',
+  house: '温馨日常 · 居民公寓',
+  battle: '热血激战 · 切磋与首领',
+};
+
+type VoiceTimbre =
+  | 'flute'
+  | 'bell'
+  | 'rhodes'
+  | 'harp'
+  | 'woodwind'
+  | 'brass_warm'
+  | 'bass_warm'
+  | 'bass_pluck';
+
+type DrumHit = 'K' | 'S' | 'H' | 'B' | '';
+
+// Complete chromatic note frequencies (Hz) with sharp & flat enharmonics
 const N: Record<string, number> = {
   R: 0,
-  C3: 130.81, D3: 146.83, Eb3: 155.56, E3: 164.81, F3: 174.61, Fs3: 185.0, G3: 196.0, Ab3: 207.65, A3: 220.0, Bb3: 233.08, B3: 246.94,
-  C4: 261.63, Cs4: 277.18, D4: 293.66, Eb4: 311.13, E4: 329.63, F4: 349.23, Fs4: 369.99, G4: 392.0, Ab4: 415.3, A4: 440.0, Bb4: 466.16, B4: 493.88,
-  C5: 523.25, Cs5: 554.37, D5: 587.33, Eb5: 622.25, E5: 659.25, F5: 698.46, Fs5: 739.99, G5: 783.99, Ab5: 830.61, A5: 880.0, Bb5: 932.33, B5: 987.77,
-  C6: 1046.5, D6: 1174.66, E6: 1318.51,
+  A2: 110.0, Bb2: 116.54, B2: 123.47,
+  C3: 130.81, Cs3: 138.59, Db3: 138.59, D3: 146.83, Ds3: 155.56, Eb3: 155.56, E3: 164.81,
+  F3: 174.61, Fs3: 185.0, Gb3: 185.0, G3: 196.0, Gs3: 207.65, Ab3: 207.65, A3: 220.0, As3: 233.08, Bb3: 233.08, B3: 246.94,
+  C4: 261.63, Cs4: 277.18, Db4: 277.18, D4: 293.66, Ds4: 311.13, Eb4: 311.13, E4: 329.63,
+  F4: 349.23, Fs4: 369.99, Gb4: 369.99, G4: 392.0, Gs4: 415.3, Ab4: 415.3, A4: 440.0, As4: 466.16, Bb4: 466.16, B4: 493.88,
+  C5: 523.25, Cs5: 554.37, Db5: 554.37, D5: 587.33, Ds5: 622.25, Eb5: 622.25, E5: 659.25,
+  F5: 698.46, Fs5: 739.99, Gb5: 739.99, G5: 783.99, Gs5: 830.61, Ab5: 830.61, A5: 880.0, As5: 932.33, Bb5: 932.33, B5: 987.77,
+  C6: 1046.5, Cs6: 1108.73, D6: 1174.66, Eb6: 1244.51, E6: 1318.51, F6: 1396.91, Fs6: 1479.98, G6: 1567.98,
 };
 
 interface ChiptuneTrack {
   stepMs: number;
+  swing?: number;
+  leadTimbre: VoiceTimbre;
+  harmTimbre: VoiceTimbre;
+  bassTimbre: VoiceTimbre;
+  leadGain?: number;
+  harmGain?: number;
+  bassGain?: number;
+  gate?: number;
   lead: string[];
   harmony: string[];
   bass: string[];
-  drums?: ('K' | 'S' | 'H' | '')[];
+  drums?: DrumHit[];
 }
 
+const POKEMON_CENTER_TRACK: ChiptuneTrack = {
+  // Iconic warm D-Major Pokémon Center healing & rest melody
+  stepMs: 195,
+  leadTimbre: 'bell',
+  harmTimbre: 'flute',
+  bassTimbre: 'bass_warm',
+  leadGain: 0.052,
+  harmGain: 0.028,
+  bassGain: 0.055,
+  gate: 0.94,
+  lead: [
+    'D5','A4','D5','A5','G5','Fs5','E5','Cs5',
+    'E5','A4','E5','G5','Fs5','E5','D5','R',
+    'D5','A4','D5','A5','G5','Fs5','E5','G5',
+    'Fs5','G5','A5','Fs5','D5','R','R','R',
+    'Fs5','R','A5','R','G5','Fs5','E5','R',
+    'E5','R','G5','R','Fs5','E5','D5','R',
+    'B4','D5','G5','B5','A5','G5','Fs5','E5',
+    'D5','E5','Fs5','A5','D5','R','R','R',
+  ],
+  harmony: [
+    'Fs4','R','A4','R','B4','R','G4','R',
+    'G4','R','Cs5','R','A4','R','Fs4','R',
+    'Fs4','R','A4','R','B4','R','Cs5','R',
+    'A4','R','Cs5','R','Fs4','R','A4','R',
+    'A4','D5','Fs4','A4','B4','D5','G4','B4',
+    'G4','Cs5','E4','G4','Fs4','A4','Fs4','R',
+    'G4','R','B4','R','Cs5','R','A4','R',
+    'Fs4','R','A4','Cs5','Fs4','R','R','R',
+  ],
+  bass: [
+    'D3','R','A3','R','G3','R','A3','R',
+    'A3','R','E3','R','D3','R','A3','R',
+    'D3','R','A3','R','G3','R','A3','R',
+    'D3','R','A3','R','D3','R','A3','R',
+    'D3','R','Fs3','R','G3','R','A3','R',
+    'A3','R','E3','R','D3','R','Fs3','R',
+    'G3','R','D3','R','A3','R','E3','R',
+    'D3','R','A3','R','D3','R','R','R',
+  ],
+};
+
 const TRACKS: Record<BgmTrackId, ChiptuneTrack> = {
-  // 1. Cozy Nostalgic Pallet-Town-inspired 3-voice chiptune
+  // 0. Hub Prelude — Airy C-Major Harp Arpeggios & Gentle Flute Overlook
+  hub: {
+    stepMs: 225,
+    leadTimbre: 'flute',
+    harmTimbre: 'harp',
+    bassTimbre: 'bass_warm',
+    leadGain: 0.044,
+    harmGain: 0.032,
+    bassGain: 0.048,
+    gate: 0.96,
+    lead: [
+      'E5','R','G5','A5','G5','R','E5','C5',
+      'D5','R','E5','G5','E5','R','R','R',
+      'A5','R','G5','E5','D5','E5','G5','A5',
+      'G5','R','D5','R','E5','R','R','R',
+      'F5','R','A5','C6','B5','R','G5','D5',
+      'E5','R','G5','C6','A5','R','E5','R',
+      'F5','E5','D5','C5','G5','R','B4','D5',
+      'C5','R','E5','R','C5','R','R','R',
+    ],
+    harmony: [
+      'C4','G4','C5','G4','B3','G4','B4','G4',
+      'A3','E4','A4','E4','G3','E4','G4','E4',
+      'F4','A4','C5','A4','G4','B4','D5','B4',
+      'E4','G4','B4','G4','A4','E4','C5','E4',
+      'F4','A4','C5','A4','G4','B4','D5','B4',
+      'E4','G4','C5','G4','A4','E4','C5','A4',
+      'D4','F4','A4','F4','G4','B4','D5','F4',
+      'E4','G4','C5','G4','E4','G4','C5','R',
+    ],
+    bass: [
+      'C3','R','R','R','B2','R','R','R',
+      'A2','R','R','R','G3','R','R','R',
+      'F3','R','R','R','G3','R','R','R',
+      'E3','R','G3','R','A3','R','E3','R',
+      'F3','R','C3','R','G3','R','D3','R',
+      'E3','R','B2','R','A2','R','E3','R',
+      'D3','R','A3','R','G3','R','D3','R',
+      'C3','R','G3','R','C3','R','R','R',
+    ],
+  },
+
+  // 1. Town Day — Cozy Littleroot / Twinleaf G-Major Stroll
   town: {
-    stepMs: 215,
+    stepMs: 210,
+    leadTimbre: 'flute',
+    harmTimbre: 'woodwind',
+    bassTimbre: 'bass_pluck',
+    leadGain: 0.048,
+    harmGain: 0.024,
+    bassGain: 0.052,
+    gate: 0.92,
     lead: [
       'G5','Fs5','E5','D5','B5','A5','G5','E5',
       'C5','D5','E5','G5','Fs5','R','D5','R',
@@ -57,7 +197,7 @@ const TRACKS: Record<BgmTrackId, ChiptuneTrack> = {
       'B4','R','G4','R','D5','R','B4','R',
       'E4','R','G4','R','A4','R','Fs4','R',
       'G4','R','B4','R','D5','R','G4','R',
-      'Fs4','R','A4','R','B4','R','D5','R',
+      'Fs4','R','A4','R','B4','D5','B4','R',
       'D5','R','B4','R','G4','R','B4','R',
       'C5','R','A4','R','Fs4','R','G4','R',
       'E4','R','C5','R','C5','R','A4','R',
@@ -75,9 +215,59 @@ const TRACKS: Record<BgmTrackId, ChiptuneTrack> = {
     ],
   },
 
-  // 2. High-energy GBA Route / Vampire Survivors Adventure 4-channel Anthem (~155 BPM)
+  // 2. Town Night — DS Diamond/Pearl Inspired Starry Rhodes & Celesta Nocturne (F Major7)
+  town_night: {
+    stepMs: 255,
+    swing: 0.1,
+    leadTimbre: 'bell',
+    harmTimbre: 'rhodes',
+    bassTimbre: 'bass_warm',
+    leadGain: 0.044,
+    harmGain: 0.034,
+    bassGain: 0.048,
+    gate: 1.08,
+    lead: [
+      'A5','R','G5','F5','E5','R','C5','R',
+      'D5','E5','F5','A5','G5','R','R','R',
+      'A5','R','C6','A5','G5','F5','E5','D5',
+      'C5','R','D5','E5','F5','R','R','R',
+      'Bb5','R','A5','G5','A5','R','F5','C5',
+      'G5','R','F5','E5','F5','R','D5','R',
+      'E5','G5','Bb5','A5','G5','F5','E5','C5',
+      'D5','R','E5','R','F5','R','R','R',
+    ],
+    harmony: [
+      'C5','A4','F4','A4','G4','E4','C4','E4',
+      'Bb4','F4','D4','F4','B4','G4','D4','G4',
+      'C5','A4','F4','A4','B4','G4','E4','G4',
+      'Bb4','G4','E4','G4','A4','F4','C4','F4',
+      'D5','Bb4','F4','Bb4','C5','A4','F4','A4',
+      'B4','G4','D4','G4','A4','F4','D4','F4',
+      'Bb4','G4','E4','G4','C5','A4','F4','A4',
+      'Bb4','F4','G4','E4','A4','F4','C5','R',
+    ],
+    bass: [
+      'F3','R','C3','R','A2','R','E3','R',
+      'Bb2','R','F3','R','G3','R','D3','R',
+      'F3','R','C3','R','E3','R','B2','R',
+      'C3','R','G3','R','F3','R','C3','R',
+      'Bb2','R','F3','R','F3','R','C3','R',
+      'G3','R','D3','R','D3','R','A2','R',
+      'G3','R','C3','R','F3','R','D3','R',
+      'Bb2','R','C3','R','F3','R','R','R',
+    ],
+  },
+
+  // 3. Wilderness / Route Adventure — Upbeat GBA Route 101/201 March
   adventure: {
-    stepMs: 145,
+    stepMs: 155,
+    leadTimbre: 'brass_warm',
+    harmTimbre: 'woodwind',
+    bassTimbre: 'bass_pluck',
+    leadGain: 0.044,
+    harmGain: 0.025,
+    bassGain: 0.056,
+    gate: 0.86,
     lead: [
       'E5','R','E5','G5','A5','R','G5','E5',
       'D5','E5','Fs5','D5','E5','R','B4','R',
@@ -120,73 +310,257 @@ const TRACKS: Record<BgmTrackId, ChiptuneTrack> = {
     ],
   },
 
-  // 3. Cheerful Pokémon Center Safe Zone Melody
-  safezone: {
-    stepMs: 195,
+  // 4. Pokémon Center (Safe Zone & Walk-In Center)
+  safezone: POKEMON_CENTER_TRACK,
+  pokemon_center: POKEMON_CENTER_TRACK,
+
+  // 5. Poké Mart — Bouncy Cheerful F-Major Staccato Swing Shop Theme
+  poke_mart: {
+    stepMs: 175,
+    swing: 0.16,
+    leadTimbre: 'woodwind',
+    harmTimbre: 'bell',
+    bassTimbre: 'bass_pluck',
+    leadGain: 0.045,
+    harmGain: 0.028,
+    bassGain: 0.056,
+    gate: 0.72,
     lead: [
-      'D5','A4','D5','A5','G5','Fs5','E5','Cs5',
-      'E5','A4','E5','G5','Fs5','E5','D5','R',
-      'D5','A4','D5','A5','G5','Fs5','E5','G5',
-      'Fs5','G5','A5','Fs5','D5','R','R','R',
-      'Fs5','R','A5','R','G5','Fs5','E5','R',
-      'E5','R','G5','R','Fs5','E5','D5','R',
-      'B4','D5','G5','B5','A5','G5','Fs5','E5',
-      'D5','E5','Fs5','A5','D5','R','R','R',
+      'C5','F5','A5','F5','G5','E5','C5','R',
+      'D5','G5','Bb5','A5','G5','F5','E5','G5',
+      'C5','F5','A5','C6','Bb5','A5','G5','F5',
+      'E5','G5','C6','E5','F5','R','R','R',
+      'A5','R','F5','A5','Bb5','A5','G5','R',
+      'G5','R','E5','G5','A5','G5','F5','R',
+      'D5','F5','Bb5','D6','C6','A5','G5','E5',
+      'F5','A5','C6','A5','F5','R','R','R',
     ],
     harmony: [
-      'Fs4','R','Fs4','R','B4','R','G4','R',
-      'G4','R','G4','R','A4','R','Fs4','R',
-      'Fs4','R','Fs4','R','B4','R','A4','R',
-      'A4','R','Cs5','R','Fs4','R','R','R',
-      'A4','R','D5','R','B4','R','G4','R',
-      'G4','R','Cs5','R','A4','R','Fs4','R',
-      'G4','R','B4','R','Cs5','R','A4','R',
-      'Fs4','R','A4','R','Fs4','R','R','R',
+      'R','A4','R','C5','R','Bb4','R','G4',
+      'R','Bb4','R','D5','R','B4','C5','Bb4',
+      'R','A4','R','Eb5','D5','C5','Bb4','A4',
+      'R','Bb4','R','Bb4','A4','C5','A4','R',
+      'C5','R','A4','C5','D5','C5','Bb4','R',
+      'Bb4','R','G4','Bb4','C5','Bb4','A4','R',
+      'Bb4','R','D5','F5','E5','C5','Bb4','G4',
+      'A4','C5','F5','C5','A4','R','R','R',
     ],
     bass: [
-      'D3','R','A3','R','G3','R','A3','R',
-      'A3','R','E3','R','D3','R','A3','R',
-      'D3','R','A3','R','G3','R','A3','R',
-      'D3','R','A3','R','D3','R','A3','R',
-      'D3','R','Fs3','R','G3','R','A3','R',
-      'A3','R','E3','R','D3','R','Fs3','R',
-      'G3','R','D3','R','A3','R','E3','R',
-      'D3','R','A3','R','D3','R','R','R',
+      'F3','R','C3','R','C3','R','G3','R',
+      'G3','R','D3','R','C3','R','G3','E3',
+      'F3','R','Eb3','R','D3','R','Bb2','R',
+      'C3','R','G3','C3','F3','C3','F3','R',
+      'F3','C3','F3','A3','Gm' in N ? 'G3' : 'G3','D3','G3','Bb3',
+      'C3','G3','C3','E3','F3','C3','F3','A3',
+      'Bb2','F3','Bb2','D3','C3','G3','C3','Bb2',
+      'F3','C3','A3','C3','F3','R','R','R',
+    ],
+    drums: [
+      'K','B','H','B','K','B','S','B',
+      'K','B','H','B','K','B','S','H',
+      'K','B','H','B','K','B','S','B',
+      'K','B','S','B','K','S','B','R' as DrumHit,
+      'K','B','H','B','K','B','S','B',
+      'K','B','H','B','K','B','S','B',
+      'K','B','H','B','K','B','S','B',
+      'K','S','H','B','K','R' as DrumHit,'' ,'' ,
+    ].map((d) => (d === 'K' || d === 'S' || d === 'H' || d === 'B' ? d : '')),
+  },
+
+  // 6. Berry Restaurant — Warm Cozy C-Major7 Café Bossa-Nova
+  restaurant: {
+    stepMs: 195,
+    swing: 0.08,
+    leadTimbre: 'flute',
+    harmTimbre: 'rhodes',
+    bassTimbre: 'bass_pluck',
+    leadGain: 0.046,
+    harmGain: 0.034,
+    bassGain: 0.054,
+    gate: 0.94,
+    lead: [
+      'B5','R','A5','G5','E5','R','D5','E5',
+      'G5','R','Fs5','G5','A5','R','R','R',
+      'A5','R','G5','F5','D5','R','C5','D5',
+      'F5','R','E5','F5','G5','R','E5','R',
+      'C6','R','B5','A5','G5','E5','C5','E5',
+      'A5','R','G5','F5','E5','D5','C5','R',
+      'D5','F5','A5','C6','B5','G5','E5','D5',
+      'E5','R','G5','R','C5','R','R','R',
+    ],
+    harmony: [
+      'E5','R','B4','E5','R','B4','G4','R',
+      'Cs5','R','G4','Cs5','R','G4','E4','R',
+      'C5','R','A4','C5','R','A4','F4','R',
+      'B4','R','F4','B4','R','A4','G4','R',
+      'E5','R','B4','E5','Bb4','R','G4','Bb4',
+      'C5','R','A4','C5','Ab4','R','F4','Ab4',
+      'C5','R','A4','C5','B4','R','F4','B4',
+      'B4','G4','E4','G4','E4','R','R','R',
+    ],
+    bass: [
+      'C3','R','R','G3','C3','R','G3','R',
+      'A2','R','R','E3','A2','R','E3','R',
+      'D3','R','R','A3','D3','R','A3','R',
+      'G3','R','R','D3','G3','R','D3','B2',
+      'C3','R','R','G3','Gm' in N ? 'C3' : 'C3','R','Bb2','R',
+      'F3','R','R','C3','F3','R','Ab3','R',
+      'D3','R','R','A3','G3','R','D3','R',
+      'C3','R','G3','R','C3','R','G3','R',
+    ],
+    drums: [
+      'K','B','B','K','B','K','B','B',
+      'K','B','B','K','B','K','B','B',
+      'K','B','B','K','B','K','B','B',
+      'K','B','B','K','B','K','B','H',
+      'K','B','B','K','B','K','B','B',
+      'K','B','B','K','B','K','B','B',
+      'K','B','B','K','B','K','B','B',
+      'K','B','K','B','K','B','','',
     ],
   },
 
-  // 4. Intense Gym Leader / Rival Battle Theme (168 BPM)
+  // 7. Station Grand Hotel — Elegant Eb-Major Music-Box & Harp Lounge Serenade
+  hotel: {
+    stepMs: 245,
+    leadTimbre: 'bell',
+    harmTimbre: 'harp',
+    bassTimbre: 'bass_warm',
+    leadGain: 0.048,
+    harmGain: 0.032,
+    bassGain: 0.046,
+    gate: 1.1,
+    lead: [
+      'Bb5','R','G5','Eb5','F5','R','Bb4','R',
+      'G5','Ab5','G5','F5','Eb5','R','R','R',
+      'C6','R','Ab5','Eb5','Bb5','R','G5','Eb5',
+      'F5','G5','Ab5','G5','F5','R','R','R',
+      'Bb5','R','Eb6','D6','C6','R','Ab5','F5',
+      'Bb5','R','G5','Eb5','F5','R','D5','Bb4',
+      'Eb5','G5','Bb5','Eb6','D6','Bb5','Ab5','F5',
+      'G5','R','F5','R','Eb5','R','R','R',
+    ],
+    harmony: [
+      'Eb4','G4','Bb4','G4','D4','F4','Ab4','F4',
+      'Eb4','G4','Bb4','G4','Bb3','Eb4','G4','Eb4',
+      'Eb4','Ab4','C5','Ab4','Eb4','G4','Bb4','G4',
+      'C4','F4','Ab4','F4','D4','F4','Bb4','Ab4',
+      'Eb4','G4','Bb4','G4','F4','Ab4','C5','Ab4',
+      'Eb4','G4','Bb4','G4','D4','F4','Bb4','F4',
+      'C4','Eb4','Ab4','C5','D4','F4','Ab4','Bb4',
+      'Eb4','G4','Ab4','D4','Eb4','G4','Bb4','R',
+    ],
+    bass: [
+      'Eb3','R','Bb2','R','Bb2','R','F3','R',
+      'Eb3','R','Bb2','R','Eb3','R','G3','R',
+      'Ab2','R','Eb3','R','G3','R','Eb3','R',
+      'F3','R','C3','R','Bb2','R','F3','R',
+      'G3','R','Eb3','R','Ab2','R','F3','R',
+      'Eb3','R','Bb2','R','Bb2','R','F3','R',
+      'Ab2','R','Eb3','R','Bb2','R','F3','R',
+      'Eb3','R','Bb2','R','Eb3','R','R','R',
+    ],
+  },
+
+  // 8. Residential House / Pokéball Pod — Warm Homey A-Major Acoustic Chamber Melody
+  house: {
+    stepMs: 215,
+    leadTimbre: 'flute',
+    harmTimbre: 'harp',
+    bassTimbre: 'bass_pluck',
+    leadGain: 0.045,
+    harmGain: 0.032,
+    bassGain: 0.048,
+    gate: 0.92,
+    lead: [
+      'Cs5','E5','A5','E5','Fs5','E5','D5','R',
+      'B4','D5','Fs5','A5','Gs5','Fs5','E5','R',
+      'Cs5','E5','A5','Cs6','B5','A5','Fs5','D5',
+      'E5','Fs5','Gs5','B5','A5','R','R','R',
+      'D6','Cs6','B5','A5','Gs5','E5','B5','R',
+      'Cs6','B5','A5','Fs5','E5','Cs5','A5','R',
+      'B4','D5','Fs5','A5','Gs5','B5','E5','Gs5',
+      'A5','R','E5','Cs5','A4','R','R','R',
+    ],
+    harmony: [
+      'A4','E4','Cs5','A4','A4','Fs4','Fs4','D4',
+      'Fs4','D4','B4','Fs4','B4','Gs4','Gs4','E4',
+      'A4','E4','E5','A4','D5','Fs4','A4','Fs4',
+      'Gs4','E4','B4','D5','Cs5','E4','A4','R',
+      'Fs4','A4','D5','Fs4','E4','Gs4','D5','Gs4',
+      'E4','A4','Cs5','A4','Cs4','Fs4','Cs5','Fs4',
+      'D4','Fs4','B4','D5','E4','Gs4','B4','D5',
+      'Cs5','E4','A4','E4','Cs4','R','R','R',
+    ],
+    bass: [
+      'A3','R','E3','R','D3','R','A3','R',
+      'B2','R','Fs3','R','E3','R','B2','R',
+      'A3','R','Gs3','R','Fs3','R','D3','R',
+      'E3','R','E3','Gs3','A3','E3','A3','R',
+      'D3','R','B2','R','E3','R','Gs3','R',
+      'A3','R','E3','R','Fs3','R','Cs3','R',
+      'B2','R','D3','R','E3','R','E3','R',
+      'A3','R','E3','R','A2','R','R','R',
+    ],
+  },
+
+  // 9. Street Trainer Duel & Boss Battle — Driving 156 BPM Rival/Gym Anthem
   battle: {
-    stepMs: 130,
+    stepMs: 132,
+    leadTimbre: 'brass_warm',
+    harmTimbre: 'woodwind',
+    bassTimbre: 'bass_pluck',
+    leadGain: 0.048,
+    harmGain: 0.028,
+    bassGain: 0.062,
+    gate: 0.85,
     lead: [
       'A5','Ab5','G5','Fs5','F5','E5','Eb5','D5',
       'E5','R','A5','R','G5','E5','D5','C5',
       'A4','C5','D5','E5','G5','E5','A5','R',
       'B5','A5','G5','E5','Fs5','G5','A5','R',
+      'C6','R','B5','A5','G5','A5','E5','R',
+      'F5','G5','A5','C6','B5','G5','E5','R',
+      'D5','F5','A5','D6','C6','B5','A5','G5',
+      'A5','E5','C6','B5','A5','R','E5','R',
     ],
     harmony: [
       'E5','Eb5','D5','Cs5','C5','B4','Bb4','A4',
       'C5','A4','E5','C5','D5','B4','A4','E4',
       'E4','A4','B4','C5','D5','B4','E5','C5',
       'G5','E5','D5','B4','D5','E5','E5','R',
+      'E5','C5','G5','E5','C5','E5','B4','G4',
+      'A4','B4','C5','E5','D5','B4','B4','G4',
+      'A4','D5','F5','A5','E5','D5','C5','B4',
+      'C5','A4','E5','D5','C5','R','B4','R',
     ],
     bass: [
       'A3','A3','E3','A3','F3','F3','C3','F3',
       'G3','G3','D3','G3','A3','E3','A3','G3',
       'F3','F3','G3','G3','A3','A3','E3','A3',
       'G3','G3','E3','E3','D3','E3','A3','E3',
+      'F3','F3','C3','F3','C3','C3','G3','C3',
+      'D3','D3','A3','D3','E3','E3','B2','E3',
+      'Bb2','Bb2','F3','Bb2','E3','E3','B2','E3',
+      'A3','E3','A3','G3','A3','E3','A2','E3',
     ],
     drums: [
       'K','H','S','H','K','K','S','H',
       'K','H','S','H','K','S','S','H',
       'K','H','S','H','K','K','S','H',
       'K','S','K','S','K','S','S','S',
+      'K','H','S','H','K','K','S','H',
+      'K','H','S','K','K','H','S','H',
+      'K','H','S','H','K','K','S','H',
+      'K','S','K','S','K','H','S','S',
     ],
   },
 };
 
 class RetroSoundEngine {
   private ctx: AudioContext | null = null;
+  private bgmBusGain: GainNode | null = null;
+  private bgmBusInput: AudioNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
   private muted = false;
   private sfxVolume = 75;
@@ -198,14 +572,16 @@ class RetroSoundEngine {
   private masterVolume = 80;
   private muteOnBlur = true;
   private pageHidden = false;
-  private currentTrack: BgmTrackId = 'town';
+  private currentTrack: BgmTrackId = 'hub';
   private bgmTimer: number | null = null;
   private bgmStep = 0;
+  private nextStepTime = 0;
   private activeCry: HTMLAudioElement | null = null;
   private activeCryNode: AudioBufferSourceNode | null = null;
   private cryCache = new Map<string, HTMLAudioElement>();
   private cryBufferCache = new Map<string, AudioBuffer>();
   private cryToneMode: 'warm' | 'cute' | 'raw' = 'warm';
+  private unlockListenersBound = false;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -214,24 +590,109 @@ class RetroSoundEngine {
         if (this.pageHidden && this.muteOnBlur && this.activeCry) {
           this.activeCry.pause();
         }
+        this.syncBgmBusGain();
       });
     }
+    this.bindGestureUnlockListeners();
+  }
+
+  private bindGestureUnlockListeners() {
+    if (typeof window === 'undefined' || this.unlockListenersBound) return;
+    this.unlockListenersBound = true;
+    const onGesture = () => {
+      this.unlock();
+      if (this.ctx && this.ctx.state === 'running') {
+        window.removeEventListener('pointerdown', onGesture, true);
+        window.removeEventListener('keydown', onGesture, true);
+        window.removeEventListener('touchstart', onGesture, true);
+      }
+    };
+    window.addEventListener('pointerdown', onGesture, { capture: true, passive: true });
+    window.addEventListener('keydown', onGesture, { capture: true, passive: true });
+    window.addEventListener('touchstart', onGesture, { capture: true, passive: true });
   }
 
   private isSilenceActive(): boolean {
-    return this.masterVolume <= 0 || (this.muteOnBlur && this.pageHidden);
+    return this.muted || this.masterVolume <= 0 || (this.muteOnBlur && this.pageHidden);
+  }
+
+  private ensureBgmBus(ctx: AudioContext): AudioNode {
+    if (this.bgmBusInput && this.bgmBusGain) {
+      return this.bgmBusInput;
+    }
+    // Warm GBA/NDS Mastering Chain for BGM: Highpass @ 65Hz -> Warm Lowpass @ 3200Hz -> Gentle Glue Compressor -> Master BGM Gain
+    const hpf = ctx.createBiquadFilter();
+    hpf.type = 'highpass';
+    hpf.frequency.value = 65;
+
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 3200;
+    lpf.Q.value = 0.55;
+
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -16;
+    comp.knee.value = 14;
+    comp.ratio.value = 3;
+    comp.attack.value = 0.008;
+    comp.release.value = 0.16;
+
+    const masterGain = ctx.createGain();
+    masterGain.gain.value = this.computeTargetBgmGain();
+
+    hpf.connect(lpf);
+    lpf.connect(comp);
+    comp.connect(masterGain);
+    masterGain.connect(ctx.destination);
+
+    this.bgmBusInput = hpf;
+    this.bgmBusGain = masterGain;
+    return hpf;
+  }
+
+  private computeTargetBgmGain(): number {
+    if (this.isSilenceActive() || !this.bgmEnabled || this.bgmVolume <= 0) return 0.0001;
+    return Math.max(0.0001, (this.bgmVolume / 100) * (this.masterVolume / 100) * 1.15);
+  }
+
+  private syncBgmBusGain(fadeSec = 0.06) {
+    if (!this.ctx || !this.bgmBusGain) return;
+    const now = this.ctx.currentTime;
+    const target = this.computeTargetBgmGain();
+    try {
+      this.bgmBusGain.gain.cancelScheduledValues(now);
+      this.bgmBusGain.gain.setValueAtTime(Math.max(0.0001, this.bgmBusGain.gain.value), now);
+      this.bgmBusGain.gain.linearRampToValueAtTime(target, now + fadeSec);
+    } catch {
+      this.bgmBusGain.gain.value = target;
+    }
+  }
+
+  getTrack(): BgmTrackId {
+    return this.currentTrack;
+  }
+
+  getTrackLabel(): string {
+    return BGM_TRACK_LABELS[this.currentTrack] ?? '城镇漫步';
+  }
+
+  isBgmAudible(): boolean {
+    return !this.muted && this.bgmEnabled && this.bgmVolume > 0 && this.masterVolume > 0;
   }
 
   setMasterVolume(vol: number) {
     this.masterVolume = Math.max(0, Math.min(100, Math.round(vol)));
+    this.syncBgmBusGain();
   }
 
   setMuteOnBlur(enabled: boolean) {
     this.muteOnBlur = enabled;
+    this.syncBgmBusGain();
   }
 
   setMuted(muted: boolean) {
     this.muted = muted;
+    this.syncBgmBusGain();
   }
 
   setSfxVolume(vol: number) {
@@ -296,7 +757,6 @@ class RetroSoundEngine {
       : (this.cryVolume / 100) * (this.masterVolume / 100);
     if (volScale <= 0) return;
 
-    // Derive a deterministic pleasant pentatonic 2-note chirp per dexId
     const scale = [392.0, 440.0, 493.88, 523.25, 587.33, 659.25, 783.99];
     const baseHz = scale[dexId % scale.length];
     const secondHz = baseHz * (dexId % 2 === 0 ? 1.25 : 1.189);
@@ -335,14 +795,6 @@ class RetroSoundEngine {
     playSoftNote(secondHz, secondHz * 1.06, now + 0.1, 0.16, 0.082);
   }
 
-  /**
-   * Switch-Console Style Warm Cry Mastering Chain via Web Audio API:
-   * - Highpass @ 120Hz (removes muddy low-end thump)
-   * - Peaking Dip @ 2850Hz (-7.5dB, Q=1.0) — removes ear-piercing 2.5–4kHz Game Boy/DS synth screech!
-   * - Highshelf @ 4000Hz (-8.5dB) + Lowpass @ 5000Hz — warm velvety console speaker roll-off
-   * - DynamicsCompressor — smooths wild volume spikes across all 175 Pokémon
-   * - 12ms attack / 30ms release soft envelope — zero clicks or pops!
-   */
   private playAudioUrl(
     url: string,
     forcePreview = false,
@@ -466,11 +918,26 @@ class RetroSoundEngine {
   }
 
   setTrack(track: BgmTrackId) {
-    if (this.currentTrack === track) return;
-    this.currentTrack = track;
+    const normalized: BgmTrackId = track === 'safezone' ? 'pokemon_center' : track;
+    if (this.currentTrack === normalized) return;
+    this.currentTrack = normalized;
     this.bgmStep = 0;
-    if (this.bgmEnabled && this.bgmVolume > 0 && this.bgmTimer !== null) {
-      this.stopBgmLoop();
+    if (this.ctx && this.ctx.state === 'running') {
+      this.nextStepTime = this.ctx.currentTime + 0.09;
+      // Gentle NDS-style doorway crossfade envelope so switching zones/buildings never pops!
+      if (this.bgmBusGain) {
+        const now = this.ctx.currentTime;
+        const target = this.computeTargetBgmGain();
+        try {
+          this.bgmBusGain.gain.cancelScheduledValues(now);
+          this.bgmBusGain.gain.setValueAtTime(Math.max(0.0001, this.bgmBusGain.gain.value * 0.32), now);
+          this.bgmBusGain.gain.linearRampToValueAtTime(target, now + 0.22);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    if (this.bgmEnabled && this.bgmVolume > 0 && this.bgmTimer === null) {
       this.startBgmLoop();
     }
   }
@@ -478,6 +945,7 @@ class RetroSoundEngine {
   setBgm(enabled: boolean, volume: number) {
     this.bgmEnabled = enabled;
     this.bgmVolume = Math.max(0, Math.min(100, Math.round(volume)));
+    this.syncBgmBusGain();
     if (enabled && this.bgmVolume > 0) {
       this.startBgmLoop();
     } else {
@@ -509,12 +977,205 @@ class RetroSoundEngine {
     const len = Math.floor(ctx.sampleRate * 0.25);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const data = buf.getChannelData(0);
-    // Crisp 8-bit LFSR-like quantized noise
     for (let i = 0; i < len; i++) {
-      data[i] = Math.random() > 0.5 ? 0.8 : -0.8;
+      data[i] = (Math.random() * 2 - 1) * 0.65;
     }
     this.noiseBuf = buf;
     return buf;
+  }
+
+  /** Rich GBA/NDS Multi-Timbre Voice Scheduled Directly on WebAudio Hardware Clock */
+  private scheduleBgmVoice(
+    ctx: AudioContext,
+    bus: AudioNode,
+    freq: number,
+    startTime: number,
+    duration: number,
+    timbre: VoiceTimbre,
+    peakGain: number,
+  ) {
+    if (freq <= 0 || duration <= 0.01) return;
+    const outGain = ctx.createGain();
+    const osc1 = ctx.createOscillator();
+    let osc2: OscillatorNode | null = null;
+    let osc2Gain: GainNode | null = null;
+    let filter: BiquadFilterNode | null = null;
+
+    let attack = 0.012;
+    let releasePad = 0.03;
+
+    switch (timbre) {
+      case 'flute': {
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(freq, startTime);
+        osc2 = ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(freq * 2, startTime);
+        osc2Gain = ctx.createGain();
+        osc2Gain.gain.setValueAtTime(0.22, startTime);
+        attack = 0.024;
+        outGain.gain.setValueAtTime(0.0001, startTime);
+        outGain.gain.linearRampToValueAtTime(peakGain, startTime + attack);
+        outGain.gain.setValueAtTime(peakGain * 0.82, Math.max(startTime + attack, startTime + duration * 0.72));
+        outGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + 0.025);
+        break;
+      }
+      case 'bell': {
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(freq, startTime);
+        osc2 = ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(freq * 2, startTime);
+        osc2Gain = ctx.createGain();
+        osc2Gain.gain.setValueAtTime(0.32, startTime);
+        osc2Gain.gain.exponentialRampToValueAtTime(0.02, startTime + duration);
+        attack = 0.006;
+        releasePad = 0.08;
+        outGain.gain.setValueAtTime(0.0001, startTime);
+        outGain.gain.linearRampToValueAtTime(peakGain, startTime + attack);
+        outGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + releasePad);
+        break;
+      }
+      case 'rhodes': {
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(freq, startTime);
+        osc2 = ctx.createOscillator();
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(freq, startTime);
+        osc2.detune.setValueAtTime(3.5, startTime);
+        osc2Gain = ctx.createGain();
+        osc2Gain.gain.setValueAtTime(0.45, startTime);
+        attack = 0.009;
+        releasePad = 0.06;
+        outGain.gain.setValueAtTime(0.0001, startTime);
+        outGain.gain.linearRampToValueAtTime(peakGain, startTime + attack);
+        outGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + releasePad);
+        break;
+      }
+      case 'harp': {
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(freq, startTime);
+        filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(Math.min(2600, freq * 3.8), startTime);
+        filter.frequency.exponentialRampToValueAtTime(Math.max(400, freq * 1.4), startTime + duration);
+        attack = 0.006;
+        releasePad = 0.07;
+        outGain.gain.setValueAtTime(0.0001, startTime);
+        outGain.gain.linearRampToValueAtTime(peakGain, startTime + attack);
+        outGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + releasePad);
+        break;
+      }
+      case 'woodwind': {
+        osc1.type = 'square';
+        osc1.frequency.setValueAtTime(freq, startTime);
+        filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(Math.min(2300, freq * 2.7), startTime);
+        attack = 0.014;
+        outGain.gain.setValueAtTime(0.0001, startTime);
+        outGain.gain.linearRampToValueAtTime(peakGain * 0.72, startTime + attack);
+        outGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + 0.02);
+        break;
+      }
+      case 'brass_warm': {
+        osc1.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(freq, startTime);
+        osc2 = ctx.createOscillator();
+        osc2.type = 'square';
+        osc2.frequency.setValueAtTime(freq, startTime);
+        osc2.detune.setValueAtTime(4.0, startTime);
+        osc2Gain = ctx.createGain();
+        osc2Gain.gain.setValueAtTime(0.45, startTime);
+        filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2450, startTime);
+        attack = 0.011;
+        outGain.gain.setValueAtTime(0.0001, startTime);
+        outGain.gain.linearRampToValueAtTime(peakGain * 0.68, startTime + attack);
+        outGain.gain.setValueAtTime(peakGain * 0.52, Math.max(startTime + attack, startTime + duration * 0.7));
+        outGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + 0.02);
+        break;
+      }
+      case 'bass_pluck': {
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(freq, startTime);
+        osc2 = ctx.createOscillator();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(freq, startTime);
+        osc2Gain = ctx.createGain();
+        osc2Gain.gain.setValueAtTime(0.55, startTime);
+        attack = 0.007;
+        outGain.gain.setValueAtTime(0.0001, startTime);
+        outGain.gain.linearRampToValueAtTime(peakGain, startTime + attack);
+        outGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + 0.025);
+        break;
+      }
+      case 'bass_warm':
+      default: {
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(freq, startTime);
+        attack = 0.016;
+        releasePad = 0.04;
+        outGain.gain.setValueAtTime(0.0001, startTime);
+        outGain.gain.linearRampToValueAtTime(peakGain, startTime + attack);
+        outGain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration + releasePad);
+        break;
+      }
+    }
+
+    const destNode = filter ?? outGain;
+    osc1.connect(destNode);
+    if (osc2 && osc2Gain) {
+      osc2.connect(osc2Gain);
+      osc2Gain.connect(destNode);
+    }
+    if (filter) {
+      filter.connect(outGain);
+    }
+    outGain.connect(bus);
+
+    const stopAt = startTime + duration + releasePad + 0.02;
+    osc1.start(startTime);
+    osc1.stop(stopAt);
+    if (osc2) {
+      osc2.start(startTime);
+      osc2.stop(stopAt);
+    }
+  }
+
+  private scheduleBgmDrum(ctx: AudioContext, bus: AudioNode, hit: DrumHit, startTime: number) {
+    if (!hit) return;
+    if (hit === 'K') {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(125, startTime);
+      osc.frequency.exponentialRampToValueAtTime(42, startTime + 0.068);
+      gain.gain.setValueAtTime(0.055, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.072);
+      osc.connect(gain);
+      gain.connect(bus);
+      osc.start(startTime);
+      osc.stop(startTime + 0.08);
+      return;
+    }
+    const dur = hit === 'S' ? 0.055 : hit === 'B' ? 0.042 : 0.024;
+    const hpHz = hit === 'S' ? 1500 : hit === 'B' ? 2800 : 4600;
+    const peak = hit === 'S' ? 0.024 : hit === 'B' ? 0.011 : 0.013;
+    const src = ctx.createBufferSource();
+    src.buffer = this.getNoiseBuffer(ctx);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(hpHz, startTime);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(peak, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + dur);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(bus);
+    src.start(startTime);
+    src.stop(startTime + dur + 0.01);
   }
 
   private tone(
@@ -572,28 +1233,55 @@ class RetroSoundEngine {
     src.stop(now + duration + 0.01);
   }
 
+  /** Precision WebAudio Lookahead Scheduler — Zero Main-Thread Frame Jitter! */
   private startBgmLoop() {
     if (typeof window === 'undefined' || this.bgmTimer !== null) return;
-    const track = TRACKS[this.currentTrack];
+    if (this.ctx && this.ctx.state === 'running') {
+      this.nextStepTime = Math.max(this.ctx.currentTime + 0.04, this.nextStepTime);
+    }
     this.bgmTimer = window.setInterval(() => {
-      if (!this.bgmEnabled || this.bgmVolume <= 0) return;
-      const t = TRACKS[this.currentTrack];
-      const idx = this.bgmStep % t.lead.length;
-      const leadFreq = N[t.lead[idx]] ?? 0;
-      const harmFreq = N[t.harmony[idx]] ?? 0;
-      const bassFreq = N[t.bass[idx]] ?? 0;
-      const drum = t.drums?.[idx] ?? '';
-      const dur = (t.stepMs / 1000) * 0.92;
+      if (!this.bgmEnabled || this.bgmVolume <= 0 || this.isSilenceActive()) return;
+      const ctx = this.ctx;
+      if (!ctx || ctx.state !== 'running') return;
+      const bus = this.ensureBgmBus(ctx);
+      this.syncBgmBusGain();
 
-      if (leadFreq > 0) this.tone(leadFreq, dur, 0, 'square', 0.036, true);
-      if (harmFreq > 0) this.tone(harmFreq, dur * 0.85, 0, 'square', 0.018, true);
-      if (bassFreq > 0) this.tone(bassFreq, dur * 1.05, 0, 'triangle', 0.052, true);
-      if (drum === 'K') this.tone(130, 0.065, 0, 'triangle', 0.065, true, 42);
-      else if (drum === 'S') this.noise(0.055, 0, 0.032, 1600, true);
-      else if (drum === 'H') this.noise(0.025, 0, 0.016, 4800, true);
+      const now = ctx.currentTime;
+      if (this.nextStepTime < now - 0.15 || this.nextStepTime > now + 1.5) {
+        this.nextStepTime = now + 0.03;
+      }
 
-      this.bgmStep = (this.bgmStep + 1) % t.lead.length;
-    }, track.stepMs);
+      // Schedule notes up to 140ms ahead on WebAudio's sample-accurate clock
+      while (this.nextStepTime < now + 0.14) {
+        const t = TRACKS[this.currentTrack] ?? TRACKS.town;
+        const idx = this.bgmStep % t.lead.length;
+        const stepSec = t.stepMs / 1000;
+        const swingOffset = t.swing && idx % 2 === 1 ? stepSec * t.swing : 0;
+        const noteStart = this.nextStepTime + swingOffset;
+        const dur = stepSec * (t.gate ?? 0.9);
+
+        const leadFreq = N[t.lead[idx]] ?? 0;
+        const harmFreq = N[t.harmony[idx]] ?? 0;
+        const bassFreq = N[t.bass[idx]] ?? 0;
+        const drum = t.drums?.[idx] ?? '';
+
+        if (leadFreq > 0) {
+          this.scheduleBgmVoice(ctx, bus, leadFreq, noteStart, dur, t.leadTimbre, t.leadGain ?? 0.045);
+        }
+        if (harmFreq > 0) {
+          this.scheduleBgmVoice(ctx, bus, harmFreq, noteStart, dur * 0.92, t.harmTimbre, t.harmGain ?? 0.026);
+        }
+        if (bassFreq > 0) {
+          this.scheduleBgmVoice(ctx, bus, bassFreq, noteStart, dur * 1.05, t.bassTimbre, t.bassGain ?? 0.052);
+        }
+        if (drum) {
+          this.scheduleBgmDrum(ctx, bus, drum, noteStart);
+        }
+
+        this.nextStepTime += stepSec;
+        this.bgmStep = (this.bgmStep + 1) % t.lead.length;
+      }
+    }, 45);
   }
 
   private stopBgmLoop() {
@@ -603,9 +1291,13 @@ class RetroSoundEngine {
     }
   }
 
-  /** Unlock WebAudio on first user gesture so BGM begins immediately if enabled */
+  /** Unlock WebAudio on user gesture so BGM begins immediately if enabled */
   unlock() {
-    this.getCtx(true);
+    const ctx = this.getCtx(true);
+    if (ctx) {
+      this.ensureBgmBus(ctx);
+      this.syncBgmBusGain();
+    }
     if (this.bgmEnabled && this.bgmVolume > 0) {
       this.startBgmLoop();
     }
@@ -656,7 +1348,6 @@ class RetroSoundEngine {
         this.tone(1318.51, 0.16, 0.055, 'square', 0.065);
         break;
       case 'levelup':
-        // Classic 2-voice GBA Fanfare!
         this.tone(523.25, 0.075, 0, 'square', 0.065);
         this.tone(659.25, 0.075, 0.075, 'square', 0.065);
         this.tone(783.99, 0.075, 0.15, 'square', 0.065);
@@ -664,7 +1355,6 @@ class RetroSoundEngine {
         this.tone(523.25, 0.28, 0.225, 'triangle', 0.065);
         break;
       case 'heal_jingle':
-        // Iconic 5-note Pokémon Center Healing Chime (Ding-Ding-Ding-Da-Ding!)
         this.tone(987.77, 0.11, 0.0, 'triangle', 0.085);
         this.tone(987.77, 0.11, 0.14, 'triangle', 0.085);
         this.tone(987.77, 0.11, 0.28, 'triangle', 0.085);
@@ -691,7 +1381,6 @@ class RetroSoundEngine {
         this.tone(180, 0.06, 0, 'square', 0.06, false, 70);
         break;
       case 'impact': {
-        // Throttled crisp enemy-hit impact pop (avoids harsh clipping on multi-hits!)
         const nowTs = performance.now();
         if (nowTs - this.lastImpactTs < 85) return;
         this.lastImpactTs = nowTs;

@@ -437,14 +437,25 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
         return;
       }
     }
+    // Scale road widths to authentic wide urban proportions so cars, voxel city buses & sidewalks fit spaciously!
+    const widthMult = isBridge
+      ? 1.28
+      : kind === 'arterial'
+        ? 1.52
+        : kind === 'street'
+          ? 1.42
+          : 1.24;
+    const minW = isBridge ? 22 : kind === 'arterial' ? 30.0 : kind === 'street' ? 21.5 : 13.0;
+    const w0 = Math.max(minW, Math.round(widthStart * widthMult * 10) / 10);
+    const w1 = Math.max(minW, Math.round(widthEnd * widthMult * 10) / 10);
     streets.push({
       x1,
       z1,
       x2,
       z2,
-      width: (widthStart + widthEnd) * 0.5,
-      widthStart,
-      widthEnd,
+      width: (w0 + w1) * 0.5,
+      widthStart: w0,
+      widthEnd: w1,
       kind,
       isBridge,
       bridgeStyle,
@@ -700,6 +711,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       const uz = (st.z2 - st.z1) / sLen;
       const nx = -uz;
       const nz = ux;
+      // Place Bus Stop right along the outer curbside lane (parallel to road!) with sidewalk shelter beside it!
       busX = mx + nx * (st.width * 0.34);
       busZ = mz + nz * (st.width * 0.34);
       busRotY = Math.atan2(ux, uz);
@@ -1136,6 +1148,92 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   for (const l of lots) {
     maxDist = Math.max(maxDist, Math.hypot(l.x - cx, l.z - cz) + 18);
   }
+
+  // Re-anchor Bus Stop AFTER all buildings & parks are placed so it NEVER blocks any shop doorway or collides with walls!
+  {
+    let bestBusScore = -1e9;
+    for (const st of streets) {
+      if (st.isBridge || st.kind !== 'arterial') continue;
+      const sLen = Math.hypot(st.x2 - st.x1, st.z2 - st.z1);
+      if (sLen < 44) continue;
+      const ux = (st.x2 - st.x1) / sLen;
+      const uz = (st.z2 - st.z1) / sLen;
+      const nx = -uz;
+      const nz = ux;
+
+      for (const frac of [0.24, 0.76, 0.34, 0.66, 0.5]) {
+        const px = st.x1 + (st.x2 - st.x1) * frac;
+        const pz = st.z1 + (st.z2 - st.z1) * frac;
+        const dCenter = Math.hypot(px - cx, pz - cz);
+        if (dCenter < 24 || dCenter > 185) continue;
+        if (getShanghaiRiverSignedDist(px - cx, pz - cz, cleanCityId) < 18) continue;
+        if (junctions.some((jn) => Math.hypot(jn.x - px, jn.z - pz) < 25)) continue;
+
+        for (const side of [1, -1] as const) {
+          const candBusX = px + nx * side * (st.width * 0.33);
+          const candBusZ = pz + nz * side * (st.width * 0.33);
+          const shX = px + nx * side * (st.width * 0.5 + 2.4);
+          const shZ = pz + nz * side * (st.width * 0.5 + 2.4);
+          // Must not overlap any other street!
+          if (
+            streets.some(
+              (other) => other !== st && distToSeg(shX, shZ, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 2.5,
+            )
+          ) {
+            continue;
+          }
+          // Must NEVER block any building doorway (`>= 15.5m` clearance) OR overlap any building OBB!
+          let blockedByLot = false;
+          let minDoorDist = 999;
+          for (const l of lots) {
+            const dd = Math.hypot(shX - l.doorX, shZ - l.doorZ);
+            if (dd < minDoorDist) minDoorDist = dd;
+            if (dd < 15.5) {
+              blockedByLot = true;
+              break;
+            }
+            const cosL = Math.cos(l.rotY);
+            const sinL = Math.sin(l.rotY);
+            const dxL = shX - l.x;
+            const dzL = shZ - l.z;
+            const localX = Math.abs(dxL * cosL - dzL * sinL);
+            const localZ = Math.abs(dxL * sinL + dzL * cosL);
+            if (localX < l.width * 0.5 + 4.2 && localZ < l.depth * 0.5 + 4.2) {
+              blockedByLot = true;
+              break;
+            }
+          }
+          if (blockedByLot) continue;
+          // Strongly prefer park-frontage or open plaza curbsides!
+          const nearPark = parks.some(
+            (pk) => Math.hypot(shX - pk.x, shZ - pk.z) < Math.hypot(pk.w * 0.5, pk.d * 0.5) + 12,
+          );
+          const score = (nearPark ? 80 : 0) + Math.min(35, minDoorDist) - dCenter * 0.18;
+          if (score > bestBusScore) {
+            bestBusScore = score;
+            busX = candBusX;
+            busZ = candBusZ;
+            // Encode curb side into heading (`side > 0` -> standard forward; `side < 0` -> opposite direction so right-side door faces curb!)
+            busRotY = side > 0 ? Math.atan2(ux, uz) : Math.atan2(-ux, -uz);
+          }
+        }
+      }
+    }
+  }
+
+  // Prune any streetlamp that would pierce the Bus Shelter roof OR stand directly in front of a shop doorway!
+  const bFwdX = Math.sin(busRotY);
+  const bFwdZ = Math.cos(busRotY);
+  const bShX = busX - bFwdZ * 4.4;
+  const bShZ = busZ + bFwdX * 4.4;
+  const filteredLamps = streetLamps.filter((lm) => {
+    if (Math.hypot(lm.x - busX, lm.z - busZ) < 9.5) return false;
+    if (Math.hypot(lm.x - bShX, lm.z - bShZ) < 7.5) return false;
+    if (lots.some((l) => l.walkable && Math.hypot(lm.x - l.doorX, lm.z - l.doorZ) < 6.2)) return false;
+    return true;
+  });
+  streetLamps.length = 0;
+  streetLamps.push(...filteredLamps);
 
   const primaryPark = parks[0];
   const layout: GeneratedTownLayout = {

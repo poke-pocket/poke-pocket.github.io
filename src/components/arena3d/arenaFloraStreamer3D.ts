@@ -1,6 +1,7 @@
 import type { ArenaSharedCtx } from './arenaTypesAndProps';
 import * as THREE from 'three';
 import { getBiomeTextures, getSeamlessBiomeAt3D } from '../../data/worldTextures3D';
+import { createVoxelBoulder3D, createVoxelSignpost3D } from '../../world3d/voxelNatureAndCivic3D';
 import { TERRACE_CELL, WATER_LEVEL_3D, WORLD_SECTOR_SIZE, getTerrainHeight3D, isOnInterTownRoad3D } from '../../data/survivorsTactics';
 import { BILLBOARD_PITCH_TILT, UPRIGHT_QUAD_GEO, createLushTreeSprite3D } from './arenaTypesAndProps';
 
@@ -394,24 +395,17 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
             }
           } else if (h >= 26 && h < 33) {
             if (!isUpgradeFromFar) {
-              const rs = 1.7 + (h2 % 4) * 0.28;
-              const bIdx = h2 % tex.boulders.length;
-              const bTex = tex.boulders[bIdx];
+              const rs = 0.85 + (h2 % 4) * 0.16;
+              const bIdx = h2 % 4;
+              const isMineable = bIdx === 2 || h2 % 2 === 0;
               const rx = wx + 0.3;
               const rz = wz - 0.2;
-              const rk = makeUprightProp(
-                bTex,
-                (h2 & 1) === 1 ? -rs : rs,
-                rs * 0.86,
-                rx,
-                gy,
-                rz,
-                0.14,
-              );
+              const rk = createVoxelBoulder3D(bIdx, isMineable, rs);
+              rk.position.set(rx, gy - 0.06, rz);
+              rk.rotation.y = ((h2 % 4) * Math.PI) / 2;
+              floraGroup.add(rk);
               objs.push(rk);
-              bbs.push(rk);
-              // Crystal/ore boulders (or every 2nd rock) are interactive mineable ore veins!
-              if (bIdx === 2 || h2 % 2 === 0) {
+              if (isMineable) {
                 const nid = `ore_${gx}_${gz}`;
                 worldInteractNodes.set(nid, {
                   id: nid,
@@ -425,7 +419,7 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
                   hp: 3,
                   maxHp: 3,
                   cooldown: 0,
-                  label: bIdx === 2 ? '敲碎结晶矿石' : '凿碎苔藓矿岩',
+                  label: bIdx === 2 ? '敲碎体素晶簇矿石' : '凿碎苔藓体素矿岩',
                   icon: '/sprites/items/bright-powder.png',
                 });
                 nodeIds.push(nid);
@@ -446,9 +440,11 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
               objs.push(st);
               bbs.push(st);
             } else if (h >= 38 && h < 41) {
-              const sg = makeUprightProp(tex.signpost, 1.85, 2.0, wx, gy, wz, 0.14);
+              const sg = createVoxelSignpost3D(1.05);
+              sg.position.set(wx, gy - 0.04, wz);
+              sg.rotation.y = ((h2 % 4) * Math.PI) / 2;
+              floraGroup.add(sg);
               objs.push(sg);
-              bbs.push(sg);
               const nid = `sign_${gx}_${gz}`;
               worldInteractNodes.set(nid, {
                 id: nid,

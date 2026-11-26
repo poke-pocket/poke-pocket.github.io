@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import type { TownCollider, ProximityAutoDoor3D } from '../townTypes';
+import { registerNightReactiveHook } from '../townAssetLoader';
+import type { TownCollider, ProximityAutoDoor3D, TownInteractPoint } from '../townTypes';
 import {
   addVoxelBox,
   createVoxelBookshelf,
@@ -27,10 +28,12 @@ export type WalkInBuildingKind = 'pokemon_center' | 'poke_mart' | 'hotel' | 'res
 export interface InteriorFurnishContext {
   kind: WalkInBuildingKind;
   interiorId: string;
+  townName: string;
   shellGroup: THREE.Group;
   npcs: THREE.Mesh[];
   colliders: TownCollider[];
   autoDoors: ProximityAutoDoor3D[];
+  interactPoints: TownInteractPoint[];
   lotX: number;
   lotZ: number;
   rotY: number;
@@ -42,6 +45,7 @@ export interface InteriorFurnishContext {
   floor2Y: number;
   H1: number;
   H2: number;
+  localToWorldXZ: (lx: number, lz: number) => { wx: number; wz: number };
   spawnGbaNpc: (key: string, x: number, y: number, z: number, height?: number) => THREE.Mesh;
   makeLocalObb: (
     lx: number,
@@ -108,9 +112,12 @@ function getRsePokecenterFloorTex(): THREE.CanvasTexture {
 export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
   const {
     kind,
+    interiorId,
+    townName,
     shellGroup,
     npcs,
     colliders,
+    interactPoints,
     baseWorldY,
     w,
     d,
@@ -119,11 +126,28 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
     floor2Y,
     H1,
     H2,
+    localToWorldXZ,
     spawnGbaNpc,
     makeLocalObb,
     addInteriorWallWithDoor,
     addSolidPartition,
   } = ctx;
+
+  const pushLocalInteract = (
+    lx: number,
+    ly: number,
+    lz: number,
+    pt: Omit<TownInteractPoint, 'x' | 'y' | 'z' | 'townName'>,
+  ) => {
+    const wp = localToWorldXZ(lx, lz);
+    interactPoints.push({
+      ...pt,
+      townName,
+      x: wp.wx,
+      y: baseWorldY + ly,
+      z: wp.wz,
+    });
+  };
 
   const placeVoxel = (
     obj: THREE.Object3D,
@@ -154,11 +178,18 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
 
   if (kind === 'pokemon_center') {
     // ==================== RSE VOXEL POKÉMON CENTER DIORAMA ====================
-    // 1. RSE Cream-and-Peach Rounded-Tile Floor Carpet + Pixel Pokéball Emblem + Entrance Doormat!
-    const rseFloor = new THREE.Mesh(
-      new THREE.PlaneGeometry(w - 0.8, d - 0.8),
-      new THREE.MeshLambertMaterial({ map: getRsePokecenterFloorTex() }),
-    );
+    // 1. Warmly Illuminated 24/7 RSE Cream-and-Peach Rounded-Tile Floor Carpet (bright & cozy day AND night!)
+    const rseTex = getRsePokecenterFloorTex();
+    const rseFloorMat = new THREE.MeshLambertMaterial({
+      map: rseTex,
+      emissive: 0xfff5e4,
+      emissiveMap: rseTex,
+      emissiveIntensity: 0.44,
+    });
+    registerNightReactiveHook((glow) => {
+      rseFloorMat.emissiveIntensity = 0.36 + glow * 0.42;
+    });
+    const rseFloor = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.8, d - 0.8), rseFloorMat);
     rseFloor.rotation.x = -Math.PI / 2;
     rseFloor.position.set(0, floor1Y + 0.015, 0);
     rseFloor.receiveShadow = true;
@@ -284,11 +315,38 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
     placeVoxel(createVoxelCushionStool('coral'), { x: loungeX, y: floor1Y, z: loungeZ + 1.85, halfW: 0.58, halfD: 0.58, colH: 0.64 });
     placeVoxel(createVoxelCushionStool('yellow'), { x: loungeX + 2.1, y: floor1Y, z: loungeZ, halfW: 0.58, halfD: 0.58, colH: 0.64 });
 
-    // Nurse Joy stands right behind the 1.04u waist-high counter (`cZ - 1.15`) so 65%+ of her full sprite is clearly visible!
+    // Nurse Joy stands right behind the 1.04u waist-high counter (`cZ - 1.15`) — ONLY triggers when Red walks up to the counter!
     const nurse = spawnGbaNpc('nurse', cX, floor1Y, cZ - 1.15, 2.52);
     const trainer1 = spawnGbaNpc('cooltrainer_m', w * 0.12, floor1Y, d * 0.18, 2.46);
     shellGroup.add(nurse, trainer1);
     npcs.push(nurse, trainer1);
+    pushLocalInteract(cX, floor1Y, cZ + 0.9, {
+      id: `${interiorId}_nurse`,
+      kind: 'pokemon_center',
+      label: '🏥 乔伊小姐 · 宝可梦中心柜台',
+      hint: '全队免费治疗并补满伤药',
+      radius: 3.5,
+    });
+    pushLocalInteract(w * 0.12, floor1Y, d * 0.18, {
+      id: `${interiorId}_trainer1`,
+      kind: 'npc_chat',
+      label: '💬 精英训练家 阿凯',
+      hint: '交谈 / 打听情报 / 切磋对战',
+      radius: 2.9,
+      npcProfile: {
+        id: `${interiorId}_trainer1`,
+        name: '精英训练家 阿凯',
+        role: '联盟旅行训练家',
+        sprite: '/sprites/people/cooltrainer_m.png',
+        greeting: '在宝可梦中心充好电了吗？二楼联机沙龙视野超棒，要不要先来切磋一场热热身？',
+        chatLines: [
+          '乔伊小姐的恢复装置是最新一代体素能量舱，连异常疲惫都能一秒扫空！',
+          '听说城郊虹桥高铁站能直通其他名城，去之前记得多备几颗精灵球！',
+        ],
+        battleSpecies: 'charmander',
+        canBattle: true,
+      },
+    });
 
     // 2F Union Room & Trade Lounge
     placeVoxel(createVoxelRsePcKiosk(), { x: 0.5, y: floor2Y, z: -d * 0.38, halfW: 0.75, halfD: 0.75, colH: 2.05, floor: 2 });
@@ -354,6 +412,33 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
     const shopper = spawnGbaNpc('lass', -w * 0.06, floor1Y, d * 0.12, 2.44);
     shellGroup.add(clerk, shopper);
     npcs.push(clerk, shopper);
+    pushLocalInteract(-w * 0.24, floor1Y, -d * 0.18 + 0.85, {
+      id: `${interiorId}_mart_clerk`,
+      kind: 'poke_mart',
+      label: '🏪 友好百货收银员',
+      hint: '选购精灵球、树果补给与精品饰品',
+      radius: 3.4,
+    });
+    pushLocalInteract(-w * 0.06, floor1Y, d * 0.12, {
+      id: `${interiorId}_shopper`,
+      kind: 'npc_chat',
+      label: '💬 迷你裙少女 小葵',
+      hint: '交谈 / 打听情报 / 切磋对战',
+      radius: 2.9,
+      npcProfile: {
+        id: `${interiorId}_shopper`,
+        name: '迷你裙少女 小葵',
+        role: '百货常客训练家',
+        sprite: '/sprites/people/lass.png',
+        greeting: '哇，货架上的超级球和树果礼盒好齐全呀！你也是来采购远行补给的吗？',
+        chatLines: [
+          '冰柜里的冰镇汽水和橙橙果最受水系宝可梦欢迎啦！',
+          '如果想在城里快速去火车站，门口大马路边就有市内公交站哦！',
+        ],
+        battleSpecies: 'jigglypuff',
+        canBattle: true,
+      },
+    });
     return;
   }
 
@@ -400,6 +485,53 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
     const diner = spawnGbaNpc('picnicker', w * 0.10, floor1Y, 4.8, 2.44);
     shellGroup.add(host, chef, diner);
     npcs.push(host, chef, diner);
+    pushLocalInteract(-2.4, floor1Y, partZ + 2.35, {
+      id: `${interiorId}_rest_host`,
+      kind: 'restaurant',
+      label: '🍜 树果饭店点餐台',
+      hint: '点一份招牌热汤拉面，恢复体力并提升斗志',
+      radius: 3.4,
+    });
+    pushLocalInteract(-1.8, floor1Y, -d * 0.28, {
+      id: `${interiorId}_rest_chef`,
+      kind: 'npc_chat',
+      label: '👨‍🍳 主厨 铁平（后厨重地）',
+      hint: '与主厨交谈 / 讨教料理或切磋',
+      radius: 3.0,
+      npcProfile: {
+        id: `${interiorId}_rest_chef`,
+        name: '主厨 铁平',
+        role: '特级树果料理人',
+        sprite: '/sprites/people/chef.png',
+        greeting: '哈哈，居然推门进后厨啦！高汤正在小火慢炖，小卡比兽闻到香味都走不动道！',
+        chatLines: [
+          '本店坚持封闭式净厨现熬树果浓汤，前台点餐就能让全队干劲满满！',
+          '我的搭档小卡比兽可是试菜冠军，要不要和它比划两招消消食？',
+        ],
+        battleSpecies: 'munchlax',
+        canBattle: true,
+      },
+    });
+    pushLocalInteract(w * 0.10, floor1Y, 4.8, {
+      id: `${interiorId}_rest_diner`,
+      kind: 'npc_chat',
+      label: '💬 野餐女孩 小满',
+      hint: '交谈 / 打听情报 / 切磋对战',
+      radius: 2.9,
+      npcProfile: {
+        id: `${interiorId}_rest_diner`,
+        name: '野餐女孩 小满',
+        role: '美食巡礼训练家',
+        sprite: '/sprites/people/picnicker.png',
+        greeting: '这家的树果叉烧拉面在夜晚暖灯下吃起来太幸福啦！',
+        chatLines: [
+          '每次夜里逛完街看到饭店亮着暖黄灯光，总会忍不住进来喝碗热汤。',
+          '吃饱喝足最有精神对战了，随时欢迎切磋！',
+        ],
+        battleSpecies: 'eevee',
+        canBattle: true,
+      },
+    });
     return;
   }
 
@@ -440,6 +572,33 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
     const guest1F = spawnGbaNpc('beauty', 2.8, floor1Y, 4.2, 2.46);
     shellGroup.add(concierge, guest1F);
     npcs.push(concierge, guest1F);
+    pushLocalInteract(2.0, floor1Y, -d * 0.22 + 0.9, {
+      id: `${interiorId}_hotel_desk`,
+      kind: 'hotel_rest',
+      label: '🏨 酒店前台总管',
+      hint: '办理休整（或上 2F 客房床边休息），全队满血并获斗志强化',
+      radius: 3.5,
+    });
+    pushLocalInteract(2.8, floor1Y, 4.2, {
+      id: `${interiorId}_hotel_guest`,
+      kind: 'npc_chat',
+      label: '💬 时尚丽人 琳达',
+      hint: '交谈 / 打听情报 / 切磋对战',
+      radius: 2.9,
+      npcProfile: {
+        id: `${interiorId}_hotel_guest`,
+        name: '时尚丽人 琳达',
+        role: '环球巡礼收藏家',
+        sprite: '/sprites/people/beauty.png',
+        greeting: '二楼有三间独立体素客房，推门进去靠近柔软的大床就能美美睡一觉哦！',
+        chatLines: [
+          '我刚刚坐市内公交从火车站过来，大马路宽敞又气派！',
+          '来和我的优雅搭档过两招吗？',
+        ],
+        battleSpecies: 'mew',
+        canBattle: true,
+      },
+    });
 
     // 2F 3 Private Suites with Solid Walls, Default-Closed Swinging Doors & Chibi-Scaled Voxel Double Beds!
     const corrZ = 3.2;
@@ -462,6 +621,13 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
         halfD: 2.2,
         colH: 0.95,
         floor: 2,
+      });
+      pushLocalInteract(scx + 0.8, floor2Y, -d * 0.22, {
+        id: `${interiorId}_suite_bed_${si}`,
+        kind: 'hotel_rest',
+        label: `🛏️ 20${si + 1} 豪华客房大床`,
+        hint: '在柔软体素大床上小憩，全队体力回满并获强化',
+        radius: 2.8,
       });
       placeVoxel(createVoxelNightstandWithLamp(), {
         x: scx - 3.3,
@@ -506,6 +672,46 @@ export function furnishWalkInInterior3D(ctx: InteriorFurnishContext): void {
   const res2 = spawnGbaNpc('boy', w * 0.14, floor1Y, 5.0, 2.38);
   shellGroup.add(res1, res2);
   npcs.push(res1, res2);
+  pushLocalInteract(1.6, floor1Y, 5.4, {
+    id: `${interiorId}_apt_woman`,
+    kind: 'npc_chat',
+    label: '💬 公寓主人 雅琴姐',
+    hint: '交谈 / 打听邻里情报',
+    radius: 2.8,
+    npcProfile: {
+      id: `${interiorId}_apt_woman`,
+      name: '公寓主人 雅琴姐',
+      role: '热心市民',
+      sprite: '/sprites/people/woman_1.png',
+      greeting: `欢迎来${townName}复式公寓做客！走左侧楼梯可以上二楼参观卧室和书房哦！`,
+      chatLines: [
+        '现在整座城市的路灯、公园长椅、垃圾桶和公交车都是精巧的体素造型呢！',
+        '累了随时去宝可梦中心找乔伊小姐，晚上那里也灯火通明。',
+      ],
+      battleSpecies: 'bulbasaur',
+      canBattle: false,
+    },
+  });
+  pushLocalInteract(w * 0.14, floor1Y, 5.0, {
+    id: `${interiorId}_apt_boy`,
+    kind: 'npc_chat',
+    label: '💬 少年训练家 小智迷',
+    hint: '交谈 / 发起切磋对战',
+    radius: 2.8,
+    npcProfile: {
+      id: `${interiorId}_apt_boy`,
+      name: '少年训练家 小星',
+      role: '见习宝可梦少年',
+      sprite: '/sprites/people/youngster.png',
+      greeting: '哇！你带着超帅的伙伴宝可梦！能在客厅或者门外和我切磋一局吗？',
+      chatLines: [
+        '我每天都在二楼书桌研究属性相克表！',
+        '听说郊外的晶簇石头敲碎后能拿到闪闪发光的星沙！',
+      ],
+      battleSpecies: 'pikachu',
+      canBattle: true,
+    },
+  });
 
   // 2F Master Bedroom + Study separated by solid walls & swinging doors
   const roomX0 = -w * 0.44 + 5.2;

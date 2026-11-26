@@ -18,20 +18,19 @@ import {
 import {
   BUILDING_ENTRANCE_POOL_MAT,
   createNpcBillboard,
-  mountGlbModel,
   setBuildingExteriorOpacity,
   setGlobalNightLampGlow3D,
-  STREET_LAMP_BULB_MAT,
   STREET_LAMP_HALO_MAT,
   STREET_LAMP_POOL_MAT,
 } from '../world3d/townAssetLoader';
-import { getGroundTex, makePixelTex } from '../world3d/townGroundTextures';
+import { getGroundTex } from '../world3d/townGroundTextures';
 import {
   computeCameraWallClipT,
   isInsideBuildingInterior,
   makeObbCollider,
   resolveTownWallCollisions,
   type EnterableBuildingInterior,
+  type NpcSocialProfile,
   type ProceduralTownInstance,
   type ProximityAutoDoor3D,
   type TownCollider,
@@ -41,7 +40,12 @@ import {
   type TownStrollingCitizen,
   type ViaductOverheadSpan,
 } from '../world3d/townTypes';
-import { addVoxelBox } from '../world3d/voxelProps3D';
+import {
+  createVoxelParkPond3D,
+  createVoxelVendingMachine3D,
+  spawnVoxStreetPropCluster,
+} from '../world3d/voxelNatureAndCivic3D';
+import { mountVoxModel } from '../world3d/voxLoader3D';
 import {
   buildWorldLandmark3D,
   createPlazaFountain,
@@ -155,6 +159,8 @@ export function buildProceduralTown3D(
 
   const isBlockedForGreenery = (wx: number, wz: number, skipSeg: TownStreetSeg) => {
     if (getGroundHeight(wx, wz) < WATER_LEVEL_3D + 0.35) return true;
+    if (Math.hypot(wx - layout.busX, wz - layout.busZ) < 11.0) return true;
+    if (layout.lots.some((l) => l.walkable && Math.hypot(wx - l.doorX, wz - l.doorZ) < 7.5)) return true;
     for (const other of layout.streets) {
       if (other === skipSeg) continue;
       if (distToSeg2D(wx, wz, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 1.6) {
@@ -290,13 +296,6 @@ export function buildProceduralTown3D(
     polygonOffsetFactor: -7,
     polygonOffsetUnits: -7,
   });
-  const signalPoleMat = new THREE.MeshLambertMaterial({ color: 0x343a40 });
-  const signalBoxMat = new THREE.MeshLambertMaterial({ color: 0x1b1f26 });
-  const redLightMat = new THREE.MeshBasicMaterial({ color: 0xff4d4f });
-  const redOffMat = new THREE.MeshBasicMaterial({ color: 0x38191b });
-  const amberOffMat = new THREE.MeshBasicMaterial({ color: 0x362d16 });
-  const greenLightMat = new THREE.MeshBasicMaterial({ color: 0x51cf66 });
-  const greenOffMat = new THREE.MeshBasicMaterial({ color: 0x17331e });
 
   interface RoadArmInfo {
     ux: number;
@@ -393,31 +392,21 @@ export function buildProceduralTown3D(
           const rNz = arm.ux;
           const sigX = cwx + rNx * (arm.width * 0.44);
           const sigZ = cwz + rNz * (arm.width * 0.44);
-          const isGreenPhase = (ji + ai) % 2 === 0;
-          const sig = new THREE.Group();
-          sig.position.set(sigX - centerX, localGroundY(sigX, sigZ) + 0.14, sigZ - centerZ);
-          sig.rotation.y = Math.atan2(-rNx, -rNz);
-          const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.22, 5.8, 6), signalPoleMat);
-          pole.position.y = 2.9;
-          const cantArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 3.2), signalPoleMat);
-          cantArm.position.set(0, 5.6, 1.5);
-          const head = new THREE.Mesh(new THREE.BoxGeometry(0.58, 1.35, 0.42), signalBoxMat);
-          head.position.set(0, 5.2, 2.9);
-          const rL = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), isGreenPhase ? redOffMat : redLightMat);
-          rL.position.set(0, 5.56, 3.12);
-          const yL = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), amberOffMat);
-          yL.position.set(0, 5.2, 3.12);
-          const gL = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), isGreenPhase ? greenLightMat : greenOffMat);
-          gL.position.set(0, 4.84, 3.12);
-          sig.add(pole, cantArm, head, rL, yL, gL);
-          group.add(sig);
+          void mountVoxModel(group, '/models/vox/obj_trlight2.vox', {
+            x: sigX - centerX,
+            y: localGroundY(sigX, sigZ) + 0.14,
+            z: sigZ - centerZ,
+            rotY: Math.atan2(-rNx, -rNz),
+            targetHeight: 5.8,
+            emitMode: 'traffic',
+          });
         }
       }
       ji += 1;
     }
   }
 
-  // ==================== 1C. URBAN PARKS & VOXEL PARK BENCHES ====================
+  // ==================== 1C. URBAN PARKS, STEPPED VOXEL FOUNTAINS, PONDS & .VOX BENCHES/TRASHCANS ====================
   const parkBorderMat = new THREE.MeshLambertMaterial({ map: tex.cobblePlaza });
   const parkLawnMat = new THREE.MeshLambertMaterial({ color: 0x51b748 });
   const parkWalkMat = new THREE.MeshLambertMaterial({
@@ -426,14 +415,6 @@ export function buildProceduralTown3D(
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
   });
-  const pondWaterMat = new THREE.MeshLambertMaterial({
-    color: 0x339af0,
-    emissive: 0x1864ab,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
-  const benchWoodMat = new THREE.MeshLambertMaterial({ color: 0x9c6644 });
 
   for (const pk of layout.parks) {
     const px = pk.x - centerX;
@@ -466,9 +447,9 @@ export function buildProceduralTown3D(
     group.add(border, lawn, pathEW, pathNS);
 
     if (pk.hasFountain) {
-      const plazaPad = new THREE.Mesh(new THREE.CircleGeometry(10.5, 24), parkWalkMat);
+      const plazaPad = new THREE.Mesh(new THREE.PlaneGeometry(14.5, 14.5), parkWalkMat);
       plazaPad.rotation.x = -Math.PI / 2;
-      plazaPad.position.set(px, py + 0.145, pz);
+      plazaPad.position.set(px, py + 0.14, pz);
       plazaPad.receiveShadow = true;
       plazaPad.renderOrder = 5;
       group.add(plazaPad);
@@ -477,10 +458,8 @@ export function buildProceduralTown3D(
       group.add(fountain);
       colliders.push(makeObbCollider(pk.x, pk.z, 5.2, 5.2, 0, 6.5));
     } else if (pk.hasPond) {
-      const pond = new THREE.Mesh(new THREE.CircleGeometry(11.5, 20), pondWaterMat);
-      pond.rotation.x = -Math.PI / 2;
-      pond.position.set(px, py + 0.145, pz);
-      pond.renderOrder = 5;
+      const pond = createVoxelParkPond3D(21);
+      pond.position.set(px, py + 0.13, pz);
       group.add(pond);
     }
 
@@ -489,13 +468,17 @@ export function buildProceduralTown3D(
       const sz = qi < 2 ? -1 : 1;
       const bx = px + sx * (pk.w * 0.24);
       const bz = pz + sz * (pk.d * 0.24);
-      const bench = new THREE.Group();
-      bench.position.set(bx, py + 0.13, bz);
-      bench.rotation.y = Math.atan2(-sx, -sz);
-      // Ergonomic chibi-scaled voxel park bench (`seat = 0.50u`, `back = 0.96u`)
-      addVoxelBox(bench, 3.0, 0.22, 0.9, benchWoodMat, 0, 0.28, 0);
-      addVoxelBox(bench, 3.0, 0.48, 0.18, benchWoodMat, 0, 0.50, -0.36);
-      group.add(bench);
+      const bRot = Math.atan2(-sx, -sz);
+      spawnVoxStreetPropCluster(group, 'bench', bx, py + 0.14, bz, bRot, qi + styleIdx);
+      spawnVoxStreetPropCluster(
+        group,
+        qi % 2 === 0 ? 'trashcan' : 'planter',
+        bx + sx * 2.1,
+        py + 0.14,
+        bz,
+        bRot,
+        qi + seed,
+      );
 
       const tx = px + sx * (pk.w * 0.36);
       const tz = pz + sz * (pk.d * 0.34);
@@ -522,6 +505,7 @@ export function buildProceduralTown3D(
     const built = buildUnifiedWalkInBuilding3D({
       kind,
       interiorId: intId,
+      townName,
       lotX: lot.x,
       lotZ: lot.z,
       localX: lx,
@@ -539,6 +523,7 @@ export function buildProceduralTown3D(
     group.add(built.shellGroup);
     colliders.push(...built.colliders);
     autoDoors.push(...built.autoDoors);
+    interactPoints.push(...built.interactPoints);
     if (built.stairZone) upperFloorZones.push(built.stairZone);
     interiors.push({
       id: intId,
@@ -573,77 +558,24 @@ export function buildProceduralTown3D(
     const ly = localGroundY(lot.x, lot.z);
 
     if (lot.kind === 'pokemon_center') {
-      registerWalkIn(lot, 'pokemon_center', `${townName}·宝可梦中心`, tex.clinicFloor, undefined, true);
-      interactPoints.push({
-        id: `${id}_pc`,
-        townName,
-        kind: 'pokemon_center',
-        label: `🏥 乔伊小姐 · 宝可梦中心`,
-        hint: '全队免费治疗并补满伤药（可走楼梯上 2F 联机沙龙）',
-        x: lot.x,
-        z: lot.z,
-        radius: 17.5,
-      });
+      registerWalkIn(lot, 'pokemon_center', `${townName}·宝可梦中心`, tex.clinicFloor, tex.pcSign, true);
     } else if (lot.kind === 'poke_mart') {
       registerWalkIn(lot, 'poke_mart', `${townName}·友好百货商店`, tex.martFloor, tex.martSign);
-      interactPoints.push({
-        id: `${id}_mart`,
-        townName,
-        kind: 'poke_mart',
-        label: `🏪 友好百货店员`,
-        hint: '打开精品外观与树果补给商店',
-        x: lot.x,
-        z: lot.z,
-        radius: 17.5,
-      });
     } else if (lot.kind === 'hotel') {
       registerWalkIn(lot, 'hotel', `${townName}·驿站大酒店`, tex.woodFloor, tex.hotelSign);
-      interactPoints.push({
-        id: `${id}_hotel`,
-        townName,
-        kind: 'hotel_rest',
-        label: `🏨 ${townName}·驿站大酒店 (1F大堂 / 2F客房)`,
-        hint: '可上二楼豪华客房休整，全队体力回满并获攻击强化',
-        x: lot.x,
-        z: lot.z,
-        radius: 19.0,
-      });
     } else if (lot.kind === 'restaurant') {
       registerWalkIn(lot, 'restaurant', `${townName}·树果料理餐厅`, tex.woodFloor, tex.cafeSign);
-      interactPoints.push({
-        id: `${id}_cafe`,
-        townName,
-        kind: 'restaurant',
-        label: `🍜 ${townName}·树果料理餐厅`,
-        hint: '享用热腾腾的树果料理，提升全队斗志',
-        x: lot.x,
-        z: lot.z,
-        radius: 17.0,
-      });
     } else if (lot.kind === 'landmark' && anchor.landmarkCityId) {
       const lm = buildWorldLandmark3D(anchor.landmarkCityId);
       if (lm) {
         lm.position.set(lx, ly, lz);
-        lm.scale.setScalar(1.58);
+        lm.scale.setScalar(1.42);
         group.add(lm);
-        colliders.push(makeObbCollider(lot.x, lot.z, 11.2, 11.2, 0, 44));
+        colliders.push(makeObbCollider(lot.x, lot.z, 10.5, 10.5, 0, 44));
       }
     } else if (lot.kind === 'house' && lot.walkable) {
       const aptIndex = interiors.filter((b) => b.kind === 'house').length + 1;
       registerWalkIn(lot, 'house', `${townName}·训练家复式公寓 ${aptIndex}号`, tex.woodFloor);
-      const foyerWorldX = lot.x + Math.sin(lot.rotY) * (lot.depth * 0.16);
-      const foyerWorldZ = lot.z + Math.cos(lot.rotY) * (lot.depth * 0.16);
-      interactPoints.push({
-        id: `${lot.id}_npc`,
-        townName,
-        kind: 'npc_chat',
-        label: `💬 与公寓居民交谈`,
-        hint: '打听城市地标与周边情报（可走楼梯上 2F 卧室与书房）',
-        dialogText: `🏠 城市居民：「欢迎来${townName}训练家复式公寓 ${aptIndex}号做客！走左侧楼梯可以上二楼卧室与书房看看哦！」`,
-        x: foyerWorldX,
-        z: foyerWorldZ,
-        radius: 9.5,
-      });
     } else {
       // Non-walkable urban lots: Mix of Modern MagicaVoxel All-Glass Curtain-Wall CBD Office Towers (~52%)
       // and MagicaVoxel Urban Balcony Residential Apartments (~48%)!
@@ -715,20 +647,51 @@ export function buildProceduralTown3D(
     localGroundY,
   });
 
-  // ==================== 4. CITY BUS STOP & NIGHT STREETLAMPS ====================
-  void mountGlbModel(group, '/models/town/train/tram-modern.glb', {
+  // ==================== 4. REAL MAGICAVOXEL CITY BUS, SIDEWALK BUS SHELTER & .VOX STREETLAMPS ====================
+  // Curbside direction vector perpendicular to road (`busOutX, busOutZ` points from road center toward sidewalk!)
+  const busFwdX = Math.sin(layout.busRotY);
+  const busFwdZ = Math.cos(layout.busRotY);
+  const busOutX = -busFwdZ;
+  const busOutZ = busFwdX;
+  const busGroundY = localGroundY(layout.busX, layout.busZ) + 0.16;
+
+  // 1) Authentic MagicaVoxel City Transit Bus (`veh_bus.vox`) parked PARALLEL inside the curbside lane (NEVER 90° sideways!)
+  void mountVoxModel(group, '/models/vox/veh_bus.vox', {
     x: layout.busX - centerX,
-    y: localGroundY(layout.busX, layout.busZ),
+    y: busGroundY,
     z: layout.busZ - centerZ,
-    rotY: layout.busRotY + Math.PI / 2,
-    targetWidth: 9.4,
-    addInkEdges: true,
+    rotY: layout.busRotY,
+    targetSpan: 9.2,
+    emitMode: 'vehicle',
   });
+  colliders.push(makeObbCollider(layout.busX, layout.busZ, 1.45, 4.5, layout.busRotY, 3.2));
+
+  // 2) Sidewalk MagicaVoxel Bus Shelter (`obj_busstop.vox`) + `.vox` Trash Can right next to the bus door!
+  const shelterWorldX = layout.busX + busOutX * 4.4;
+  const shelterWorldZ = layout.busZ + busOutZ * 4.4;
+  const shelterY = localGroundY(shelterWorldX, shelterWorldZ) + 0.16;
+  void mountVoxModel(group, '/models/vox/obj_busstop.vox', {
+    x: shelterWorldX - centerX,
+    y: shelterY,
+    z: shelterWorldZ - centerZ,
+    rotY: layout.busRotY - Math.PI / 2,
+    targetSpan: 5.8,
+  });
+  spawnVoxStreetPropCluster(
+    group,
+    'trashcan',
+    shelterWorldX - centerX + busFwdX * 3.6,
+    shelterY,
+    shelterWorldZ - centerZ + busFwdZ * 3.6,
+    layout.busRotY,
+    seed + 3,
+  );
 
   const streetLampPositions: { x: number; y: number; z: number }[] = [];
   const lampPoolGeo = new THREE.PlaneGeometry(10.8, 10.8);
   lampPoolGeo.rotateX(-Math.PI / 2);
-  for (const lamp of layout.streetLamps) {
+  for (let li = 0; li < layout.streetLamps.length; li++) {
+    const lamp = layout.streetLamps[li];
     const lampBaseLocalY = localGroundY(lamp.x, lamp.z);
     streetLampPositions.push({ x: lamp.x, y: baseY + lampBaseLocalY + 5.8, z: lamp.z });
 
@@ -740,23 +703,37 @@ export function buildProceduralTown3D(
     );
     group.add(pool);
 
-    void mountGlbModel(group, '/models/town/roads/lamp-curved.glb', {
+    // Authentic MagicaVoxel `.vox` Streetlamp (`obj_stlight2.vox` overhanging arm oriented over roadway!)
+    void mountVoxModel(group, '/models/vox/obj_stlight2.vox', {
       x: lamp.x - centerX,
-      y: lampBaseLocalY,
+      y: lampBaseLocalY + 0.12,
       z: lamp.z - centerZ,
-      rotY: lamp.rotY,
-      targetWidth: 3.4,
-      heightMult: 1.36,
-      addInkEdges: true,
-      onMounted: (wrapper, h) => {
-        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.36, 8, 8), STREET_LAMP_BULB_MAT);
-        bulb.position.set(0, h * 0.92, 0.96);
+      rotY: lamp.rotY - Math.PI / 2,
+      targetHeight: 6.1,
+      emitMode: 'lamp',
+      onMounted: (_m, sz) => {
         const halo = new THREE.Sprite(STREET_LAMP_HALO_MAT);
-        halo.scale.set(4.2, 4.2, 1);
-        halo.position.copy(bulb.position);
-        wrapper.add(bulb, halo);
+        halo.scale.set(4.0, 4.0, 1);
+        halo.position.set(
+          lamp.x - centerX + Math.sin(lamp.rotY) * 1.5,
+          lampBaseLocalY + sz.h * 0.92,
+          lamp.z - centerZ + Math.cos(lamp.rotY) * 1.5,
+        );
+        group.add(halo);
       },
     });
+    // Pair every 4th streetlamp with a curbside MagicaVoxel trash can or fire hydrant!
+    if (li % 4 === 1) {
+      spawnVoxStreetPropCluster(
+        group,
+        li % 8 === 1 ? 'trashcan' : 'hydrant',
+        lamp.x - centerX - Math.cos(lamp.rotY) * 1.3,
+        lampBaseLocalY + 0.12,
+        lamp.z - centerZ + Math.sin(lamp.rotY) * 1.3,
+        lamp.rotY,
+        li + seed,
+      );
+    }
   }
 
   // ==================== 5. LIVE TRAFFIC TAXIS & UPRIGHT GBA CITIZENS ====================
@@ -814,8 +791,14 @@ export function buildProceduralTown3D(
       }
     }
   }
-  const headLampMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
-  const tailLampMat = new THREE.MeshBasicMaterial({ color: 0xff4d4f });
+  const voxVehicleUrls = [
+    '/models/vox/veh_cab1.vox',
+    '/models/vox/veh_car1.vox',
+    '/models/vox/veh_suv1.vox',
+    '/models/vox/veh_car2.vox',
+    '/models/vox/veh_lunch1.vox',
+    '/models/vox/veh_cab1.vox',
+  ];
 
   carConfigs.forEach((cc, idx) => {
     const carGrp = new THREE.Group();
@@ -824,24 +807,15 @@ export function buildProceduralTown3D(
     const baseCarY = localGroundY(wx, wz) + 0.16;
     carGrp.position.set(wx - centerX, baseCarY, wz - centerZ);
     carGrp.rotation.y = cc.axis === 'z' ? (cc.dir > 0 ? 0 : Math.PI) : cc.dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-    void mountGlbModel(carGrp, '/models/town/car/taxi.glb', {
+    const vUrl = voxVehicleUrls[idx % voxVehicleUrls.length];
+    void mountVoxModel(carGrp, vUrl, {
       x: 0,
       y: 0,
       z: 0,
       rotY: 0,
-      targetWidth: 4.4,
-      tintHex: carColors[(idx + styleIdx) % carColors.length],
-      addInkEdges: true,
-      cloneMaterials: true,
-      onMounted: (wrapper) => {
-        for (const sx of [-0.72, 0.72]) {
-          const hl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.14), headLampMat);
-          hl.position.set(sx, 0.72, 2.08);
-          const tl = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.14), tailLampMat);
-          tl.position.set(sx, 0.72, -2.08);
-          wrapper.add(hl, tl);
-        }
-      },
+      targetSpan: vUrl.includes('lunch') ? 5.2 : 4.6,
+      tintHex: vUrl.includes('car1') ? carColors[(idx + styleIdx) % carColors.length] : undefined,
+      emitMode: 'vehicle',
     });
     group.add(carGrp);
     vehicles.push({
@@ -857,21 +831,108 @@ export function buildProceduralTown3D(
     });
   });
 
-  const citizenPool = [
-    '/sprites/people/youngster.png',
-    '/sprites/people/lass.png',
-    '/sprites/people/picnicker.png',
-    '/sprites/people/camper.png',
-    '/sprites/people/cooltrainer_m.png',
-    '/sprites/people/cooltrainer_f.png',
-    '/sprites/people/woman_1.png',
-    '/sprites/people/woman_2.png',
-    '/sprites/people/man.png',
-    '/sprites/people/gentleman.png',
-    '/sprites/people/beauty.png',
-    '/sprites/people/policeman.png',
-    '/sprites/people/sailor.png',
+  const citizenRoster: {
+    sprite: string;
+    name: string;
+    role: string;
+    greeting: string;
+    chat: string[];
+    species: string;
+  }[] = [
+    {
+      sprite: '/sprites/people/youngster.png',
+      name: '短裤小子 阿弘',
+      role: '街头见习训练家',
+      greeting: '嘿！我刚给搭档喂了新鲜树果，要不要在宽敞的大街上来一场切磋？',
+      chat: ['穿短裤在体素城市里跑步最凉快啦！', '想去火车站的话，去大马路边的市内公交站坐巴士直达最快！'],
+      species: 'pikachu',
+    },
+    {
+      sprite: '/sprites/people/lass.png',
+      name: '迷你裙少女 小奈',
+      role: '学院派训练家',
+      greeting: '你好呀！夜晚亮灯后的宝可梦中心和树果饭店超有氛围感对吧？',
+      chat: ['我刚从友好百货买了精灵球，准备去郊外收服新伙伴！', '来试试我的宝可梦特训成果吧！'],
+      species: 'jigglypuff',
+    },
+    {
+      sprite: '/sprites/people/picnicker.png',
+      name: '野餐少女 晴子',
+      role: '公园散步达人',
+      greeting: '中心公园的体素喷泉和荷花池好漂亮呀，你也来散步吗？',
+      chat: ['累了可以去树果饭店吃碗拉面，或者去酒店二楼睡一觉！', '随时欢迎友好对战哦！'],
+      species: 'bulbasaur',
+    },
+    {
+      sprite: '/sprites/people/camper.png',
+      name: '露营少年 小拓',
+      role: '野外勘探员',
+      greeting: '嗨！城外的体素矿石敲碎后能掉星星沙子和金币哦！',
+      chat: ['不知道宝可梦中心在哪？点「询问打听」我直接给你指路导航！', '我的小火龙今天状态超棒！'],
+      species: 'charmander',
+    },
+    {
+      sprite: '/sprites/people/cooltrainer_m.png',
+      name: '精英训练家 龙崎',
+      role: '道馆挑战者',
+      greeting: '眼神不错嘛！看得出你和身边的伙伴很有默契，来切磋一局如何？',
+      chat: ['真正的强者既懂得在城镇休整，也敢随时迎接路边挑战！', '城郊虹桥高铁站可以乘车前往世界各地的名城道馆！'],
+      species: 'dratini',
+    },
+    {
+      sprite: '/sprites/people/cooltrainer_f.png',
+      name: '精英训练家 绯月',
+      role: '战术研究家',
+      greeting: '嗨，旅行者！需要打听附近的设施，还是想实战检验一下阵容？',
+      chat: ['水系伙伴在河道与海湾还能直接冲浪滑行呢！', '全力以赴来一场街头友谊赛吧！'],
+      species: 'squirtle',
+    },
+    {
+      sprite: '/sprites/people/policeman.png',
+      name: '巡逻警官 佐藤',
+      role: '城市治安巡警',
+      greeting: `向你致敬！${townName}市内秩序井然，迷路了随时向我问路！`,
+      chat: ['市内严禁野生宝可梦主动伤人，但训练家之间礼貌切磋完全没问题！', '需要去火车站或宝可梦中心的话，我可以立刻为你标注路线！'],
+      species: 'eevee',
+    },
+    {
+      sprite: '/sprites/people/sailor.png',
+      name: '远航水手 大海',
+      role: '港口水手训练家',
+      greeting: '哟吼！吹着江风散步真痛快，来场水花四溅的对战吗？',
+      chat: ['跨江大桥夜景超美，连桥上的路灯都是体素风格！', '我的杰尼龟可不会轻易认输！'],
+      species: 'psyduck',
+    },
+    {
+      sprite: '/sprites/people/gentleman.png',
+      name: '绅士 阿尔弗雷德',
+      role: '资深宝可梦学者',
+      greeting: '日安，年轻的训练家。旅行途中多与路人交流，往往能收获意外惊喜。',
+      chat: ['乘坐市内公交可以在本城各大站点与城郊火车站之间轻松往返。', '若不嫌弃，老夫也愿陪你切磋一局！'],
+      species: 'gastly',
+    },
+    {
+      sprite: '/sprites/people/beauty.png',
+      name: '模特 薇薇安',
+      role: '都市街拍达人',
+      greeting: '嗨～你的宝可梦好上镜呀！要不要聊聊天或者比试一场？',
+      chat: ['商业街的霓虹招牌一到晚上就会亮起温暖的灯光！', '赢了我的话有零花钱奖励哦！'],
+      species: 'meowth',
+    },
   ];
+  const makeCitizenProfile = (idx: number, keySuffix: string): NpcSocialProfile => {
+    const tpl = citizenRoster[(idx + styleIdx) % citizenRoster.length];
+    return {
+      id: `${id}_citizen_${keySuffix}`,
+      name: tpl.name,
+      role: tpl.role,
+      sprite: tpl.sprite,
+      greeting: tpl.greeting,
+      chatLines: tpl.chat,
+      battleSpecies: tpl.species,
+      canBattle: true,
+    };
+  };
   const shadowMat = new THREE.MeshBasicMaterial({ color: 0x10141c, transparent: true, opacity: 0.34, depthWrite: false });
   const shadowGeo = new THREE.CircleGeometry(0.85, 12);
   shadowGeo.rotateX(-Math.PI / 2);
@@ -879,7 +940,8 @@ export function buildProceduralTown3D(
   const pkCx = layout.plazaX - centerX;
   const pkCz = layout.plazaZ - centerZ;
   for (let wi = 0; wi < 6; wi++) {
-    const spriteUrl = citizenPool[(wi + styleIdx) % citizenPool.length];
+    const prof = makeCitizenProfile(wi, `plaza_${wi}`);
+    const spriteUrl = prof.sprite;
     const orbitR = 9.5 + (wi % 3) * 3.4;
     const initAng = (wi / 6) * Math.PI * 2;
     const wxCheck = centerX + pkCx + Math.cos(initAng) * orbitR;
@@ -893,6 +955,8 @@ export function buildProceduralTown3D(
     cShadow.position.set(px, py + 0.04, pz);
     group.add(citizenMesh, cShadow);
     walkers.push({
+      id: prof.id,
+      npcProfile: prof,
       mesh: citizenMesh,
       shadow: cShadow,
       walkFrames: getNpcWalkSpriteFrames(spriteUrl),
@@ -904,6 +968,8 @@ export function buildProceduralTown3D(
       speed: (wi % 2 === 0 ? 1 : -1) * (0.18 + (wi % 3) * 0.05),
       phase: wi * 1.3,
       baseY: py,
+      worldX: centerX + px,
+      worldZ: centerZ + pz,
     });
   }
 
@@ -944,7 +1010,8 @@ export function buildProceduralTown3D(
     ) {
       continue;
     }
-    const spriteUrl = citizenPool[(sidewalkCount + styleIdx) % citizenPool.length];
+    const prof = makeCitizenProfile(sidewalkCount + 3, `sw_${sidewalkCount}`);
+    const spriteUrl = prof.sprite;
     const lx1 = wx1 - centerX;
     const lz1 = wz1 - centerZ;
     const lx2 = wx2 - centerX;
@@ -960,6 +1027,8 @@ export function buildProceduralTown3D(
     group.add(citizenMesh, cShadow);
     const segSpan = Math.max(16, Math.hypot(lx2 - lx1, lz2 - lz1));
     walkers.push({
+      id: prof.id,
+      npcProfile: prof,
       mesh: citizenMesh,
       shadow: cShadow,
       walkFrames: getNpcWalkSpriteFrames(spriteUrl),
@@ -975,36 +1044,13 @@ export function buildProceduralTown3D(
       speed: (sidewalkCount % 2 === 0 ? 1 : -1) * (3.1 / (segSpan * 0.5)),
       phase: sidewalkCount * 0.9,
       baseY: py,
+      worldX: centerX + px,
+      worldZ: centerZ + pz,
     });
     sidewalkCount += 1;
   }
 
-  // Sidewalk Voxel Vending Machines & Green Postboxes
-  const vendFrontTex = makePixelTex(24, 36, (ctx) => {
-    ctx.fillStyle = '#e03131';
-    ctx.fillRect(0, 0, 24, 36);
-    ctx.fillStyle = '#181a24';
-    ctx.fillRect(2, 3, 20, 16);
-    ctx.fillStyle = '#74c0fc';
-    ctx.fillRect(3, 4, 18, 14);
-    const cols = ['#ff6b6b', '#ffd43b', '#51cf66', '#339af0'];
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 4; c++) {
-        ctx.fillStyle = cols[(c + r) % 4];
-        ctx.fillRect(5 + c * 4, 6 + r * 6, 2, 4);
-      }
-    }
-    ctx.fillStyle = '#f8f9fa';
-    ctx.fillRect(4, 21, 16, 3);
-    ctx.fillStyle = '#212529';
-    ctx.fillRect(4, 27, 16, 6);
-  });
-  const vendSideMat = new THREE.MeshLambertMaterial({ color: 0xc92a2a });
-  const vendFrontMat = new THREE.MeshBasicMaterial({ map: vendFrontTex });
-  const vendMats = [vendSideMat, vendSideMat, vendSideMat, vendSideMat, vendFrontMat, vendSideMat];
-  const postboxMat = new THREE.MeshLambertMaterial({ color: 0x2b8a3e });
-  const postCapMat = new THREE.MeshLambertMaterial({ color: 0x1e602c });
-
+  // Sidewalk Pure MagicaVoxel Vending Machines, `.vox` Postboxes & `.vox` Newsboxes!
   const placedProps: { x: number; z: number }[] = [];
   for (const pk of layout.parks) {
     const candidates: [number, number, number][] = [
@@ -1017,18 +1063,16 @@ export function buildProceduralTown3D(
       if (layout.streets.some((s) => distToSeg2D(wx, wz, s.x1, s.z1, s.x2, s.z2) < s.width * 0.44)) continue;
       if (placedProps.some((p) => Math.hypot(p.x - wx, p.z - wz) < 8)) continue;
       placedProps.push({ x: wx, z: wz });
-      if (placedProps.length % 2 === 1) {
-        const vm = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.2, 0.95), vendMats);
-        vm.position.set(wx - centerX, localGroundY(wx, wz) + 1.25, wz - centerZ);
+      const pyProp = localGroundY(wx, wz) + 0.16;
+      if (placedProps.length % 3 === 1) {
+        const vm = createVoxelVendingMachine3D(placedProps.length);
+        vm.position.set(wx - centerX, pyProp, wz - centerZ);
         vm.rotation.y = ry;
-        vm.castShadow = true;
         group.add(vm);
+      } else if (placedProps.length % 3 === 2) {
+        spawnVoxStreetPropCluster(group, 'mailbox', wx - centerX, pyProp, wz - centerZ, ry, placedProps.length);
       } else {
-        const pb = new THREE.Group();
-        pb.position.set(wx - centerX, localGroundY(wx, wz) + 0.16, wz - centerZ);
-        addVoxelBox(pb, 0.85, 1.45, 0.85, postboxMat, 0, 0, 0);
-        addVoxelBox(pb, 0.98, 0.22, 0.98, postCapMat, 0, 1.45, 0);
-        group.add(pb);
+        spawnVoxStreetPropCluster(group, 'newsbox', wx - centerX, pyProp, wz - centerZ, ry, placedProps.length);
       }
     }
   }
@@ -1039,20 +1083,20 @@ export function buildProceduralTown3D(
       townName,
       kind: 'transit_station',
       label: `🚄 ${townName}·城郊虹桥高铁站`,
-      hint: '乘坐城际高铁前往其他城市（可乘地铁1/2号线直通市中心）',
+      hint: '乘坐高铁或航班前往全国/世界其他城市',
       x: layout.stationX,
       z: layout.stationZ + 4.5,
-      radius: 9.5,
+      radius: 6.5,
     },
     {
       id: `${id}_bus`,
       townName,
-      kind: 'transit_station',
-      label: `🚌 ${townName}·城镇巴士站`,
-      hint: '乘车前往其他城镇或世界巡礼',
-      x: layout.busX + Math.cos(layout.busRotY) * 5.2,
-      z: layout.busZ - Math.sin(layout.busRotY) * 5.2,
-      radius: 6.5,
+      kind: 'city_bus_stop',
+      label: `🚌 ${townName}·市内公交与城际巴士站`,
+      hint: '乘巴士前往市内各设施 / 火车站，或搭乘陆路客运前往周边邻城',
+      x: (layout.busX + shelterWorldX) * 0.5,
+      z: (layout.busZ + shelterWorldZ) * 0.5,
+      radius: 5.2,
     },
   );
 

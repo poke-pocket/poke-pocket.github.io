@@ -10,6 +10,7 @@ import { TOWN_NIGHT_UNIFORM } from './townAssetLoader';
  */
 
 let SHARED_VOXEL_ARCH_MAT: THREE.MeshLambertMaterial | null = null;
+let SHARED_VOXEL_INDOOR_MAT: THREE.MeshLambertMaterial | null = null;
 
 export function getSharedVoxelArchMaterial(): THREE.MeshLambertMaterial {
   if (SHARED_VOXEL_ARCH_MAT) return SHARED_VOXEL_ARCH_MAT;
@@ -47,6 +48,52 @@ varying vec3 vNightEmit;`,
       );
   };
   SHARED_VOXEL_ARCH_MAT = mat;
+  return mat;
+}
+
+/**
+ * Warm 24/7 Ceiling-Illuminated Indoor MagicaVoxel Material (`室内常亮暖光体素材质`):
+ * - Ensures counters, healing machines, dining tables, beds & shelves inside Pokémon Centers, Restaurants,
+ *   Poké Marts & Hotels stay warmly illuminated at night when outdoor sunlight drops!
+ */
+export function getSharedIndoorLitVoxelMaterial(): THREE.MeshLambertMaterial {
+  if (SHARED_VOXEL_INDOOR_MAT) return SHARED_VOXEL_INDOOR_MAT;
+  const mat = new THREE.MeshLambertMaterial({
+    vertexColors: true,
+  });
+  mat.customProgramCacheKey = () => 'pk_magicavoxel_indoor_warm_v1';
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uNightGlow = TOWN_NIGHT_UNIFORM;
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+attribute vec3 aNightEmit;
+varying vec3 vNightEmit;`,
+      )
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+vNightEmit = aNightEmit;`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+uniform float uNightGlow;
+varying vec3 vNightEmit;`,
+      )
+      .replace(
+        '#include <dithering_fragment>',
+        `vec3 warmLampFloor = diffuseColor.rgb * vec3(1.03, 0.98, 0.90) * (0.58 + uNightGlow * 0.34);
+gl_FragColor.rgb = max(gl_FragColor.rgb, warmLampFloor);
+if ((vNightEmit.r + vNightEmit.g + vNightEmit.b) > 0.02) {
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vNightEmit, 0.85);
+}
+#include <dithering_fragment>`,
+      );
+  };
+  SHARED_VOXEL_INDOOR_MAT = mat;
   return mat;
 }
 

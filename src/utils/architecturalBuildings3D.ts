@@ -5,7 +5,9 @@ import {
   furnishWalkInInterior3D,
   type WalkInBuildingKind,
 } from '../world3d/interiors/interiorFurnishings3D';
-import type { ProximityAutoDoor3D, TownCollider } from '../world3d/townTypes';
+import { registerNightReactiveHook } from '../world3d/townAssetLoader';
+import type { ProximityAutoDoor3D, TownCollider, TownInteractPoint } from '../world3d/townTypes';
+import { VoxelGrid3D, getSharedIndoorLitVoxelMaterial, getSharedVoxelArchMaterial } from '../world3d/voxelMesher3D';
 import { addVoxelBox, createVoxelPokeball3D } from '../world3d/voxelProps3D';
 
 export type { WalkInBuildingKind, ProximityAutoDoor3D };
@@ -45,6 +47,7 @@ export interface BuiltUnifiedBuildingResult {
   npcs: THREE.Mesh[];
   colliders: ArchBuildingCollider[];
   autoDoors: ProximityAutoDoor3D[];
+  interactPoints: TownInteractPoint[];
   stairZone?: WalkableStairAndFloorZone3D;
   stories: 1 | 2;
   floor1CeilingY: number;
@@ -52,11 +55,35 @@ export interface BuiltUnifiedBuildingResult {
   dualDoors: boolean;
 }
 
-const ARCH_EDGE_MAT = new THREE.LineBasicMaterial({
-  color: 0x181c28,
-  transparent: true,
-  opacity: 0.65,
-});
+const ARCH_VOX_CACHE = new Map<string, THREE.BufferGeometry>();
+function getCachedCeilingChandelierGeo(): THREE.BufferGeometry {
+  const key = 'vox_ceiling_chandelier_v1';
+  let geo = ARCH_VOX_CACHE.get(key);
+  if (!geo) {
+    const g = new VoxelGrid3D(14, 6, 14);
+    g.fillBox(5, 4, 5, 8, 5, 8, 0xcbd5e1);
+    g.fillBox(2, 2, 2, 11, 3, 11, 0xffe066, 0xffe066);
+    g.fillBox(4, 0, 4, 9, 1, 9, 0xfff9db, 0xfff3bf);
+    geo = g.toGreedyGeometry(0.14);
+    ARCH_VOX_CACHE.set(key, geo);
+  }
+  return geo;
+}
+
+function getCachedDoorLanternGeo(): THREE.BufferGeometry {
+  const key = 'vox_door_sconce_lantern_v1';
+  let geo = ARCH_VOX_CACHE.get(key);
+  if (!geo) {
+    const g = new VoxelGrid3D(6, 10, 6);
+    g.fillBox(1, 8, 0, 4, 9, 4, 0x2b3040);
+    g.fillBox(0, 7, 0, 5, 7, 5, 0x3b4254);
+    g.fillBox(1, 2, 1, 4, 6, 4, 0xffe066, 0xffe066);
+    g.fillBox(1, 0, 1, 4, 1, 4, 0x2b3040);
+    geo = g.toGreedyGeometry(0.11);
+    ARCH_VOX_CACHE.set(key, geo);
+  }
+  return geo;
+}
 
 let SHARED_SPILL_MAT: THREE.MeshBasicMaterial | null = null;
 function getSharedStorefrontSpillMat(): THREE.MeshBasicMaterial {
@@ -66,9 +93,9 @@ function getSharedStorefrontSpillMat(): THREE.MeshBasicMaterial {
   spillCanvas.height = 64;
   const sCtx = spillCanvas.getContext('2d');
   if (sCtx) {
-    const grad = sCtx.createRadialGradient(32, 32, 6, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(255, 232, 168, 0.65)');
-    grad.addColorStop(0.55, 'rgba(255, 212, 128, 0.24)');
+    const grad = sCtx.createRadialGradient(32, 32, 4, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255, 236, 172, 0.92)');
+    grad.addColorStop(0.52, 'rgba(255, 214, 128, 0.42)');
     grad.addColorStop(1, 'rgba(255, 196, 96, 0)');
     sCtx.fillStyle = grad;
     sCtx.fillRect(0, 0, 64, 64);
@@ -77,9 +104,14 @@ function getSharedStorefrontSpillMat(): THREE.MeshBasicMaterial {
   SHARED_SPILL_MAT = new THREE.MeshBasicMaterial({
     map: spillTex,
     transparent: true,
-    opacity: 0.34,
+    opacity: 0.28,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+  });
+  registerNightReactiveHook((glow) => {
+    if (SHARED_SPILL_MAT) {
+      SHARED_SPILL_MAT.opacity = 0.20 + glow * 0.68;
+    }
   });
   return SHARED_SPILL_MAT;
 }
@@ -148,6 +180,7 @@ function spawnGbaNpc(key: string, x: number, y: number, z: number, height = 2.48
 export function buildUnifiedWalkInBuilding3D(opts: {
   kind: WalkInBuildingKind;
   interiorId: string;
+  townName: string;
   lotX: number;
   lotZ: number;
   baseWorldY: number;
@@ -165,6 +198,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   const {
     kind,
     interiorId,
+    townName,
     lotX,
     lotZ,
     baseWorldY,
@@ -197,6 +231,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   const npcs: THREE.Mesh[] = [];
   const colliders: ArchBuildingCollider[] = [];
   const autoDoors: ProximityAutoDoor3D[] = [];
+  const interactPoints: TownInteractPoint[] = [];
   const cosLot = Math.cos(rotY);
   const sinLot = Math.sin(rotY);
   const localToWorldXZ = (lxP: number, lzP: number) => ({
@@ -219,19 +254,19 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   const innerWallMat = new THREE.MeshLambertMaterial({
     color: palette.inner,
     emissive: palette.inner,
-    emissiveIntensity: 0.16,
+    emissiveIntensity: 0.28,
   });
   const wainscotMat = new THREE.MeshLambertMaterial({
     color: palette.wainscot,
     emissive: palette.wainscot,
-    emissiveIntensity: 0.18,
+    emissiveIntensity: 0.30,
   });
   const trimMat = new THREE.MeshLambertMaterial({ color: palette.trim });
   const roofMat = new THREE.MeshLambertMaterial({ color: palette.roof });
   const ceilingMat = new THREE.MeshLambertMaterial({
-    color: 0xf4efe6,
-    emissive: 0xf4efe6,
-    emissiveIntensity: 0.22,
+    color: 0xfff6e5,
+    emissive: 0xffe8bd,
+    emissiveIntensity: 0.36,
   });
   const plinthMat = new THREE.MeshLambertMaterial({ color: 0x7c8594 });
 
@@ -250,14 +285,11 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     mesh.position.set(bx, by, bz);
     mesh.castShadow = edge;
     mesh.receiveShadow = true;
-    if (edge) {
-      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 30), ARCH_EDGE_MAT));
-    }
     shellGroup.add(mesh);
     return mesh;
   };
 
-  // ==================== 1. FOUNDATION PLINTH & 1F TILED FLOOR ====================
+  // ==================== 1. FOUNDATION PLINTH & WARMLY LIT 1F TILED FLOOR ====================
   addBox(w + 1.2, 2.4, d + 1.2, plinthMat, 0, -1.08, 0, false);
 
   const f1Tex = floorTex.clone();
@@ -265,15 +297,19 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   f1Tex.wrapS = THREE.RepeatWrapping;
   f1Tex.wrapT = THREE.RepeatWrapping;
   f1Tex.needsUpdate = true;
-  const f1Mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(w, d),
-    new THREE.MeshLambertMaterial({
-      map: f1Tex,
-      emissive: 0xffffff,
-      emissiveMap: f1Tex,
-      emissiveIntensity: 0.24,
-    }),
-  );
+  const f1FloorMat = new THREE.MeshLambertMaterial({
+    map: f1Tex,
+    emissive: 0xfff4dc,
+    emissiveMap: f1Tex,
+    emissiveIntensity: 0.38,
+  });
+  registerNightReactiveHook((glow) => {
+    innerWallMat.emissiveIntensity = 0.24 + glow * 0.44;
+    wainscotMat.emissiveIntensity = 0.26 + glow * 0.46;
+    ceilingMat.emissiveIntensity = 0.32 + glow * 0.48;
+    f1FloorMat.emissiveIntensity = 0.34 + glow * 0.48;
+  });
+  const f1Mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), f1FloorMat);
   f1Mesh.rotation.x = -Math.PI / 2;
   f1Mesh.position.y = floor1Y;
   f1Mesh.receiveShadow = true;
@@ -370,9 +406,23 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     addBox(0.28, doorH, wallT + 0.16, mullionMat, doorW * 0.5, floor1Y + doorH * 0.5, fz, false);
     addBox(doorW + 0.4, 0.28, wallT + 0.22, trimMat, 0, floor1Y + doorH, fz, false);
 
-    // Stepped MagicaVoxel Entrance Canopy over the street-facing front door!
-    addVoxelBox(shellGroup, doorW + 2.4, 0.36, 1.85, trimMat, 0, floor1Y + doorH + 0.16, fz + 0.85);
-    addVoxelBox(shellGroup, doorW + 1.8, 0.26, 1.25, roofMat, 0, floor1Y + doorH + 0.52, fz + 0.65);
+    // Stepped Striped MagicaVoxel Entrance Awning + Twin Warm Voxel Doorway Lanterns!
+    const stripeCount = 9;
+    const awningTotalW = doorW + 3.0;
+    const stripeW = awningTotalW / stripeCount;
+    const whiteStripeMat = new THREE.MeshLambertMaterial({ color: 0xfff9f0 });
+    for (let si = 0; si < stripeCount; si++) {
+      const sx = -awningTotalW * 0.5 + (si + 0.5) * stripeW;
+      const sMat = si % 2 === 0 ? roofMat : whiteStripeMat;
+      addVoxelBox(shellGroup, stripeW + 0.02, 0.34, 1.95, sMat, sx, floor1Y + doorH + 0.14, fz + 0.92);
+      addVoxelBox(shellGroup, stripeW + 0.02, 0.28, 1.30, sMat, sx, floor1Y + doorH + 0.48, fz + 0.60);
+    }
+    const lanternGeo = getCachedDoorLanternGeo();
+    for (const side of [-1, 1]) {
+      const lantern = new THREE.Mesh(lanternGeo, getSharedVoxelArchMaterial());
+      lantern.position.set(side * (doorW * 0.5 + 0.85), floor1Y + 2.35, fz + 0.48);
+      shellGroup.add(lantern);
+    }
 
     const leafW = doorW * 0.495;
     const leafH = doorH - 0.06;
@@ -493,10 +543,16 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   addVoxelBox(shellGroup, 0.95, 0.18, 0.95, mullionMat, w * 0.26, roofY + 3.38, -d * 0.20, false);
 
   if (signTex) {
-    const signGeo = new THREE.BoxGeometry(10.8, 2.9, 0.65);
+    // Illuminated Backlit Storefront Voxel Signboard (shines crisply day AND night!)
+    const signBack = new THREE.Mesh(
+      new THREE.BoxGeometry(11.4, 3.3, 0.52),
+      new THREE.MeshBasicMaterial({ color: 0xffe066 }),
+    );
+    signBack.position.set(0, roofY + 2.55, d * 0.5 + 0.22);
+    const signGeo = new THREE.BoxGeometry(10.8, 2.9, 0.56);
     const signMesh = new THREE.Mesh(signGeo, new THREE.MeshBasicMaterial({ map: signTex }));
-    signMesh.position.set(0, roofY + 2.55, d * 0.5 + 0.35);
-    shellGroup.add(signMesh);
+    signMesh.position.set(0, roofY + 2.55, d * 0.5 + 0.32);
+    shellGroup.add(signBack, signMesh);
   }
   if (kind === 'pokemon_center') {
     const beacon = createVoxelPokeball3D(3.4);
@@ -505,17 +561,17 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     onRegisterSpinner?.(beacon);
   }
 
-  // Soft interior ceiling light fixtures
-  const lightPanelMat = new THREE.MeshBasicMaterial({ color: 0xfff3bf });
+  // 3D MagicaVoxel Warm Ceiling Chandeliers on 1F & 2F (clearly visible glowing through windows at night!)
+  const chandelierGeo = getCachedCeilingChandelierGeo();
   for (const lxP of [-w * 0.24, 0, w * 0.24]) {
-    for (const lzP of [-d * 0.22, d * 0.22]) {
-      const lp1 = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 1.0), lightPanelMat);
-      lp1.position.set(lxP, floor1Y + H1 - 0.12, lzP);
-      shellGroup.add(lp1);
+    for (const lzP of [-d * 0.20, d * 0.22]) {
+      const ch1 = new THREE.Mesh(chandelierGeo, getSharedIndoorLitVoxelMaterial());
+      ch1.position.set(lxP, floor1Y + H1 - 0.85, lzP);
+      shellGroup.add(ch1);
       if (stories === 2) {
-        const lp2 = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 1.0), lightPanelMat);
-        lp2.position.set(lxP, roofY - 0.12, lzP);
-        shellGroup.add(lp2);
+        const ch2 = new THREE.Mesh(chandelierGeo, getSharedIndoorLitVoxelMaterial());
+        ch2.position.set(lxP, roofY - 0.85, lzP);
+        shellGroup.add(ch2);
       }
     }
   }
@@ -719,10 +775,12 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   furnishWalkInInterior3D({
     kind,
     interiorId,
+    townName,
     shellGroup,
     npcs,
     colliders,
     autoDoors,
+    interactPoints,
     lotX,
     lotZ,
     rotY,
@@ -734,6 +792,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     floor2Y,
     H1,
     H2,
+    localToWorldXZ,
     spawnGbaNpc,
     makeLocalObb: (lx, lz, hw, hd, lRot, height, minY, maxY) =>
       makeLocalObb(lotX, lotZ, rotY, lx, lz, hw, hd, lRot, height, interiorId, minY, maxY),
@@ -746,6 +805,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     npcs,
     colliders,
     autoDoors,
+    interactPoints,
     stairZone,
     stories,
     floor1CeilingY: baseWorldY + floor1Y + H1,

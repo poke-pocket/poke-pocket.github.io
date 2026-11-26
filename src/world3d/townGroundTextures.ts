@@ -33,6 +33,7 @@ export interface TownGroundTex {
   junctionAsphalt: THREE.CanvasTexture;
   highwayTile: THREE.CanvasTexture;
   crosswalk: THREE.CanvasTexture;
+  pcSign: THREE.CanvasTexture;
   martSign: THREE.CanvasTexture;
   hotelSign: THREE.CanvasTexture;
   cafeSign: THREE.CanvasTexture;
@@ -515,6 +516,7 @@ export function getGroundTex(): TownGroundTex {
     junctionAsphalt,
     highwayTile,
     crosswalk,
+    pcSign: makeSign('#e03131', '宝可梦中心'),
     martSign: makeSign('#1971c2', '友好商店'),
     hotelSign: makeSign('#e67700', '驿站酒店'),
     cafeSign: makeSign('#d9480f', '树果饭店'),

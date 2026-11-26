@@ -4,7 +4,7 @@ import { sound } from '../../utils/sound';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
-  const { CAM_MODE_META, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, cycleCameraFollowMode, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setBanishMode, setClosingLevelUp, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef } = rawCtx as ArenaSharedCtx;
+  const { CAM_MODE_META, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, cycleCameraFollowMode, cycleInteractOptionRef, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setBanishMode, setClosingLevelUp, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef } = rawCtx as ArenaSharedCtx;
   // Comprehensive Arcade Keyboard Hotkeys (WASD/Arrows + Space + 1/2/3/4 Events + Q/E/M + Enter/Esc!)
   useEffect(() => {
     const kb = save.keyBindings;
@@ -22,7 +22,14 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         return;
       }
       if (worldMapOpenRef.current) {
-        if (e.key === 'Escape') {
+        if (
+          e.key === 'Escape' ||
+          e.code === 'KeyM' ||
+          e.key.toLowerCase() === 'm' ||
+          e.code === 'Backquote' ||
+          e.key === '`' ||
+          e.key === '~'
+        ) {
           e.preventDefault();
           sound.play('cancel');
           setWorldMapOpen(false);
@@ -70,9 +77,16 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         return;
       }
       if (phase !== 'playing') return;
-      if (e.key === 'Tab') {
+      // Map Hotkeys: `M` (industry-standard RPG map key) OR `` ` `` / `~` (key right above Tab)!
+      if (e.code === 'KeyM' || e.key.toLowerCase() === 'm' || e.code === 'Backquote' || e.key === '`' || e.key === '~') {
         e.preventDefault();
         toggleWorldMap();
+        return;
+      }
+      // `Tab` cycles the beside-character multi-action menu (`沟通` / `询问` / `治疗` / `切磋`...)!
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        cycleInteractOptionRef?.current?.(e.shiftKey ? -1 : 1);
         return;
       }
       if (e.key.toLowerCase() === 'e') {
@@ -217,15 +231,10 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         onOpenPokemonManager('home', true);
         return;
       }
-      if (k === 'm') {
+      if (k === 'b') {
         e.preventDefault();
         sound.play('cursor');
         onOpenPokemonManager('menu', true);
-        return;
-      }
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        toggleWorldMap();
         return;
       }
       if (k === 'r') {

@@ -156,15 +156,13 @@ export function App() {
     persistSave(save);
   }, [save]);
 
-  // Dynamic 8-bit BGM switching by active scene!
+  // Dynamic BGM switching for 2D Handheld modes (3D Open-World zones & interiors dynamically manage their own BGM!)
   useEffect(() => {
-    if (managerOpen) {
-      sound.setTrack('town');
-    } else if (lcdMode === 'battle') {
+    if (lcdMode === 'battle') {
       sound.setTrack('battle');
-    } else if (lcdMode === 'recalled' || lcdMode === 'survivors') {
-      sound.setTrack('adventure');
-    } else {
+    } else if (managerOpen && (lcdMode === 'home' || lcdMode === 'party' || lcdMode === 'party_detail')) {
+      sound.setTrack('house');
+    } else if (lcdMode !== 'survivors' && !managerOpen) {
       sound.setTrack('town');
     }
   }, [lcdMode, managerOpen]);
@@ -1016,6 +1014,16 @@ export function App() {
         return;
       }
 
+      // Symmetric Map Hotkey (`M` or `` ` `` / `~`): pressing it again while Handheld Map is open closes the map back to 3D world!
+      if (
+        lcdMode === 'map' &&
+        (e.code === 'KeyM' || e.key.toLowerCase() === 'm' || e.code === 'Backquote' || e.key === '`' || e.key === '~')
+      ) {
+        e.preventDefault();
+        handleClosePokemonManager();
+        return;
+      }
+
       if (e.key === 'ArrowLeft' || matchesKey(e, kb.left)) {
         e.preventDefault();
         handleDpad('left');
@@ -1190,6 +1198,16 @@ export function App() {
             }}
             isFullscreen={isFullscreen}
             onToggleFullscreen={handleHubToggleFullscreen}
+            onToggleBgm={() => {
+              sound.unlock();
+              const nextEnabled = !save.bgmEnabled || save.muted || save.bgmVolume <= 0;
+              handleUpdateSettings({
+                bgmEnabled: nextEnabled,
+                muted: nextEnabled ? false : save.muted,
+                bgmVolume: nextEnabled && save.bgmVolume <= 0 ? 48 : save.bgmVolume,
+              });
+              sound.play(nextEnabled ? 'confirm' : 'cancel');
+            }}
           />
         </div>
       )}

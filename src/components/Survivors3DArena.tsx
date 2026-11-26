@@ -18,7 +18,7 @@ import { type AppLang } from '../data/i18n';
 import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
 import { type LiveMapSnapshot } from './WorldMapHud';
 import type { SurvivorsResultPayload } from '../utils/petEngine';
-import { sound } from '../utils/sound';
+import { BGM_TRACK_LABELS, sound, type BgmTrackId } from '../utils/sound';
 import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
 import { buildInterTownRoadNetwork3D, buildProceduralTown3D, resolveTownWallCollisions, setGlobalNightLampGlow3D, type ProceduralTownInstance } from '../utils/townBuilder3D';
 import { buildFallbackWeather, buildWeatherInfo, fetchLiveWeatherAt, type LiveWeatherInfo, type WeatherKind } from '../utils/weatherSystem';
@@ -28,6 +28,12 @@ import { createArenaCombatActions3D } from './arena3d/arenaCombatActions3D';
 import { ArenaHubAndMapOverlay } from './arena3d/ArenaHubAndMapOverlay';
 import { ArenaPlayingHudOverlay } from './arena3d/ArenaPlayingHudOverlay';
 import { ArenaRunModalsOverlay } from './arena3d/ArenaRunModalsOverlay';
+import {
+  type ActiveBusStopModalState,
+  type LiveWorldBubble,
+  type NearbyActionMenuState,
+  type ProjectedBubble2D,
+} from './arena3d/ArenaTownSocialAndBusOverlay';
 import { useArenaKeyboardHotkeys } from './arena3d/useArenaHotkeys';
 import { createArenaFloraStreamer3D } from './arena3d/arenaFloraStreamer3D';
 import { renderHubDioramaFrame3D } from './arena3d/arenaHubIdleLoop3D';
@@ -59,6 +65,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   onRegisterBackHandler,
   isFullscreen = false,
   onToggleFullscreen,
+  onToggleBgm,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -619,6 +626,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   >([]);
   const [levelChoices, setLevelChoices] = useState<LevelChoice[] | null>(null);
   const [shopOpen, setShopOpen] = useState(false);
+  const shopOpenRef = useRef(false);
+  shopOpenRef.current = shopOpen;
+  const [activeBgmTrack, setActiveBgmTrack] = useState<BgmTrackId>('hub');
+  const activeBgmTrackRef = useRef<BgmTrackId>('hub');
+  useEffect(() => {
+    if (phase !== 'playing') {
+      const hubTrack: BgmTrackId = hubModal === 'shop' ? 'poke_mart' : 'hub';
+      activeBgmTrackRef.current = hubTrack;
+      setActiveBgmTrack(hubTrack);
+      sound.setTrack(hubTrack);
+    } else if (inRunTownShopOpen || shopOpen) {
+      activeBgmTrackRef.current = 'poke_mart';
+      setActiveBgmTrack('poke_mart');
+      sound.setTrack('poke_mart');
+    }
+  }, [phase, hubModal, inRunTownShopOpen, shopOpen]);
   const [captureOffer, setCaptureOffer] = useState<{ species: SpeciesId; name: string; level: number } | null>(null);
   const [bannerMsg, setBannerMsg] = useState<string | null>(null);
   const [resultSummary, setResultSummary] = useState<RunResultSummary | null>(null);
@@ -657,24 +680,33 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   });
   const latestMapSnapshotRef = useRef<LiveMapSnapshot>(mapSnapshot);
   latestMapSnapshotRef.current = mapSnapshot;
-  const [nearbyInteract, setNearbyInteract] = useState<{
-    id: string;
-    kind:
-      | 'mushroom'
-      | 'berry_tree'
-      | 'ore_rock'
-      | 'signpost'
-      | 'pokemon_center'
-      | 'poke_mart'
-      | 'transit_station'
-      | 'npc_chat'
-      | 'hotel_rest'
-      | 'restaurant';
-    label: string;
-    hp: number;
-    maxHp: number;
-    icon: string;
-  } | null>(null);
+  const [nearbyInteract, setNearbyInteract] = useState<NearbyActionMenuState | null>(null);
+  const [interactOptionIdx, setInteractOptionIdx] = useState(0);
+  const interactOptionIdxRef = useRef(0);
+  interactOptionIdxRef.current = interactOptionIdx;
+  const interactActionCountRef = useRef(0);
+  const cycleInteractOptionRef = useRef<((delta: number) => void) | null>(null);
+  cycleInteractOptionRef.current = (delta: number) => {
+    const count = interactActionCountRef.current;
+    if (count <= 1) return;
+    sound.play('cursor');
+    setInteractOptionIdx((prev) => {
+      const next = (((prev + delta) % count) + count) % count;
+      interactOptionIdxRef.current = next;
+      return next;
+    });
+  };
+  const executeInteractActionRef = useRef<((idx: number) => void) | null>(null);
+  const worldBubblesRef = useRef<LiveWorldBubble[]>([]);
+  const [projectedBubbles, setProjectedBubbles] = useState<ProjectedBubble2D[]>([]);
+  const [askQuickNavOpen, setAskQuickNavOpen] = useState(false);
+  const lastEnteredInteriorIdRef = useRef<string | null>(null);
+  const npcSocialTimerRef = useRef<number>(2.0);
+  const [activeBusStopModal, setActiveBusStopModal] = useState<ActiveBusStopModalState | null>(null);
+  const startStreetDuelRef = useRef<
+    ((opts: { npcName: string; npcSprite: string; species: SpeciesId; x: number; z: number }) => void) | null
+  >(null);
+  const teleportIntraCityBusRef = useRef<((x: number, z: number, label: string) => void) | null>(null);
   const triggerInteractRef = useRef<(() => void) | null>(null);
   const nearbyKoIdRef = useRef<number | null>(null);
   const dragFollowerIdxRef = useRef<number | null>(null);
@@ -1756,8 +1788,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       };
       for (const town of proceduralTowns) {
         for (const pt of town.interactPoints) {
-          // Skip generic duplicate apartment NPC chat points (covered cleanly by numbered apartment entries below!)
-          if (pt.kind === 'npc_chat') continue;
+          // Skip generic duplicate apartment NPC chat points & upstairs beds
+          if (pt.kind === 'npc_chat' || pt.id.includes('suite_bed')) continue;
           const meta = iconByKind[pt.kind] ?? { icon: '/sprites/items/poke-ball.png', sub: town.name, order: 8 };
           items.push({
             id: pt.id,
@@ -2130,6 +2162,55 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     syncSafeZones3D(0, 0);
 
     const { vfxAtlas, spawnPixelParticles, spawnGroundDecalWave, spawnGlowFlash, spawnSpriteBurst, spawnSkillProjectile3D, damageEnemy3D, pickTargetForFollower, fireSkill, spawnEnemy3D } = createArenaCombatActions3D({ activeWorldRun, adventureStyleRef, buildResultSummary, camOrbitRef, captureFinishRef, comboRef, createSpriteEntity, diffMeta, endedRef, gameMode, getPixelTexture, liveOverlandCityRef, liveWeatherRef, metaBonusesRef, metaRef, onUpdateMeta, pausedRef, pet, prefsRef, regionMeta, save, savePetsCountRef, scene, setCaptureCutscene, setNearbyKoTarget, setResultSummary, shakeRef, showBanner, simRef, solarInfoRef, tacticsRef, triggerBattleActionRef });
+
+    startStreetDuelRef.current = ({ npcName, npcSprite, species, x, z }) => {
+      const curSim = simRef.current;
+      if (!curSim) return;
+      const ang = Math.atan2(z - curSim.pz, x - curSim.px);
+      const sx = curSim.px + Math.cos(ang) * 4.2;
+      const sz = curSim.pz + Math.sin(ang) * 4.2;
+      const duelHp = Math.round((185 + curSim.runLevel * 45) * diffMeta.enemyHpMult);
+      const duelDmg = Math.round((14 + curSim.runLevel * 2) * diffMeta.enemyDmgMult);
+      spawnEnemy3D(sx, sz, species, duelHp, 5.2, duelDmg, {
+        isStreetDuel: true,
+        trainerName: `${npcName}的搭档`,
+        trainerSprite: npcSprite,
+      });
+      spawnGroundDecalWave(sx, curSim.py, sz, vfxAtlas.arcaneRingDecal, 4.2, 0.45);
+      showBanner(`⚔️ 「${npcName}」接受了你的切磋请求！派出搭档宝可梦上场较量！`, 3400);
+    };
+
+    teleportIntraCityBusRef.current = (tx, tz, label) => {
+      const curSim = simRef.current;
+      if (!curSim) return;
+      stopAutoNavRef.current(true);
+      let destX = tx;
+      let destZ = tz;
+      // If destination is inside a walk-in building, drop off cleanly on the street doorstep right outside its front entrance!
+      for (const t of proceduralTowns) {
+        const hitInt = t.interiors.find(
+          (b) => Math.hypot(tx - b.cx, tz - b.cz) < Math.max(b.halfW, b.halfD) + 1.5,
+        );
+        if (hitInt) {
+          destX = hitInt.cx + Math.sin(hitInt.rotY) * (hitInt.halfD + 4.8);
+          destZ = hitInt.cz + Math.cos(hitInt.rotY) * (hitInt.halfD + 4.8);
+          break;
+        }
+      }
+      const gy = getWalkableSurfaceHeight3D(destX, destZ);
+      curSim.px = destX;
+      curSim.pz = destZ;
+      curSim.py = gy;
+      curSim.vy = 0;
+      curSim.followers.forEach((f, idx) => {
+        f.x = destX - (idx + 1) * 1.2;
+        f.z = destZ + 1.2;
+        f.y = gy;
+      });
+      updateWorldAround(destX, destZ);
+      sound.play('levelup');
+      showBanner(`🚌 叮咚！市内公交已将你送达「${label}」门口！`, 3000);
+    };
     const buildLevelChoices = (): LevelChoice[] => {
       const sim = simRef.current;
       if (!sim) return [];
@@ -2595,7 +2676,46 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           const camRightZ = -Math.sin(camYawNow);
           windClock += dt;
           syncFloraBillboards(camYawNow, camPitchNow, windClock);
-          const { closestTownPoint, activeTownNow, activeInteriorNow, closestNode, inTownPeaceZone } = stepArenaTownAndWorldNodes3D({ WEATHER_PARTICLE_COUNT, activeTownIdRef, activeZone, applyLiveSolarAtmosphere, bbTiltX, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, damageEnemy3D, dt, groundY, heroFrames, liveWeatherRef, mLen, metaBonusesRef, metaRef, now, onHealParty, onUpdateMeta, persistState, playerShadow, playerSprite, playerSpriteMat, prefsRef, proceduralTowns, safeZoneMeshes, setInRunTownShopOpen, setWorldMapOpen, showBanner, sim, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, sun, surfingNow, syncSafeZones3D, triggerInteractRef, updateWorldAround, vfxAtlas, weatherGeo, weatherMat, weatherPoints, windClock, worldInteractNodes });
+          const { closestTownPoint, activeTownNow, activeInteriorNow, closestNode, inTownPeaceZone } = stepArenaTownAndWorldNodes3D({ WEATHER_PARTICLE_COUNT, activeTownIdRef, activeZone, applyLiveSolarAtmosphere, autoNavTargetsRef, bbTiltX, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, damageEnemy3D, dt, executeInteractActionRef, groundY, heroFrames, interactOptionIdxRef, lastEnteredInteriorIdRef, liveWeatherRef, mLen, metaBonusesRef, metaRef, now, npcSocialTimerRef, onHealParty, onUpdateMeta, persistState, playerShadow, playerSprite, playerSpriteMat, prefsRef, proceduralTowns, safeZoneMeshes, setActiveBusStopModal, setAskQuickNavOpen, setInRunTownShopOpen, setWorldMapOpen, showBanner, sim, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, startStreetDuelRef, sun, surfingNow, syncSafeZones3D, teleportIntraCityBusRef, triggerInteractRef, updateWorldAround, vfxAtlas, weatherGeo, weatherMat, weatherPoints, windClock, worldBubblesRef, worldInteractNodes });
+          // Dynamic Zone & Walk-In Building BGM Switching (Town Day/Night, Wilderness, Pokémon Center, Poké Mart, Restaurant, Hotel, House, Boss/Duel!)
+          {
+            let desiredBgm: BgmTrackId = 'adventure';
+            if (inRunTownShopOpenRef.current || shopOpenRef.current) {
+              desiredBgm = 'poke_mart';
+            } else if (
+              sim.enemies.some((e) => !e.knockedOut && e.hp > 0 && (e.isBoss || e.isStreetDuel))
+            ) {
+              desiredBgm = 'battle';
+            } else if (activeInteriorNow) {
+              switch (activeInteriorNow.kind) {
+                case 'pokemon_center':
+                  desiredBgm = 'pokemon_center';
+                  break;
+                case 'poke_mart':
+                  desiredBgm = 'poke_mart';
+                  break;
+                case 'restaurant':
+                  desiredBgm = 'restaurant';
+                  break;
+                case 'hotel':
+                  desiredBgm = 'hotel';
+                  break;
+                case 'house':
+                default:
+                  desiredBgm = 'house';
+                  break;
+              }
+            } else if (activeTownNow || inTownPeaceZone) {
+              desiredBgm = solarInfoRef.current.lampGlow > 0.45 ? 'town_night' : 'town';
+            } else {
+              desiredBgm = 'adventure';
+            }
+            if (desiredBgm !== activeBgmTrackRef.current) {
+              activeBgmTrackRef.current = desiredBgm;
+              sound.setTrack(desiredBgm);
+              setActiveBgmTrack(desiredBgm);
+            }
+          }
           stepArenaCombatSimulation3D({ activeTownNow, activeZone, addFollowerToRun, adventureStyleRef, bbTiltX, buildLevelChoices, buildResultSummary, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, camera, damageEnemy3D, diffMeta, difficultyId, dt, endedRef, fireSkill, gameMode, groundY, inTownPeaceZone, isInsideAnyTownPlaza, liveOverlandCityRef, liveWeatherRef, mLen, maxFollowersRef, metaBonusesRef, metaRef, nearbyZones, onCaptureBoss, onHealParty, pausedRef, pet, pickTargetForFollower, prefsRef, regionMeta, scene, selectedBiome, setCaptureCutscene, setLevelChoices, setResultSummary, shakeRef, showBanner, sim, spawnEnemy3D, spawnGlowFlash, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, spawnSpriteBurst, tacticsRef, vfxAtlas });
           // Unified Physical 3D Camera Rig (Spring-Arm Wall Zoom-In + Under-Viaduct Ducking + 1F/2F Room Zoom — ZERO Wall Piercing!)
           const occludeTown =
@@ -2634,7 +2754,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             horizonBackdrop.userData.skyUniforms.uTime.value = now * 0.001;
           }
 
-          stepArenaHudProjection3D({ activeInteriorNow, activeTownNow, activeWorldRun, activeZone, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, scene, selectedBiome, setEdgeIndicators, setFloatingTags, setHud, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, showBanner, sim, terrainMat });
+          stepArenaHudProjection3D({ activeInteriorNow, activeTownNow, activeWorldRun, activeZone, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, showBanner, sim, terrainMat, worldBubblesRef });
         } else if (sim.activeCaptures.length > 0 && !externalPausedRef.current && !endedRef.current) {
           stepArenaCaptureCinema3D({ addFollowerToRun, buildResultSummary, camera, captureFinishRef, damageEnemy3D, diffMeta, dt, endedRef, gameMode, horizonBackdrop, maxFollowersRef, now, onCaptureBoss, onShowCaptureInHandheld, pausedRef, pet, regionMeta, save, scene, setCaptureCutscene, setResultSummary, sim, spawnGlowFlash, spawnGroundDecalWave, spawnPixelParticles, syncFloraBillboards, vfxAtlas, waterMat });
         }
@@ -3037,8 +3157,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, hud, followersView, tactics, camPreset, regionMeta.name, diffMeta.label, save.pets]);
 
-  useArenaKeyboardHotkeys({ CAM_MODE_META, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, cycleCameraFollowMode, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setBanishMode, setClosingLevelUp, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
-  const arenaUiCtx = { activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, autoNavActiveLabel, banishMode, banishedIdsRef, bannerMsg, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, isFullscreen, isSurfing, jumpQueuedRef, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, prefs, profileDraft, profileOpen, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, save, selectSquadPreset, selectedBiome, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, simRef, solarInfo, squadEditorOpen, squadPresets, startVirtualPad, stopAutoNavRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldMapOpen, xpPct };
+  useArenaKeyboardHotkeys({ CAM_MODE_META, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, cycleCameraFollowMode, cycleInteractOptionRef, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setBanishMode, setClosingLevelUp, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
+  const bgmTrackLabel = BGM_TRACK_LABELS[activeBgmTrack] ?? '晴空微风 · 城镇漫步';
+  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
 
   return (
     <div ref={containerRef} className="world3d-stage">

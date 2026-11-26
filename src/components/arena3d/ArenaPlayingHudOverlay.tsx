@@ -8,11 +8,13 @@ import { WorldMapHud } from '../WorldMapHud';
 import { sound } from '../../utils/sound';
 import { PixelIcon, PixelItemImg } from '../PixelSprite';
 import { TrimmedSpriteImg } from '../TrimmedSpriteImg';
+import { ArenaTownSocialAndBusOverlay } from './ArenaTownSocialAndBusOverlay';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, bannerMsg, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onUpdatePetConfig, pet, prefs, regionMeta, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, prefs, regionMeta, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const isBgmOn = Boolean(save.bgmEnabled && !save.muted && save.bgmVolume > 0 && (prefs.masterVolume ?? 80) > 0);
   return (
     <>
           {/* 2D Projected Floating Damage & Enemy Trainer Nameplates */}
@@ -221,6 +223,37 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   <PixelItemImg src="/sprites/items/poke-radar.png" size={24} />
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={() => onToggleBgm?.()}
+                title={isBgmOn ? `正在播放：${bgmTrackLabel}（点击关闭背景音乐）` : '背景音乐已关闭（点击开启背景音乐）'}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '3px 8px',
+                  background: isBgmOn ? 'rgba(20, 24, 38, 0.86)' : 'rgba(20, 24, 38, 0.65)',
+                  border: `2px solid ${isBgmOn ? '#f6d265' : '#565c78'}`,
+                  borderRadius: 4,
+                  color: isBgmOn ? '#fff5cf' : '#9aa0b8',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  boxShadow: '2px 2px 0 rgba(0, 0, 0, 0.55)',
+                  maxWidth: 168,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                <span style={{ color: isBgmOn ? '#f6d265' : '#7b8199', flexShrink: 0 }}>
+                  {isBgmOn ? '♪' : '🔇'}
+                </span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {isBgmOn ? bgmTrackLabel : '音乐已静音'}
+                </span>
+              </button>
 
               {autoNavActiveLabel && (
                 <div className="surv-autonav-active-pill" style={{ marginRight: 0 }}>
@@ -437,21 +470,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
             />
           )}
 
-          {/* Interactive World Foraging / Mining / Signpost Prompt Pill */}
-          {nearbyInteract && !nearbyKoTarget && !externalPaused && !levelChoices && !shopOpen && !resultModal && (
-            <button
-              type="button"
-              className="surv-interact-pill"
-              {...bindMultiTouchAction(() => triggerInteractRef.current?.())}
-            >
-              <PixelItemImg src={nearbyInteract.icon} size={20} />
-              <span>
-                {nearbyInteract.label}
-                {nearbyInteract.maxHp > 1 ? ` (${nearbyInteract.hp}/${nearbyInteract.maxHp})` : ''}
-              </span>
-              <span className="surv-interact-key">E</span>
-            </button>
-          )}
+          {/* Interactive World & NPC Prompts now render directly beside the target in 3D space via ArenaTownSocialAndBusOverlay! */}
 
           {/* Mobile-Only Floating Dynamic Left-Area 360° Joystick (Hidden when idle & hidden on Desktop!) */}
           {!externalPaused && !levelChoices && !shopOpen && !resultModal && !captureOffer && (
@@ -675,6 +694,9 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               {bannerMsg}
             </div>
           )}
+
+          {/* Street & Indoor NPC Social/Ask/Battle Modal + Intra-City & Overland Bus Stop Terminal */}
+          <ArenaTownSocialAndBusOverlay ctx={ctx} />
 
     </>
   );

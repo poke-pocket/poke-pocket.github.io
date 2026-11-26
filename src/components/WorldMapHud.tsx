@@ -1336,11 +1336,11 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
       type="button"
       className="surv-minimap-box"
       onClick={onToggleExpand}
-      title="点击或按 Tab 在掌机中打开交互式地形地图"
+      title="点击或按 M / ~ 键在掌机中打开交互式地形地图"
     >
       <span className="mm-cardinal is-n">北</span>
       <canvas ref={miniCanvasRef} width={116} height={116} className="surv-minimap-canvas" />
-      <span className="mm-tab-chip">TAB 掌机地图</span>
+      <span className="mm-tab-chip">M 掌机地图</span>
     </button>
   );
 };

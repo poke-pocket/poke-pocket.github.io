@@ -14,9 +14,21 @@ export type TownInteractKind =
   | 'pokemon_center'
   | 'poke_mart'
   | 'transit_station'
+  | 'city_bus_stop'
   | 'npc_chat'
   | 'hotel_rest'
   | 'restaurant';
+
+export interface NpcSocialProfile {
+  id: string;
+  name: string;
+  role: string;
+  sprite: string;
+  greeting: string;
+  chatLines: string[];
+  battleSpecies: string;
+  canBattle?: boolean;
+}
 
 export interface TownInteractPoint {
   id: string;
@@ -25,7 +37,10 @@ export interface TownInteractPoint {
   label: string;
   hint: string;
   dialogText?: string;
+  npcProfile?: NpcSocialProfile;
   x: number;
+  /** Optional world-Y floor anchor so 1F vs 2F NPCs/beds only trigger on the matching floor! */
+  y?: number;
   z: number;
   radius: number;
 }
@@ -84,6 +99,8 @@ export interface TownMovingVehicle {
 }
 
 export interface TownStrollingCitizen {
+  id: string;
+  npcProfile: NpcSocialProfile;
   mesh: THREE.Mesh;
   shadow: THREE.Mesh;
   walkFrames: Record<string, THREE.CanvasTexture>;
@@ -99,6 +116,9 @@ export interface TownStrollingCitizen {
   speed: number;
   phase: number;
   baseY: number;
+  worldX?: number;
+  worldZ?: number;
+  pauseTimer?: number;
 }
 
 export interface ViaductOverheadSpan {
