@@ -815,6 +815,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   };
   const fastTravelCityRef = useRef<(cityId: string) => void>(() => {});
   const teleportGeoSpotRef = useRef<(spot: ScenicMountainSpot) => void>(() => {});
+  const returnToHubCityRef = useRef<(dest: 'plaza' | 'home') => void>(() => {});
   const handleFastTravelCity = (cityId: string) => {
     fastTravelCityRef.current(cityId);
   };
@@ -832,12 +833,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         }
       : baseSnap;
     setMapSnapshot(liveSnap);
+    const curGeo = getActiveGeoTerrainOrigin();
     onSyncWorldMapData?.({
       biome: liveOverlandCityRef.current?.biome ?? selectedBiome,
       regionName: liveOverlandCityRef.current?.name ?? regionMeta.name,
+      hubCityName: activeWorldRun?.cityName ?? curGeo?.startCityName ?? regionMeta.name,
       snapshot: liveSnap,
-      onFastTravelCity: handleFastTravelCity,
-      onTeleportGeoSpot: (spot) => teleportGeoSpotRef.current(spot),
+      onReturnToHubCity: (dest) => returnToHubCityRef.current(dest),
       navTargets: autoNavTargetsRef.current,
       onAutoWalkTo: (x, z, label) => startAutoNavRef.current({ label, x, z }),
       onOpenGlobalWorldMap: () => setWorldMapOpen(true),
@@ -2395,6 +2397,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       const curOrg = getActiveGeoTerrainOrigin();
       if (!curSim || !curOrg) return;
       stopAutoNavRef.current(true);
+      worldBubblesRef.current = [];
+      setProjectedBubbles([]);
+      for (let ei = curSim.enemies.length - 1; ei >= 0; ei--) {
+        const en = curSim.enemies[ei];
+        if (!en.isBoss) {
+          if (en.sprite) scene.remove(en.sprite);
+          if (en.shadow) scene.remove(en.shadow);
+          if (en.auraRing) scene.remove(en.auraRing);
+          curSim.enemies.splice(ei, 1);
+        }
+      }
       prefetchGeoDetailAround(spot.lat, spot.lng);
       const wp = geoToWorld(spot.lat, spot.lng, curOrg);
       if (!wp) return;
@@ -2434,7 +2447,150 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         updatedAt: Date.now(),
       });
       sound.play('levelup');
-      showBanner(`⛰️ 已传送至「${spot.label}」（${spot.subLabel}）！按 M 键打开地图可切换名山或返回城市`, 4200);
+      showBanner(`🛠️ [调试传送] 已前往「${spot.label}」（${spot.subLabel}）`, 3200);
+    };
+
+    // Developer-only console debug teleport hook (`window.__POKE_DEBUG_TELEPORT__(lat, lng, label)`)
+    const winDebug = window as unknown as Record<string, unknown>;
+    winDebug.__POKE_DEBUG_TELEPORT__ = (lat: number, lng: number, label = '调试坐标', yaw = 0, pitch = 0.2) => {
+      teleportGeoSpotRef.current({
+        id: 'debug_spot',
+        label,
+        subLabel: `${lat.toFixed(3)}, ${lng.toFixed(3)}`,
+        lat,
+        lng,
+        yaw,
+        pitch,
+      });
+    };
+
+    returnToHubCityRef.current = (dest: 'plaza' | 'home') => {
+      const curSim = simRef.current;
+      if (!curSim) return;
+      const curOrg = getActiveGeoTerrainOrigin();
+      const hubTown = proceduralTowns[0] ?? null;
+      const hubName = activeWorldRun?.cityName ?? curOrg?.startCityName ?? hubTown?.name ?? '主城';
+
+      stopAutoNavRef.current(true);
+      rideModeRef.current = 'walk';
+      setRideMode('walk');
+      worldBubblesRef.current = [];
+      setProjectedBubbles([]);
+      for (let ei = curSim.enemies.length - 1; ei >= 0; ei--) {
+        const en = curSim.enemies[ei];
+        if (!en.isBoss) {
+          if (en.sprite) scene.remove(en.sprite);
+          if (en.shadow) scene.remove(en.shadow);
+          if (en.auraRing) scene.remove(en.auraRing);
+          curSim.enemies.splice(ei, 1);
+        }
+      }
+
+      let destX = hubTown ? hubTown.centerX - 18 : 0;
+      let destZ = hubTown ? hubTown.centerZ + 12 : 0;
+      let destY = 1.8;
+      let faceAngle = 0;
+      let camYaw = 0;
+      let camPitch = 0.24;
+      let camZoom = 1.0;
+
+      const homeInt = dest === 'home' ? hubTown?.interiors.find((b) => b.kind === 'house') : undefined;
+      if (dest === 'home' && homeInt) {
+        // Place player right inside the warm furnished 1F living room of their active Hub City Duplex Home!
+        destX = homeInt.cx + Math.sin(homeInt.rotY) * (homeInt.halfD * 0.24);
+        destZ = homeInt.cz + Math.cos(homeInt.rotY) * (homeInt.halfD * 0.24);
+        destY = homeInt.baseY + 0.16;
+        faceAngle = homeInt.rotY + Math.PI;
+        camYaw = homeInt.rotY;
+        camPitch = 0.34;
+        camZoom = 0.88;
+      } else {
+        const baseCx = hubTown ? hubTown.centerX : 0;
+        const baseCz = hubTown ? hubTown.centerZ : 0;
+        let foundSafe = isSafeDrySpawn(destX, destZ);
+        if (!foundSafe) {
+          for (let rad = 8; rad <= 96 && !foundSafe; rad += 10) {
+            for (let ai = 0; ai < 16; ai++) {
+              const ang = (ai / 16) * Math.PI * 2;
+              const cxCand = baseCx + Math.cos(ang) * rad;
+              const czCand = baseCz + Math.sin(ang) * rad;
+              if (isSafeDrySpawn(cxCand, czCand)) {
+                destX = cxCand;
+                destZ = czCand;
+                foundSafe = true;
+                break;
+              }
+            }
+          }
+        }
+        chunkState.x = 999999;
+        chunkState.z = 999999;
+        updateWorldAround(destX, destZ);
+        geoHighwayStreamer?.updateAround(destX, destZ, true);
+        destY = Math.max(WATER_LEVEL_3D + 0.18, getWalkableSurfaceHeight3D(destX, destZ));
+        camYaw = -1.15;
+        faceAngle = Math.atan2(-Math.sin(camYaw), -Math.cos(camYaw));
+      }
+
+      chunkState.x = 999999;
+      chunkState.z = 999999;
+      updateWorldAround(destX, destZ);
+      geoHighwayStreamer?.updateAround(destX, destZ, true);
+
+      curSim.px = destX;
+      curSim.pz = destZ;
+      curSim.py = destY;
+      curSim.vy = 0;
+      curSim.facingAngle = faceAngle;
+      camOrbitRef.current.yaw = camYaw;
+      camOrbitRef.current.pitch = camPitch;
+      camOrbitRef.current.zoom = camZoom;
+      camPivotRef.current.set(destX, destY + 1.52, destZ);
+
+      curSim.followers.forEach((f, idx) => {
+        const spread = dest === 'home' ? 1.15 : 1.8;
+        const ang = (idx * Math.PI * 2) / Math.max(1, curSim.followers.length) + 0.5;
+        f.x = destX + Math.cos(ang) * spread;
+        f.z = destZ + Math.sin(ang) * spread;
+        f.y = dest === 'home' ? destY : Math.max(WATER_LEVEL_3D + 0.15, getWalkableSurfaceHeight3D(f.x, f.z));
+      });
+
+      if (curOrg) {
+        const g = worldToGeo(destX, destZ, curOrg);
+        overlandCityIdRef.current = curOrg.startCityId;
+        const originWorldCity = WORLD_CITIES.find((c) => c.id === curOrg.startCityId) ?? null;
+        liveOverlandCityRef.current = originWorldCity;
+        setLiveOverlandCity(originWorldCity);
+        saveWorldCheckpoint({
+          mode: 'geo',
+          cityId: curOrg.startCityId ?? 'shanghai',
+          cityName: hubName,
+          lat: g?.lat ?? curOrg.originLat,
+          lng: g?.lng ?? curOrg.originLng,
+          x: destX,
+          z: destZ,
+          facingAngle: faceAngle,
+          updatedAt: Date.now(),
+        });
+      } else {
+        saveWorldCheckpoint({
+          mode: 'procedural',
+          cityId: hubTown?.id ?? 'pallet',
+          cityName: hubName,
+          x: destX,
+          z: destZ,
+          facingAngle: faceAngle,
+          updatedAt: Date.now(),
+        });
+      }
+
+      sound.play(dest === 'home' ? 'heal_jingle' : 'confirm');
+      showBanner(
+        dest === 'home'
+          ? `🏠 已传送回主城「${hubName}」的家中！`
+          : `🏙️ 已传送回主城「${hubName}」中心广场！`,
+        2800,
+      );
     };
 
     teleportIntraCityBusRef.current = (tx, tz, label) => {
@@ -3182,7 +3338,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             horizonBackdrop.userData.skyUniforms.uTime.value = now * 0.001;
           }
 
-          stepArenaHudProjection3D({ activeInteriorNow, activeTownNow, activeWorldRun, activeZone, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, showBanner, sim, terrainMat, worldBubblesRef });
+          stepArenaHudProjection3D({ activeInteriorNow, activeTownNow, activeWorldRun, activeZone, autoNavTargetsRef, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, returnToHubCityRef, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, setWorldMapOpen, showBanner, sim, startAutoNavRef, terrainMat, worldBubblesRef });
         } else if (sim.activeCaptures.length > 0 && !externalPausedRef.current && !endedRef.current) {
           stepArenaCaptureCinema3D({ addFollowerToRun, buildResultSummary, camera, captureFinishRef, damageEnemy3D, diffMeta, dt, endedRef, gameMode, horizonBackdrop, maxFollowersRef, now, onCaptureBoss, onShowCaptureInHandheld, pausedRef, pet, regionMeta, save, scene, setCaptureCutscene, setResultSummary, sim, spawnGlowFlash, spawnGroundDecalWave, spawnPixelParticles, syncFloraBillboards, vfxAtlas, waterMat });
         }

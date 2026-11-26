@@ -243,6 +243,19 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
         const wyWorld = getWalkableSurfaceHeight3D(w.worldX, w.worldZ) + 0.06;
         const wy = wyWorld - town.group.position.y;
 
+        // Keep any active overhead speech bubble locked onto this walking NPC's live 3D head position!
+        const liveBubbles = worldBubblesRef?.current;
+        if (liveBubbles && liveBubbles.length > 0) {
+          for (let bi = 0; bi < liveBubbles.length; bi++) {
+            const lb = liveBubbles[bi];
+            if (lb.speakerId === w.id) {
+              lb.wx = w.worldX;
+              lb.wy = wyWorld + 2.65;
+              lb.wz = w.worldZ;
+            }
+          }
+        }
+
         if (distPlayerToWalker < 28) {
           nearPlayerWalkers.push({ walker: w, wyWorld });
         }

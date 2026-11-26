@@ -133,9 +133,11 @@ export const SCENIC_MOUNTAIN_SPOTS: ScenicMountainSpot[] = [
 export interface WorldMapData {
   biome: BiomeId;
   regionName: string;
+  hubCityName?: string;
   snapshot: LiveMapSnapshot;
   onFastTravelCity?: (cityId: string) => void;
   onTeleportGeoSpot?: (spot: ScenicMountainSpot) => void;
+  onReturnToHubCity?: (dest: 'plaza' | 'home') => void;
   navTargets?: WorldMapNavTarget[];
   onAutoWalkTo?: (x: number, z: number, label: string) => void;
   onOpenGlobalWorldMap?: () => void;
@@ -2283,70 +2285,59 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
         {/* Collapsible Floating POI Navigation & Auto-Pathfinding Drawer */}
         {drawerOpen && (
           <aside className="lcd-map-drawer scroll-y">
-            {geoOrigin && data.onTeleportGeoSpot && (
-              <>
-                <div className="lcd-map-side-head">⛰️ 名山景区直达 (一键传送看山)</div>
-                <div className="lcd-map-poi-list">
-                  {SCENIC_MOUNTAIN_SPOTS.map((sp) => {
-                    const spWp = geoToWorld(sp.lat, sp.lng, geoOrigin);
-                    const spDistM = spWp
-                      ? Math.hypot(spWp.x - snapshot.px, spWp.z - snapshot.pz) * metersPerWorldUnit
-                      : null;
-                    const spDistStr =
-                      spDistM === null
-                        ? ''
-                        : spDistM < 1000
-                          ? `${Math.max(1, Math.round(spDistM))}m`
-                          : spDistM < 10000
-                            ? `${(spDistM / 1000).toFixed(1)}km`
-                            : `${Math.round(spDistM / 1000)}km`;
-                    return (
-                      <div key={sp.id} style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}>
-                        <button
-                          type="button"
-                          className="lcd-map-poi-btn"
-                          style={{ flex: 1, minWidth: 0 }}
-                          title={sp.subLabel}
-                          onClick={() => {
-                            if (spWp) {
-                              sound.play('cursor');
-                              setPan({ x: spWp.x - snapshot.px, z: spWp.z - snapshot.pz });
-                              setZoom(0.02);
-                              setDrawerOpen(false);
-                            }
-                          }}
-                        >
-                          <span className="lcd-map-poi-lbl">{sp.label}</span>
-                          {spDistStr && <em>{spDistStr}</em>}
-                        </button>
-                        <button
-                          type="button"
-                          className="lcd-map-poi-btn"
-                          style={{
-                            width: 'auto',
-                            flex: '0 0 auto',
-                            flexShrink: 0,
-                            justifyContent: 'center',
-                            padding: '0 8px',
-                            background: '#69db7c',
-                            color: '#161420',
-                            fontWeight: 900,
-                          }}
-                          title={`立即传送至 ${sp.label} (${sp.subLabel})`}
-                          onClick={() => {
-                            sound.play('confirm');
-                            (onDismissTo3D ?? onClose)?.();
-                            data.onTeleportGeoSpot?.(sp);
-                          }}
-                        >
-                          传送
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
+            {data.onReturnToHubCity && (() => {
+              const hubFull = data.hubCityName ?? geoOrigin?.startCityName ?? regionName;
+              const hubShort = hubFull.replace(/市$/, '');
+              return (
+                <>
+                  <div className="lcd-map-side-head">🏠 当前主城返回（{hubFull}）</div>
+                  <div className="lcd-map-poi-list">
+                    <div style={{ display: 'flex', gap: 5, alignItems: 'stretch' }}>
+                      <button
+                        type="button"
+                        className="lcd-map-poi-btn"
+                        style={{
+                          flex: 1,
+                          justifyContent: 'center',
+                          background: '#ffd43b',
+                          color: '#161420',
+                          fontWeight: 900,
+                          padding: '6px 6px',
+                        }}
+                        title={`立即传送回当前主城「${hubFull}」中心广场`}
+                        onClick={() => {
+                          sound.play('confirm');
+                          (onDismissTo3D ?? onClose)?.();
+                          data.onReturnToHubCity?.('plaza');
+                        }}
+                      >
+                        🏙️ 回{hubShort}主城
+                      </button>
+                      <button
+                        type="button"
+                        className="lcd-map-poi-btn"
+                        style={{
+                          flex: 1,
+                          justifyContent: 'center',
+                          background: '#69db7c',
+                          color: '#161420',
+                          fontWeight: 900,
+                          padding: '6px 6px',
+                        }}
+                        title={`立即传送回当前主城「${hubFull}」的家中室内`}
+                        onClick={() => {
+                          sound.play('confirm');
+                          (onDismissTo3D ?? onClose)?.();
+                          data.onReturnToHubCity?.('home');
+                        }}
+                      >
+                        🏠 回{hubShort}的家
+                      </button>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
             {data.navTargets && data.navTargets.length > 0 && data.onAutoWalkTo && (
               <>
                 <div className="lcd-map-side-head">🧭 城市设施自动寻路 (A* 避障直达门内)</div>
@@ -2421,7 +2412,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
             )}
             {geoOrigin && (
               <>
-                <div className="lcd-map-side-head">真实城市 (点击预览 / 飞往探索)</div>
+                <div className="lcd-map-side-head">真实城市方位 (点击在地图上预览；跨城请前往全球航线)</div>
                 <div className="lcd-map-poi-list">
                   {getProjectedGeoCities()
                     .sort(
@@ -2436,68 +2427,26 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                       const isOriginCity = gc.city.id === (geoOrigin.startCityId ?? 'shanghai');
                       const isCurrent = isOriginCity && dKm < 2;
                       return (
-                        <div
+                        <button
                           key={gc.city.id}
-                          style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}
+                          type="button"
+                          className={`lcd-map-poi-btn ${isOriginCity ? 'is-active' : ''}`}
+                          onClick={() => {
+                            sound.play('confirm');
+                            setPan({ x: gc.x - snapshot.px, z: gc.z - snapshot.pz });
+                            setZoom(0.05);
+                            setDrawerOpen(false);
+                          }}
                         >
-                          <button
-                            type="button"
-                            className={`lcd-map-poi-btn ${isCurrent ? 'is-active' : ''}`}
-                            style={{ flex: 1, minWidth: 0 }}
-                            onClick={() => {
-                              sound.play('confirm');
-                              setPan({ x: gc.x - snapshot.px, z: gc.z - snapshot.pz });
-                              setZoom(0.05);
-                              setDrawerOpen(false);
-                            }}
-                          >
-                            <span className="lcd-map-poi-ico" style={{ borderColor: gc.city.accentColor }}>
-                              <PixelItemImg src="/sprites/items/town-map.png" size={13} />
-                            </span>
-                            <span className="lcd-map-poi-lbl">{gc.city.name}</span>
-                            <em>{isCurrent ? '当前' : `${Math.max(1, dKm)}km`}</em>
-                          </button>
-                          {(data.onFastTravelCity || (isOriginCity && data.onTeleportGeoSpot)) && !isCurrent && (
-                            <button
-                              type="button"
-                              className="lcd-map-poi-btn"
-                              style={{
-                                width: 'auto',
-                                flex: '0 0 auto',
-                                flexShrink: 0,
-                                justifyContent: 'center',
-                                padding: '0 8px',
-                                background: isOriginCity ? '#69db7c' : '#fff3bf',
-                                color: '#161420',
-                                fontWeight: 900,
-                              }}
-                              title={
-                                isOriginCity
-                                  ? `立即传回${gc.city.name}市中心`
-                                  : `直飞前往${gc.city.name}探索3D城景`
-                              }
-                              onClick={() => {
-                                sound.play('confirm');
-                                (onDismissTo3D ?? onClose)?.();
-                                if (isOriginCity && data.onTeleportGeoSpot) {
-                                  data.onTeleportGeoSpot({
-                                    id: `city_return_${gc.city.id}`,
-                                    label: `${gc.city.name}市中心`,
-                                    subLabel: '人民广场 / 外滩核心区',
-                                    lat: gc.city.lat,
-                                    lng: gc.city.lng,
-                                    yaw: -1.15,
-                                    pitch: 0.24,
-                                  });
-                                } else {
-                                  data.onFastTravelCity?.(gc.city.id);
-                                }
-                              }}
-                            >
-                              {isOriginCity ? '回城' : '✈'}
-                            </button>
-                          )}
-                        </div>
+                          <span className="lcd-map-poi-ico" style={{ borderColor: gc.city.accentColor }}>
+                            <PixelItemImg src="/sprites/items/town-map.png" size={13} />
+                          </span>
+                          <span className="lcd-map-poi-lbl">
+                            {gc.city.name}
+                            {isOriginCity ? ' · 主城' : ''}
+                          </span>
+                          <em>{isCurrent ? '当前' : `${Math.max(1, dKm)}km`}</em>
+                        </button>
                       );
                     })}
                 </div>

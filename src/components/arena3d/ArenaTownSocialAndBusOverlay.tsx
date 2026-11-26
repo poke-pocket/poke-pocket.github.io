@@ -39,6 +39,7 @@ export interface LiveWorldBubble {
   wx: number;
   wy: number;
   wz: number;
+  trackPos?: () => { x: number; y: number; z: number };
   pages: string[];
   pageIdx: number;
   nextAtMs: number;
@@ -110,6 +111,7 @@ export function pushWorldSpeechBubble(
     wx: number;
     wy: number;
     wz: number;
+    trackPos?: () => { x: number; y: number; z: number };
     delayMs?: number;
     isPlayerDialog?: boolean;
   },
@@ -136,6 +138,7 @@ export function pushWorldSpeechBubble(
     wx: opts.wx,
     wy: opts.wy,
     wz: opts.wz,
+    trackPos: opts.trackPos,
     pages: finalPages,
     pageIdx: 0,
     startAtMs,

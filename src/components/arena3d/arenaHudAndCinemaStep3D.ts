@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { BIOME_PALETTES, getSeamlessBiomeAt3D, type BiomeId } from '../../data/worldTextures3D';
 import { SPECIES_CATALOG, getPokemonCryId, getPokemonPhysicalMetrics } from '../../data/catalog';
 import { getTerrainHeight3D } from '../../data/survivorsTactics';
-import { detectOverlandCityAt } from '../../data/geoTerrain3D';
+import { detectOverlandCityAt, getActiveGeoTerrainOrigin } from '../../data/geoTerrain3D';
 import { getSkinDef } from '../../data/metaProgression';
 import { computeCameraWallClipT } from '../../utils/townBuilder3D';
 import { sound } from '../../utils/sound';
@@ -23,7 +23,7 @@ import { MONSTER_QUALITY_META, type FloatingTag2D } from './arenaTypesAndProps';
 const _tmpFogColor = new THREE.Color();
 
 export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
-  const { activeInteriorNow, activeTownNow, activeWorldRun, activeZone, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, showBanner, sim, terrainMat, worldBubblesRef } = rawCtx as ArenaSharedCtx;
+  const { activeInteriorNow, activeTownNow, activeWorldRun, activeZone, autoNavTargetsRef, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, returnToHubCityRef, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, setWorldMapOpen, showBanner, sim, startAutoNavRef, terrainMat, worldBubblesRef } = rawCtx as ArenaSharedCtx;
           // Smooth Minecraft-style live biome atmosphere transition (fog color + exploration toast!)
           const curBiomeAtPlayer = getSeamlessBiomeAt3D(sim.px, sim.pz, sim.py, selectedBiome);
           _tmpFogColor.setHex(BIOME_PALETTES[curBiomeAtPlayer].fogHex);
@@ -46,6 +46,68 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
                 cinnabar_isle: '🌋 踏入「红莲火山 · 熔岩裂谷」地带',
               };
               showBanner(biomeAnnounce[curBiomeAtPlayer], 2800);
+            }
+          }
+
+          // Project active 3D Overhead Speech & Emote Bubbles EVERY FRAME (60fps!) so bubbles lock seamlessly onto moving NPCs & camera!
+          if (worldBubblesRef && setProjectedBubbles) {
+            const list: LiveWorldBubble[] = worldBubblesRef.current;
+            if (list.length > 0) {
+              const nowMs = performance.now();
+              const outBubbles: ProjectedBubble2D[] = [];
+              for (let bi = list.length - 1; bi >= 0; bi--) {
+                const b = list[bi];
+                if (b.trackPos) {
+                  const tp = b.trackPos();
+                  b.wx = tp.x;
+                  b.wy = tp.y;
+                  b.wz = tp.z;
+                }
+                if (nowMs < b.startAtMs) continue;
+                if (nowMs >= b.nextAtMs) {
+                  if (b.pageIdx + 1 < b.pages.length) {
+                    b.pageIdx += 1;
+                    const nextText = b.pages[b.pageIdx] ?? '';
+                    b.nextAtMs = nowMs + Math.max(2050, Math.min(3500, 1150 + nextText.length * 110));
+                    if (b.isPlayerDialog) sound.play('cursor');
+                  } else {
+                    list.splice(bi, 1);
+                    continue;
+                  }
+                }
+                if (Math.hypot(b.wx - sim.px, b.wz - sim.pz) > 36) continue;
+                projVec.set(b.wx, b.wy, b.wz).project(camera);
+                if (projVec.z >= 1 || Math.abs(projVec.x) > 0.94 || Math.abs(projVec.y) > 0.92) continue;
+                outBubbles.push({
+                  id: b.id,
+                  speakerName: b.speakerName,
+                  emote: b.pageIdx === 0 ? b.emote : undefined,
+                  text: b.pages[b.pageIdx] ?? '',
+                  pageIdx: b.pageIdx,
+                  totalPages: b.pages.length,
+                  sx: ((projVec.x + 1) / 2) * 100,
+                  sy: ((-projVec.y + 1) / 2) * 100,
+                  isPlayerDialog: b.isPlayerDialog,
+                });
+              }
+              setProjectedBubbles((prev: ProjectedBubble2D[]) => {
+                if (prev.length === 0 && outBubbles.length === 0) return prev;
+                if (
+                  prev.length === outBubbles.length &&
+                  prev.every(
+                    (p, idx) =>
+                      p.id === outBubbles[idx].id &&
+                      p.pageIdx === outBubbles[idx].pageIdx &&
+                      Math.abs(p.sx - outBubbles[idx].sx) < 0.04 &&
+                      Math.abs(p.sy - outBubbles[idx].sy) < 0.04,
+                  )
+                ) {
+                  return prev;
+                }
+                return outBubbles;
+              });
+            } else {
+              setProjectedBubbles((prev: ProjectedBubble2D[]) => (prev.length === 0 ? prev : []));
             }
           }
 
@@ -214,44 +276,6 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
               });
             }
 
-            // Advance & 3D-Project Sequential Overhead Pixel Speech & Emote Bubbles (`一个气泡接着一个气泡展示`!)
-            if (worldBubblesRef && setProjectedBubbles) {
-              const nowMs = performance.now();
-              const list: LiveWorldBubble[] = worldBubblesRef.current;
-              const outBubbles: ProjectedBubble2D[] = [];
-              for (let bi = list.length - 1; bi >= 0; bi--) {
-                const b = list[bi];
-                if (nowMs < b.startAtMs) continue;
-                if (nowMs >= b.nextAtMs) {
-                  if (b.pageIdx + 1 < b.pages.length) {
-                    b.pageIdx += 1;
-                    const nextText = b.pages[b.pageIdx] ?? '';
-                    b.nextAtMs = nowMs + Math.max(2050, Math.min(3500, 1150 + nextText.length * 110));
-                    if (b.isPlayerDialog) sound.play('cursor');
-                  } else {
-                    list.splice(bi, 1);
-                    continue;
-                  }
-                }
-                if (Math.hypot(b.wx - sim.px, b.wz - sim.pz) > 36) continue;
-                projVec.set(b.wx, b.wy, b.wz).project(camera);
-                if (projVec.z >= 1 || Math.abs(projVec.x) > 0.94 || Math.abs(projVec.y) > 0.92) continue;
-                outBubbles.push({
-                  id: b.id,
-                  speakerName: b.speakerName,
-                  emote: b.pageIdx === 0 ? b.emote : undefined,
-                  text: b.pages[b.pageIdx] ?? '',
-                  pageIdx: b.pageIdx,
-                  totalPages: b.pages.length,
-                  sx: ((projVec.x + 1) / 2) * 100,
-                  sy: ((-projVec.y + 1) / 2) * 100,
-                  isPlayerDialog: b.isPlayerDialog,
-                });
-              }
-              setProjectedBubbles((prev: ProjectedBubble2D[]) =>
-                prev.length === 0 && outBubbles.length === 0 ? prev : outBubbles,
-              );
-            }
             const nextMapSnap: LiveMapSnapshot = {
               px: sim.px,
               pz: sim.pz,
@@ -319,11 +343,20 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
             });
             // Only sync full WorldMapData up to parent <App /> when handheld overlay is actually open (avoids full-app React re-render every 160ms while walking!)
             if (externalPausedRef.current) {
+              const curGeo = getActiveGeoTerrainOrigin();
               onSyncWorldMapData?.({
                 biome: liveOverlandCityRef.current?.biome ?? selectedBiome,
                 regionName: liveOverlandCityRef.current?.name ?? regionMeta.name,
+                hubCityName: activeWorldRun?.cityName ?? curGeo?.startCityName ?? regionMeta.name,
                 snapshot: nextMapSnap,
-                onFastTravelCity: handleFastTravelCity,
+                onReturnToHubCity: returnToHubCityRef
+                  ? (dest: 'plaza' | 'home') => returnToHubCityRef.current(dest)
+                  : undefined,
+                navTargets: autoNavTargetsRef?.current,
+                onAutoWalkTo: startAutoNavRef
+                  ? (x: number, z: number, label: string) => startAutoNavRef.current({ label, x, z })
+                  : undefined,
+                onOpenGlobalWorldMap: setWorldMapOpen ? () => setWorldMapOpen(true) : undefined,
               });
             }
 
