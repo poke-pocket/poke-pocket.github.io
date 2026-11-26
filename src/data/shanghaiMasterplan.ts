@@ -136,10 +136,10 @@ export function buildShanghaiRealRoadNetwork(
           const bz2 = p2[1];
           const bMidX = (bx1 + bx2) * 0.5;
           const bMidZ = (bz1 + bz2) * 0.5;
-          // STRICT BRIDGE NON-OVERLAP & NON-CROSSING GUARD: Never allow two bridges to cross or sit within 58u of each other!
+          // STRICT BRIDGE NON-OVERLAP & NON-CROSSING GUARD: Never allow two bridges to cross or sit within 135u (~1.35km) of each other!
           const conflictsExistingBridge = rawEdges.some((ex) => {
             if (!ex.isBridge) return false;
-            if (Math.hypot((ex.x1 + ex.x2) * 0.5 - bMidX, (ex.z1 + ex.z2) * 0.5 - bMidZ) < 58) return true;
+            if (Math.hypot((ex.x1 + ex.x2) * 0.5 - bMidX, (ex.z1 + ex.z2) * 0.5 - bMidZ) < 135) return true;
             const dx1 = bx2 - bx1;
             const dz1 = bz2 - bz1;
             const dx2 = ex.x2 - ex.x1;
@@ -161,7 +161,7 @@ export function buildShanghaiRealRoadNetwork(
               width,
               kind,
               isBridge: true,
-              bridgeStyle: bridgeStyleHint ?? (Math.hypot(bx2 - bx1, bz2 - bz1) < 30 ? 'waibaidu' : 'nanpu'),
+              bridgeStyle: bridgeStyleHint ?? (Math.hypot(bx2 - bx1, bz2 - bz1) < 85 ? 'waibaidu' : 'nanpu'),
             });
           }
           bridgeStartPt = null;
@@ -383,36 +383,61 @@ export function buildShanghaiRealRoadNetwork(
     false,
   );
 
-  // ==================== 3. SPACIOUS URBAN DISTRICT COLLECTOR STREETS (~115-135u blocks so 3D buildings & landmarks shine clearly!) ====================
-  // Note: 0.055° lat ≈ 122 world units -> wide open city blocks with plenty of room for 40-50u 3D buildings, parks & skyscrapers!
-  const ewLats = [31.352, 31.292, 31.165, 31.112, 31.055];
+  // ==================== 3. 1:10 METROPOLITAN SHANGHAI STREET GRIDS (Dense ~155u Inner-Ring Blocks + ~310u Suburban District Grid!) ====================
+  // 3A. Inner-Ring Downtown Puxi (People's Square / Jing'an / Bund / Xuhui / Hongkou) & Lujiazui CBD Grid (~155u block spacing!)
+  const innerEwLats = [31.258, 31.244, 31.214, 31.200];
+  for (const lat of innerEwLats) {
+    const ptsInnerPuxi: [number, number][] = [];
+    for (let lng = 121.395; lng <= 121.495; lng += 0.016) {
+      ptsInnerPuxi.push([lat + Math.sin((lng - 121.45) * 32) * 0.0014, lng]);
+    }
+    addLatLngChain(ptsInnerPuxi, false, 'street', 14, 1, false);
+
+    const ptsInnerPudong: [number, number][] = [];
+    for (let lng = 121.500; lng <= 121.582; lng += 0.016) {
+      ptsInnerPudong.push([lat + Math.cos((lng - 121.53) * 30) * 0.0014, lng]);
+    }
+    addLatLngChain(ptsInnerPudong, false, 'street', 14, 1, false);
+  }
+
+  const innerNsLngs = [121.412, 121.432, 121.472, 121.518, 121.542, 121.564];
+  for (const lng of innerNsLngs) {
+    const ptsInnerNS: [number, number][] = [];
+    for (let lat = 31.184; lat <= 31.272; lat += 0.015) {
+      ptsInnerNS.push([lat, lng + Math.sin((lat - 31.23) * 32) * 0.0014]);
+    }
+    addLatLngChain(ptsInnerNS, false, 'street', 14, 1, lng < 121.485, 'waibaidu');
+  }
+
+  // 3B. Greater Metropolitan District Collector Grid (Middle Ring -> S20 Outer Ring: Minhang, Hongqiao, Jiading, Baoshan, Zhangjiang, Chuansha!)
+  const ewLats = [31.362, 31.334, 31.296, 31.168, 31.138, 31.108, 31.055];
   for (const lat of ewLats) {
-    const westLng = lat > 31.31 ? 121.325 : 121.278;
-    const midRiverLng = lat > 31.25 ? 121.538 : 121.482;
+    const westLng = lat > 31.31 ? 121.315 : 121.258;
+    const midRiverLng = lat > 31.25 ? 121.542 : 121.486;
     const ptsPuxi: [number, number][] = [];
-    for (let lng = westLng; lng <= midRiverLng + 0.002; lng += 0.035) {
-      ptsPuxi.push([lat + Math.sin((lng - 121.45) * 24) * 0.003, lng]);
+    for (let lng = westLng; lng <= midRiverLng + 0.002; lng += 0.030) {
+      ptsPuxi.push([lat + Math.sin((lng - 121.45) * 24) * 0.0025, lng]);
     }
     addLatLngChain(ptsPuxi, false, 'street', 13, 1, false);
 
-    if (lat >= 31.05 && lat <= 31.33) {
-      const eastStart = lat > 31.255 ? 121.568 : 121.508;
-      const eastEnd = lat > 31.27 ? 121.675 : 121.735;
+    if (lat >= 31.05 && lat <= 31.34) {
+      const eastStart = lat > 31.255 ? 121.565 : 121.505;
+      const eastEnd = lat > 31.27 ? 121.685 : 121.745;
       const ptsPudong: [number, number][] = [];
-      for (let lng = eastStart; lng <= eastEnd + 0.002; lng += 0.038) {
-        ptsPudong.push([lat + Math.cos((lng - 121.55) * 22) * 0.003, lng]);
+      for (let lng = eastStart; lng <= eastEnd + 0.002; lng += 0.032) {
+        ptsPudong.push([lat + Math.cos((lng - 121.55) * 22) * 0.0025, lng]);
       }
       addLatLngChain(ptsPudong, false, 'street', 13, 1, false);
     }
   }
 
-  const nsLngs = [121.305, 121.368, 121.535, 121.598, 121.662, 121.718];
+  const nsLngs = [121.292, 121.335, 121.376, 121.535, 121.592, 121.648, 121.708];
   for (const lng of nsLngs) {
     const southLat = 31.035;
-    const northLat = lng < 121.51 ? 31.375 : lng < 121.62 ? 31.338 : 31.268;
+    const northLat = lng < 121.51 ? 31.378 : lng < 121.62 ? 31.342 : 31.272;
     const ptsNS: [number, number][] = [];
-    for (let lat = southLat; lat <= northLat + 0.002; lat += 0.035) {
-      ptsNS.push([lat, lng + Math.sin((lat - 31.22) * 24) * 0.003]);
+    for (let lat = southLat; lat <= northLat + 0.002; lat += 0.030) {
+      ptsNS.push([lat, lng + Math.sin((lat - 31.22) * 24) * 0.0025]);
     }
     addLatLngChain(ptsNS, false, 'street', 13, 1, lng < 121.49, 'waibaidu');
   }

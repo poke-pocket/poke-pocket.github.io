@@ -254,22 +254,22 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
       }
     }
 
-    // 1B. Ring 1: Mid-Horizon 5.2km × 5.2km terrain mesh (snaps every 160m)
-    const mSnapX = Math.round(cx / 160) * 160;
-    const mSnapZ = Math.round(cz / 160) * 160;
+    // 1B. Ring 1: Mid-Horizon 4,400 × 4,400u (`44km × 44km`!) terrain mesh (snaps every 128u)
+    const mSnapX = Math.round(cx / 128) * 128;
+    const mSnapZ = Math.round(cz / 128) * 128;
     if (mSnapX !== midSnapX || mSnapZ !== midSnapZ) {
       midSnapX = mSnapX;
       midSnapZ = mSnapZ;
       updateLodRingHeightfield(midTerrainGeo, midTerrainMesh, mSnapX, mSnapZ, 236, 18);
     }
 
-    // 1C. Ring 2: Far Alpine Horizon 32km × 32km (±16km!) mountain & ocean mesh (snaps every 960m)
-    const fSnapX = Math.round(cx / 960) * 960;
-    const fSnapZ = Math.round(cz / 960) * 960;
+    // 1C. Ring 2: Far Alpine Horizon 18,000 × 18,000u (`180km × 180km`!) mountain & ocean mesh (snaps every 640u)
+    const fSnapX = Math.round(cx / 640) * 640;
+    const fSnapZ = Math.round(cz / 640) * 640;
     if (fSnapX !== farSnapX || fSnapZ !== farSnapZ) {
       farSnapX = fSnapX;
       farSnapZ = fSnapZ;
-      updateLodRingHeightfield(farTerrainGeo, farTerrainMesh, fSnapX, fSnapZ, 2380, 65);
+      updateLodRingHeightfield(farTerrainGeo, farTerrainMesh, fSnapX, fSnapZ, 2020, 48);
       if (farWaterPlaneMesh) {
         farWaterPlaneMesh.position.set(fSnapX, WATER_LEVEL_3D - 0.12, fSnapZ);
       }

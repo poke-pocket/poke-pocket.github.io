@@ -204,7 +204,7 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
   const coords = lookupCityLatLng(cleanId);
 
   if (coords) {
-    const realLocal = getLocalRealRiversForCity(coords.lat, coords.lng, 740);
+    const realLocal = getLocalRealRiversForCity(coords.lat, coords.lng, 2850);
     for (const rr of realLocal) {
       rivers.push({
         id: rr.id,
@@ -213,14 +213,13 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
         points: rr.points,
       });
     }
-    // For Shanghai, add Suzhou Creek joining the REAL Huangpu River cleanly if not already in REAL_WORLD_RIVERS!
+    // For Shanghai, add 1:10 Suzhou Creek joining the REAL Huangpu River cleanly at Waibaidu Bridge (~31.244°N -> z ≈ -155)!
     if (cleanId === 'shanghai' && rivers.length > 0 && !rivers.some((r) => r.id === 'suzhou_macro')) {
       const hp = rivers.find((r) => r.id === 'huangpu_macro') ?? rivers[0];
-      // Find the point on the real Huangpu River closest to z = -26 (Waibaidu confluence north of Bund)
       let confPt = hp.points[Math.floor(hp.points.length * 0.5)];
       let bestD = 9999;
       for (const p of hp.points) {
-        const d = Math.abs(p[1] - -26);
+        const d = Math.abs(p[1] - -150);
         if (d < bestD) {
           bestD = d;
           confPt = p;
@@ -229,12 +228,13 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
       rivers.push({
         id: 'suzhou_creek',
         name: '苏州河',
-        width: 14,
+        width: 18,
         points: [
-          [-215, confPt[1] - 24],
-          [-145, confPt[1] - 10],
-          [-75, confPt[1] + 2],
-          [Math.round(confPt[0] - 24), Math.round(confPt[1] - 4)],
+          [-1580, confPt[1] - 95],
+          [-1080, confPt[1] - 42],
+          [-640, confPt[1] - 12],
+          [-310, confPt[1] + 18],
+          [Math.round(confPt[0] - 58), Math.round(confPt[1] - 8)],
           [confPt[0], confPt[1]],
         ],
       });
@@ -249,13 +249,13 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
     const dirZ = Math.sin(axisAng);
     const nx = -dirZ;
     const nz = dirX;
-    const riverOffset = (rng() > 0.5 ? 1 : -1) * (44 + rng() * 32);
-    const waveAmp = 14 + rng() * 20;
-    const waveFreq = 0.011 + rng() * 0.007;
+    const riverOffset = (rng() > 0.5 ? 1 : -1) * (110 + rng() * 85);
+    const waveAmp = 35 + rng() * 45;
+    const waveFreq = 0.0045 + rng() * 0.003;
     const wavePhase = rng() * Math.PI * 2;
-    const mainW = 18 + Math.round(rng() * 10);
+    const mainW = 22 + Math.round(rng() * 12);
     const mainPts: [number, number][] = [];
-    for (let s = -210; s <= 210; s += 42) {
+    for (let s = -960; s <= 960; s += 96) {
       const bend = riverOffset + Math.sin(s * waveFreq + wavePhase) * waveAmp;
       mainPts.push([Math.round(dirX * s + nx * bend), Math.round(dirZ * s + nz * bend)]);
     }
@@ -266,23 +266,23 @@ export function getCityHydrography(cityId: string): { rivers: TownRiverSpline[];
   const styles: ('nanpu' | 'yangpu' | 'waibaidu')[] = ['nanpu', 'waibaidu', 'yangpu'];
   for (const riv of rivers) {
     if (riv.points.length < 2) continue;
-    const fracs = riv.width >= 18 ? [0.28, 0.56, 0.80] : [0.45, 0.78];
+    const fracs = riv.width >= 18 ? [0.24, 0.44, 0.62, 0.80] : [0.38, 0.72];
     fracs.forEach((f, idx) => {
       const pIdx = Math.max(0, Math.min(riv.points.length - 2, Math.floor(f * (riv.points.length - 1))));
       const [ax, az] = riv.points[pIdx];
       const [bx, bz] = riv.points[pIdx + 1];
       const mx = (ax + bx) * 0.5;
       const mz = (az + bz) * 0.5;
-      if (Math.hypot(mx, mz) > 158) return;
+      if (Math.hypot(mx, mz) > 880) return;
       const len = Math.hypot(bx - ax, bz - az) || 1;
       const nx = -(bz - az) / len;
       const nz = (bx - ax) / len;
-      const halfSpan = riv.width * 0.5 + 8.5;
+      const halfSpan = riv.width * 0.5 + 10.5;
       const x1 = Math.round(mx - nx * halfSpan);
       const z1 = Math.round(mz - nz * halfSpan);
       const x2 = Math.round(mx + nx * halfSpan);
       const z2 = Math.round(mz + nz * halfSpan);
-      if (bridges.some((b) => Math.hypot((b.x1 + b.x2) * 0.5 - mx, (b.z1 + b.z2) * 0.5 - mz) < 42)) return;
+      if (bridges.some((b) => Math.hypot((b.x1 + b.x2) * 0.5 - mx, (b.z1 + b.z2) * 0.5 - mz) < 95)) return;
       bridges.push({
         x1,
         z1,
@@ -469,8 +469,24 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   // Actual 3D & 2D roads, parks & buildings expand across the ENTIRE real dry-land metropolitan footprint (NEVER a tiny circle or ocean spill!)
   const cityCoords = lookupCityLatLng(cleanCityId);
   const realHighwayAngles = cityCoords ? getLocalRealHighwayAnglesForCity(cityCoords.lat, cityCoords.lng) : [];
-  const isMegacity = ['shanghai', 'beijing', 'guangzhou', 'shenzhen', 'tokyo', 'seoul', 'hangzhou', 'chengdu', 'wuhan', 'osaka'].includes(cleanCityId);
-  const cityRadius = isMegacity ? 680 : 460;
+  const isMegacity = [
+    'shanghai',
+    'beijing',
+    'guangzhou',
+    'shenzhen',
+    'tokyo',
+    'seoul',
+    'hangzhou',
+    'chengdu',
+    'wuhan',
+    'osaka',
+    'chongqing',
+    'nanjing',
+    'tianjin',
+    'suzhou',
+    'xian',
+  ].includes(cleanCityId);
+  const cityRadius = isMegacity ? 1850 : 1250;
   const kmPerDegLngLocal = cityCoords ? Math.max(12, 111.32 * Math.cos((cityCoords.lat * Math.PI) / 180)) : 95;
   const isUrbanLandLocal =
     cityCoords && isRealUrbanDryLand(cityCoords.lat, cityCoords.lng)
@@ -554,19 +570,19 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   };
   const parkNames =
     cleanCityId === 'shanghai'
-      ? ['人民广场公园', '世纪公园']
-      : [`${anchor.name}中心公园`, `${anchor.name}滨水公园`];
-  for (let pi = 0; pi < 2; pi++) {
+      ? ['人民广场公园', '世纪公园', '静安雕塑公园', '徐家汇公园']
+      : [`${anchor.name}中心公园`, `${anchor.name}滨水公园`, `${anchor.name}森林公园`, `${anchor.name}市民广场`];
+  for (let pi = 0; pi < 4; pi++) {
     let placed = false;
     for (const [pw, pd] of [
+      [44, 38],
       [34, 30],
       [26, 24],
-      [22, 20],
     ]) {
       if (placed) break;
       for (let tries = 0; tries < 60; tries++) {
-        const ang = (pi === 0 ? 0.3 : 3.3) + (tries / 60) * Math.PI * 2 + (rng() - 0.5) * 0.4;
-        const dist = pi === 0 ? 38 + (tries % 5) * 14 : 78 + (tries % 6) * 14;
+        const ang = (pi * Math.PI * 0.5 + 0.3) + (tries / 60) * Math.PI * 2 + (rng() - 0.5) * 0.4;
+        const dist = pi === 0 ? 45 + (tries % 5) * 18 : 180 + pi * 135 + (tries % 6) * 28;
         const wx = Math.round(cx + Math.cos(ang) * dist);
         const wz = Math.round(cz + Math.sin(ang) * dist);
         if (parkSpotClear(wx, wz, pw, pd)) {
@@ -587,24 +603,32 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     }
   }
 
-  // Colored Urban Metro Lines: Line 2 links Suburban HSR Hub (虹桥火车站/西站) straight into Downtown & Pudong!
+  // Colored Urban Metro Lines: Line 2 links 1:10 Suburban HSR Hub (虹桥火车站 31.195°N, 121.318°E ≈ cx-1447, cz+389) straight through Jing'an, People's Square, Lujiazui & Zhangjiang!
   const metroPalette = ['#2f9e44', '#ae3ec9', '#1c7ed6', '#e8590c'];
   const mCol1 = cleanCityId === 'shanghai' ? '#2f9e44' : metroPalette[seedVal % metroPalette.length];
   const mCol2 = cleanCityId === 'shanghai' ? '#ae3ec9' : metroPalette[(seedVal + 1) % metroPalette.length];
   const cosB = Math.cos(baseGridAngle);
   const sinB = Math.sin(baseGridAngle);
-  // Place Suburban High-Speed Rail Station OUTSIDE downtown on the Western Outer Ring (e.g. 上海虹桥站 at 31.195°N, 121.318°E ≈ cx-289, cz+78)!
-  const hsrHubX = cleanCityId === 'shanghai' ? cx - 289 : cx - 265;
-  const hsrHubZ = cleanCityId === 'shanghai' ? cz + 78 : cz - 36;
+  const hsrHubX = cleanCityId === 'shanghai' ? cx - 1447 : cx - Math.round(cityRadius * 0.68);
+  const hsrHubZ = cleanCityId === 'shanghai' ? cz + 389 : cz - 80;
 
-  const m1Pts: [number, number][] = [
-    [hsrHubX, hsrHubZ],
-    [cx + Math.round(-95 * cosB), cz + Math.round(-95 * sinB)],
-    [cx, cz],
-    [cx + Math.round(78 * cosB), cz + Math.round(78 * sinB)],
-    [cx + Math.round(165 * cosB), cz + Math.round(165 * sinB)],
-  ];
-  const m2Pts: [number, number][] = [-155, -75, 0, 75, 155].map((s) => [
+  const m1Pts: [number, number][] =
+    cleanCityId === 'shanghai'
+      ? [
+          [hsrHubX, hsrHubZ],
+          [cx - 320, cz - 85],
+          [cx, cz],
+          [cx + 365, cz - 88],
+          [cx + 1280, cz + 340],
+        ]
+      : [
+          [hsrHubX, hsrHubZ],
+          [cx + Math.round(-420 * cosB), cz + Math.round(-420 * sinB)],
+          [cx, cz],
+          [cx + Math.round(380 * cosB), cz + Math.round(380 * sinB)],
+          [cx + Math.round(820 * cosB), cz + Math.round(820 * sinB)],
+        ];
+  const m2Pts: [number, number][] = [-860, -380, 0, 420, 920].map((s) => [
     cx + Math.round(-s * sinB),
     cz + Math.round(s * cosB),
   ]);
@@ -974,10 +998,10 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     const nz = ux;
 
     const segDistCenter = Math.hypot((st.x1 + st.x2) * 0.5 - cx, (st.z1 + st.z2) * 0.5 - cz);
-    if (segDistCenter > 760) continue;
+    if (segDistCenter > 2350) continue;
 
-    // Dense urban boulevard streetlamps along sidewalks (every ~38m, curving inward over the roadway!)
-    const lampCount = segDistCenter < 480 && streetLamps.length < 150 ? Math.max(1, Math.floor(len / 38)) : 0;
+    // Dense urban boulevard streetlamps along sidewalks (every ~42m across inner & middle rings!)
+    const lampCount = segDistCenter < 980 && streetLamps.length < 220 ? Math.max(1, Math.floor(len / 42)) : 0;
     for (let li = 0; li < lampCount; li++) {
       const lt = (li + 0.5) / lampCount;
       const lSides = st.kind === 'arterial' ? ([-1, 1] as const) : ([li % 2 === 0 ? 1 : -1] as const);
@@ -1006,8 +1030,9 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       }
     }
 
-    // 46m curbside lot cadence — exact setback & shape will adapt dynamically to each block's geometry!
-    const stepsAlong = Math.max(1, Math.floor(len / 46.0));
+    // Curbside lot cadence (tighter in downtown, spacious in outer suburban rings so buildings span the whole 1:10 metropolis!)
+    const lotSpacing = segDistCenter < 750 ? 52.0 : 128.0;
+    const stepsAlong = Math.max(1, Math.floor(len / lotSpacing));
     for (let k = 0; k < stepsAlong; k++) {
       const t = (k + 0.5) / stepsAlong;
       const mx = st.x1 + dx * t;
@@ -1033,7 +1058,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
           doorZ,
           distFromCenter: Math.hypot(lx - (cx - 24), lz - cz),
           isArterial: st.kind === 'arterial',
-          isPudong: cleanCityId === 'shanghai' ? lx - cx > 42 : rng() < 0.25,
+          isPudong: cleanCityId === 'shanghai' ? lx - cx > 180 : rng() < 0.25,
         });
       }
     }
@@ -1109,7 +1134,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   }
 
   let houseCount = 0;
-  const targetHouseMax = cleanCityId === 'shanghai' ? 96 : 52;
+  const targetHouseMax = cleanCityId === 'shanghai' ? 220 : isMegacity ? 145 : 95;
   for (const cand of candidates) {
     if (houseCount >= targetHouseMax) break;
     if (isUrbanLandLocal && !isUrbanLandLocal(cand.x - cx, cand.z - cz)) continue;

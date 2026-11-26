@@ -70,8 +70,8 @@ export function createSculptedTerrainMaterial(
       uFogColor: { value: new THREE.Color(pal.fogHex) },
       uGrassLipColor: { value: new THREE.Color(pal.groundColors[2]) },
       uBaseClimate: { value: new THREE.Vector2(baseT, baseM) },
-      uFogNear: { value: 2400.0 },
-      uFogFar: { value: 24500.0 },
+      uFogNear: { value: 1400.0 },
+      uFogFar: { value: 14500.0 },
       uSectorSize: { value: sectorSize },
       uSunDir: { value: new THREE.Vector3(0.54, 0.78, 0.44).normalize() },
     },
@@ -158,10 +158,10 @@ export function createSculptedTerrainMaterial(
         float temp = mix(uBaseClimate.x, rawT, spawnBlend);
         float moist = mix(uBaseClimate.y, rawM, spawnBlend);
 
-        // True 1:1 meter-exact alpine snowline (> 2,400m real altitude, e.g. Mt. Fuji 3,776m & West Sichuan snow mountains!)
+        // 1:10 Real-Earth alpine snowline (> ~2,300m real altitude = ~305u world Y, e.g. Mt. Fuji 3,776m / 503u!)
         float wSnow = clamp(
           (1.0 - smoothstep(0.18, 0.34, temp)) +
-          smoothstep(2400.0, 3100.0, vWorldPos.y) * (1.0 - smoothstep(0.62, 0.76, temp)),
+          smoothstep(305.0, 415.0, vWorldPos.y) * (1.0 - smoothstep(0.62, 0.76, temp)),
           0.0, 1.0
         );
         float wVolcano = smoothstep(0.72, 0.86, temp) * smoothstep(0.44, 0.58, moist);
@@ -425,7 +425,7 @@ export function createHorizonBackdropMesh(biome: BiomeId): THREE.Group {
     depthWrite: false,
   });
 
-  const skyDome = new THREE.Mesh(new THREE.SphereGeometry(28500, 32, 24), skyMat);
+  const skyDome = new THREE.Mesh(new THREE.SphereGeometry(18500, 32, 24), skyMat);
   skyDome.renderOrder = -20;
   group.add(skyDome);
 

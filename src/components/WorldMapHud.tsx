@@ -633,9 +633,8 @@ function paintRoadsAndTownsOnMap(
       }
     }
 
-    // 2. EVERY Visible Real-Earth City's UNIQUE Tensor-Field GBA Pixel-Art Masterplan
-    // Visible seamlessly up to regional zoom (unitsPerPx < 9.5) right on top of the real-scale metropolitan built-up footprint!
-    if (unitsPerPx < 9.5) {
+    // 2. EVERY Visible Real-Earth City's UNIQUE 1:10 Metropolitan Street & Ring-Expressway Masterplan!
+    if (unitsPerPx < 24) {
       const projected = getProjectedGeoCities();
       const citiesToRender: { id: string; name: string; x: number; z: number }[] = [];
       const activeId = activeGeo.startCityId ?? 'shanghai';
@@ -647,7 +646,7 @@ function paintRoadsAndTownsOnMap(
 
       const viewW = Math.max(ctx.canvas.width, 1200);
       const viewH = Math.max(ctx.canvas.height, 900);
-      const urbanR = Math.max(24, 720 * invScale);
+      const urbanR = Math.max(28, 2450 * invScale);
       for (const rc of citiesToRender) {
         const cOrigin = toScreen(rc.x, rc.z);
         if (
@@ -665,7 +664,7 @@ function paintRoadsAndTownsOnMap(
           x: rc.x,
           z: rc.z,
           seed: hashCitySeed(rc.id),
-          plazaRadius: 680,
+          plazaRadius: 1850,
           plateauY: 1.65,
           landmarkCityId: rc.id,
         };
@@ -1515,8 +1514,9 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showLiveStreetTiles, setShowLiveStreetTiles] = useState(false);
   const geoOrigin = getActiveGeoTerrainOrigin();
-  const minZoom = geoOrigin ? 0.0000072 : 0.00036;
-  const [zoom, setZoom] = useState(geoOrigin ? 0.045 : 1.0);
+  const metersPerWorldUnit = geoOrigin ? 1000 / GEO_UNITS_PER_KM : 1;
+  const minZoom = geoOrigin ? 0.000072 : 0.00036;
+  const [zoom, setZoom] = useState(geoOrigin ? 0.05 : 1.0);
   const [pan, setPan] = useState({ x: 0, z: 0 });
   const [isInteracting, setIsInteracting] = useState(false);
   const [, setIconTick] = useState(0);
@@ -1715,8 +1715,8 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ctx.fillRect(px - 3, py - 14, 2, 2);
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(px - 3, py - 14, 1, 1);
-      // Distance pill right below pin tip
-      const pinDistTxt = fmtPinDist(Math.hypot(pin.x - snapshot.px, pin.z - snapshot.pz));
+      // Distance pill right below pin tip (converted to real-world meters/km!)
+      const pinDistTxt = fmtPinDist(Math.hypot(pin.x - snapshot.px, pin.z - snapshot.pz) * metersPerWorldUnit);
       const isLatestPin = pinIdx === pins.length - 1;
       ctx.font = 'bold 8.5px "PingFang SC", "Microsoft YaHei", monospace';
       const ptw = Math.ceil(ctx.measureText(pinDistTxt).width) + 8;
@@ -1886,7 +1886,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       );
       const ex = W / 2 + dxH * scaleEdge;
       const ey = H / 2 + dyH * scaleEdge;
-      const distM = Math.round(Math.hypot(pan.x, pan.z));
+      const distM = Math.round(Math.hypot(pan.x, pan.z) * metersPerWorldUnit);
 
       ctx.save();
       ctx.translate(ex, ey);
@@ -2166,7 +2166,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
         {/* Quick 1-Click Auto-Walk to Latest Custom Map Pin! */}
         {pins.length > 0 && data.onAutoWalkTo && (() => {
           const latestPin = pins[pins.length - 1];
-          const pinDistM = Math.hypot(latestPin.x - snapshot.px, latestPin.z - snapshot.pz);
+          const pinDistM = Math.hypot(latestPin.x - snapshot.px, latestPin.z - snapshot.pz) * metersPerWorldUnit;
           const pinDistStr =
             pinDistM < 1000
               ? `${Math.max(1, Math.round(pinDistM))} m`
@@ -2289,7 +2289,9 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                 <div className="lcd-map-poi-list">
                   {SCENIC_MOUNTAIN_SPOTS.map((sp) => {
                     const spWp = geoToWorld(sp.lat, sp.lng, geoOrigin);
-                    const spDistM = spWp ? Math.hypot(spWp.x - snapshot.px, spWp.z - snapshot.pz) : null;
+                    const spDistM = spWp
+                      ? Math.hypot(spWp.x - snapshot.px, spWp.z - snapshot.pz) * metersPerWorldUnit
+                      : null;
                     const spDistStr =
                       spDistM === null
                         ? ''
@@ -2350,7 +2352,9 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                 <div className="lcd-map-side-head">🧭 城市设施自动寻路 (A* 避障直达门内)</div>
                 <div className="lcd-map-poi-list">
                   {data.navTargets.map((item) => {
-                    const distM = Math.round(Math.hypot(item.x - snapshot.px, item.z - snapshot.pz));
+                    const distM = Math.round(
+                      Math.hypot(item.x - snapshot.px, item.z - snapshot.pz) * metersPerWorldUnit,
+                    );
                     return (
                       <div
                         key={item.id}

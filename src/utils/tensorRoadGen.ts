@@ -329,7 +329,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
   ) => {
     const width = kind === 'arterial' ? 32 : 17;
     if (riverSignedDist(sx, sz) < 6 || !insideCity(sx, sz)) return;
-    if (edges.length >= 440) return;
+    if (edges.length >= 1150) return;
 
     const streamId = nextStreamId++;
     const initField = sampleField(sx, sz);
@@ -343,7 +343,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
       let prevDz = initVec.z * sign;
 
       for (let step = 0; step < maxSteps; step++) {
-        if (edges.length >= 440) break;
+        if (edges.length >= 1150) break;
         const next = rk2Step(cx, cz, stepLen, useMajor, prevDx, prevDz);
         const nx = next.x;
         const nz = next.z;
@@ -365,7 +365,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
             const uX = segDx / segLen;
             const uZ = segDz / segLen;
             let landDist = -1;
-            for (let probe = stepLen; probe <= 104; probe += 4) {
+            for (let probe = stepLen; probe <= 156; probe += 4) {
               const px = cx + uX * probe;
               const pz = cz + uZ * probe;
               if (riverSignedDist(px, pz) > 6.5 && insideCity(px, pz)) {
@@ -555,48 +555,51 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
     }
   }
 
-  // 1C. Full-Metropolis Curved Arterial Grid expanding across the ENTIRE real urban coastline (Puxi, North Suzhou Creek / Hongkou, Pudong, etc.)!
-  const ringStep = 185;
+  // 1C. Full-Metropolis Curved Arterial Grid expanding across the ENTIRE 1:10 urban coastline!
+  const ringStep = radius > 1000 ? 250 : 185;
   for (let off = -Math.floor(radius / ringStep) * ringStep; off <= radius; off += ringStep) {
     if (Math.abs(off) < 55) continue;
     const sx1 = seedCx + Math.cos(baseGridAngle + Math.PI / 2) * off;
     const sz1 = seedCz + Math.sin(baseGridAngle + Math.PI / 2) * off;
     if (insideCity(sx1, sz1) && riverSignedDist(sx1, sz1) > 16) {
-      traceStreamline(sx1, sz1, true, 'arterial', 28, 175, artSteps);
+      traceStreamline(sx1, sz1, true, 'arterial', 28, 185, artSteps);
     }
     const sx2 = seedCx + Math.cos(baseGridAngle) * off;
     const sz2 = seedCz + Math.sin(baseGridAngle) * off;
     if (insideCity(sx2, sz2) && riverSignedDist(sx2, sz2) > 16) {
-      traceStreamline(sx2, sz2, false, 'arterial', 28, 175, artSteps);
+      traceStreamline(sx2, sz2, false, 'arterial', 28, 185, artSteps);
     }
   }
-  // Seed all districts on BOTH sides of creeks/rivers (including North bank z = -140..-380 & East bank x = +120..+420)!
-  for (let gx = -radius + 90; gx <= radius - 90; gx += 195) {
-    for (let gz = -radius + 90; gz <= radius - 90; gz += 195) {
-      if (Math.hypot(gx, gz) < 115) continue;
+  const outerSeedStep = radius > 1000 ? 280 : 195;
+  for (let gx = -radius + 110; gx <= radius - 110; gx += outerSeedStep) {
+    for (let gz = -radius + 110; gz <= radius - 110; gz += outerSeedStep) {
+      if (Math.hypot(gx, gz) < 130) continue;
       if (insideCity(gx, gz) && riverSignedDist(gx, gz) > 16) {
-        traceStreamline(gx, gz, true, 'arterial', 28, 175, Math.ceil(artSteps * 0.8));
-        traceStreamline(gx, gz, false, 'arterial', 28, 175, Math.ceil(artSteps * 0.8));
+        traceStreamline(gx, gz, true, 'arterial', 28, 185, Math.ceil(artSteps * 0.85));
+        traceStreamline(gx, gz, false, 'arterial', 28, 185, Math.ceil(artSteps * 0.85));
       }
     }
   }
 
-  // ==================== PASS 2: SECONDARY COLLECTOR STREETS (Spacious ~132m Neighborhood Blocks for Realistic Large Buildings!) ====================
+  // ==================== PASS 2: SECONDARY COLLECTOR STREETS (Dense ~140u Downtown Blocks + ~240u Suburban District Grid!) ====================
   const streetSeeds: { x: number; z: number; major: boolean }[] = [];
-  const sMax = Math.min(radius - 40, 620);
-  for (let gx = -sMax; gx <= sMax; gx += 140) {
-    for (let gz = -sMax; gz <= sMax; gz += 140) {
+  const sMax = Math.min(radius - 50, 1480);
+  for (let gx = -sMax; gx <= sMax; gx += 145) {
+    for (let gz = -sMax; gz <= sMax; gz += 145) {
+      if (Math.hypot(gx, gz) > 680 && (Math.abs(Math.round(gx / 145)) % 2 === 1 || Math.abs(Math.round(gz / 145)) % 2 === 1)) {
+        continue;
+      }
       if (!insideCity(gx, gz)) continue;
       if (riverSignedDist(gx, gz) > 18) {
-        streetSeeds.push({ x: gx + (rng() - 0.5) * 16, z: gz + (rng() - 0.5) * 16, major: (gx + gz) % 280 === 0 });
+        streetSeeds.push({ x: gx + (rng() - 0.5) * 16, z: gz + (rng() - 0.5) * 16, major: (gx + gz) % 290 === 0 });
       }
     }
   }
   streetSeeds.sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z));
 
   for (const ss of streetSeeds) {
-    traceStreamline(ss.x, ss.z, ss.major, 'street', 26, 126, 26);
-    traceStreamline(ss.x, ss.z, !ss.major, 'street', 26, 126, 26);
+    traceStreamline(ss.x, ss.z, ss.major, 'street', 28, 132, 32);
+    traceStreamline(ss.x, ss.z, !ss.major, 'street', 28, 132, 32);
   }
 
   // ==================== PASS 2B: STRICT BRIDGE-TO-ROAD CONNECTIVITY GUARANTEE ====================

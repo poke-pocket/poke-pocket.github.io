@@ -9,7 +9,7 @@ import { computeInstantKickoffWaypoints3D, createAutoWalkPathJob3D, findForwardS
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
 import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
 import { extractDexIdFromSpriteUrl, getPmd8DirSheet, type Pmd8DirSheet3D } from '../data/pmdSprites3D';
-import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGeoCities, prefetchGeoDetailAround, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded, worldToGeo } from '../data/geoTerrain3D';
+import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGeoCities, prefetchGeoDetailAround, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded, worldToGeo, worldYToRealMeters3D } from '../data/geoTerrain3D';
 import { getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { clearWorldCheckpoint, loadWorldCheckpoint, saveWorldCheckpoint, setActiveCareSessionFlag, wasActiveCareSessionOpen } from '../utils/worldCheckpoint';
 import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D';
@@ -629,10 +629,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     }
     sound.play(next === 'walk' ? 'cursor' : 'levelup');
     const labels: Record<RideGearId, string> = {
-      walk: '🚶 已切换为【徒步慢跑 · 8m/s】（按住 Shift 可加速冲刺）',
-      dash: '🐕 召唤陆地骑乘！【疾驰模式 · 160km/h】轻松翻越真实山坡与公路！',
-      fly: '🦅 召唤苍穹飞骑！【高空飞行 · 630km/h】（空格拔高 / X键下降，自由翱翔群山！）',
-      jet: '⚡ 进入超音速云端！【极速巡航 · 1940km/h】瞬息跨越十里河山！',
+      walk: '🚶 已切换为【徒步探索】（按住 Shift 可加速冲刺）',
+      dash: '🐕 召唤陆地骑乘！【疾驰模式】轻松翻越山坡与城际大道！',
+      fly: '🦅 召唤苍穹飞骑！【高空飞行】（空格拔高 / X键下降，自由翱翔群山！）',
+      jet: '⚡ 进入超音速云端！【极速巡航】数十秒跨越邻近城市与名山！',
     };
     showBanner(labels[next], 2800);
   };
@@ -1623,9 +1623,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.background = new THREE.Color(pal.skyHex);
-    scene.fog = new THREE.Fog(pal.fogHex, 2400, 24500);
+    scene.fog = new THREE.Fog(pal.fogHex, 1400, 14500);
 
-    const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.5, 34000);
+    const camera = new THREE.PerspectiveCamera(64, initW / initH, 0.5, 22000);
     camera.position.set(0, 4.8, 10.5);
 
     const onResize = () => {
@@ -1663,7 +1663,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const horizonBackdrop = createHorizonBackdropMesh(selectedBiome);
     scene.add(horizonBackdrop);
 
-    // 1. 3-RING NESTED CLIPMAP TERRAIN LOD (Fine 544m + Mid 5.2km + Far 32km = true 1:1 meter mountains & horizons at 60fps!)
+    // 1. 3-RING NESTED CLIPMAP TERRAIN LOD (Fine 544u + Mid 4,400u/44km + Far 18,000u/180km = grand 1:10 horizons at 60fps!)
     const TERRAIN_SIZE = 544;
     const TERRAIN_SEGS = prefsRef.current.graphicsQuality === 'low' ? 84 : 112;
     const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGS, TERRAIN_SEGS);
@@ -1675,18 +1675,18 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     scene.add(terrainMesh);
 
     const midSegs = prefsRef.current.graphicsQuality === 'low' ? 64 : 88;
-    const midTerrainGeo = new THREE.PlaneGeometry(5200, 5200, midSegs, midSegs);
+    const midTerrainGeo = new THREE.PlaneGeometry(4400, 4400, midSegs, midSegs);
     midTerrainGeo.rotateX(-Math.PI / 2);
     const midTerrainMesh = new THREE.Mesh(midTerrainGeo, terrainMat);
     scene.add(midTerrainMesh);
 
     const farSegs = prefsRef.current.graphicsQuality === 'low' ? 72 : 96;
-    const farTerrainGeo = new THREE.PlaneGeometry(32000, 32000, farSegs, farSegs);
+    const farTerrainGeo = new THREE.PlaneGeometry(18000, 18000, farSegs, farSegs);
     farTerrainGeo.rotateX(-Math.PI / 2);
     const farTerrainMesh = new THREE.Mesh(farTerrainGeo, terrainMat);
     scene.add(farTerrainMesh);
 
-    // 1B. Terrain-Clipped Organic Water Sheet (Near 544m + Far 32km Ocean/Lake Horizon Sheet!)
+    // 1B. Terrain-Clipped Organic Water Sheet (Near 544u + Far 18,000u/180km Ocean/Lake Horizon Sheet!)
     const waterMat = createPixelWaterMaterial(selectedBiome);
     const waterPlaneGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE);
     waterPlaneGeo.rotateX(-Math.PI / 2);
@@ -1694,7 +1694,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     waterPlaneMesh.position.set(0, WATER_LEVEL_3D, 0);
     scene.add(waterPlaneMesh);
 
-    const farWaterGeo = new THREE.PlaneGeometry(32000, 32000);
+    const farWaterGeo = new THREE.PlaneGeometry(18000, 18000);
     farWaterGeo.rotateX(-Math.PI / 2);
     const farWaterPlaneMesh = new THREE.Mesh(farWaterGeo, waterMat);
     farWaterPlaneMesh.position.set(0, WATER_LEVEL_3D - 0.12, 0);
@@ -2022,7 +2022,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         planningJob,
         hasRemainingHorizon: false,
       };
-      const initDistM = Math.max(1, Math.round(Math.hypot(x - curSim.px, z - curSim.pz)));
+      const metersPerUnit = getActiveGeoTerrainOrigin() ? 1000 / GEO_UNITS_PER_KM : 1;
+      const initDistM = Math.max(1, Math.round(Math.hypot(x - curSim.px, z - curSim.pz) * metersPerUnit));
       lastNavDistSyncMsRef.current = performance.now();
       setAutoNavDistM(initDistM);
       setAutoNavActiveLabel(`${label} · 路线规划中…`);
@@ -2851,10 +2852,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             const distToFinal = Math.hypot(navNow.goalX - sim.px, navNow.goalZ - sim.pz);
             if (now - lastNavDistSyncMsRef.current >= 120) {
               lastNavDistSyncMsRef.current = now;
-              const roundedDist = Math.max(0, Math.round(distToFinal));
+              const metersPerUnit = activeGeoNow ? 1000 / GEO_UNITS_PER_KM : 1;
+              const roundedDist = Math.max(0, Math.round(distToFinal * metersPerUnit));
               setAutoNavDistM((prev) => (prev === roundedDist ? prev : roundedDist));
             }
-            const arriveRadius = airNav ? 10 : 1.45;
+            const arriveRadius = airNav ? 8 : 1.45;
             if ((!airNav && !curWp) || distToFinal < arriveRadius) {
               const arrivedLabel = navNow.label;
               autoNavRef.current = null;
@@ -2920,13 +2922,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           );
           const baseGearSpeed =
             curRide === 'jet'
-              ? 540
+              ? 320
               : curRide === 'fly'
-                ? 175
+                ? 115
                 : curRide === 'dash'
-                  ? 44
+                  ? 38
                   : isShiftSprint
-                    ? 26
+                    ? 22
                     : 8.2;
           const moveSpeed = baseGearSpeed * sim.speedMult;
           const nextPx = sim.px + worldMx * moveSpeed * dt;
@@ -2968,7 +2970,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
           if (isFlyingNow) {
             jumpQueuedRef.current = false;
-            const climbSpeed = curRide === 'jet' ? 145 : 68;
+            const climbSpeed = curRide === 'jet' ? 95 : 42;
             let vertVel = 0;
             if (ks.has(' ')) vertVel += climbSpeed;
             if (ks.has('x') || ks.has('control')) vertVel -= climbSpeed;
@@ -2978,7 +2980,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
             sim.vy = 0;
             const minAirY = Math.max(WATER_LEVEL_3D + 2.2, groundY + 2.4);
-            sim.py = Math.max(minAirY, Math.min(4800, sim.py + vertVel * dt));
+            sim.py = Math.max(minAirY, Math.min(1250, sim.py + vertVel * dt));
             // Keep squad companions soaring gracefully beside protagonist while airborne!
             sim.followers.forEach((f, idx) => {
               const ang = sim.facingAngle + Math.PI + (idx % 2 === 0 ? 1 : -1) * (0.55 + Math.floor(idx / 2) * 0.28);
@@ -3006,7 +3008,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
           if (now - lastAltSyncMsRef.current > 220) {
             lastAltSyncMsRef.current = now;
-            setPlayerAltitudeM(Math.max(0, Math.round(sim.py)));
+            const altMeters = activeGeoNow ? worldYToRealMeters3D(sim.py) : sim.py;
+            setPlayerAltitudeM(Math.max(0, Math.round(altMeters)));
           }
 
           if (mLen > 0.08) {
@@ -3030,7 +3033,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             if (Math.floor(sim.elapsed * 2) > Math.floor((sim.elapsed - dt) * 2)) {
               for (const gc of getProjectedGeoCities()) {
                 if (mountedGeoCityIds.has(gc.city.id)) continue;
-                if (Math.hypot(sim.px - gc.x, sim.pz - gc.z) < 2600) {
+                if (Math.hypot(sim.px - gc.x, sim.pz - gc.z) < 3800) {
                   mountedGeoCityIds.add(gc.city.id);
                   const neighborId = `geo_city_${gc.city.id}_${Math.round(gc.x)}_${Math.round(gc.z)}`;
                   const neighborName = `${gc.city.name}市`.replace(/市市$/, '市');

@@ -12,9 +12,9 @@ import { getShanghaiRiverSignedDist } from '../utils/townStreetGen';
  * Coordinate convention: +X = East, -Z = North, +Z = South, -X = West
  */
 
-export const GEO_UNITS_PER_KM = 1000;
-/** Compact urban street-block scale so 3D walkable city centers keep crisp 80–120m real-world block spacing within ±720m */
-export const CITY_STREET_PLAN_SCALE = 24;
+export const GEO_UNITS_PER_KM = 100;
+/** 1:10 Real-Earth Metropolitan Scale (`1 km = 100 units` — cities & districts align 1:1 with real coastlines & rivers!) */
+export const CITY_STREET_PLAN_SCALE = GEO_UNITS_PER_KM;
 const KM_PER_DEG_LAT = 111.32;
 const DEM_Z_GLOBAL = 2;
 const DEM_Z_WORLD = 3;
@@ -22,6 +22,25 @@ const DEM_Z_MACRO = 5;
 const DEM_Z_MID = 9;
 const DEM_Z_DETAIL = 11;
 const MAX_DETAIL_CACHE = 240;
+
+/**
+ * Converts real SRTM elevation meters into 1:10 3D world Y height:
+ * - Low hills (50–120m, e.g. 99m Shanghai Sheshan -> ~21u tall) stand out clearly with gentle ~8° walkable slopes!
+ * - Major peaks (1,545m Taishan -> ~213u, 1,865m Huangshan -> ~254u, 3,776m Mt. Fuji -> ~503u) tower 70–170 stories high
+ *   while maintaining natural 14°–28° walkable mountain slopes!
+ */
+export function realMetersToWorldY3D(realM: number): number {
+  if (realM <= 0) return realM * 0.13;
+  return realM * 0.13 + Math.min(realM, 140) * 0.085;
+}
+
+/** Inverse mapping from 1:10 3D world Y back to authentic real-world elevation meters for HUD altitude display */
+export function worldYToRealMeters3D(worldY: number): number {
+  if (worldY <= 0) return worldY / 0.13;
+  const kneeY = 140 * 0.215; // 30.1u corresponds to 140m real elevation
+  if (worldY <= kneeY) return worldY / 0.215;
+  return 140 + (worldY - kneeY) / 0.13;
+}
 
 export interface GeoTerrainOrigin {
   originLat: number;
@@ -49,7 +68,7 @@ interface PersistedGeoState {
   inflight: Set<string>;
 }
 
-const GEO_GLOBAL_KEY = '__POKE_POCKET_GEO_STATE_V3__';
+const GEO_GLOBAL_KEY = '__POKE_POCKET_GEO_STATE_V4__';
 const gAny = globalThis as unknown as Record<string, PersistedGeoState | undefined>;
 const PERSISTED_GEO: PersistedGeoState =
   gAny[GEO_GLOBAL_KEY] ??
@@ -62,6 +81,7 @@ const PERSISTED_GEO: PersistedGeoState =
     detailCache: new Map<string, Float32Array>(),
     inflight: new Set<string>(),
   });
+PERSISTED_GEO.activeOrigin.unitsPerKm = GEO_UNITS_PER_KM;
 
 // Real-Earth mode is ALWAYS active (persisted across Vite HMR so the map can NEVER fall back to random procedural noise!)
 let activeOrigin: GeoTerrainOrigin = PERSISTED_GEO.activeOrigin;
@@ -729,22 +749,22 @@ function sampleRegionalHillLift3D(lat: number, lng: number): number {
  * Adds pleasant real-world grassy hillocks on plains while preserving 100% walkable `< 4°` natural grades!
  */
 function sculptCountrysideRelief3D(wx: number, wz: number): number {
-  const broadA = Math.sin(wx * 0.011 + wz * 0.0085 + 0.8);
-  const broadB = Math.cos(wx * 0.0075 - wz * 0.0125 + 2.1);
+  const broadA = Math.sin(wx * 0.014 + wz * 0.011 + 0.8);
+  const broadB = Math.cos(wx * 0.0095 - wz * 0.015 + 2.1);
   const broadWave = (broadA * 0.55 + broadB * 0.45) * 0.5 + 0.5;
-  const rollingMeadow = Math.pow(broadWave, 1.4) * 2.8;
+  const rollingMeadow = Math.pow(broadWave, 1.45) * 1.85;
   const localGrade =
-    (Math.sin(wx * 0.038 + wz * 0.029) * 0.5 + Math.cos(wx * 0.026 - wz * 0.042) * 0.5 + 1.0) * 0.42;
+    (Math.sin(wx * 0.042 + wz * 0.031) * 0.5 + Math.cos(wx * 0.028 - wz * 0.045) * 0.5 + 1.0) * 0.32;
   return rollingMeadow + localGrade;
 }
 
-/** Gentle 1:1 meter-scale mountain rock detail (`±3m..±9m` over 150m+) so 76m Z11 DEM tiles have natural local rock texture */
+/** Gentle 1:10 scale mountain rock detail (`0..+2.2u`) so Z11 DEM peaks have natural crags while staying 100% walkable */
 function sculptAlpineMountainRidges3D(wx: number, wz: number, meters: number): number {
   if (meters <= 80) return 0;
   const strength = smoothstepLocal(80, 900, meters);
-  const s1 = Math.sin(wx * 0.018 + wz * 0.014 + 0.9) * 0.5 + 0.5;
-  const s2 = Math.cos(wx * 0.032 - wz * 0.027 + 1.7) * 0.5 + 0.5;
-  return (s1 * 5.2 + s2 * 2.6) * strength;
+  const s1 = Math.sin(wx * 0.024 + wz * 0.019 + 0.9) * 0.5 + 0.5;
+  const s2 = Math.cos(wx * 0.042 - wz * 0.036 + 1.7) * 0.5 + 0.5;
+  return (s1 * 1.45 + s2 * 0.75) * strength;
 }
 
 function microSculpt(wx: number, wz: number): number {
@@ -851,19 +871,17 @@ export function sampleGeoTerrainHeight3D(
 
   let elev: number;
   if (meters === null) {
-    elev = Math.max(1.65 + countrysideRelief, namedHillLift);
+    elev = Math.max(1.45 + countrysideRelief, realMetersToWorldY3D(namedHillLift));
   } else if (isTrueOcean) {
     // Real Ocean / Sea / Bay / Estuary
     elev = Math.max(-3.2, -0.58 + Math.min(0, meters) * 0.06) + micro * 0.04;
     if (elev > -0.42) elev = -0.45;
   } else {
-    // TRUE 1:1 METER-EXACT EARTH ELEVATION (`1 游戏单位 === 1 真实海拔米`!)
-    // - 99m Sheshan = 99 units tall across 3,000 units (`1.5km` radius -> natural 8°–16° walkable slope!)
-    // - 1,864m Huangshan = 1,864 units tall across 20,000 units (`10km` radius -> natural 12°–30° walkable mountain!)
-    // - 3,776m Mt. Fuji = 3,776 units tall!
-    const realMeters = Math.max(0.85, meters, namedHillLift);
+    // 1:10 Real-Earth Scale (`1 km = 100 units`) with walkable, majestic mountain relief!
+    const realMeters = Math.max(3.5, meters, namedHillLift);
+    const baseY = Math.max(0.95, realMetersToWorldY3D(realMeters));
     const ridgeDetail = preferMacro ? 0 : sculptAlpineMountainRidges3D(wx, wz, realMeters);
-    elev = realMeters + countrysideRelief + ridgeDetail + (realMeters > 60 ? micro * 0.5 : 0);
+    elev = baseY + countrysideRelief + ridgeDetail + (realMeters > 70 ? micro * 0.22 : 0);
   }
 
   // Carve real inland lakes (e.g. Taihu Lake 太湖, West Lake 西湖) & major continental rivers outside downtown so 2D & 3D water match 1:1!
@@ -872,7 +890,7 @@ export function sampleGeoTerrainHeight3D(
     if (lakeDepth > 0) {
       const targetLakeY = -0.55 - lakeDepth * 1.65;
       elev = elev * (1 - lakeDepth) + targetLakeY * lakeDepth;
-    } else if (Math.hypot(wx, wz) > 780) {
+    } else if (Math.hypot(wx, wz) > 2250) {
       const rivDepth = sampleContinentalRiverFactor(geo.lat, geo.lng);
       if (rivDepth > 0) {
         const targetRivY = -0.55 - rivDepth * 1.35;
@@ -881,30 +899,34 @@ export function sampleGeoTerrainHeight3D(
     }
   }
 
-  // Deterministic 3D Downtown Core Elevation ONLY within the ±760m active 3D city street footprint around `(0, 0)`!
+  // Deterministic 3D Metropolitan Plain & River Channel within the ±2,350u (`±23.5km`) active 3D city footprint
+  // (Preserves real urban hills/peaks >= 38m like Victoria Peak, Zijinshan & West Lake hills right beside the city!)
   if (!preferMacro) {
     const distFromOrigin = Math.hypot(wx, wz);
-    if (distFromOrigin < 760 && (distFromOrigin < 480 || !isTrueOcean)) {
+    const localRealM = Math.max(meters ?? 4.0, namedHillLift);
+    if (distFromOrigin < 2350 && !isTrueOcean && (distFromOrigin < 320 || localRealM < 38)) {
       const activeCityId = activeOrigin.startCityId ?? 'shanghai';
       const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
       const riverElev = -1.65;
-      const basePlainM = Math.max(1.65, Math.min(28.0, meters ?? 4.0));
+      const basePlainY = Math.max(1.55, Math.min(5.2, realMetersToWorldY3D(Math.max(4.0, meters ?? 5.0))));
       const urbanRoll =
-        smoothstepLocal(60, 420, distFromOrigin) *
-        (Math.sin(wx * 0.006 + wz * 0.005) * 0.75 + Math.cos(wx * 0.009 - wz * 0.008) * 0.55);
-      const dryCityY = basePlainM + urbanRoll;
+        smoothstepLocal(120, 950, distFromOrigin) *
+        (Math.sin(wx * 0.0035 + wz * 0.0028) * 0.55 + Math.cos(wx * 0.0052 - wz * 0.0044) * 0.42);
+      const dryCityY = basePlainY + urbanRoll;
       let cityTargetY = dryCityY;
       if (rivSigned < 0) {
         cityTargetY = riverElev;
-      } else if (rivSigned < 8.5) {
-        const bankT = rivSigned / 8.5;
+      } else if (rivSigned < 9.5) {
+        const bankT = rivSigned / 9.5;
         const smoothBank = bankT * bankT * (3 - 2 * bankT);
         cityTargetY = riverElev * (1 - smoothBank) + dryCityY * smoothBank;
       }
-      if (distFromOrigin < 480) {
+      if (distFromOrigin < 1650 && localRealM < 28) {
         return cityTargetY;
       }
-      const edgeT = 1 - smoothstepLocal(480, 760, distFromOrigin);
+      const distBlend = 1 - smoothstepLocal(1650, 2350, distFromOrigin);
+      const hillBlend = distFromOrigin < 320 ? 1 : 1 - smoothstepLocal(24, 38, localRealM);
+      const edgeT = distBlend * hillBlend;
       elev = Math.max(0.85, elev) * (1 - edgeT) + cityTargetY * edgeT;
     }
   }
@@ -1331,7 +1353,7 @@ export const PROVINCIAL_AND_WORLD_CAPITALS: MapCapitalCity[] = [
 export function getLocalRealRiversForCity(
   cityLat: number,
   cityLng: number,
-  maxRadius = 260,
+  maxRadius = 2800,
 ): { id: string; name: string; width: number; points: [number, number][] }[] {
   const kmPerDegLng = Math.max(12, KM_PER_DEG_LAT * Math.cos((cityLat * Math.PI) / 180));
   const toLocal = (lat: number, lng: number): [number, number] => [
@@ -1373,14 +1395,14 @@ export function getLocalRealRiversForCity(
         const elevM = sampleRealElevationMeters(sLat, sLng, 'macro');
         if (elevM !== null && elevM <= 0.6) continue;
         if (Math.hypot(px, pz) <= maxRadius) {
-          if (dense.length === 0 || Math.hypot(px - dense[dense.length - 1][0], pz - dense[dense.length - 1][1]) > 14) {
+          if (dense.length === 0 || Math.hypot(px - dense[dense.length - 1][0], pz - dense[dense.length - 1][1]) > 22) {
             dense.push([Math.round(px), Math.round(pz)]);
           }
         }
       }
     }
     if (dense.length >= 2) {
-      const riverWidth = Math.max(20, Math.min(34, Math.round(riv.widthKm * 4.5 + 12)));
+      const riverWidth = Math.max(24, Math.min(48, Math.round(riv.widthKm * 18 + 18)));
       results.push({ id: riv.id, name: riv.name, width: riverWidth, points: dense });
     }
   }
@@ -1399,7 +1421,7 @@ export function getLocalRealHighwayAnglesForCity(cityLat: number, cityLng: numbe
     if (cor.kind === 'ferry') continue;
     const pts = cor.points.map(([lat, lng]) => toLocal(lat, lng));
     for (let i = 0; i < pts.length; i++) {
-      if (Math.hypot(pts[i][0], pts[i][1]) < 160) {
+      if (Math.hypot(pts[i][0], pts[i][1]) < 2100) {
         if (i > 0) angles.push(Math.atan2(pts[i - 1][1] - pts[i][1], pts[i - 1][0] - pts[i][0]));
         if (i < pts.length - 1) angles.push(Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0]));
       }
@@ -1596,8 +1618,8 @@ export function sampleRealHydrographyPixelColor(
     }
   }
 
-  // 2. Active City High-Detail Local Waterways (e.g. Suzhou Creek & downtown Huangpu bends at street/city zoom!)
-  if (unitsPerPx < 6.5 && Math.hypot(wx, wz) < 760) {
+  // 2. Active City High-Detail Local Waterways (e.g. Suzhou Creek & metropolitan Huangpu bends across the 1:10 city!)
+  if (unitsPerPx < 16 && Math.hypot(wx, wz) < 2450) {
     const activeCityId = activeOrigin?.startCityId ?? 'shanghai';
     const rivSigned = getShanghaiRiverSignedDist(wx, wz, activeCityId);
     const pxWorldSize = Math.max(2.2, unitsPerPx * stepPx * 0.75);

@@ -188,7 +188,7 @@ export function buildProceduralTown3D(
     }
 
     const segMidDist = Math.hypot((seg.x1 + seg.x2) * 0.5 - centerX, (seg.z1 + seg.z2) * 0.5 - centerZ);
-    if (segMidDist > 720) continue;
+    if (segMidDist > 4200) continue;
 
     const roadTex =
       seg.kind === 'arterial'
@@ -201,7 +201,7 @@ export function buildProceduralTown3D(
     const polyOff = seg.kind === 'arterial' ? -3 : seg.kind === 'street' ? -2 : -1;
     group.add(buildStreetRibbonMesh(seg, baseY, centerX, centerZ, roadTex, getGroundHeight, liftY, polyOff));
 
-    if (segMidDist > 340) continue;
+    if (segMidDist > 680) continue;
 
     const segLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
     const dirX = (seg.x2 - seg.x1) / Math.max(0.01, segLen);

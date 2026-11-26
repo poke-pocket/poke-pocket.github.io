@@ -295,11 +295,11 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 </span>
               </button>
 
-              {/* 1:1 Real-Earth Multi-Gear Pokémon Ride & Flight Switcher (`T` hotkey / Click) */}
+              {/* 1:10 Real-Earth Multi-Gear Pokémon Ride & Flight Switcher (`T` hotkey / Click) */}
               <button
                 type="button"
                 onClick={() => cycleRideMode?.()}
-                title="点击或按 T 键切换：徒步 (8m/s) → 疾驰骑乘 (160km/h) → 苍穹飞行 (630km/h，空格升空/X下降) → 极速巡航 (1940km/h)"
+                title="点击或按 T 键切换：徒步 → 疾驰骑乘 → 苍穹飞行（空格升空/X下降）→ 极速巡航"
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',

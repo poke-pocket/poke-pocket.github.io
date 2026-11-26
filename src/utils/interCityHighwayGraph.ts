@@ -113,7 +113,7 @@ function resolveCityOuterRoadPortal(
       x: city.wx,
       z: city.wz,
       seed: hashCitySeed(city.id),
-      plazaRadius: 680,
+      plazaRadius: 1850,
       plateauY: 1.65,
       landmarkCityId: city.id,
     });
@@ -136,7 +136,7 @@ function resolveCityOuterRoadPortal(
         const rx = vx - city.wx;
         const rz = vz - city.wz;
         const r = Math.hypot(rx, rz);
-        if (r < 95 || r > 620) continue;
+        if (r < 380 || r > 2550) continue;
         const cosDir = (rx * dirX + rz * dirZ) / r;
         if (cosDir < 0.45) continue;
 
@@ -166,7 +166,7 @@ function resolveCityOuterRoadPortal(
     }
   }
 
-  const fallbackR = city.isPlayableCity ? 235 : 175;
+  const fallbackR = city.isPlayableCity ? 1350 : 920;
   return {
     x: city.wx + dirX * fallbackR,
     z: city.wz + dirZ * fallbackR,
