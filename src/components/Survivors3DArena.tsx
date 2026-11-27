@@ -13,6 +13,7 @@ import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGe
 import { getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { clearWorldCheckpoint, loadWorldCheckpoint, saveWorldCheckpoint, setActiveCareSessionFlag, wasActiveCareSessionOpen } from '../utils/worldCheckpoint';
 import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D';
+import { createWeatherVisuals3D } from '../world3d/weatherVisuals3D';
 import { DEFAULT_WORLD_TOUR_STATE, WORLD_CITIES, getDefaultHomeByLanguage, type WorldCityDef } from '../data/worldTour';
 import { type WorldLaunchPayload } from './WorldMapOverlay';
 import { DEFAULT_GAME_PREFS, DEFAULT_TRAINER_PROFILE, type CameraFollowMode, type GamePrefs, type PetRecord, type PetSkinId, type RoomThemeId, type SpeciesId, type TrainerProfile } from '../types/pet';
@@ -2233,26 +2234,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       showBanner(`🧭 已出发前往「${label}」· 距目标 ${formatNavMeterDist(initDistM)}（按 WASD 可随时接管）`, 2400);
     };
 
-    // 2C. Live 3D Weather Particle System (Rain Streaks / Falling Snowflakes synced to real GPS/city weather!)
-    const WEATHER_PARTICLE_COUNT = 180;
-    const weatherPositions = new Float32Array(WEATHER_PARTICLE_COUNT * 3);
-    for (let i = 0; i < WEATHER_PARTICLE_COUNT; i++) {
-      weatherPositions[i * 3] = (Math.random() - 0.5) * 44;
-      weatherPositions[i * 3 + 1] = Math.random() * 20;
-      weatherPositions[i * 3 + 2] = (Math.random() - 0.5) * 44;
-    }
-    const weatherGeo = new THREE.BufferGeometry();
-    weatherGeo.setAttribute('position', new THREE.BufferAttribute(weatherPositions, 3));
-    const weatherMat = new THREE.PointsMaterial({
-      color: 0xa5d8ff,
-      size: 0.34,
-      transparent: true,
-      opacity: 0.78,
-      depthWrite: false,
-    });
-    const weatherPoints = new THREE.Points(weatherGeo, weatherMat);
-    weatherPoints.visible = false;
-    scene.add(weatherPoints);
+    // 2C. Rich HD-2D 3D Weather Visuals (680 Slanted Rain Streaks, Ground Splashes, Snow, Bouncing Hail & Forked Storm Lightning!)
+    const weatherVisuals3D = createWeatherVisuals3D(scene);
     let windClock = 0;
     const { syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround } = createArenaFloraStreamer3D({ chunkState, cattailMat, farTerrainGeo, farTerrainMesh, farWaterPlaneMesh, floatingLilyPads, floraGroup, isInsideAnyTownPlaza, lilyGeo, lilyMat, lotusMat, midTerrainGeo, midTerrainMesh, prefsRef, selectedBiome, terrainGeo, terrainMesh, terrainPosAttr, tex, waterPlaneMesh });
     // 4. 3D Roadside Safe Zones (Boxy placeholder buildings temporarily removed pending custom pixel-art redesign!)
@@ -3173,6 +3156,21 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
         // Scenic Elevated Panoramic 3D Diorama Overlook during Hub & Map Select (Living Hero, Camera-Facing Squad, Meadow & Flying Wild Pokémon!)
         if (phase !== 'playing') {
+          weatherVisuals3D.update({
+            dt,
+            kind: liveWeatherRef.current.kind,
+            centerX: sim.px,
+            centerY: sim.py,
+            centerZ: sim.pz,
+            camFwdX: -Math.sin(camOrbitRef.current.yaw),
+            camFwdZ: -Math.cos(camOrbitRef.current.yaw),
+            isIndoor: false,
+            reduceFlashes: Boolean(prefsRef.current.reduceFlashes),
+            sun,
+            hemi,
+            scene,
+            onLightningStrike: (isNear) => sound.triggerStormThunder(isNear),
+          });
           renderHubDioramaFrame3D({ applyLiveSolarAtmosphere, camera, dt, emoteKinds, externalPausedRef, geoHighwayStreamer, heroEmoteSprite, heroFrames, horizonBackdrop, metaRef, now, petEmoteSprite, phase, playerShadow, playerSprite, playerSpriteMat, previewSprites, renderer, scene, sim, syncFloraBillboards, updateWorldAround, waterMat, worldMapOpenRef });
           mark3DFramePainted();
           rafId = window.requestAnimationFrame(animate);
@@ -3556,7 +3554,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
           }
-          const { closestTownPoint, activeTownNow, activeInteriorNow, closestNode, inTownPeaceZone } = stepArenaTownAndWorldNodes3D({ WEATHER_PARTICLE_COUNT, activeTownIdRef, activeZone, applyLiveSolarAtmosphere, autoNavTargetsRef, bbTiltX, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, damageEnemy3D, dt, executeInteractActionRef, groundY, heroFrames, interactOptionIdxRef, lastEnteredInteriorIdRef, liveWeatherRef, mLen, metaBonusesRef, metaRef, now, npcSocialTimerRef, onHealParty, onUpdateMeta, persistState, playerShadow, playerSprite, playerSpriteMat, prefsRef, proceduralTowns, safeZoneMeshes, setActiveBusStopModal, setAskQuickNavOpen, setInRunTownShopOpen, setWorldMapOpen, showBanner, sim, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, startStreetDuelRef, sun, surfingNow, syncSafeZones3D, teleportIntraCityBusRef, triggerInteractRef, updateWorldAround, vfxAtlas, weatherGeo, weatherMat, weatherPoints, windClock, worldBubblesRef, worldInteractNodes });
+          const { closestTownPoint, activeTownNow, activeInteriorNow, closestNode, inTownPeaceZone } = stepArenaTownAndWorldNodes3D({ activeTownIdRef, activeZone, applyLiveSolarAtmosphere, autoNavTargetsRef, bbTiltX, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, damageEnemy3D, dt, executeInteractActionRef, groundY, heroFrames, interactOptionIdxRef, lastEnteredInteriorIdRef, liveWeatherRef, mLen, metaBonusesRef, metaRef, now, npcSocialTimerRef, onHealParty, onUpdateMeta, persistState, playerShadow, playerSprite, playerSpriteMat, prefsRef, proceduralTowns, safeZoneMeshes, setActiveBusStopModal, setAskQuickNavOpen, setInRunTownShopOpen, setWorldMapOpen, showBanner, sim, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, startStreetDuelRef, sun, surfingNow, syncSafeZones3D, teleportIntraCityBusRef, triggerInteractRef, updateWorldAround, vfxAtlas, windClock, worldBubblesRef, worldInteractNodes });
           if (activeInteriorNow && rideModeRef.current !== 'walk') {
             rideModeRef.current = 'walk';
             setRideMode('walk');
@@ -3650,6 +3648,21 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         } else if (sim.activeCaptures.length > 0 && !externalPausedRef.current && !endedRef.current) {
           stepArenaCaptureCinema3D({ addFollowerToRun, buildResultSummary, camera, captureFinishRef, damageEnemy3D, diffMeta, dt, endedRef, gameMode, horizonBackdrop, maxFollowersRef, now, onCaptureBoss, onShowCaptureInHandheld, pausedRef, pet, regionMeta, save, scene, setCaptureCutscene, setResultSummary, sim, spawnGlowFlash, spawnGroundDecalWave, spawnPixelParticles, syncFloraBillboards, vfxAtlas, waterMat });
         }
+        weatherVisuals3D.update({
+          dt,
+          kind: liveWeatherRef.current.kind,
+          centerX: sim.px,
+          centerY: sim.py,
+          centerZ: sim.pz,
+          camFwdX: -Math.sin(camOrbitRef.current.yaw),
+          camFwdZ: -Math.cos(camOrbitRef.current.yaw),
+          isIndoor: activeInteriorAudioRef.current,
+          reduceFlashes: Boolean(prefsRef.current.reduceFlashes),
+          sun,
+          hemi,
+          scene,
+          onLightningStrike: (isNear) => sound.triggerStormThunder(isNear),
+        });
         renderer.render(scene, camera);
         mark3DFramePainted();
       }
@@ -3659,6 +3672,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     rafId = window.requestAnimationFrame(animate);
     return () => {
       unsubGeoDem();
+      weatherVisuals3D.dispose();
       geoHighwayStreamer?.dispose();
       setWalkableBuildingFloorZones3D([]);
       window.removeEventListener('resize', onResize);

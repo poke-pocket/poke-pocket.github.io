@@ -721,6 +721,10 @@ class RetroSoundEngine {
     this.weatherAmbience.setWeather(kind, opts, ctx);
   }
 
+  triggerStormThunder(isNear: boolean) {
+    this.weatherAmbience.triggerSyncedThunder(isNear);
+  }
+
   setSfxVolume(vol: number) {
     this.sfxVolume = Math.max(0, Math.min(100, Math.round(vol)));
   }

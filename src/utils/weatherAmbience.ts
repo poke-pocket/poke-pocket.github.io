@@ -1,35 +1,43 @@
 import type { WeatherKind } from './weatherSystem';
 
-export interface WeatherAmbienceContext {
-  kind: WeatherKind | null;
-  indoor: boolean;
-  isNight: boolean;
-}
-
 /**
- * Procedural Non-Looping Web Audio Weather Ambience Synthesizer.
+ * Procedural Continuous Web Audio Weather Ambience Synthesizer.
  *
- * Design principles:
- * - ZERO looping audio files or short cyclic noise loops: continuous rain/wind beds are built from
- *   overlapping stochastic crossfaded slices sampled at random offsets & playback rates from a long
- *   stereo noise pool, modulated by random-walk filter & gain envelopes.
- * - Weather-authentic discrete stochastic events (Poisson-clustered):
- *   * rain:   "滴滴滴" resonant water-drop chirps + "叭叭叭" crisp broadband splash patters
- *   * hail:   "咚咚咚" hollow resonant hailstone thuds + icy transient ticks + realistic micro-bounces
- *   * storm:  heavy downpour + howling wind gusts + irregular distant/near rolling thunderclaps
- *   * snow:   hushed cold air breeze + whisper-soft crystalline shimmer
- *   * windy:  sweeping resonant wind gusts + trailing foliage rustles
- *   * clear:  gentle air bed + sparse non-repeating daytime birds / nighttime crickets
- *   * cloudy: subtle calm open-air breeze
- * - Automatic indoor acoustic muffling: stepping inside buildings smoothly sweeps a warm roof LPF
- *   (18 kHz -> 580 Hz) and ducks outdoor level so rain/hail naturally patters on the roof.
+ * Acoustic architecture (ZERO audible loops, ZERO grain pumping, ZERO "wah-wah" sweeps):
+ * - Two long, mutually incommensurate (29.3s & 19.7s), equal-power crossfaded stereo noise streams
+ *   (warm pink-noise Layer A + crisp white/pink rain-sheen Layer B) run continuously without interruption
+ *   (combined cycle > 9.5 minutes -> completely non-repeating to human ears).
+ * - Weather intensity & brightness drift ONLY via slow exponential `setTargetAtTime` arcs (tau = 3s..6s)
+ *   over 8-18s spans — so rain & wind swell and ease naturally and gradually, NEVER cutting or pumping.
+ * - Low-Q natural filters (Q = 0.5..0.85) eliminate artificial "呜啊呜啊" resonant filter sweeps.
+ * - On top of the seamless continuous bed, Poisson-clustered micro-events provide crisp weather detail:
+ *   * rain:   "滴滴" water-drop chirps + "叭叭" broadband droplet splatters in stereo
+ *   * hail:   "咚咚咚" hollow hard-ice impacts + icy transient ticks + realistic ground bounces
+ *   * storm:  heavy steady downpour + dense splatters + deep rolling thunder synced to 3D lightning
+ *   * snow:   peaceful hushed cold breeze + whisper-soft crystalline shimmer
+ *   * windy:  gradual wide air swells + gentle foliage rustle
+ *   * clear:  very quiet open air + sparse daytime birds / nighttime crickets
+ * - Automatic indoor roof low-pass muffling (18kHz -> 580Hz) when entering buildings.
  */
 export class WeatherAmbienceEngine {
   private ctx: AudioContext | null = null;
   private busInput: GainNode | null = null;
   private indoorFilter: BiquadFilterNode | null = null;
   private masterGain: GainNode | null = null;
-  private stereoNoisePool: AudioBuffer | null = null;
+
+  // Two continuous mutually-incommensurate seamless stereo noise pools
+  private pinkPoolA: AudioBuffer | null = null;
+  private rainPoolB: AudioBuffer | null = null;
+
+  // Continuous live bed graph (always steady, smoothly modulated via setTargetAtTime!)
+  private bedSrcA: AudioBufferSourceNode | null = null;
+  private bedSrcB: AudioBufferSourceNode | null = null;
+  private bedHpA: BiquadFilterNode | null = null;
+  private bedLpA: BiquadFilterNode | null = null;
+  private bedGainA: GainNode | null = null;
+  private bedHpB: BiquadFilterNode | null = null;
+  private bedLpB: BiquadFilterNode | null = null;
+  private bedGainB: GainNode | null = null;
 
   private activeKind: WeatherKind | null = null;
   private indoor = false;
@@ -42,10 +50,9 @@ export class WeatherAmbienceEngine {
   private muteOnBlur = true;
 
   private running = false;
-  private bedTimer: number | null = null;
+  private driftTimer: number | null = null;
   private eventTimer: number | null = null;
   private thunderTimer: number | null = null;
-  private liveNodes = new Set<AudioNode>();
 
   setAudioConfig(cfg: {
     enabled?: boolean;
@@ -64,29 +71,30 @@ export class WeatherAmbienceEngine {
     if (cfg.pageHidden !== undefined) this.pageHidden = cfg.pageHidden;
     if (cfg.muteOnBlur !== undefined) this.muteOnBlur = cfg.muteOnBlur;
 
-    this.syncBusParams(0.18);
+    this.syncBusParams(0.25);
     if (this.shouldRun()) {
       if (!this.running && this.ctx && this.ctx.state === 'running') {
-        this.startSchedulers();
+        this.startEngine();
       }
     } else if (this.running) {
-      this.stopSchedulers();
+      this.stopEngine();
     }
   }
 
   attachContext(ctx: AudioContext) {
     if (this.ctx !== ctx) {
-      this.stopSchedulers();
+      this.stopEngine();
       this.ctx = ctx;
       this.busInput = null;
       this.indoorFilter = null;
       this.masterGain = null;
-      this.stereoNoisePool = null;
+      this.pinkPoolA = null;
+      this.rainPoolB = null;
     }
     if (this.shouldRun() && ctx.state === 'running' && !this.running) {
       this.ensureBus(ctx);
-      this.syncBusParams(0.25);
-      this.startSchedulers();
+      this.syncBusParams(0.35);
+      this.startEngine();
     }
   }
 
@@ -109,27 +117,40 @@ export class WeatherAmbienceEngine {
     }
 
     if (!this.shouldRun()) {
-      this.syncBusParams(0.25);
-      this.stopSchedulers();
+      this.syncBusParams(0.35);
+      this.stopEngine();
       return;
     }
 
     if (this.ctx && this.ctx.state === 'running') {
       this.ensureBus(this.ctx);
-      this.syncBusParams(envChanged ? 0.38 : 0.22);
-      if (kindChanged) {
-        // Softly re-seed schedulers so new weather timbre enters right away without pops
-        this.restartSchedulers();
-      } else if (!this.running) {
-        this.startSchedulers();
+      this.syncBusParams(envChanged ? 0.45 : 0.3);
+      if (!this.running) {
+        this.startEngine();
+      } else if (kindChanged) {
+        // Smoothly morph the continuous bed into the new weather's spectral profile (NO abrupt cuts!)
+        this.applyWeatherBedTarget(0.85, 1.0);
+        this.resetDiscreteSchedulers();
       }
     }
   }
 
   stop() {
     this.activeKind = null;
-    this.syncBusParams(0.2);
-    this.stopSchedulers();
+    this.syncBusParams(0.3);
+    this.stopEngine();
+  }
+
+  /** Trigger a synchronized thunder clap right after a visual 3D lightning strike (with speed-of-sound delay) */
+  triggerSyncedThunder(isNear: boolean) {
+    if (!this.shouldRun() || !this.ctx || this.ctx.state !== 'running') return;
+    this.ensureBus(this.ctx);
+    const delayMs = isNear ? 120 + Math.random() * 180 : 320 + Math.random() * 340;
+    window.setTimeout(() => {
+      if (this.shouldRun() && this.activeKind === 'storm') {
+        this.triggerRollingThunder(isNear);
+      }
+    }, delayMs);
   }
 
   private shouldRun(): boolean {
@@ -157,14 +178,14 @@ export class WeatherAmbienceEngine {
     const indoorLpf = ctx.createBiquadFilter();
     indoorLpf.type = 'lowpass';
     indoorLpf.frequency.value = this.indoor ? 580 : 18000;
-    indoorLpf.Q.value = 0.65;
+    indoorLpf.Q.value = 0.55;
 
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -18;
     comp.knee.value = 18;
-    comp.ratio.value = 3.2;
-    comp.attack.value = 0.006;
-    comp.release.value = 0.18;
+    comp.ratio.value = 3.0;
+    comp.attack.value = 0.008;
+    comp.release.value = 0.22;
 
     const outGain = ctx.createGain();
     outGain.gain.value = 0.0001;
@@ -179,22 +200,14 @@ export class WeatherAmbienceEngine {
     this.masterGain = outGain;
   }
 
-  private syncBusParams(fadeSec = 0.25) {
+  private syncBusParams(tauSec = 0.22) {
     if (!this.ctx || !this.masterGain || !this.indoorFilter) return;
     const now = this.ctx.currentTime;
     const targetGain = this.computeTargetGain();
     const targetFreq = this.indoor ? 580 : 18000;
     try {
-      this.masterGain.gain.cancelScheduledValues(now);
-      this.masterGain.gain.setValueAtTime(Math.max(0.0001, this.masterGain.gain.value), now);
-      this.masterGain.gain.linearRampToValueAtTime(targetGain, now + fadeSec);
-
-      this.indoorFilter.frequency.cancelScheduledValues(now);
-      this.indoorFilter.frequency.setValueAtTime(
-        Math.max(120, this.indoorFilter.frequency.value),
-        now,
-      );
-      this.indoorFilter.frequency.exponentialRampToValueAtTime(targetFreq, now + fadeSec);
+      this.masterGain.gain.setTargetAtTime(targetGain, now, Math.max(0.04, tauSec * 0.45));
+      this.indoorFilter.frequency.setTargetAtTime(targetFreq, now, Math.max(0.05, tauSec * 0.5));
     } catch {
       this.masterGain.gain.value = targetGain;
       this.indoorFilter.frequency.value = targetFreq;
@@ -202,19 +215,22 @@ export class WeatherAmbienceEngine {
   }
 
   /**
-   * 13-second stereo decorrelated noise pool (pink-tilted on ch0/ch1 with independent seeds)
-   * sampled exclusively in randomized overlapping windows — never looped cyclically!
+   * Builds a seamlessly equal-power crossfaded stereo noise buffer of arbitrary duration.
+   * pinkWeight controls warm pink vs crisp white spectral tilt.
    */
-  private getNoisePool(ctx: AudioContext): AudioBuffer {
-    if (this.stereoNoisePool && this.stereoNoisePool.sampleRate === ctx.sampleRate) {
-      return this.stereoNoisePool;
-    }
-    const seconds = 13;
-    const len = Math.floor(ctx.sampleRate * seconds);
-    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  private createSeamlessStereoNoise(
+    ctx: AudioContext,
+    durationSec: number,
+    pinkWeight: number,
+  ): AudioBuffer {
+    const sr = ctx.sampleRate;
+    const len = Math.floor(sr * durationSec);
+    const xfade = Math.floor(sr * 1.5);
+    const totalGen = len + xfade;
+    const buf = ctx.createBuffer(2, len, sr);
+
     for (let ch = 0; ch < 2; ch++) {
-      const out = buf.getChannelData(ch);
-      // Paul Kellet pink-white blend for natural atmospheric rain/wind spectrum
+      const tmp = new Float32Array(totalGen);
       let b0 = 0;
       let b1 = 0;
       let b2 = 0;
@@ -222,7 +238,8 @@ export class WeatherAmbienceEngine {
       let b4 = 0;
       let b5 = 0;
       let b6 = 0;
-      for (let i = 0; i < len; i++) {
+      const whiteWeight = 1 - pinkWeight;
+      for (let i = 0; i < totalGen; i++) {
         const w = Math.random() * 2 - 1;
         b0 = 0.99886 * b0 + w * 0.0555179;
         b1 = 0.99332 * b1 + w * 0.0750759;
@@ -232,42 +249,253 @@ export class WeatherAmbienceEngine {
         b5 = -0.7616 * b5 - w * 0.0168980;
         const pink = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.095;
         b6 = w * 0.115926;
-        // Blend 62% warm pink + 38% crisp white so filtering can sculpt both rain hiss & low wind
-        out[i] = Math.max(-1, Math.min(1, pink * 0.62 + w * 0.38));
+        tmp[i] = Math.max(-1, Math.min(1, pink * pinkWeight + w * whiteWeight));
+      }
+      const out = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) {
+        if (i < xfade) {
+          // Equal-power splice so loop seam is mathematically undetectable
+          const frac = i / xfade;
+          const fadeIn = Math.sin(frac * Math.PI * 0.5);
+          const fadeOut = Math.cos(frac * Math.PI * 0.5);
+          out[i] = tmp[i] * fadeIn + tmp[len + i] * fadeOut;
+        } else {
+          out[i] = tmp[i];
+        }
       }
     }
-    this.stereoNoisePool = buf;
     return buf;
   }
 
-  private restartSchedulers() {
-    this.stopSchedulers();
-    if (this.shouldRun() && this.ctx && this.ctx.state === 'running') {
-      this.startSchedulers();
+  private ensureNoisePools(ctx: AudioContext) {
+    if (!this.pinkPoolA || this.pinkPoolA.sampleRate !== ctx.sampleRate) {
+      // 29.3s warm pink noise pool (body & low air rush)
+      this.pinkPoolA = this.createSeamlessStereoNoise(ctx, 29.3, 0.88);
+    }
+    if (!this.rainPoolB || this.rainPoolB.sampleRate !== ctx.sampleRate) {
+      // 19.7s crisp pink-white rain sheen pool (mutually incommensurate with 29.3s!)
+      this.rainPoolB = this.createSeamlessStereoNoise(ctx, 19.7, 0.45);
     }
   }
 
-  private startSchedulers() {
+  private startContinuousBed(ctx: AudioContext) {
+    if (this.bedSrcA || !this.busInput) return;
+    this.ensureNoisePools(ctx);
+    const now = ctx.currentTime;
+
+    // Layer A: Continuous warm low/mid air & rain body
+    const srcA = ctx.createBufferSource();
+    srcA.buffer = this.pinkPoolA;
+    srcA.loop = true;
+    const hpA = ctx.createBiquadFilter();
+    hpA.type = 'highpass';
+    hpA.frequency.value = 120;
+    hpA.Q.value = 0.5;
+    const lpA = ctx.createBiquadFilter();
+    lpA.type = 'lowpass';
+    lpA.frequency.value = 900;
+    lpA.Q.value = 0.55;
+    const gA = ctx.createGain();
+    gA.gain.value = 0.0001;
+    srcA.connect(hpA);
+    hpA.connect(lpA);
+    lpA.connect(gA);
+    gA.connect(this.busInput);
+    srcA.start(now, Math.random() * 20);
+
+    // Layer B: Continuous airy rain sheen / high texture (completely steady, flat Q!)
+    const srcB = ctx.createBufferSource();
+    srcB.buffer = this.rainPoolB;
+    srcB.loop = true;
+    const hpB = ctx.createBiquadFilter();
+    hpB.type = 'highpass';
+    hpB.frequency.value = 480;
+    hpB.Q.value = 0.5;
+    const lpB = ctx.createBiquadFilter();
+    lpB.type = 'lowpass';
+    lpB.frequency.value = 3400;
+    lpB.Q.value = 0.5;
+    const gB = ctx.createGain();
+    gB.gain.value = 0.0001;
+    srcB.connect(hpB);
+    hpB.connect(lpB);
+    lpB.connect(gB);
+    gB.connect(this.busInput);
+    srcB.start(now, Math.random() * 14);
+
+    this.bedSrcA = srcA;
+    this.bedHpA = hpA;
+    this.bedLpA = lpA;
+    this.bedGainA = gA;
+    this.bedSrcB = srcB;
+    this.bedHpB = hpB;
+    this.bedLpB = lpB;
+    this.bedGainB = gB;
+  }
+
+  private stopContinuousBed() {
+    for (const s of [this.bedSrcA, this.bedSrcB]) {
+      if (s) {
+        try {
+          s.stop();
+          s.disconnect();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    for (const n of [this.bedHpA, this.bedLpA, this.bedGainA, this.bedHpB, this.bedLpB, this.bedGainB]) {
+      if (n) {
+        try {
+          n.disconnect();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    this.bedSrcA = null;
+    this.bedSrcB = null;
+    this.bedHpA = null;
+    this.bedLpA = null;
+    this.bedGainA = null;
+    this.bedHpB = null;
+    this.bedLpB = null;
+    this.bedGainB = null;
+  }
+
+  /**
+   * Smoothly guides the continuous dual-layer noise bed to the exact natural spectrum of `activeKind`
+   * using exponential `setTargetAtTime` with large time constants (`tauSec`), ensuring gentle,
+   * organic rain/wind swells with ZERO abrupt drops and ZERO resonant "wah-wah" sweeps.
+   */
+  private applyWeatherBedTarget(tauSec: number, driftFactor: number) {
+    const ctx = this.ctx;
+    const kind = this.activeKind;
+    if (
+      !ctx ||
+      !kind ||
+      !this.bedHpA ||
+      !this.bedLpA ||
+      !this.bedGainA ||
+      !this.bedHpB ||
+      !this.bedLpB ||
+      !this.bedGainB
+    ) {
+      return;
+    }
+
+    const now = ctx.currentTime;
+    const d = driftFactor; // Smooth subtle multiplier ~0.86..1.14 (never drops abruptly!)
+
+    // Default calm clear open-air hush
+    let hpAFreq = 120;
+    let lpAFreq = 420;
+    let qA = 0.55;
+    let gainA = 0.022;
+
+    let hpBFreq = 900;
+    let lpBFreq = 2200;
+    let gainB = 0.004;
+
+    if (kind === 'rain') {
+      // Steady, natural continuous rain curtain (flat Q, wide clean rain sheen!)
+      hpAFreq = 170;
+      lpAFreq = 1250 * (0.92 + (d - 0.85) * 0.55);
+      qA = 0.55;
+      gainA = 0.14 * d;
+
+      hpBFreq = 620;
+      lpBFreq = 3600 * (0.9 + (d - 0.85) * 0.65);
+      gainB = 0.095 * d;
+    } else if (kind === 'storm') {
+      // Full, steady heavy downpour + warm low air rush (NO high-Q wah-wah!)
+      hpAFreq = 110;
+      lpAFreq = 1550 * (0.9 + (d - 0.85) * 0.6);
+      qA = 0.6;
+      gainA = 0.2 * d;
+
+      hpBFreq = 520;
+      lpBFreq = 4600 * (0.92 + (d - 0.85) * 0.5);
+      gainB = 0.145 * d;
+    } else if (kind === 'hail') {
+      // Crisp cold sleet air backdrop underneath the prominent "咚咚咚" hailstone knocks
+      hpAFreq = 180;
+      lpAFreq = 1100 * d;
+      qA = 0.58;
+      gainA = 0.095 * d;
+
+      hpBFreq = 750;
+      lpBFreq = 3200;
+      gainB = 0.055 * d;
+    } else if (kind === 'windy') {
+      // Gradual wide open-air wind swells (gentle Q=0.88, slow 8-16s swells, never sudden!)
+      hpAFreq = 95;
+      lpAFreq = 440 + (d - 0.85) * 720; // Gently breathes ~440Hz <-> 650Hz over many seconds
+      qA = 0.88;
+      gainA = 0.16 * d;
+
+      hpBFreq = 950;
+      lpBFreq = 2900;
+      gainB = 0.042 * Math.max(0.4, d);
+    } else if (kind === 'snow') {
+      // Quiet, serene winter snow hush
+      hpAFreq = 110;
+      lpAFreq = 520 * d;
+      qA = 0.55;
+      gainA = 0.052 * d;
+
+      hpBFreq = 1600;
+      lpBFreq = 4200;
+      gainB = 0.012 * d;
+    } else if (kind === 'cloudy') {
+      hpAFreq = 110;
+      lpAFreq = 480;
+      qA = 0.55;
+      gainA = 0.034 * d;
+
+      hpBFreq = 850;
+      lpBFreq = 2100;
+      gainB = 0.008 * d;
+    }
+
+    const tau = Math.max(0.25, tauSec);
+    try {
+      this.bedHpA.frequency.setTargetAtTime(hpAFreq, now, tau);
+      this.bedLpA.frequency.setTargetAtTime(lpAFreq, now, tau);
+      this.bedLpA.Q.setTargetAtTime(qA, now, tau);
+      this.bedGainA.gain.setTargetAtTime(Math.max(0.0001, gainA), now, tau);
+
+      this.bedHpB.frequency.setTargetAtTime(hpBFreq, now, tau);
+      this.bedLpB.frequency.setTargetAtTime(lpBFreq, now, tau);
+      this.bedGainB.gain.setTargetAtTime(Math.max(0.0001, gainB), now, tau);
+    } catch {
+      // ignore
+    }
+  }
+
+  private startEngine() {
     if (this.running || !this.ctx || !this.activeKind) return;
     this.running = true;
     this.ensureBus(this.ctx);
-    this.syncBusParams(0.35);
-
-    // Kick off 2 staggered overlapping non-looping atmospheric bed grains immediately
-    this.spawnAtmosphericBedGrain(true);
-    this.scheduleNextBedGrain(450 + Math.random() * 650);
-    this.scheduleNextMicroEvent(120 + Math.random() * 280);
-    if (this.activeKind === 'storm') {
-      this.scheduleNextThunder(2200 + Math.random() * 4800);
-    }
+    this.startContinuousBed(this.ctx);
+    this.syncBusParams(0.4);
+    // Gentle smooth initial fade-in (tau = 0.7s -> ~2s organic entry)
+    this.applyWeatherBedTarget(0.7, 1.0);
+    this.scheduleSlowWeatherDrift();
+    this.resetDiscreteSchedulers();
   }
 
-  private stopSchedulers() {
+  private stopEngine() {
     this.running = false;
-    if (this.bedTimer !== null) {
-      window.clearTimeout(this.bedTimer);
-      this.bedTimer = null;
+    if (this.driftTimer !== null) {
+      window.clearTimeout(this.driftTimer);
+      this.driftTimer = null;
     }
+    this.clearDiscreteSchedulers();
+    this.stopContinuousBed();
+  }
+
+  private clearDiscreteSchedulers() {
     if (this.eventTimer !== null) {
       window.clearTimeout(this.eventTimer);
       this.eventTimer = null;
@@ -276,192 +504,37 @@ export class WeatherAmbienceEngine {
       window.clearTimeout(this.thunderTimer);
       this.thunderTimer = null;
     }
-    // Let active grains naturally decay cleanly via masterGain ramp instead of hard clicks
-    this.liveNodes.clear();
   }
 
-  private scheduleNextBedGrain(delayMs: number) {
-    if (!this.running) return;
-    this.bedTimer = window.setTimeout(() => {
-      if (!this.running || !this.shouldRun()) return;
-      this.spawnAtmosphericBedGrain(false);
-      // Irregular overlap cadence (1.3s - 2.6s) guarantees zero periodic loop feel!
-      const kind = this.activeKind;
-      const nextMs =
-        kind === 'windy'
-          ? 1450 + Math.random() * 1400
-          : kind === 'storm' || kind === 'rain' || kind === 'hail'
-            ? 1250 + Math.random() * 1150
-            : 1800 + Math.random() * 1500;
-      this.scheduleNextBedGrain(nextMs);
-    }, delayMs);
+  private resetDiscreteSchedulers() {
+    this.clearDiscreteSchedulers();
+    if (!this.running || !this.activeKind) return;
+    this.scheduleNextMicroEvent(120 + Math.random() * 240);
+    if (this.activeKind === 'storm') {
+      // Background distant rumble fallback (3D visual lightning also triggers synced thunder!)
+      this.scheduleNextThunder(8500 + Math.random() * 11000);
+    }
   }
 
   /**
-   * Spawns a single non-repeating, crossfaded, randomly filtered noise slice
-   * whose spectrum & drift envelope matches the active weather.
+   * Very slow, gradual weather swell modulation:
+   * Every 6.5–14 seconds picks a new gentle target intensity (0.86..1.14) and glides toward it
+   * with a slow exponential time constant (tau = 3.2s..5.5s), so rain/wind gently eases and swells
+   * without EVER cutting out or feeling rhythmic!
    */
-  private spawnAtmosphericBedGrain(quickAttack: boolean) {
-    const ctx = this.ctx;
-    const bus = this.busInput;
-    const kind = this.activeKind;
-    if (!ctx || !bus || !kind || ctx.state !== 'running') return;
-
-    const pool = this.getNoisePool(ctx);
-    const dur = 3.2 + Math.random() * 2.6; // 3.2s .. 5.8s overlapping slices
-    const maxOffset = Math.max(0.1, pool.duration - dur - 0.15);
-    const offset = Math.random() * maxOffset;
-    const now = ctx.currentTime;
-
-    const src = ctx.createBufferSource();
-    src.buffer = pool;
-    // Slight random playback rate shift further breaks spectral repetition
-    src.playbackRate.value = 0.92 + Math.random() * 0.16;
-
-    const filter = ctx.createBiquadFilter();
-    const subFilter = ctx.createBiquadFilter();
-    const env = ctx.createGain();
-    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
-
-    let peakGain = 0.08;
-    let attack = quickAttack ? 0.35 : 0.9 + Math.random() * 0.6;
-    let release = 1.0 + Math.random() * 0.8;
-
-    if (kind === 'rain') {
-      // Natural rain sheet: airy pink/white rain hiss drifting organically between showers
-      filter.type = 'bandpass';
-      const fStart = 1150 + Math.random() * 950;
-      const fEnd = 1050 + Math.random() * 1150;
-      filter.frequency.setValueAtTime(fStart, now);
-      filter.frequency.linearRampToValueAtTime(fEnd, now + dur);
-      filter.Q.value = 0.52 + Math.random() * 0.25;
-
-      subFilter.type = 'highpass';
-      subFilter.frequency.value = 340 + Math.random() * 180;
-      peakGain = 0.16 + Math.random() * 0.07;
-    } else if (kind === 'storm') {
-      // Heavy downpour + sweeping gale
-      const isGustLayer = Math.random() < 0.38;
-      if (isGustLayer) {
-        filter.type = 'bandpass';
-        const f0 = 260 + Math.random() * 280;
-        const fPeak = f0 + 180 + Math.random() * 340;
-        filter.frequency.setValueAtTime(f0, now);
-        filter.frequency.exponentialRampToValueAtTime(fPeak, now + dur * 0.45);
-        filter.frequency.exponentialRampToValueAtTime(Math.max(160, f0 * 0.85), now + dur);
-        filter.Q.value = 2.6 + Math.random() * 1.8;
-        subFilter.type = 'lowpass';
-        subFilter.frequency.value = 1800;
-        peakGain = 0.14 + Math.random() * 0.08;
-      } else {
-        filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(1250 + Math.random() * 1200, now);
-        filter.frequency.linearRampToValueAtTime(950 + Math.random() * 1450, now + dur);
-        filter.Q.value = 0.45 + Math.random() * 0.2;
-        subFilter.type = 'highpass';
-        subFilter.frequency.value = 260;
-        peakGain = 0.21 + Math.random() * 0.08;
-      }
-    } else if (kind === 'hail') {
-      // Cold brisk wind + sleet hiss beneath the dominant "咚咚咚" hailstone impacts
-      filter.type = 'bandpass';
-      const f0 = 620 + Math.random() * 680;
-      filter.frequency.setValueAtTime(f0, now);
-      filter.frequency.linearRampToValueAtTime(480 + Math.random() * 880, now + dur);
-      filter.Q.value = 1.1 + Math.random() * 0.8;
-      subFilter.type = 'highpass';
-      subFilter.frequency.value = 240;
-      peakGain = 0.11 + Math.random() * 0.05;
-    } else if (kind === 'windy') {
-      // Expressive sweeping wind gusts ("呼——呜——") + rustling foliage puffs
-      const isLeafRustle = Math.random() < 0.42;
-      if (isLeafRustle) {
-        filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(1600 + Math.random() * 1400, now);
-        filter.frequency.linearRampToValueAtTime(1200 + Math.random() * 1800, now + dur);
-        filter.Q.value = 1.4 + Math.random() * 0.8;
-        subFilter.type = 'highpass';
-        subFilter.frequency.value = 900;
-        peakGain = 0.08 + Math.random() * 0.05;
-      } else {
-        filter.type = 'bandpass';
-        const fLow = 190 + Math.random() * 170;
-        const fHigh = 390 + Math.random() * 380;
-        filter.frequency.setValueAtTime(fLow, now);
-        filter.frequency.exponentialRampToValueAtTime(fHigh, now + dur * (0.35 + Math.random() * 0.25));
-        filter.frequency.exponentialRampToValueAtTime(Math.max(140, fLow * 0.85), now + dur);
-        filter.Q.value = 3.2 + Math.random() * 2.2;
-        subFilter.type = 'lowpass';
-        subFilter.frequency.value = 1500;
-        peakGain = 0.16 + Math.random() * 0.09;
-      }
-    } else if (kind === 'snow') {
-      // Hushed tranquil cold breeze
-      filter.type = 'bandpass';
-      const f0 = 260 + Math.random() * 220;
-      filter.frequency.setValueAtTime(f0, now);
-      filter.frequency.linearRampToValueAtTime(220 + Math.random() * 260, now + dur);
-      filter.Q.value = 2.1 + Math.random() * 1.1;
-      subFilter.type = 'lowpass';
-      subFilter.frequency.value = 1100;
-      peakGain = 0.065 + Math.random() * 0.03;
-      attack = quickAttack ? 0.5 : 1.3;
-      release = 1.4;
-    } else if (kind === 'cloudy') {
-      // Gentle open-air calm breeze
-      filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(280 + Math.random() * 180, now);
-      filter.frequency.linearRampToValueAtTime(240 + Math.random() * 220, now + dur);
-      filter.Q.value = 1.6;
-      subFilter.type = 'lowpass';
-      subFilter.frequency.value = 950;
-      peakGain = 0.042 + Math.random() * 0.018;
-      attack = 1.2;
-      release = 1.4;
-    } else {
-      // clear: barely audible soft outdoor air breeze
-      filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(340 + Math.random() * 200, now);
-      filter.Q.value = 1.5;
-      subFilter.type = 'lowpass';
-      subFilter.frequency.value = 1100;
-      peakGain = 0.028 + Math.random() * 0.014;
-      attack = 1.2;
-      release = 1.4;
-    }
-
-    const sustainEnd = Math.max(now + attack + 0.2, now + dur - release);
-    env.gain.setValueAtTime(0.0001, now);
-    env.gain.linearRampToValueAtTime(peakGain, now + attack);
-    // Gentle organic mid-grain breath fluctuation
-    env.gain.linearRampToValueAtTime(peakGain * (0.78 + Math.random() * 0.34), sustainEnd);
-    env.gain.linearRampToValueAtTime(0.0001, now + dur);
-
-    src.connect(filter);
-    filter.connect(subFilter);
-    subFilter.connect(env);
-    if (panner) {
-      panner.pan.value = (Math.random() - 0.5) * 0.7;
-      env.connect(panner);
-      panner.connect(bus);
-    } else {
-      env.connect(bus);
-    }
-
-    this.liveNodes.add(src);
-    src.onended = () => {
-      this.liveNodes.delete(src);
-      try {
-        src.disconnect();
-        filter.disconnect();
-        subFilter.disconnect();
-        env.disconnect();
-        panner?.disconnect();
-      } catch {
-        // ignore
-      }
-    };
-    src.start(now, offset, dur);
+  private scheduleSlowWeatherDrift() {
+    if (!this.running) return;
+    const waitMs = 6500 + Math.random() * 7500;
+    this.driftTimer = window.setTimeout(() => {
+      if (!this.running || !this.shouldRun()) return;
+      const isWindy = this.activeKind === 'windy';
+      const drift = isWindy
+        ? 0.78 + Math.random() * 0.44 // Wind gently breathes a bit wider over long arcs
+        : 0.88 + Math.random() * 0.24; // Rain stays steady, smoothly gliding ±12%
+      const tau = 3.2 + Math.random() * 2.4;
+      this.applyWeatherBedTarget(tau, drift);
+      this.scheduleSlowWeatherDrift();
+    }, waitMs);
   }
 
   /**
@@ -479,9 +552,8 @@ export class WeatherAmbienceEngine {
       const kind = this.activeKind;
       if (!kind) return;
 
-      let nextDelayMs = 400;
+      let nextDelayMs = 450;
       if (kind === 'rain') {
-        // Organic bursty raindrops: spawn 1..3 micro events in a tiny jittered cluster
         const burst = Math.random() < 0.34 ? 2 + Math.floor(Math.random() * 2) : 1;
         for (let i = 0; i < burst; i++) {
           const offsetSec = i * (0.025 + Math.random() * 0.055);
@@ -491,10 +563,9 @@ export class WeatherAmbienceEngine {
             this.triggerRainSplashPatter(offsetSec, 0.9);
           }
         }
-        // Exponential-like random interval (~65ms .. 240ms) -> organic non-metronomic rhythm
-        nextDelayMs = 55 + Math.pow(Math.random(), 1.45) * 210;
+        nextDelayMs = 55 + Math.pow(Math.random(), 1.45) * 205;
       } else if (kind === 'storm') {
-        const burst = Math.random() < 0.5 ? 2 + Math.floor(Math.random() * 3) : 1;
+        const burst = Math.random() < 0.52 ? 2 + Math.floor(Math.random() * 3) : 1;
         for (let i = 0; i < burst; i++) {
           const offsetSec = i * (0.018 + Math.random() * 0.045);
           if (Math.random() < 0.38) {
@@ -503,35 +574,33 @@ export class WeatherAmbienceEngine {
             this.triggerRainSplashPatter(offsetSec, 1.15);
           }
         }
-        nextDelayMs = 38 + Math.pow(Math.random(), 1.55) * 145;
+        nextDelayMs = 36 + Math.pow(Math.random(), 1.55) * 140;
       } else if (kind === 'hail') {
-        // Hailstone flurries: dense irregular "咚咚咚咚咚" impacts with occasional clusters!
-        const burst = Math.random() < 0.45 ? 2 + Math.floor(Math.random() * 3) : 1;
+        const burst = Math.random() < 0.46 ? 2 + Math.floor(Math.random() * 3) : 1;
         for (let i = 0; i < burst; i++) {
           const offsetSec = i * (0.022 + Math.random() * 0.058);
           this.triggerHailImpact(offsetSec);
         }
-        nextDelayMs = 42 + Math.pow(Math.random(), 1.4) * 165;
+        nextDelayMs = 40 + Math.pow(Math.random(), 1.4) * 160;
       } else if (kind === 'snow') {
         if (!this.indoor) {
           this.triggerFrostShimmer();
         }
-        nextDelayMs = 260 + Math.random() * 540;
+        nextDelayMs = 280 + Math.random() * 580;
       } else if (kind === 'clear') {
         if (!this.indoor) {
           if (this.isNight) {
             this.triggerNightCricket();
-            nextDelayMs = 3400 + Math.random() * 5200;
+            nextDelayMs = 3600 + Math.random() * 5400;
           } else {
             this.triggerDayBirdChirp();
-            nextDelayMs = 4200 + Math.random() * 7200;
+            nextDelayMs = 4500 + Math.random() * 7500;
           }
         } else {
           nextDelayMs = 2500;
         }
       } else {
-        // cloudy / windy occasional subtle leaf puff
-        nextDelayMs = 800 + Math.random() * 1400;
+        nextDelayMs = 1200 + Math.random() * 1800;
       }
 
       this.scheduleNextMicroEvent(nextDelayMs);
@@ -545,10 +614,10 @@ export class WeatherAmbienceEngine {
     if (!ctx || !bus || ctx.state !== 'running') return;
 
     const t0 = ctx.currentTime + offsetSec;
-    const dur = 0.016 + Math.random() * 0.026;
-    const startFreq = 680 + Math.random() * 1400;
-    const endFreq = startFreq * (1.45 + Math.random() * 0.55);
-    const peak = (0.022 + Math.random() * 0.042) * intensity;
+    const dur = 0.015 + Math.random() * 0.024;
+    const startFreq = 720 + Math.random() * 1400;
+    const endFreq = startFreq * (1.42 + Math.random() * 0.55);
+    const peak = (0.022 + Math.random() * 0.04) * intensity;
 
     const osc = ctx.createOscillator();
     osc.type = Math.random() < 0.72 ? 'sine' : 'triangle';
@@ -578,12 +647,13 @@ export class WeatherAmbienceEngine {
     const ctx = this.ctx;
     const bus = this.busInput;
     if (!ctx || !bus || ctx.state !== 'running') return;
+    this.ensureNoisePools(ctx);
+    const pool = this.rainPoolB!;
 
-    const pool = this.getNoisePool(ctx);
     const t0 = ctx.currentTime + offsetSec;
-    const dur = 0.016 + Math.random() * 0.036;
+    const dur = 0.015 + Math.random() * 0.032;
     const offset = Math.random() * Math.max(0.1, pool.duration - 0.2);
-    const peak = (0.045 + Math.random() * 0.085) * intensity;
+    const peak = (0.042 + Math.random() * 0.08) * intensity;
 
     const src = ctx.createBufferSource();
     src.buffer = pool;
@@ -591,8 +661,8 @@ export class WeatherAmbienceEngine {
 
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = 1700 + Math.random() * 3400;
-    bp.Q.value = 1.2 + Math.random() * 1.4;
+    bp.frequency.value = 1750 + Math.random() * 3400;
+    bp.Q.value = 1.1 + Math.random() * 1.2;
 
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t0);
@@ -622,14 +692,12 @@ export class WeatherAmbienceEngine {
     if (!ctx || !bus || ctx.state !== 'running') return;
 
     const panVal = (Math.random() - 0.5) * 1.75;
-    // Larger hailstones sound deeper ("咚"), smaller pellets sound crisper ("哒")
     const stoneSize = 0.55 + Math.random() * 0.95;
-    const baseFreq = 460 / stoneSize + (Math.random() - 0.5) * 70; // ~230..620 Hz
+    const baseFreq = 460 / stoneSize + (Math.random() - 0.5) * 70;
     const mainPeak = 0.09 + stoneSize * 0.085;
 
     this.playSingleHailHit(ctx.currentTime + offsetSec, baseFreq, mainPeak, panVal, true);
 
-    // ~58% of hailstones bounce once off hard ground/roof 38..92ms later!
     if (Math.random() < 0.58) {
       const bounceDelay = 0.038 + Math.random() * 0.056;
       this.playSingleHailHit(
@@ -659,11 +727,10 @@ export class WeatherAmbienceEngine {
     osc.frequency.setValueAtTime(startFreq, t0);
     osc.frequency.exponentialRampToValueAtTime(Math.max(88, startFreq * 0.42), t0 + dur);
 
-    // Subtle hollow resonance filter gives it that classic hard-ice "咚" knock
     const bodyFilter = ctx.createBiquadFilter();
     bodyFilter.type = 'bandpass';
     bodyFilter.frequency.value = startFreq * 0.85;
-    bodyFilter.Q.value = 1.6;
+    bodyFilter.Q.value = 1.5;
 
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, t0);
@@ -683,9 +750,9 @@ export class WeatherAmbienceEngine {
     osc.start(t0);
     osc.stop(t0 + dur + 0.01);
 
-    // Sharp icy transient crackle on primary impact
     if (withIceClick) {
-      const pool = this.getNoisePool(ctx);
+      this.ensureNoisePools(ctx);
+      const pool = this.rainPoolB!;
       const clickDur = 0.009 + Math.random() * 0.009;
       const offset = Math.random() * Math.max(0.1, pool.duration - 0.1);
       const src = ctx.createBufferSource();
@@ -693,7 +760,7 @@ export class WeatherAmbienceEngine {
       const hp = ctx.createBiquadFilter();
       hp.type = 'bandpass';
       hp.frequency.value = 2800 + Math.random() * 2600;
-      hp.Q.value = 1.8;
+      hp.Q.value = 1.6;
 
       const cg = ctx.createGain();
       cg.gain.setValueAtTime(0.0001, t0);
@@ -702,54 +769,50 @@ export class WeatherAmbienceEngine {
 
       src.connect(hp);
       hp.connect(cg);
-      if (panner) {
-        cg.connect(panner);
-      } else {
-        cg.connect(bus);
-      }
+      if (panner) cg.connect(panner);
+      else cg.connect(bus);
       src.start(t0, offset, clickDur + 0.005);
     }
   }
 
-  /** Storm rolling thunder at fully stochastic non-repeating intervals */
+  /** Occasional background distant storm rumble (3D lightning bolts also trigger synced claps!) */
   private scheduleNextThunder(delayMs: number) {
     if (!this.running || this.activeKind !== 'storm') return;
     this.thunderTimer = window.setTimeout(() => {
       if (!this.running || this.activeKind !== 'storm' || !this.shouldRun()) return;
-      this.triggerRollingThunder();
-      this.scheduleNextThunder(7500 + Math.random() * 12500);
+      this.triggerRollingThunder(false);
+      this.scheduleNextThunder(11000 + Math.random() * 14000);
     }, delayMs);
   }
 
-  private triggerRollingThunder() {
+  private triggerRollingThunder(forceNear?: boolean) {
     const ctx = this.ctx;
     const bus = this.busInput;
     if (!ctx || !bus || ctx.state !== 'running') return;
+    this.ensureNoisePools(ctx);
+    const pool = this.pinkPoolA!;
 
-    const pool = this.getNoisePool(ctx);
     const t0 = ctx.currentTime;
-    const isNear = Math.random() < 0.36;
-    const totalDur = (isNear ? 3.2 : 2.5) + Math.random() * 2.2;
+    const isNear = forceNear ?? Math.random() < 0.36;
+    const totalDur = (isNear ? 3.2 : 2.6) + Math.random() * 2.2;
     const offset = Math.random() * Math.max(0.2, pool.duration - totalDur - 0.1);
 
-    // 1. Deep rolling sub-rumble body
     const src = ctx.createBufferSource();
     src.buffer = pool;
     src.playbackRate.value = 0.52 + Math.random() * 0.18;
 
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(isNear ? 280 : 170, t0);
-    lp.frequency.exponentialRampToValueAtTime(62 + Math.random() * 28, t0 + totalDur);
-    lp.Q.value = 1.2;
+    lp.frequency.setValueAtTime(isNear ? 260 : 165, t0);
+    lp.frequency.exponentialRampToValueAtTime(58 + Math.random() * 24, t0 + totalDur);
+    lp.Q.value = 0.9;
 
     const g = ctx.createGain();
     const peak = isNear ? 0.38 : 0.24;
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.linearRampToValueAtTime(peak, t0 + (isNear ? 0.08 : 0.35));
-    // Secondary echo swell across clouds
-    const swellAt = t0 + totalDur * (0.34 + Math.random() * 0.14);
-    g.gain.linearRampToValueAtTime(peak * 0.45, swellAt - 0.18);
+    g.gain.linearRampToValueAtTime(peak, t0 + (isNear ? 0.08 : 0.38));
+    const swellAt = t0 + totalDur * (0.36 + Math.random() * 0.14);
+    g.gain.linearRampToValueAtTime(peak * 0.5, swellAt - 0.18);
     g.gain.linearRampToValueAtTime(peak * 0.72, swellAt);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + totalDur);
 
@@ -757,7 +820,7 @@ export class WeatherAmbienceEngine {
     src.connect(lp);
     lp.connect(g);
     if (panner) {
-      panner.pan.value = (Math.random() - 0.5) * 1.2;
+      panner.pan.value = (Math.random() - 0.5) * 1.15;
       g.connect(panner);
       panner.connect(bus);
     } else {
@@ -765,16 +828,15 @@ export class WeatherAmbienceEngine {
     }
     src.start(t0, offset, totalDur + 0.05);
 
-    // 2. Near lightning sharp crackle transient
     if (isNear) {
       const crackDur = 0.16 + Math.random() * 0.12;
       const cSrc = ctx.createBufferSource();
-      cSrc.buffer = pool;
+      cSrc.buffer = this.rainPoolB!;
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
-      bp.frequency.setValueAtTime(1400, t0);
-      bp.frequency.exponentialRampToValueAtTime(280, t0 + crackDur);
-      bp.Q.value = 0.9;
+      bp.frequency.setValueAtTime(1350, t0);
+      bp.frequency.exponentialRampToValueAtTime(260, t0 + crackDur);
+      bp.Q.value = 0.85;
 
       const cg = ctx.createGain();
       cg.gain.setValueAtTime(0.0001, t0);
@@ -785,16 +847,16 @@ export class WeatherAmbienceEngine {
       bp.connect(cg);
       if (panner) cg.connect(panner);
       else cg.connect(bus);
-      cSrc.start(t0, Math.random() * 6, crackDur + 0.02);
+      cSrc.start(t0, Math.random() * 10, crackDur + 0.02);
     }
   }
 
-  /** Whisper-soft snow crystalline shimmer grain */
   private triggerFrostShimmer() {
     const ctx = this.ctx;
     const bus = this.busInput;
     if (!ctx || !bus || ctx.state !== 'running') return;
-    const pool = this.getNoisePool(ctx);
+    this.ensureNoisePools(ctx);
+    const pool = this.rainPoolB!;
     const t0 = ctx.currentTime;
     const dur = 0.08 + Math.random() * 0.14;
     const src = ctx.createBufferSource();
@@ -802,19 +864,18 @@ export class WeatherAmbienceEngine {
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
     bp.frequency.value = 3400 + Math.random() * 2400;
-    bp.Q.value = 4.0;
+    bp.Q.value = 3.2;
     const g = ctx.createGain();
-    const peak = 0.014 + Math.random() * 0.014;
+    const peak = 0.012 + Math.random() * 0.012;
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.linearRampToValueAtTime(peak, t0 + dur * 0.4);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     src.connect(bp);
     bp.connect(g);
     g.connect(bus);
-    src.start(t0, Math.random() * 8, dur + 0.01);
+    src.start(t0, Math.random() * 12, dur + 0.01);
   }
 
-  /** Distant soft daytime bird twitter (2–3 natural random chirps) */
   private triggerDayBirdChirp() {
     const ctx = this.ctx;
     const bus = this.busInput;
@@ -851,7 +912,6 @@ export class WeatherAmbienceEngine {
     }
   }
 
-  /** Soft evening cricket pulse trill */
   private triggerNightCricket() {
     const ctx = this.ctx;
     const bus = this.busInput;

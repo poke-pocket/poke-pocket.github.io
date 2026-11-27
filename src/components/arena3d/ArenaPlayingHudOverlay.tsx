@@ -48,6 +48,48 @@ const POKEBALL_RING_GRID: string[] = [
   '.......KKKKKKKK.......',
 ];
 
+/**
+ * 24x24 8-way symmetric stepped pixel-art circular medallion for bottom-right MOBA wheel buttons
+ * (Authentic stepped 1-pixel GBA/NDS outline matching the top-left Poké Ball ring aesthetic!)
+ */
+const MOBA_CIRCLE_GRID: string[] = [
+  '........KKKKKKKK........',
+  '......KKHHHHHHHHKK......',
+  '....KKHHFFFFFFFFHHKK....',
+  '...KHHFFFFFFFFFFFFSSK...',
+  '..KHHFFFFFFFFFFFFFFSSK..',
+  '..KHFFFFFFFFFFFFFFFFSK..',
+  '.KHHFFFFFFFFFFFFFFFFSSK.',
+  '.KHFFFFFFFFFFFFFFFFFFSK.',
+  'KHFFFFFFFFFFFFFFFFFFFFSK',
+  'KHFFFFFFFFFFFFFFFFFFFFSK',
+  'KHFFFFFFFFFFFFFFFFFFFFSK',
+  'KHFFFFFFFFFFFFFFFFFFFFSK',
+  'KFFFFFFFFFFFFFFFFFFFFFFK',
+  'KFFFFFFFFFFFFFFFFFFFFFSK',
+  'KFFFFFFFFFFFFFFFFFFFFFSK',
+  'KFFFFFFFFFFFFFFFFFFFFFSK',
+  '.KFFFFFFFFFFFFFFFFFFSSK.',
+  '.KFFFFFFFFFFFFFFFFFFSSK.',
+  '..KFFFFFFFFFFFFFFFFSSK..',
+  '..KSSFFFFFFFFFFFFFFSSK..',
+  '...KSSFFFFFFFFFFFFSSK...',
+  '....KKSSSSSSSSSSSSKK....',
+  '......KKSSSSSSSSKK......',
+  '........KKKKKKKK........',
+];
+
+const MOBA_CIRCLE_PALETTES: Record<
+  'jump' | 'ball' | 'salvo' | 'heal' | 'boost',
+  Record<string, string>
+> = {
+  jump: { K: '#12101a', H: '#fff9db', F: '#ffe066', S: '#f0b429' },
+  ball: { K: '#12101a', H: '#ffffff', F: '#fffdf4', S: '#ded4b4' },
+  salvo: { K: '#12101a', H: '#e7f5ff', F: '#74c0fc', S: '#339af0' },
+  heal: { K: '#12101a', H: '#ebfbee', F: '#8ce99a', S: '#40c057' },
+  boost: { K: '#12101a', H: '#fff4e6', F: '#ffc078', S: '#fd7e14' },
+};
+
 const TRAINER_EMBLEM_GRID: string[] = [
   '.KKKKKKKKKK.',
   'KHHHHHHHHHHK',
@@ -997,12 +1039,14 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
             </div>
           )}
 
-          {/* In-Run Town Poké Mart Full-Screen Boutique Shop Overlay */}
+          {/* In-Run Town Poké Mart Full-Screen Dedicated Supplies Shop Overlay */}
           {inRunTownShopOpen && (
             <ShopOverlay
               save={save}
               pet={pet}
               closing={false}
+              initialTab="berries"
+              cityName={liveOverlandCity?.name}
               onClose={() => {
                 sound.play('cancel');
                 setInRunTownShopOpen(false);
@@ -1189,7 +1233,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
 
                 <button
                   type="button"
-                  className={`moba-btn is-aux-jump is-ball ${hud.actionCds.ball > 0 ? 'is-cd' : ''} ${nearbyKoTarget ? 'is-pulse' : ''} ${ballPickerOpen ? 'is-picker-open' : ''}`}
+                  className={`moba-btn is-pixel-circle is-aux-jump is-ball ${hud.actionCds.ball > 0 ? 'is-cd' : ''} ${nearbyKoTarget ? 'is-pulse' : ''} ${ballPickerOpen ? 'is-picker-open' : ''}`}
                   style={{ '--ball-accent': activeBallStat.accent } as React.CSSProperties}
                   onPointerDown={handleBallBtnPointerDown}
                   onPointerUp={handleBallBtnPointerUp}
@@ -1202,11 +1246,17 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   aria-label="投球"
                   title={`${activeBallMeta.shortName}（${activeBallStat.desc}）· 点按投球，长按可切换持有的精灵球`}
                 >
+                  <PixelGrid
+                    grid={MOBA_CIRCLE_GRID}
+                    palette={MOBA_CIRCLE_PALETTES.ball}
+                    size={82}
+                    className="moba-circle-bg"
+                  />
                   <TrimmedSpriteImg
                     src={activeBallMeta.ballSprite}
                     alt={activeBallMeta.shortName}
-                    size={70}
-                    fillRatio={0.92}
+                    size={54}
+                    fillRatio={0.9}
                     className="moba-icon-fill"
                   />
                   {ownedBalls.length > 1 && (
@@ -1225,13 +1275,19 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               {/* Arc Satellite 1 (0° Inner-Left): Full-MP Team Salvo */}
               <button
                 type="button"
-                className={`moba-btn is-sat is-sat-0 is-salvo ${hud.actionCds.salvo > 0 ? 'is-cd' : ''}`}
+                className={`moba-btn is-pixel-circle is-sat is-sat-0 is-salvo ${hud.actionCds.salvo > 0 ? 'is-cd' : ''}`}
                 disabled={hud.actionCds.salvo > 0}
                 {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('salvo'), hud.actionCds.salvo > 0)}
                 aria-label="齐射"
                 title="齐射：全队瞬间满蓝，同步释放招牌绝招！"
               >
-                <PixelIcon name="salvo_barrage" size={66} className="moba-icon-fill" />
+                <PixelGrid
+                  grid={MOBA_CIRCLE_GRID}
+                  palette={MOBA_CIRCLE_PALETTES.salvo}
+                  size={82}
+                  className="moba-circle-bg"
+                />
+                <PixelIcon name="salvo_barrage" size={50} className="moba-icon-fill" />
                 {hud.actionCds.salvo > 0 && (
                   <em className="moba-badge">{Math.ceil(hud.actionCds.salvo)}s</em>
                 )}
@@ -1240,7 +1296,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               {/* Arc Satellite 2 (45° Upper-Left): Heal Potion */}
               <button
                 type="button"
-                className={`moba-btn is-sat is-sat-45 is-heal ${hud.actionCds.heal > 0 || hud.healCharges <= 0 ? 'is-cd' : ''}`}
+                className={`moba-btn is-pixel-circle is-sat is-sat-45 is-heal ${hud.actionCds.heal > 0 || hud.healCharges <= 0 ? 'is-cd' : ''}`}
                 disabled={hud.actionCds.heal > 0 || hud.healCharges <= 0}
                 {...bindMultiTouchAction(
                   () => triggerBattleActionRef.current?.('heal'),
@@ -1249,11 +1305,17 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 aria-label="伤药"
                 title="伤药：使用好伤药立即回复全队 45% 生命值"
               >
+                <PixelGrid
+                  grid={MOBA_CIRCLE_GRID}
+                  palette={MOBA_CIRCLE_PALETTES.heal}
+                  size={82}
+                  className="moba-circle-bg"
+                />
                 <TrimmedSpriteImg
                   src="/sprites/items/super-potion.png"
                   alt="伤药"
-                  size={70}
-                  fillRatio={0.92}
+                  size={54}
+                  fillRatio={0.9}
                   className="moba-icon-fill"
                 />
                 <em className="moba-badge">
@@ -1264,17 +1326,23 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               {/* Arc Satellite 3 (90° Top): Team Overdrive Boost */}
               <button
                 type="button"
-                className={`moba-btn is-sat is-sat-90 is-boost ${hud.actionCds.boost > 0 ? 'is-cd' : ''} ${hud.boostLeft > 0 ? 'is-active' : ''}`}
+                className={`moba-btn is-pixel-circle is-sat is-sat-90 is-boost ${hud.actionCds.boost > 0 ? 'is-cd' : ''} ${hud.boostLeft > 0 ? 'is-active' : ''}`}
                 disabled={hud.actionCds.boost > 0}
                 {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('boost'), hud.actionCds.boost > 0)}
                 aria-label="强化"
                 title="强化：激活 8 秒力量强化（全队攻击 +55%、充能加速）"
               >
+                <PixelGrid
+                  grid={MOBA_CIRCLE_GRID}
+                  palette={MOBA_CIRCLE_PALETTES.boost}
+                  size={82}
+                  className="moba-circle-bg"
+                />
                 <TrimmedSpriteImg
                   src="/sprites/items/rare-candy.png"
                   alt="强化"
-                  size={70}
-                  fillRatio={0.92}
+                  size={54}
+                  fillRatio={0.9}
                   className="moba-icon-fill"
                 />
                 {(hud.boostLeft > 0 || hud.actionCds.boost > 0) && (
@@ -1287,14 +1355,20 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               {/* Primary Corner Main Button (112x112): 3D Jump */}
               <button
                 type="button"
-                className="moba-btn is-primary is-jump-main"
+                className="moba-btn is-pixel-circle is-primary is-jump-main"
                 {...bindMultiTouchAction(() => {
                   jumpQueuedRef.current = true;
                 })}
                 aria-label="跳跃"
                 title="跳跃：3D 跳跃翻越台阶或躲避弹幕"
               >
-                <PixelIcon name="jump_leap" size={92} className="moba-icon-fill" />
+                <PixelGrid
+                  grid={MOBA_CIRCLE_GRID}
+                  palette={MOBA_CIRCLE_PALETTES.jump}
+                  size={112}
+                  className="moba-circle-bg"
+                />
+                <PixelIcon name="jump_leap" size={72} className="moba-icon-fill" />
               </button>
             </div>
           )}
