@@ -77,6 +77,8 @@ interface HandheldConsoleProps {
     action: 'feed' | 'heal' | 'bath' | 'pat',
     foodId?: FoodId,
   ) => { ok: boolean; message: string };
+  onDevGrantItems99?: () => void;
+  onDevGrantPokeballs99?: () => void;
   onReleaseBallToRoom: () => void;
   onStartBattle: (isTrainer: boolean) => void;
   onFinishBattle: (fighterId: string, payload: BattleResultPayload) => void;
@@ -156,6 +158,8 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   onHealParty,
   onFeedSquad,
   onQuickCarePet,
+  onDevGrantItems99,
+  onDevGrantPokeballs99,
   onReleaseBallToRoom,
   onStartBattle,
   onFinishBattle,
@@ -373,6 +377,8 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
       onHealParty={onHealParty}
       onFeedSquad={onFeedSquad}
       onQuickCarePet={onQuickCarePet}
+      onDevGrantItems99={onDevGrantItems99}
+      onDevGrantPokeballs99={onDevGrantPokeballs99}
       onReleaseBallToRoom={onReleaseBallToRoom}
       onStartBattle={onStartBattle}
       onFinishBattle={onFinishBattle}

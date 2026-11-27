@@ -25,6 +25,7 @@ export interface DevGrantsState {
   allPokedex: boolean;
   allItems: boolean;
   allPokeballs: boolean;
+  mapTeleport: boolean;
 }
 
 const DEFAULT_DEV_GRANTS: DevGrantsState = {
@@ -32,6 +33,7 @@ const DEFAULT_DEV_GRANTS: DevGrantsState = {
   allPokedex: false,
   allItems: false,
   allPokeballs: false,
+  mapTeleport: false,
 };
 
 type DevModeListener = (enabled: boolean) => void;
@@ -84,6 +86,7 @@ function loadInitialDevGrants(): DevGrantsState {
       allPokedex: Boolean(parsed.allPokedex),
       allItems: Boolean(parsed.allItems),
       allPokeballs: Boolean(parsed.allPokeballs),
+      mapTeleport: Boolean(parsed.mapTeleport),
     };
   } catch {
     return { ...DEFAULT_DEV_GRANTS };
@@ -318,13 +321,7 @@ export function applyDevGrantsOverlay(
   if (grants.allItems) {
     const nextInv = { ...realSave.inventory };
     for (const food of FOOD_CATALOG) {
-      if (food.unlimited) {
-        nextInv[food.id] = Math.max(DEV_GRANT_FILL_COUNT, nextInv[food.id] ?? DEV_GRANT_FILL_COUNT);
-      } else {
-        const used = devFoodUsedCounts.get(food.id) ?? 0;
-        const virtualMin = Math.max(0, DEV_GRANT_FILL_COUNT - used);
-        nextInv[food.id] = Math.max(nextInv[food.id] ?? 0, virtualMin);
-      }
+      nextInv[food.id] = Math.max(DEV_GRANT_FILL_COUNT, nextInv[food.id] ?? 0);
     }
     inventory = nextInv;
 

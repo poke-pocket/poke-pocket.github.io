@@ -14,6 +14,7 @@ const ALL_OFF: DevGrantsState = {
   allPokedex: false,
   allItems: false,
   allPokeballs: false,
+  mapTeleport: false,
 };
 
 describe('devMode reversible grants & rollback safety', () => {

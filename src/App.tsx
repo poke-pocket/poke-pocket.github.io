@@ -9,10 +9,10 @@ import {
   type HomeIconActionId,
 } from './components/LcdScreen';
 import { Survivors3DArena } from './components/Survivors3DArena';
-import { ACHIEVEMENTS, FOOD_CATALOG, SPECIES_CATALOG, getPokemonCryId } from './data/catalog';
+import { ACCESSORY_CATALOG, ACHIEVEMENTS, FOOD_CATALOG, ROOM_CATALOG, SPECIES_CATALOG, getPokemonCryId } from './data/catalog';
 import {
+  DEV_GRANT_FILL_COUNT,
   applyDevGrantsOverlay,
-  consumeDevVirtualFood,
   isDevVirtualPetId,
   patchDevVirtualPet,
   sanitizeRealSaveAfterDevRollback,
@@ -343,14 +343,13 @@ export function App() {
         return;
       }
       const realStock = save.inventory[foodId] ?? 0;
-      const useDevStock =
-        devMode && devGrants.allItems && foodMeta && !foodMeta.unlimited && realStock <= 0;
-      const feedSourceSave = useDevStock
-        ? { ...save, inventory: { ...save.inventory, [foodId]: 1 } }
-        : save;
+      const isInfiniteItems = devMode && devGrants.allItems && Boolean(foodMeta && !foodMeta.unlimited);
+      const feedSourceSave =
+        isInfiniteItems && realStock <= 0
+          ? { ...save, inventory: { ...save.inventory, [foodId]: 1 } }
+          : save;
       const outcome = feedPet(feedSourceSave, activePet.id, foodId);
-      if (outcome.ok && useDevStock) {
-        consumeDevVirtualFood(foodId);
+      if (outcome.ok && isInfiniteItems) {
         outcome.save = {
           ...outcome.save,
           inventory: { ...outcome.save.inventory, [foodId]: realStock },
@@ -525,14 +524,13 @@ export function App() {
       const chosenFoodId: FoodId = foodId ?? 'oran_berry';
       const fMeta = FOOD_CATALOG.find((f) => f.id === chosenFoodId);
       const realStock = save.inventory[chosenFoodId] ?? 0;
-      const useDevStock =
-        devMode && devGrants.allItems && fMeta && !fMeta.unlimited && realStock <= 0;
-      const feedSourceSave = useDevStock
-        ? { ...save, inventory: { ...save.inventory, [chosenFoodId]: 1 } }
-        : save;
+      const isInfiniteItems = devMode && devGrants.allItems && Boolean(fMeta && !fMeta.unlimited);
+      const feedSourceSave =
+        isInfiniteItems && realStock <= 0
+          ? { ...save, inventory: { ...save.inventory, [chosenFoodId]: 1 } }
+          : save;
       const outcome = feedPet(feedSourceSave, petId, chosenFoodId);
-      if (outcome.ok && useDevStock) {
-        consumeDevVirtualFood(chosenFoodId);
+      if (outcome.ok && isInfiniteItems) {
         outcome.save = {
           ...outcome.save,
           inventory: { ...outcome.save.inventory, [chosenFoodId]: realStock },
@@ -547,6 +545,49 @@ export function App() {
     },
     [effectiveSave.pets, save, devMode, devGrants.allItems, applyOutcome],
   );
+
+  const handleDevGrantItems99 = useCallback(() => {
+    sound.play('coin');
+    setSave((prev) => {
+      const nextInv = { ...prev.inventory };
+      for (const food of FOOD_CATALOG) {
+        nextInv[food.id] = Math.max(nextInv[food.id] ?? 0, DEV_GRANT_FILL_COUNT);
+      }
+      const nextAccStock = { ...prev.accessoryStock };
+      const nextUnlockedAcc = new Set<AccessoryId>(prev.unlockedAccessories);
+      for (const acc of ACCESSORY_CATALOG) {
+        nextUnlockedAcc.add(acc.id);
+        if (acc.id !== 'none') {
+          nextAccStock[acc.id] = Math.max(nextAccStock[acc.id] ?? 0, DEV_GRANT_FILL_COUNT);
+        }
+      }
+      return {
+        ...prev,
+        inventory: nextInv,
+        accessoryStock: nextAccStock,
+        unlockedAccessories: Array.from(nextUnlockedAcc),
+      };
+    });
+  }, []);
+
+  const handleDevGrantPokeballs99 = useCallback(() => {
+    sound.play('coin');
+    setSave((prev) => {
+      const nextBallStock = { ...prev.ballStock };
+      const nextUnlockedRooms = new Set<RoomThemeId>(prev.unlockedRooms);
+      for (const rm of ROOM_CATALOG) {
+        nextUnlockedRooms.add(rm.id);
+        if (rm.id !== 'pokeball_room') {
+          nextBallStock[rm.id] = Math.max(nextBallStock[rm.id] ?? 0, DEV_GRANT_FILL_COUNT);
+        }
+      }
+      return {
+        ...prev,
+        ballStock: nextBallStock,
+        unlockedRooms: Array.from(nextUnlockedRooms),
+      };
+    });
+  }, []);
 
   const handleOpenPokemonManager = useCallback(
     (subMode: LcdMode = 'home', fromBattle = false, focusPetId?: string) => {
@@ -1519,6 +1560,8 @@ export function App() {
               onHealParty={handleHealParty}
               onFeedSquad={handleFeedSquad}
               onQuickCarePet={handleQuickCarePet}
+              onDevGrantItems99={handleDevGrantItems99}
+              onDevGrantPokeballs99={handleDevGrantPokeballs99}
               onReleaseBallToRoom={handleReleaseBallToRoom}
               onStartBattle={handleStartBattle}
               onFinishBattle={handleFinishBattle}

@@ -128,6 +128,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     setLabInitialTab(targetTab);
     setHubModal('lab');
   };
+
+  useEffect(() => {
+    const onOpenLabEvt = (e: Event) => {
+      const detail = (e as CustomEvent<{ tab?: 'heroes' | 'badges' | 'universal' }>).detail;
+      const targetTab = detail?.tab ?? 'universal';
+      setLabInitialTab(targetTab);
+      setHubModal('lab');
+    };
+    window.addEventListener('poke-pocket:open-lab', onOpenLabEvt);
+    return () => window.removeEventListener('poke-pocket:open-lab', onOpenLabEvt);
+  }, []);
   const [inRunTownShopOpen, setInRunTownShopOpen] = useState(false);
   const inRunTownShopOpenRef = useRef(false);
   inRunTownShopOpenRef.current = inRunTownShopOpen;
@@ -955,6 +966,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   };
   const fastTravelCityRef = useRef<(cityId: string) => void>(() => {});
   const teleportGeoSpotRef = useRef<(spot: ScenicMountainSpot) => void>(() => {});
+  const teleportDirectRef = useRef<(tx: number, tz: number, label: string) => void>(() => {});
   const returnToHubCityRef = useRef<(dest: 'plaza' | 'home') => void>(() => {});
   const handleFastTravelCity = (cityId: string) => {
     fastTravelCityRef.current(cityId);
@@ -982,6 +994,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       onReturnToHubCity: (dest) => returnToHubCityRef.current(dest),
       navTargets: autoNavTargetsRef.current,
       onAutoWalkTo: (x, z, label) => startAutoNavRef.current({ label, x, z }),
+      onTeleportTo: (x, z, label) => teleportDirectRef.current(x, z, label),
       onOpenGlobalWorldMap: () => setWorldMapOpen(true),
     });
     onOpenPokemonManager('map', true);
@@ -2770,6 +2783,48 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       );
     };
 
+    teleportDirectRef.current = (tx, tz, label) => {
+      const curSim = simRef.current;
+      if (!curSim) return;
+      stopAutoNavRef.current(true);
+      worldBubblesRef.current = [];
+      setProjectedBubbles([]);
+      const destGeo = worldToGeo(tx, tz);
+      if (destGeo) {
+        prefetchGeoDetailAround(destGeo.lat, destGeo.lng);
+      }
+      chunkState.x = 999999;
+      chunkState.z = 999999;
+      updateWorldAround(tx, tz);
+      geoHighwayStreamer?.updateAround(tx, tz, true);
+      const gy = Math.max(WATER_LEVEL_3D + 0.16, getWalkableSurfaceHeight3D(tx, tz));
+      curSim.px = tx;
+      curSim.pz = tz;
+      curSim.py = gy;
+      curSim.vy = 0;
+      camPivotRef.current.set(tx, gy + 1.52, tz);
+      curSim.followers.forEach((f, idx) => {
+        const ang = (idx * Math.PI * 2) / Math.max(1, curSim.followers.length) + 0.4;
+        f.x = tx + Math.cos(ang) * 1.85;
+        f.z = tz + Math.sin(ang) * 1.85;
+        f.y = Math.max(WATER_LEVEL_3D + 0.14, getWalkableSurfaceHeight3D(f.x, f.z));
+      });
+      const curOrg = getActiveGeoTerrainOrigin();
+      saveWorldCheckpoint({
+        mode: curOrg ? 'geo' : 'procedural',
+        cityId: curOrg?.startCityId ?? 'shanghai',
+        cityName: curOrg?.startCityName,
+        lat: destGeo?.lat,
+        lng: destGeo?.lng,
+        x: tx,
+        z: tz,
+        facingAngle: curSim.facingAngle,
+        updatedAt: Date.now(),
+      });
+      sound.play('levelup');
+      showBanner(`⚡ 已传送至「${label}」`, 2200);
+    };
+
     teleportIntraCityBusRef.current = (tx, tz, label) => {
       const curSim = simRef.current;
       if (!curSim) return;
@@ -3555,7 +3610,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             horizonBackdrop.userData.skyUniforms.uTime.value = now * 0.001;
           }
 
-          stepArenaHudProjection3D({ activeInteriorNow, activeTownNow, activeWorldRun, activeZone, autoNavTargetsRef, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, returnToHubCityRef, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, setWorldMapOpen, showBanner, sim, startAutoNavRef, terrainMat, worldBubblesRef });
+          stepArenaHudProjection3D({ activeInteriorNow, activeTownNow, activeWorldRun, activeZone, autoNavTargetsRef, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, returnToHubCityRef, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, setWorldMapOpen, showBanner, sim, startAutoNavRef, teleportDirectRef, terrainMat, worldBubblesRef });
         } else if (sim.activeCaptures.length > 0 && !externalPausedRef.current && !endedRef.current) {
           stepArenaCaptureCinema3D({ addFollowerToRun, buildResultSummary, camera, captureFinishRef, damageEnemy3D, diffMeta, dt, endedRef, gameMode, horizonBackdrop, maxFollowersRef, now, onCaptureBoss, onShowCaptureInHandheld, pausedRef, pet, regionMeta, save, scene, setCaptureCutscene, setResultSummary, sim, spawnGlowFlash, spawnGroundDecalWave, spawnPixelParticles, syncFloraBillboards, vfxAtlas, waterMat });
         }

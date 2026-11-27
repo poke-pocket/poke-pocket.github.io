@@ -1,5 +1,5 @@
 import type { LcdSharedCtx } from './lcdViewTypes';
-import React, { useState } from 'react';
+import React from 'react';
 import { NATURE_CATALOG, ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getIvRank, getXpForNextLevel } from '../../data/catalog';
 import { ensureFreshMetaProgress } from '../../data/metaProgression';
 import { type PetRecord } from '../../types/pet';
@@ -11,13 +11,6 @@ import { PixelIcon, PixelItemImg, PixelPetSprite } from '../PixelSprite';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
   const { batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, mode, onDepositPetsBatch, onFeedSquad, onGoBack, onHealParty, onNavigateMode, onReleasePetsBatch, onReleaseStoredPetsBatch, onSwitchPet, onUpdateMeta, onWithdrawPetsBatch, openedFromBattle, partyBatchMode, partyBoxTab, partyGradeFilter, partySearch, partySortBy, pet, save, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setDetailReturnMode, setGachaPhase, setMarketTab, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setSelectedPartyPetId, setSquadPickerSlot, squadPickerSlot } = ctx;
-  const [squadFeedback, setSquadFeedback] = useState<string | null>(null);
-  const flashSquadFeedback = (msg: string) => {
-    setSquadFeedback(msg);
-    window.setTimeout(() => {
-      setSquadFeedback((cur) => (cur === msg ? null : cur));
-    }, 2400);
-  };
   return (
     <>
         {/* CURRENT ACTIVE SQUAD MANAGER (支持多编队增删、全部移出、空槽位 '+' 卡片进入第二页球盒选人!) */}
@@ -276,14 +269,12 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
               .map((p) => p.id);
             if (bestIds.length === 0) {
               sound.play('error');
-              flashSquadFeedback('暂无可出战的清醒宝可梦！');
               return;
             }
             sound.play('confirm');
             const nextPresets = presets.map((pr, i) => (i === activeIdx ? { ...pr, petIds: bestIds } : pr));
             savePresets(nextPresets, activeIdx);
             if (bestIds[0] && bestIds[0] !== pet.id) onSwitchPet(bestIds[0]);
-            flashSquadFeedback(`已按综合战力自动编入 ${bestIds.length} 只主力！`);
           };
 
           const sortSquadByLevel = () => {
@@ -298,7 +289,6 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
             const nextPresets = presets.map((pr, i) => (i === activeIdx ? { ...pr, petIds: sortedIds } : pr));
             savePresets(nextPresets, activeIdx);
             if (sortedIds[0] && sortedIds[0] !== pet.id) onSwitchPet(sortedIds[0]);
-            flashSquadFeedback('已按等级从高到低排序，并设最高等级为领队！');
           };
 
           const injuredCount = activeTeamPets.filter((p) => p.isSick || p.health < 100).length;
@@ -335,27 +325,35 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                 </button>
               </div>
 
-              {/* Multi-Squad Preset Tabs + Uniformly Styled Add / Clear / Delete Controls */}
+              {/* Multi-Squad Preset Tabs (Icon + Index + Top-Right Count Badge) + Uniform Ops */}
               <div className="squad-preset-bar">
                 <div className="squad-preset-scroll">
-                  {presets.map((pr, idx) => (
-                    <button
-                      key={pr.id}
-                      type="button"
-                      className={`squad-preset-pill ${idx === activeIdx ? 'active' : ''}`}
-                      onClick={() => selectPreset(idx)}
-                    >
-                      {pr.name} ({pr.petIds.filter((id) => save.pets.some((p) => p.id === id)).length})
-                    </button>
-                  ))}
+                  {presets.map((pr, idx) => {
+                    const cnt = pr.petIds.filter((id) => save.pets.some((p) => p.id === id)).length;
+                    return (
+                      <button
+                        key={pr.id}
+                        type="button"
+                        className={`squad-preset-pill ${idx === activeIdx ? 'active' : ''}`}
+                        title={`${pr.name}（${cnt}/${maxSquadSize} 只）`}
+                        aria-label={`${pr.name}，当前 ${cnt} 只`}
+                        onClick={() => selectPreset(idx)}
+                      >
+                        <PixelItemImg src="/sprites/items/poke-ball.png" size={12} />
+                        <span className="squad-preset-idx">{idx + 1}</span>
+                        <em className={`squad-preset-cnt ${cnt > 0 ? 'has-members' : ''}`}>{cnt}</em>
+                      </button>
+                    );
+                  })}
                   {presets.length < 8 && (
                     <button
                       type="button"
-                      className="squad-preset-add"
+                      className="squad-preset-add is-icon-only"
                       title="新建编队方案"
+                      aria-label="新建编队方案"
                       onClick={addNewPreset}
                     >
-                      + 新建
+                      +
                     </button>
                   )}
                 </div>
@@ -382,8 +380,6 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                   )}
                 </div>
               </div>
-
-              {squadFeedback && <div className="squad-quick-toast">{squadFeedback}</div>}
 
               {/* Spacious Squad Slot Grid: Filled Cards with Status Attributes & Progress Bars + Empty '+' Cards */}
               <div className="squad-slots-stage scroll-y">
@@ -568,7 +564,6 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                   disabled={activeTeamPets.length === 0 || injuredCount === 0}
                   onClick={() => {
                     onHealParty?.();
-                    flashSquadFeedback('叮咚～全队宝可梦 HP 已一键恢复满格！');
                   }}
                   title="一键治愈全队生病并恢复满格 HP"
                 >
@@ -580,8 +575,7 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                   className={`squad-quick-btn is-feed ${hungryCount > 0 ? 'is-needed' : ''}`}
                   disabled={activeTeamPets.length === 0 || hungryCount === 0}
                   onClick={() => {
-                    const res = onFeedSquad?.(curIds);
-                    if (res?.message) flashSquadFeedback(res.message);
+                    onFeedSquad?.(curIds);
                   }}
                   title="一键使用橙橙果为当前队伍所有饥饿伙伴补满饱食度"
                 >

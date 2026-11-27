@@ -12,13 +12,6 @@ import { PixelIcon, PixelItemImg, PixelPetPortrait } from '../PixelSprite';
 export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
   const { STAT_BAR_ROWS, confirmReleaseId, mode, onAssignPetRoom, onDepositPet, onEquipAccessory, onGoBack, onHealPet, onNavigateMode, onQuickCarePet, onReleasePet, onReleaseStoredPet, onSwitchPet, onUpdatePetConfig, onWithdrawPet, openedFromBattle, partyDetailIsStored, partyDetailPet, partyDetailTab, pet, petActionMenuOpen, save, setConfirmReleaseId, setPartyDetailTab, setPetActionMenuOpen } = ctx;
   const [quickFeedOpen, setQuickFeedOpen] = useState(false);
-  const [careToast, setCareToast] = useState<string | null>(null);
-  const flashCareToast = (msg: string) => {
-    setCareToast(msg);
-    window.setTimeout(() => {
-      setCareToast((cur) => (cur === msg ? null : cur));
-    }, 2200);
-  };
   return (
     <>
         {/* PARTY 2ND-LEVEL DETAIL (Actions moved cleanly to top-right with icons + secondary dropdown!) */}
@@ -146,8 +139,7 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                                 className={`detail-dd-item ${isFav ? 'is-fav-food' : ''}`}
                                 disabled={!canEat}
                                 onClick={() => {
-                                  const res = onQuickCarePet?.(p.id, 'feed', food.id);
-                                  if (res?.message) flashCareToast(res.message);
+                                  onQuickCarePet?.(p.id, 'feed', food.id);
                                 }}
                                 title={food.description}
                               >
@@ -175,8 +167,7 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                         setPetActionMenuOpen(false);
                         setQuickFeedOpen(false);
                         if (onQuickCarePet) {
-                          const res = onQuickCarePet(p.id, 'heal');
-                          if (res?.message) flashCareToast(res.message);
+                          onQuickCarePet(p.id, 'heal');
                         } else {
                           onHealPet();
                         }
@@ -197,8 +188,7 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                       onClick={() => {
                         setPetActionMenuOpen(false);
                         setQuickFeedOpen(false);
-                        const res = onQuickCarePet?.(p.id, 'bath');
-                        if (res?.message) flashCareToast(res.message);
+                        onQuickCarePet?.(p.id, 'bath');
                       }}
                       title={canBath ? `给 ${p.name} 快速洗澡清理（当前清洁 ${Math.round(p.cleanliness)}%）` : `${p.name} 已经干干净净啦`}
                       aria-label="快速洗澡"
@@ -216,8 +206,7 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                       onClick={() => {
                         setPetActionMenuOpen(false);
                         setQuickFeedOpen(false);
-                        const res = onQuickCarePet?.(p.id, 'pat');
-                        if (res?.message) flashCareToast(res.message);
+                        onQuickCarePet?.(p.id, 'pat');
                       }}
                       title={canPat ? `抚摸 ${p.name} 提升亲密度与心情` : `${p.name} 亲密度已达满级`}
                       aria-label="快速抚摸"
@@ -333,8 +322,6 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                   </button>
                 </div>
               </div>
-
-              {careToast && <div className="detail-care-toast">{careToast}</div>}
 
               <div className="detail-stack">
                   {/* Top Hero Card: Square Headshot + Summary + Embedded Pokeball Strip */}

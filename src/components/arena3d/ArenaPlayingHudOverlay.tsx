@@ -1152,45 +1152,36 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               <div ref={ballAnchorRef} className="moba-ball-anchor">
                 {ballPickerOpen && (
                   <div
-                    className="moba-ball-picker"
+                    className="moba-ball-picker is-icon-only"
                     role="listbox"
                     aria-label="切换持有的精灵球"
                     onPointerDown={(e) => e.stopPropagation()}
                   >
-                    <div className="moba-ball-picker-head">
-                      <span>切换精灵球</span>
-                      <small>{ownedBalls.length} 种持有</small>
-                    </div>
-                    <div className="moba-ball-picker-list">
-                      {ownedBalls.map((rm) => {
-                        const stat = POKEBALL_CATCH_STATS[rm.id] ?? POKEBALL_CATCH_STATS.pokeball_room;
-                        const avail = getBallAvailability(save, rm.id);
-                        const isCur = rm.id === activeBallMeta.id;
-                        return (
-                          <button
-                            key={rm.id}
-                            type="button"
-                            role="option"
-                            aria-selected={isCur}
-                            data-ball-id={rm.id}
-                            className={`moba-ball-opt ${isCur ? 'is-active' : ''} ${stat.guaranteed ? 'is-master' : ''}`}
-                            style={{ '--ball-accent': stat.accent } as React.CSSProperties}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              choosePokeball(rm.id);
-                            }}
-                            title={`${rm.shortName} · ${stat.desc}`}
-                          >
-                            <PixelItemImg src={rm.ballSprite} size={28} />
-                            <strong>{rm.shortName}</strong>
-                            <em className="moba-ball-rate">{stat.tag}</em>
-                            <small className="moba-ball-qty">
-                              {rm.id === 'pokeball_room' ? '∞' : `×${avail.total}`}
-                            </small>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {ownedBalls.map((rm) => {
+                      const stat = POKEBALL_CATCH_STATS[rm.id] ?? POKEBALL_CATCH_STATS.pokeball_room;
+                      const avail = getBallAvailability(save, rm.id);
+                      const isCur = rm.id === activeBallMeta.id;
+                      const qtyText = rm.id === 'pokeball_room' ? '∞' : `×${avail.total}`;
+                      return (
+                        <button
+                          key={rm.id}
+                          type="button"
+                          role="option"
+                          aria-selected={isCur}
+                          aria-label={`${rm.shortName}（${stat.desc}，${qtyText}）`}
+                          data-ball-id={rm.id}
+                          className={`moba-ball-opt is-icon-only ${isCur ? 'is-active' : ''} ${stat.guaranteed ? 'is-master' : ''}`}
+                          style={{ '--ball-accent': stat.accent } as React.CSSProperties}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            choosePokeball(rm.id);
+                          }}
+                          title={`${rm.shortName} · ${stat.desc} · ${qtyText}`}
+                        >
+                          <TrimmedSpriteImg src={rm.ballSprite} alt={rm.shortName} size={38} fillRatio={0.9} />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
