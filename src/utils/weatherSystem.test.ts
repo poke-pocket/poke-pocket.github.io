@@ -43,6 +43,20 @@ describe('weatherSystem intensity & independent temperature', () => {
     expect(freezingClear.snowCover).toBeGreaterThan(0);
     expect(hotClear.snowCover).toBe(0);
     expect(hotClear.sunDim).toBeGreaterThan(1);
+    expect(hotClear.heatDry).toBeGreaterThan(0.4);
+
+    const lightRain = getWeatherAtmosphereProfile('rain', 'light', 18);
+    const heavyRain = getWeatherAtmosphereProfile('rain', 'heavy', 18);
+    expect(heavyRain.wetness).toBeGreaterThan(lightRain.wetness);
+    expect(heavyRain.groundLightScale).toBeLessThan(lightRain.groundLightScale);
+
+    const strongWind = getWeatherAtmosphereProfile('windy', 'heavy', 18);
+    expect(strongWind.windSwayMult).toBeGreaterThan(3.5);
+    expect(strongWind.windStretch).toBeGreaterThan(0.7);
+
+    const heavyHail = getWeatherAtmosphereProfile('hail', 'heavy', 1);
+    expect(heavyHail.hailSpecks).toBe(1);
+    expect(heavyHail.snowCover).toBeGreaterThan(0.3);
   });
 
   it('applies intensity scaling and independent extreme temperature combat bonuses', () => {

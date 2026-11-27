@@ -38,12 +38,18 @@ export interface WeatherCombatMod {
 export interface WeatherAtmosphereProfile {
   sunDim: number;
   hemiMult: number;
+  groundLightScale: number;
   cloudCover: number;
   cloudDarkness: number;
   cloudSpeed: number;
+  windStretch: number;
+  windSwayMult: number;
   overcastTintHex: number;
   overcastTintStrength: number;
   snowCover: number;
+  wetness: number;
+  hailSpecks: number;
+  heatDry: number;
   tempTintHex: number;
   tempTintStrength: number;
 }
@@ -193,95 +199,126 @@ export function getWeatherAtmosphereProfile(
 ): WeatherAtmosphereProfile {
   const lvl = kind === 'clear' ? 1 : intensity === 'light' ? 0 : intensity === 'heavy' ? 2 : 1;
 
-  // Per-weather cloud cover, darkness, wind speed, sunlight dimming & ground snow/frost
+  // Per-weather sky clouds, darkness, wind, ground snow/wetness/hail & sunlight dimming
   let sunDim = 1.0;
   let hemiMult = 1.0;
-  let cloudCover = 0.22;
+  let groundLightScale = 1.0;
+  let cloudCover = 0.16;
   let cloudDarkness = 0.0;
-  let cloudSpeed = 1.0;
+  let cloudSpeed = 0.85;
+  let windStretch = 0.0;
+  let windSwayMult = 1.0;
   let overcastTintHex = 0x8d99ae;
   let overcastTintStrength = 0.0;
   let snowCover = 0.0;
+  let wetness = 0.0;
+  let hailSpecks = 0.0;
 
   switch (kind) {
     case 'clear':
       sunDim = 1.0;
-      cloudCover = 0.22;
+      groundLightScale = 1.0;
+      cloudCover = 0.16;
       cloudDarkness = 0.0;
-      cloudSpeed = 0.85;
+      cloudSpeed = 0.8;
       break;
     case 'cloudy':
-      sunDim = [0.92, 0.80, 0.60][lvl];
-      hemiMult = [1.0, 0.94, 0.82][lvl];
-      cloudCover = [0.58, 0.85, 0.98][lvl];
-      cloudDarkness = [0.16, 0.44, 0.80][lvl];
-      cloudSpeed = [1.0, 1.15, 1.35][lvl];
-      overcastTintHex = [0x99a6b8, 0x7e8a9c, 0x454e63][lvl];
-      overcastTintStrength = [0.14, 0.34, 0.58][lvl];
+      sunDim = [0.92, 0.78, 0.56][lvl];
+      hemiMult = [1.0, 0.92, 0.78][lvl];
+      groundLightScale = [0.94, 0.82, 0.64][lvl];
+      cloudCover = [0.52, 0.85, 0.98][lvl];
+      cloudDarkness = [0.16, 0.46, 0.86][lvl];
+      cloudSpeed = [1.0, 1.2, 1.5][lvl];
+      windSwayMult = [1.0, 1.15, 1.55][lvl];
+      overcastTintHex = [0x9fb0c7, 0x8592a6, 0x3b4359][lvl];
+      overcastTintStrength = [0.16, 0.46, 0.78][lvl];
       break;
     case 'rain':
-      sunDim = [0.85, 0.74, 0.58][lvl];
-      hemiMult = [0.95, 0.88, 0.78][lvl];
-      cloudCover = [0.76, 0.89, 0.97][lvl];
-      cloudDarkness = [0.35, 0.58, 0.78][lvl];
-      cloudSpeed = [1.15, 1.45, 1.95][lvl];
-      overcastTintHex = [0x6f82a3, 0x57698c, 0x3b4969][lvl];
-      overcastTintStrength = [0.24, 0.42, 0.58][lvl];
+      sunDim = [0.84, 0.72, 0.54][lvl];
+      hemiMult = [0.94, 0.86, 0.74][lvl];
+      groundLightScale = [0.87, 0.75, 0.60][lvl];
+      cloudCover = [0.76, 0.90, 0.98][lvl];
+      cloudDarkness = [0.38, 0.62, 0.84][lvl];
+      cloudSpeed = [1.2, 1.6, 2.25][lvl];
+      windStretch = [0.12, 0.25, 0.48][lvl];
+      windSwayMult = [1.15, 1.55, 2.5][lvl];
+      overcastTintHex = [0x6e83a6, 0x516385, 0x323e5c][lvl];
+      overcastTintStrength = [0.34, 0.56, 0.74][lvl];
+      wetness = [0.42, 0.76, 1.0][lvl];
       break;
     case 'storm':
-      sunDim = [0.68, 0.58, 0.46][lvl];
-      hemiMult = [0.86, 0.78, 0.68][lvl];
+      sunDim = [0.66, 0.54, 0.42][lvl];
+      hemiMult = [0.84, 0.74, 0.64][lvl];
+      groundLightScale = [0.70, 0.58, 0.47][lvl];
       cloudCover = [0.88, 0.96, 1.0][lvl];
-      cloudDarkness = [0.64, 0.82, 0.94][lvl];
-      cloudSpeed = [1.6, 2.2, 2.9][lvl];
-      overcastTintHex = [0x464d73, 0x333959, 0x222640][lvl];
-      overcastTintStrength = [0.44, 0.60, 0.74][lvl];
+      cloudDarkness = [0.68, 0.86, 0.97][lvl];
+      cloudSpeed = [1.7, 2.4, 3.3][lvl];
+      windStretch = [0.28, 0.48, 0.72][lvl];
+      windSwayMult = [1.8, 2.7, 4.0][lvl];
+      overcastTintHex = [0x3d456b, 0x2a304f, 0x1a1e36][lvl];
+      overcastTintStrength = [0.58, 0.76, 0.88][lvl];
+      wetness = [0.68, 0.90, 1.0][lvl];
       break;
     case 'hail':
-      sunDim = [0.80, 0.70, 0.56][lvl];
-      hemiMult = [0.94, 0.88, 0.78][lvl];
-      cloudCover = [0.80, 0.91, 0.98][lvl];
-      cloudDarkness = [0.46, 0.66, 0.84][lvl];
-      cloudSpeed = [1.35, 1.8, 2.35][lvl];
-      overcastTintHex = [0x6c87a3, 0x536f8c, 0x3d5570][lvl];
-      overcastTintStrength = [0.30, 0.46, 0.62][lvl];
-      snowCover = [0.16, 0.30, 0.48][lvl];
+      sunDim = [0.78, 0.68, 0.52][lvl];
+      hemiMult = [0.92, 0.86, 0.76][lvl];
+      groundLightScale = [0.82, 0.72, 0.60][lvl];
+      cloudCover = [0.80, 0.92, 0.98][lvl];
+      cloudDarkness = [0.48, 0.68, 0.86][lvl];
+      cloudSpeed = [1.4, 1.9, 2.5][lvl];
+      windStretch = [0.18, 0.34, 0.55][lvl];
+      windSwayMult = [1.3, 1.8, 2.6][lvl];
+      overcastTintHex = [0x6a86a6, 0x4d6987, 0x344c66][lvl];
+      overcastTintStrength = [0.38, 0.58, 0.74][lvl];
+      wetness = [0.36, 0.60, 0.82][lvl];
+      hailSpecks = [0.40, 0.74, 1.0][lvl];
+      snowCover = [0.16, 0.30, 0.46][lvl];
       break;
     case 'snow':
-      sunDim = [0.94, 0.87, 0.76][lvl];
-      hemiMult = [1.05, 1.12, 1.16][lvl];
-      cloudCover = [0.72, 0.86, 0.96][lvl];
+      sunDim = [0.92, 0.85, 0.74][lvl];
+      hemiMult = [1.06, 1.14, 1.20][lvl];
+      groundLightScale = [0.96, 0.92, 0.86][lvl];
+      cloudCover = [0.74, 0.88, 0.97][lvl];
       cloudDarkness = [0.12, 0.24, 0.40][lvl];
-      cloudSpeed = [0.9, 1.25, 2.1][lvl];
-      overcastTintHex = [0xb9d8e6, 0xa8cadc, 0x92b4c9][lvl];
-      overcastTintStrength = [0.18, 0.32, 0.48][lvl];
-      snowCover = [0.42, 0.78, 1.0][lvl];
+      cloudSpeed = [0.95, 1.35, 2.3][lvl];
+      windStretch = [0.06, 0.20, 0.52][lvl];
+      windSwayMult = [1.05, 1.35, 2.9][lvl];
+      overcastTintHex = [0xc5e1f0, 0xb4d4e6, 0x99bdd4][lvl];
+      overcastTintStrength = [0.28, 0.48, 0.66][lvl];
+      snowCover = [0.48, 0.82, 1.0][lvl];
       break;
     case 'windy':
-      sunDim = [0.98, 0.94, 0.88][lvl];
+      sunDim = [0.98, 0.93, 0.86][lvl];
       hemiMult = 1.0;
-      cloudCover = [0.40, 0.54, 0.70][lvl];
-      cloudDarkness = [0.08, 0.18, 0.32][lvl];
-      cloudSpeed = [1.75, 2.8, 4.2][lvl];
-      overcastTintHex = [0x90b5ba, 0x7da4ad, 0x678d99][lvl];
-      overcastTintStrength = [0.08, 0.16, 0.28][lvl];
+      groundLightScale = [0.98, 0.94, 0.88][lvl];
+      cloudCover = [0.38, 0.54, 0.72][lvl];
+      cloudDarkness = [0.08, 0.20, 0.38][lvl];
+      cloudSpeed = [1.85, 3.0, 4.6][lvl];
+      windStretch = [0.32, 0.62, 0.92][lvl];
+      windSwayMult = [1.8, 3.1, 4.8][lvl];
+      overcastTintHex = [0x92b8bf, 0x7ba4b0, 0x628c9c][lvl];
+      overcastTintStrength = [0.10, 0.22, 0.36][lvl];
       break;
   }
 
-  // Independent temperature atmospheric tinting & sub-zero frost cover
+  // Independent temperature atmospheric tinting, hot dryness & sub-zero frost cover
   let tempTintHex = 0xffffff;
   let tempTintStrength = 0.0;
+  let heatDry = 0.0;
   if (tempC >= 29) {
     const hotFactor = Math.max(0, Math.min(1, (tempC - 28) / 15));
     tempTintHex = 0xffc078;
-    tempTintStrength = hotFactor * 0.26;
+    tempTintStrength = hotFactor * 0.28;
     sunDim = Math.min(1.16, sunDim * (1 + hotFactor * 0.14));
+    if (tempC >= 31 && wetness < 0.25) {
+      heatDry = Math.max(0, Math.min(1, (tempC - 30) / 14));
+    }
   } else if (tempC <= 5) {
     const coldFactor = Math.max(0, Math.min(1, (6 - tempC) / 24));
     tempTintHex = 0x99d6ff;
-    tempTintStrength = coldFactor * 0.26;
+    tempTintStrength = coldFactor * 0.28;
     if (tempC <= -2) {
-      const frostCover = Math.min(0.55, ((-tempC - 1) / 20) * 0.55);
+      const frostCover = Math.min(0.68, ((-tempC - 1) / 18) * 0.68);
       snowCover = Math.max(snowCover, frostCover);
     }
   }
@@ -289,12 +326,18 @@ export function getWeatherAtmosphereProfile(
   return {
     sunDim,
     hemiMult,
+    groundLightScale,
     cloudCover,
     cloudDarkness,
     cloudSpeed,
+    windStretch,
+    windSwayMult,
     overcastTintHex,
     overcastTintStrength,
     snowCover,
+    wetness,
+    hailSpecks,
+    heatDry,
     tempTintHex,
     tempTintStrength,
   };

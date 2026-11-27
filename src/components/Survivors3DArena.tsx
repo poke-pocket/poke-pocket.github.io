@@ -27,6 +27,7 @@ import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { BGM_TRACK_LABELS, sound, type BgmTrackId } from '../utils/sound';
 import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
 import { buildInterTownRoadNetwork3D, buildProceduralTown3D, resolveTownWallCollisions, setGlobalNightLampGlow3D, type ProceduralTownInstance } from '../utils/townBuilder3D';
+import { createWeatherFloraMaterial3D, syncGlobalFloraWeather3D } from '../world3d/weatherFloraMaterial3D';
 import { buildFallbackWeather, buildWeatherInfo, fetchLiveWeatherAt, getWeatherAtmosphereProfile, type LiveWeatherInfo, type WeatherIntensity, type WeatherKind } from '../utils/weatherSystem';
 import { BILLBOARD_PITCH_TILT, MAX_CAM_PITCH, MAX_FOLLOWERS, SHARED_ENTITY_SHADOW_MAT, UNIT_SHADOW_GEO, UPRIGHT_QUAD_GEO, createSafeZone3DMesh, type ActiveCapture3D, type ActiveFollower, type ArenaScreenPhase, type Enemy3D, type FloatingTag2D, type FollowerReportRow, type LevelChoice, type Loot3D, type MonsterQuality, type Projectile3D, type RunResultSummary, type Survivors3DArenaProps, type Vfx3D } from './arena3d/arenaTypesAndProps';
 import { setupHubWildlifeDiorama3D } from './arena3d/arenaWildlifeDiorama3D';
@@ -1893,6 +1894,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       terrainMat,
       adventureStyleRef.current !== 'vampire_rogue',
       initAtm.snowCover,
+      {
+        wetness: initAtm.wetness,
+        lightScale: initAtm.groundLightScale,
+        hailSpecks: initAtm.hailSpecks,
+        heatDry: initAtm.heatDry,
+        timeSec: 0,
+      },
     );
     const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
     terrainMesh.receiveShadow = true;
@@ -1925,24 +1933,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     scene.add(farWaterPlaneMesh);
 
     const floatingLilyPads = new Set<{ mesh: THREE.Mesh; baseY: number; phase: number }>();
-    const lilyMat = new THREE.MeshBasicMaterial({
-      map: tex.lilyPad,
-      transparent: true,
-      alphaTest: 0.15,
-      side: THREE.DoubleSide,
-    });
-    const lotusMat = new THREE.MeshBasicMaterial({
-      map: tex.lilyLotus,
-      transparent: true,
-      alphaTest: 0.15,
-      side: THREE.DoubleSide,
-    });
-    const cattailMat = new THREE.MeshBasicMaterial({
-      map: tex.cattail,
-      transparent: true,
-      alphaTest: 0.15,
-      side: THREE.DoubleSide,
-    });
+    const lilyMat = createWeatherFloraMaterial3D(tex.lilyPad, 0.15);
+    const lotusMat = createWeatherFloraMaterial3D(tex.lilyLotus, 0.15);
+    const cattailMat = createWeatherFloraMaterial3D(tex.cattail, 0.15);
     const lilyGeo = new THREE.PlaneGeometry(1, 1);
     lilyGeo.rotateX(-Math.PI / 2);
 
@@ -3070,7 +3063,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const tmpCloudShade = new THREE.Color();
     const tmpOvercastCol = new THREE.Color();
     const tmpTempTintCol = new THREE.Color();
+    const tmpFloraLightCol = new THREE.Color(1, 1, 1);
     let smoothSnowCover = initAtm.snowCover;
+    let smoothWetness = initAtm.wetness;
+    let smoothHailSpecks = initAtm.hailSpecks;
+    let smoothHeatDry = initAtm.heatDry;
+    let smoothGroundLight = initAtm.groundLightScale;
+    let smoothWindSway = initAtm.windSwayMult;
 
     const applyLiveSolarAtmosphere = (
       lat: number,
@@ -3114,11 +3113,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       tmpFogCol.setHex(solar.fogHex);
 
       if (atm.overcastTintStrength > 0.005) {
-        const overcastNightScale = 0.35 + solar.daylightFactor * 0.65;
+        const overcastNightScale = 0.28 + solar.daylightFactor * 0.72;
         tmpOvercastCol.setHex(atm.overcastTintHex).multiplyScalar(overcastNightScale);
         tmpSkyCol.lerp(tmpOvercastCol, atm.overcastTintStrength);
-        tmpHorCol.lerp(tmpOvercastCol, atm.overcastTintStrength * 0.82);
-        tmpFogCol.lerp(tmpOvercastCol, atm.overcastTintStrength * 0.72);
+        tmpHorCol.lerp(tmpOvercastCol, atm.overcastTintStrength * 0.88);
+        tmpFogCol.lerp(tmpOvercastCol, atm.overcastTintStrength * 0.80);
       }
       if (atm.tempTintStrength > 0.005) {
         tmpTempTintCol.setHex(atm.tempTintHex);
@@ -3142,12 +3141,53 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         }
       }
 
-      smoothSnowCover += (atm.snowCover - smoothSnowCover) * Math.min(1, dtSec * 2.4);
+      const surfLerp = Math.min(1, dtSec * 2.6);
+      smoothSnowCover += (atm.snowCover - smoothSnowCover) * surfLerp;
+      smoothWetness += (atm.wetness - smoothWetness) * surfLerp;
+      smoothHailSpecks += (atm.hailSpecks - smoothHailSpecks) * surfLerp;
+      smoothHeatDry += (atm.heatDry - smoothHeatDry) * surfLerp;
+      const targetGroundLight = atm.groundLightScale * (0.48 + solar.daylightFactor * 0.52);
+      smoothGroundLight += (targetGroundLight - smoothGroundLight) * surfLerp;
+      smoothWindSway += (atm.windSwayMult - smoothWindSway) * surfLerp;
+
+      const timeSec = nowMs * 0.001;
       syncTerrainGeoUniforms3D(
         terrainMat,
         adventureStyleRef.current !== 'vampire_rogue',
         smoothSnowCover,
+        {
+          wetness: smoothWetness,
+          lightScale: smoothGroundLight,
+          hailSpecks: smoothHailSpecks,
+          heatDry: smoothHeatDry,
+          timeSec,
+        },
       );
+
+      // Sync ALL 3D Pixel Plants (wild trees, bushes, flowers, grass, cattails, lily pads & city trees!)
+      const floraBright = 0.56 + 0.44 * Math.min(1.12, smoothGroundLight);
+      tmpFloraLightCol.setRGB(floraBright, floraBright, floraBright);
+      if (atm.overcastTintStrength > 0.05) {
+        tmpFloraLightCol.lerp(
+          tmpOvercastCol.setHex(0xc8d8ee).multiplyScalar(floraBright),
+          atm.overcastTintStrength * 0.28,
+        );
+      }
+      if (atm.tempTintStrength > 0.05) {
+        tmpFloraLightCol.lerp(
+          tmpTempTintCol.setHex(atm.tempTintHex).multiplyScalar(floraBright),
+          atm.tempTintStrength * 0.32,
+        );
+      }
+      syncGlobalFloraWeather3D({
+        snowCover: smoothSnowCover,
+        wetness: smoothWetness,
+        heatDry: smoothHeatDry,
+        windSwayMult: smoothWindSway,
+        lightTint: tmpFloraLightCol,
+        fogColor: scene.fog instanceof THREE.Fog ? scene.fog.color : tmpFogCol,
+        timeSec,
+      });
 
       const skyU = horizonBackdrop.userData?.skyUniforms;
       if (skyU) {
@@ -3161,13 +3201,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         if (skyU.uCloudDarkness) {
           skyU.uCloudDarkness.value += (atm.cloudDarkness - skyU.uCloudDarkness.value) * kLerp;
         }
+        if (skyU.uWindStretch) {
+          skyU.uWindStretch.value += (atm.windStretch - skyU.uWindStretch.value) * kLerp;
+        }
         if (skyU.uCloudScroll) {
           skyU.uCloudScroll.value += dtSec * atm.cloudSpeed;
         }
         const df = solar.daylightFactor;
         const dark = atm.cloudDarkness;
-        const litScale = 1.0 - dark * 0.56;
-        const shadeScale = 1.0 - dark * 0.64;
+        const litScale = 1.0 - dark * 0.62;
+        const shadeScale = 1.0 - dark * 0.72;
         tmpCloudLit.setRGB(
           (0.28 + df * 0.72) * litScale,
           (0.32 + df * 0.67) * litScale,

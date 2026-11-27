@@ -16,6 +16,10 @@ import {
 } from '../../data/survivorsTactics';
 import { HIGHWAY_ROAD_WIDTH_3D, getNearestGeoHighwayProjection3D } from '../../utils/interCityHighwayGraph';
 import { BILLBOARD_PITCH_TILT, UPRIGHT_QUAD_GEO, createLushTreeSprite3D } from './arenaTypesAndProps';
+import {
+  GLOBAL_FLORA_WEATHER_UNIFORMS,
+  createWeatherFloraMaterial3D,
+} from '../../world3d/weatherFloraMaterial3D';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
@@ -42,20 +46,8 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
     waterPlaneMesh,
   } = rawCtx as ArenaSharedCtx;
 
-  const sharedFloraMatCache = new Map<THREE.Texture, THREE.MeshBasicMaterial>();
-  const getSharedFloraMat = (t: THREE.Texture, alphaTest = 0.15) => {
-    let m = sharedFloraMatCache.get(t);
-    if (!m) {
-      m = new THREE.MeshBasicMaterial({
-        map: t,
-        transparent: true,
-        alphaTest,
-        side: THREE.DoubleSide,
-      });
-      sharedFloraMatCache.set(t, m);
-    }
-    return m;
-  };
+  const getSharedFloraMat = (t: THREE.Texture, alphaTest = 0.15) =>
+    createWeatherFloraMaterial3D(t, alphaTest);
   const floraBillboards = new Set<THREE.Mesh>();
   let lastBbYaw = 999;
   let lastBbPitch = 999;
@@ -64,20 +56,23 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
     lastBbYaw = yaw;
     lastBbPitch = pitch;
     const tiltX = -pitch * BILLBOARD_PITCH_TILT;
+    const windMult = GLOBAL_FLORA_WEATHER_UNIFORMS.uWindSway.value;
+    const windLean = Math.max(0, windMult - 1.2) * 0.036;
+    const windFreqScale = 1 + Math.max(0, windMult - 1.0) * 0.42;
     for (const bb of floraBillboards) {
       const amp = bb.userData.swayAmp as number | undefined;
       let swayZ = 0;
       if (amp) {
-        const freq = (bb.userData.swayFreq as number | undefined) ?? 2.1;
+        const freq = ((bb.userData.swayFreq as number | undefined) ?? 2.1) * windFreqScale;
         const phase = (bb.userData.swayPhase as number | undefined) ?? 0;
         const shake = (bb.userData.shakeTimer as number | undefined) ?? 0;
         const shakeOffset = shake > 0 ? Math.sin(windT * 42) * 0.16 * shake : 0;
-        swayZ = Math.sin(windT * freq + phase) * amp + shakeOffset;
+        swayZ = Math.sin(windT * freq + phase) * amp * Math.min(3.4, windMult) - windLean + shakeOffset;
       }
       bb.rotation.set(tiltX, yaw, swayZ, 'YXZ');
     }
     for (const lp of floatingLilyPads) {
-      lp.mesh.position.y = lp.baseY + Math.sin(windT * 1.9 + lp.phase) * 0.022;
+      lp.mesh.position.y = lp.baseY + Math.sin(windT * 1.9 + lp.phase) * (0.022 * Math.min(2.2, windMult));
     }
   };
   const makeUprightProp = (
