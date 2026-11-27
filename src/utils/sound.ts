@@ -1,5 +1,5 @@
 import { WeatherAmbienceEngine } from './weatherAmbience';
-import type { WeatherKind } from './weatherSystem';
+import type { WeatherIntensity, WeatherKind } from './weatherSystem';
 
 export type SfxKind =
   | 'cursor'
@@ -715,7 +715,7 @@ class RetroSoundEngine {
 
   setWeatherAmbience(
     kind: WeatherKind | null,
-    opts?: { indoor?: boolean; isNight?: boolean },
+    opts?: { indoor?: boolean; isNight?: boolean; intensity?: WeatherIntensity },
   ) {
     const ctx = this.ctx && this.ctx.state === 'running' ? this.ctx : null;
     this.weatherAmbience.setWeather(kind, opts, ctx);

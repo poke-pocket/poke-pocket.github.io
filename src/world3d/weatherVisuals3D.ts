@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import type { WeatherKind } from '../utils/weatherSystem';
+import type { WeatherIntensity, WeatherKind } from '../utils/weatherSystem';
 
 export interface WeatherVisuals3DController {
   update: (params: {
     dt: number;
     kind: WeatherKind;
+    intensity?: WeatherIntensity;
     centerX: number;
     centerY: number;
     centerZ: number;
@@ -20,16 +21,17 @@ export interface WeatherVisuals3DController {
   dispose: () => void;
 }
 
-const RAIN_STREAK_COUNT = 680;
-const POINT_PARTICLE_COUNT = 520;
+const RAIN_STREAK_COUNT = 1050;
+const POINT_PARTICLE_COUNT = 820;
 const BOLT_MAX_SEGMENTS = 48; // Main jagged trunk + branching forks
 
 /**
- * Rich HD-2D 3D Weather Visuals Controller:
- * - `rain` / `storm`: 680 slanted luminous 3D rain streaks (`THREE.LineSegments`) + 260 ground splash specks
- * - `storm`: Real forked 3D lightning bolts in the player's forward sky + 2-pulse electric sky/light flash
- * - `hail`: 480 bright icy hailstones slamming down at high speed and visibly bouncing off the ground
- * - `snow`: 520 gently swirling bright snowflakes
+ * Rich HD-2D 3D Weather Visuals Controller (Intensity-Aware!):
+ * - `rain` / `storm`: 210..1050 slanted luminous 3D rain streaks (`THREE.LineSegments`) + 65..420 ground splash specks
+ * - `storm`: Real forked 3D lightning bolts in the player's forward sky + 2-pulse electric sky/light flash (rate scales with intensity)
+ * - `hail`: 160..780 bright icy hailstones slamming down at high speed and visibly bouncing off the ground
+ * - `snow`: 180..820 gently swirling -> wind-driven bright snowflakes
+ * - `windy`: 55..230 fast horizontally streaking sunlit air/leaf motes
  * - Automatically hides outdoor precipitation inside buildings (`isIndoor === true`)
  */
 export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DController {
@@ -60,7 +62,7 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
   rainLines.renderOrder = 6;
   scene.add(rainLines);
 
-  // 2. Point Particles (Snowflakes, Bouncing Hailstones, or Rain Ground Splashes!)
+  // 2. Point Particles (Snowflakes, Bouncing Hailstones, Rain Ground Splashes, or Wind Motes!)
   const ptPositions = new Float32Array(POINT_PARTICLE_COUNT * 3);
   const ptVelY = new Float32Array(POINT_PARTICLE_COUNT);
   const ptPhase = new Float32Array(POINT_PARTICLE_COUNT);
@@ -130,7 +132,7 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
   // Runtime state
   let windClock = 0;
   let lastKind: WeatherKind | null = null;
-  let nextBoltTimer = 1.4; // Fast first strike when switching to storm!
+  let nextBoltTimer = 1.4;
   let boltAge = 99;
   let boltDuration = 0.42;
   let boltActiveSegs = 0;
@@ -146,7 +148,6 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
     const fLen = Math.hypot(fwdX, fwdZ);
     const nx = fLen > 0.01 ? fwdX / fLen : 0;
     const nz = fLen > 0.01 ? fwdZ / fLen : -1;
-    // Strike visibly inside the player's forward ±52° view cone (18m..38m away!)
     const angleOff = (Math.random() - 0.5) * 1.75;
     const cosA = Math.cos(angleOff);
     const sinA = Math.sin(angleOff);
@@ -172,7 +173,6 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
       boltVerts[o + 3] = bx;
       boltVerts[o + 4] = by;
       boltVerts[o + 5] = bz;
-      // Slightly offset secondary halo stroke for visible crisp thickness across WebGL
       const j = 0.24;
       boltGlowVerts[o] = ax + j;
       boltGlowVerts[o + 1] = ay;
@@ -191,7 +191,6 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
       const nextZ = curZ + (Math.random() - 0.5) * jitter * 2;
       pushSeg(curX, curY, curZ, nextX, nextY, nextZ);
 
-      // Spawn dramatic forked side branches on upper-mid trunk segments
       if (s >= 3 && s <= 9 && Math.random() < 0.48) {
         let fx = nextX;
         let fy = nextY;
@@ -228,6 +227,7 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
     update({
       dt,
       kind,
+      intensity = 'moderate',
       centerX,
       centerY,
       centerZ,
@@ -241,17 +241,21 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
       onLightningStrike,
     }) {
       windClock += dt;
+      const lvl = intensity === 'light' ? 0 : intensity === 'heavy' ? 2 : 1;
 
       if (kind !== lastKind) {
         lastKind = kind;
         if (kind === 'storm') {
-          // Trigger an early dramatic bolt (~1.0s) so players immediately see storm lightning!
-          nextBoltTimer = 0.8 + Math.random() * 0.9;
+          nextBoltTimer = [1.4, 0.9, 0.5][lvl] + Math.random() * 0.7;
         }
-        // Reset point particles when switching weather mode so snow/hail/splashes start fresh
         for (let i = 0; i < POINT_PARTICLE_COUNT; i++) {
           ptPositions[i * 3] = (Math.random() - 0.5) * 32;
-          ptPositions[i * 3 + 1] = kind === 'rain' || kind === 'storm' ? Math.random() * 0.55 : Math.random() * 18;
+          ptPositions[i * 3 + 1] =
+            kind === 'rain' || kind === 'storm'
+              ? Math.random() * 0.55
+              : kind === 'windy'
+                ? 0.8 + Math.random() * 11
+                : Math.random() * 18;
           ptPositions[i * 3 + 2] = (Math.random() - 0.5) * 32;
           ptVelY[i] = kind === 'hail' ? -(24 + Math.random() * 8) : -1;
         }
@@ -259,22 +263,27 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
 
       const isRainy = !isIndoor && (kind === 'rain' || kind === 'storm');
       const isSnowOrHail = !isIndoor && (kind === 'snow' || kind === 'hail');
+      const isWindy = !isIndoor && kind === 'windy';
 
-      // --- 1. Slanted 3D Rain Streaks (`rain` & `storm`) ---
+      // --- 1. Slanted 3D Rain Streaks (`rain` & `storm`, density/speed/slant scale strongly with intensity!) ---
       rainLines.visible = isRainy;
       if (isRainy) {
         const isStorm = kind === 'storm';
-        const activeCount = isStorm ? RAIN_STREAK_COUNT : Math.floor(RAIN_STREAK_COUNT * 0.68);
+        const activeCount = isStorm
+          ? [480, 780, RAIN_STREAK_COUNT][lvl]
+          : [210, 560, 1020][lvl];
         rainGeo.setDrawRange(0, activeCount * 2);
-        rainMat.color.setHex(isStorm ? 0xdbeeff : 0xc5e6ff);
-        rainMat.opacity = isStorm ? 0.88 : 0.72;
+        rainMat.color.setHex(isStorm ? 0xdbeeff : lvl === 0 ? 0xd8eeff : 0xc5e6ff);
+        rainMat.opacity = isStorm ? [0.68, 0.84, 0.94][lvl] : [0.48, 0.72, 0.90][lvl];
 
-        const baseFall = isStorm ? 32 : 23;
+        const baseFall = isStorm ? [25, 32, 39][lvl] : [17.5, 24, 34][lvl];
         const windX = isStorm
-          ? 7.2 + Math.sin(windClock * 1.9) * 2.4
-          : 2.4 + Math.sin(windClock * 1.1) * 0.8;
-        const windZ = isStorm ? 2.6 + Math.cos(windClock * 1.5) * 1.4 : 0.7;
-        const streakSec = isStorm ? 0.052 : 0.045; // 1.1m..1.65m visible slanted streak!
+          ? [4.2, 7.2, 10.4][lvl] + Math.sin(windClock * 1.9) * [1.3, 2.4, 3.6][lvl]
+          : [1.1, 2.5, 6.4][lvl] + Math.sin(windClock * 1.1) * [0.4, 0.8, 2.0][lvl];
+        const windZ = isStorm
+          ? [1.4, 2.6, 4.0][lvl] + Math.cos(windClock * 1.5) * 1.3
+          : [0.3, 0.7, 1.8][lvl];
+        const streakSec = isStorm ? [0.044, 0.052, 0.062][lvl] : [0.032, 0.045, 0.058][lvl];
 
         for (let i = 0; i < activeCount; i++) {
           const i3 = i * 3;
@@ -305,15 +314,20 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
         rainLines.position.set(centerX, centerY, centerZ);
       }
 
-      // --- 2. Points: Snowflakes / Bouncing Hailstones / Ground Rain Splashes ---
-      weatherPoints.visible = isSnowOrHail || isRainy;
+      // --- 2. Points: Snowflakes / Bouncing Hailstones / Rain Ground Splashes / Wind Motes ---
+      weatherPoints.visible = isSnowOrHail || isRainy || isWindy;
       if (isSnowOrHail) {
         const isHail = kind === 'hail';
-        const activePts = isHail ? 480 : POINT_PARTICLE_COUNT;
+        const activePts = isHail ? [160, 440, 780][lvl] : [180, 480, POINT_PARTICLE_COUNT][lvl];
         ptGeo.setDrawRange(0, activePts);
         ptMat.color.setHex(isHail ? 0xebf8ff : 0xffffff);
-        ptMat.size = isHail ? 0.56 : 0.48;
-        ptMat.opacity = isHail ? 0.94 : 0.88;
+        ptMat.size = isHail ? [0.42, 0.54, 0.66][lvl] : [0.38, 0.48, 0.56][lvl];
+        ptMat.opacity = isHail ? [0.84, 0.92, 0.98][lvl] : [0.72, 0.88, 0.96][lvl];
+
+        const hailFallBase = [20, 26, 33][lvl];
+        const hailBounceChance = [0.48, 0.64, 0.78][lvl];
+        const snowWindX = [0.4, 1.0, 4.8][lvl];
+        const snowFallBase = [1.9, 2.8, 4.1][lvl];
 
         for (let i = 0; i < activePts; i++) {
           const i3 = i * 3;
@@ -322,43 +336,39 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
           let z = ptPositions[i3 + 2];
 
           if (isHail) {
-            // Fast hailstones slamming down & visibly bouncing off the ground!
             let vy = ptVelY[i];
             if (vy > 0) {
-              // Currently bouncing upward after hitting the ground
               y += vy * dt;
               vy -= 26 * dt;
-              x += 1.6 * dt;
+              x += (1.2 + lvl * 0.9) * dt;
               if (y <= 0.12 && vy < 0) {
                 y = 16 + Math.random() * 6;
                 x = (Math.random() - 0.5) * 30;
                 z = (Math.random() - 0.5) * 30;
-                vy = -(26 + Math.random() * 9);
+                vy = -(hailFallBase + Math.random() * 9);
               }
               ptVelY[i] = vy;
             } else {
-              x += 3.4 * dt;
+              x += (2.4 + lvl * 1.6) * dt;
               y += vy * dt;
               if (y <= 0.16) {
                 y = 0.16;
-                // 65% visibly pop upward like bouncing ice pellets!
-                if (Math.random() < 0.65) {
-                  ptVelY[i] = 4.5 + Math.random() * 4.5;
+                if (Math.random() < hailBounceChance) {
+                  ptVelY[i] = 3.8 + lvl * 1.1 + Math.random() * 4.2;
                 } else {
                   y = 16 + Math.random() * 6;
                   x = (Math.random() - 0.5) * 30;
                   z = (Math.random() - 0.5) * 30;
-                  ptVelY[i] = -(26 + Math.random() * 9);
+                  ptVelY[i] = -(hailFallBase + Math.random() * 9);
                 }
               }
             }
           } else {
-            // Drifting winter snowflakes
             const ph = ptPhase[i];
-            x += (Math.sin(windClock * 1.5 + ph) * 1.7 + 0.6) * dt;
-            z += Math.cos(windClock * 1.2 + ph * 1.3) * 1.1 * dt;
-            y -= (2.8 + (ph % 1.4)) * dt;
-            if (y < 0.1) {
+            x += (Math.sin(windClock * 1.5 + ph) * (1.3 + lvl * 0.55) + snowWindX) * dt;
+            z += Math.cos(windClock * 1.2 + ph * 1.3) * (0.9 + lvl * 0.4) * dt;
+            y -= (snowFallBase + (ph % 1.4)) * dt;
+            if (y < 0.1 || Math.abs(x) > 19) {
               y = 15 + Math.random() * 5;
               x = (Math.random() - 0.5) * 32;
               z = (Math.random() - 0.5) * 32;
@@ -372,22 +382,47 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
         ptPosAttr.needsUpdate = true;
         weatherPoints.position.set(centerX, centerY, centerZ);
       } else if (isRainy) {
-        // Ground rain splash sparkles dancing around the player!
-        const splashCount = kind === 'storm' ? 280 : 180;
+        const isStorm = kind === 'storm';
+        const splashCount = isStorm ? [170, 290, 420][lvl] : [65, 180, 380][lvl];
         ptGeo.setDrawRange(0, splashCount);
         ptMat.color.setHex(0xe7f5ff);
-        ptMat.size = kind === 'storm' ? 0.34 : 0.28;
-        ptMat.opacity = kind === 'storm' ? 0.72 : 0.58;
+        ptMat.size = isStorm ? [0.28, 0.34, 0.40][lvl] : [0.22, 0.28, 0.35][lvl];
+        ptMat.opacity = isStorm ? [0.56, 0.72, 0.84][lvl] : [0.42, 0.58, 0.76][lvl];
 
         for (let i = 0; i < splashCount; i++) {
           const i3 = i * 3;
-          let y = ptPositions[i3 + 1] + 2.4 * dt;
-          if (y > 0.58 || Math.random() < dt * 4.5) {
+          let y = ptPositions[i3 + 1] + (2.0 + lvl * 0.6) * dt;
+          if (y > 0.58 || Math.random() < dt * (3.6 + lvl * 1.6)) {
             ptPositions[i3] = (Math.random() - 0.5) * 26;
             y = 0.06 + Math.random() * 0.14;
             ptPositions[i3 + 2] = (Math.random() - 0.5) * 26;
           }
           ptPositions[i3 + 1] = y;
+        }
+        ptPosAttr.needsUpdate = true;
+        weatherPoints.position.set(centerX, centerY, centerZ);
+      } else if (isWindy) {
+        const windPts = [55, 130, 240][lvl];
+        const windSpeed = [8.5, 15.5, 25.0][lvl];
+        ptGeo.setDrawRange(0, windPts);
+        ptMat.color.setHex(lvl === 2 ? 0xd3f9d8 : 0xe6fcf5);
+        ptMat.size = [0.24, 0.30, 0.36][lvl];
+        ptMat.opacity = [0.46, 0.62, 0.78][lvl];
+
+        for (let i = 0; i < windPts; i++) {
+          const i3 = i * 3;
+          const ph = ptPhase[i];
+          let x = ptPositions[i3] + (windSpeed + Math.sin(windClock * 1.8 + ph) * 2.6) * dt;
+          let y = ptPositions[i3 + 1] + Math.sin(windClock * 2.4 + ph) * (0.9 + lvl * 0.5) * dt;
+          let z = ptPositions[i3 + 2] + (windSpeed * 0.24 + Math.cos(windClock * 1.4 + ph) * 1.4) * dt;
+          if (x > 18 || Math.abs(z) > 18 || y < 0.3 || y > 14) {
+            x = -16 - Math.random() * 4;
+            y = 0.6 + Math.random() * 10.5;
+            z = (Math.random() - 0.5) * 28;
+          }
+          ptPositions[i3] = x;
+          ptPositions[i3 + 1] = y;
+          ptPositions[i3 + 2] = z;
         }
         ptPosAttr.needsUpdate = true;
         weatherPoints.position.set(centerX, centerY, centerZ);
@@ -400,39 +435,38 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
           const isNear = buildLightningBolt(centerX, centerY, centerZ, camFwdX, camFwdZ);
           boltAge = 0;
           boltDuration = 0.38 + Math.random() * 0.18;
-          nextBoltTimer = 3.2 + Math.random() * 5.8;
+          nextBoltTimer =
+            [7.5, 3.6, 1.7][lvl] + Math.random() * [5.5, 4.2, 2.5][lvl];
           onLightningStrike?.(isNear);
         }
 
         if (boltAge < boltDuration) {
           boltAge += dt;
           const t = boltAge / boltDuration;
-          // Cinematic double-flicker lightning envelope: peak -> dip -> bright re-strike -> decay
           let pulse = 0;
           if (t < 0.16) pulse = 1.0;
           else if (t < 0.3) pulse = 0.22;
           else if (t < 0.52) pulse = 0.92;
           else pulse = Math.max(0, (1 - t) / 0.48);
 
-          const flashScale = reduceFlashes ? 0.28 : 1.0;
+          const flashScale = (reduceFlashes ? 0.28 : 1.0) * [0.76, 1.0, 1.18][lvl];
           const indoorScale = isIndoor ? 0.32 : 1.0;
-          const intensity = pulse * flashScale * indoorScale;
+          const intensityNow = pulse * flashScale * indoorScale;
 
           boltCoreLine.visible = !isIndoor && pulse > 0.04;
           boltGlowLine.visible = !isIndoor && pulse > 0.04;
           boltCoreMat.opacity = Math.min(1, pulse * 1.1);
           boltGlowMat.opacity = Math.min(0.85, pulse * 0.75);
 
-          flashLight.intensity = intensity * 3.8;
-          if (!isIndoor && intensity > 0.05) {
-            // Brief electric illumination of sky & fog (smoothly restored next frame by applyLiveSolarAtmosphere!)
-            sun.intensity = Math.max(sun.intensity, 1.3 + intensity * 1.8);
-            hemi.intensity = Math.max(hemi.intensity, 0.9 + intensity * 1.4);
+          flashLight.intensity = intensityNow * 3.8;
+          if (!isIndoor && intensityNow > 0.05) {
+            sun.intensity = Math.max(sun.intensity, 1.3 + intensityNow * 1.8);
+            hemi.intensity = Math.max(hemi.intensity, 0.9 + intensityNow * 1.4);
             if (activeScene.background instanceof THREE.Color) {
-              activeScene.background.lerp(tmpFlashSky, Math.min(0.65, intensity * 0.58));
+              activeScene.background.lerp(tmpFlashSky, Math.min(0.65, intensityNow * 0.58));
             }
             if (activeScene.fog instanceof THREE.Fog) {
-              activeScene.fog.color.lerp(tmpFlashSky, Math.min(0.55, intensity * 0.48));
+              activeScene.fog.color.lerp(tmpFlashSky, Math.min(0.55, intensityNow * 0.48));
             }
           }
         } else {
@@ -447,7 +481,6 @@ export function createWeatherVisuals3D(scene: THREE.Scene): WeatherVisuals3DCont
         flashLight.intensity = 0;
       }
     },
-
     dispose() {
       scene.remove(rainLines);
       scene.remove(weatherPoints);

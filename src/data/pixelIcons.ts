@@ -56,6 +56,7 @@ export type PixelIconName =
   | 'weather_hail'
   | 'weather_snow'
   | 'weather_windy'
+  | 'thermometer'
   | 'music_note'
   | 'sunrise'
   | 'sunset'
@@ -1078,6 +1079,23 @@ export const PIXEL_ICONS: Record<PixelIconName, PixelIconDef> = {
       '..KK........KK..',
       '.KCCK.KKKK.KCCK.',
       '..KK..KCCK..KK..',
+    ],
+  },
+  thermometer: {
+    palette: { K: '#1e293b', W: '#ffffff', G: '#cbd5e1', R: '#ef4444', L: '#fca5a5' },
+    grid: [
+      '....KKKK....',
+      '...KWWWWK...',
+      '...KWGGWK...',
+      '...KWWWWK...',
+      '...KWRRWK...',
+      '...KWRRWK...',
+      '...KWRRWK...',
+      '..KKWRRWKK..',
+      '.KWRRLRRRWK.',
+      '.KWRRRRRRWK.',
+      '..KRRRRRRK..',
+      '...KKKKKK...',
     ],
   },
 };

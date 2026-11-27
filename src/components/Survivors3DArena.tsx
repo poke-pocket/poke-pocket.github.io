@@ -27,7 +27,7 @@ import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { BGM_TRACK_LABELS, sound, type BgmTrackId } from '../utils/sound';
 import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
 import { buildInterTownRoadNetwork3D, buildProceduralTown3D, resolveTownWallCollisions, setGlobalNightLampGlow3D, type ProceduralTownInstance } from '../utils/townBuilder3D';
-import { buildFallbackWeather, buildWeatherInfo, fetchLiveWeatherAt, type LiveWeatherInfo, type WeatherKind } from '../utils/weatherSystem';
+import { buildFallbackWeather, buildWeatherInfo, fetchLiveWeatherAt, getWeatherAtmosphereProfile, type LiveWeatherInfo, type WeatherIntensity, type WeatherKind } from '../utils/weatherSystem';
 import { BILLBOARD_PITCH_TILT, MAX_CAM_PITCH, MAX_FOLLOWERS, SHARED_ENTITY_SHADOW_MAT, UNIT_SHADOW_GEO, UPRIGHT_QUAD_GEO, createSafeZone3DMesh, type ActiveCapture3D, type ActiveFollower, type ArenaScreenPhase, type Enemy3D, type FloatingTag2D, type FollowerReportRow, type LevelChoice, type Loot3D, type MonsterQuality, type Projectile3D, type RunResultSummary, type Survivors3DArenaProps, type Vfx3D } from './arena3d/arenaTypesAndProps';
 import { setupHubWildlifeDiorama3D } from './arena3d/arenaWildlifeDiorama3D';
 import { createArenaCombatActions3D } from './arena3d/arenaCombatActions3D';
@@ -1624,10 +1624,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     if (prefDiff && prefDiff !== difficultyId) setDifficultyId(prefDiff);
   }, [save.prefs?.worldDifficulty, difficultyId]);
 
-  // Live Real-Time Weather Sync (uses GPS Home / active World Tour city via Open-Meteo, or manual World Settings override!)
+  // Live Real-Time Weather & Independent Temperature Sync (Open-Meteo or manual Debug/World overrides!)
   useEffect(() => {
     let cancelled = false;
     const override = save.prefs?.worldWeatherMode;
+    const manualIntensity: WeatherIntensity = save.prefs?.worldWeatherIntensity ?? 'moderate';
+    const tempMode = save.prefs?.worldTempMode ?? 'auto';
+    const manualTempC = save.prefs?.worldTempC ?? 22;
+
     if (override && override !== 'auto') {
       const tempByKind: Record<WeatherKind, number> = {
         clear: 25,
@@ -1638,13 +1642,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         snow: -2,
         windy: 18,
       };
+      const windByIntensity: Record<WeatherIntensity, number> = {
+        light: override === 'windy' ? 28 : 8,
+        moderate: override === 'windy' ? 40 : 14,
+        heavy: override === 'windy' ? 56 : 24,
+      };
+      const finalTemp = tempMode === 'manual' ? manualTempC : tempByKind[override];
       setLiveWeather(
         buildWeatherInfo(
           override,
-          tempByKind[override],
-          override === 'windy' ? 34 : 12,
+          finalTemp,
+          windByIntensity[manualIntensity],
           'fallback',
           '世界设置指定',
+          override === 'clear' ? 'moderate' : manualIntensity,
         ),
       );
       return;
@@ -1656,28 +1667,46 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const lng = curCity ? curCity.lng : (tour.homeCoords?.lng ?? defHome.lng);
     const label = curCity ? curCity.name : (tour.homeCoords?.label ?? defHome.label);
     fetchLiveWeatherAt(lat, lng, label).then((info) => {
-      if (!cancelled) setLiveWeather(info);
+      if (cancelled) return;
+      if (tempMode === 'manual') {
+        setLiveWeather(
+          buildWeatherInfo(
+            info.kind,
+            manualTempC,
+            info.windKmh,
+            info.source,
+            info.locationLabel,
+            info.intensity,
+          ),
+        );
+      } else {
+        setLiveWeather(info);
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [
     save.prefs?.worldWeatherMode,
+    save.prefs?.worldWeatherIntensity,
+    save.prefs?.worldTempMode,
+    save.prefs?.worldTempC,
     meta.worldTour?.currentCityId,
     meta.worldTour?.homeCoords?.lat,
     meta.worldTour?.homeCoords?.lng,
     lang,
   ]);
 
-  // Procedural Non-Looping Weather Ambience Sync (Raindrops, Hailstones, Thunderstorms, Wind, Snow, Day/Night)
+  // Procedural Non-Looping Weather Ambience Sync (Raindrops, Hailstones, Thunderstorms, Wind, Snow, Intensity, Day/Night)
   const activeInteriorAudioRef = useRef(false);
   useEffect(() => {
     const isNightNow = solarInfo.phase === 'night' || solarInfo.phase === 'dusk';
     sound.setWeatherAmbience(liveWeather.kind, {
       indoor: phase === 'hub' ? false : activeInteriorAudioRef.current,
       isNight: isNightNow,
+      intensity: liveWeather.intensity,
     });
-  }, [liveWeather.kind, solarInfo.phase, phase]);
+  }, [liveWeather.kind, liveWeather.intensity, solarInfo.phase, phase]);
 
   useEffect(() => {
     return () => {
@@ -1855,10 +1884,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     terrainGeo.rotateX(-Math.PI / 2);
     const terrainPosAttr = terrainGeo.attributes.position as THREE.BufferAttribute;
     const terrainMat = createSculptedTerrainMaterial(selectedBiome, tex, WORLD_SECTOR_SIZE);
+    const initAtm = getWeatherAtmosphereProfile(
+      liveWeatherRef.current.kind,
+      liveWeatherRef.current.intensity,
+      liveWeatherRef.current.tempC,
+    );
     syncTerrainGeoUniforms3D(
       terrainMat,
       adventureStyleRef.current !== 'vampire_rogue',
-      liveWeatherRef.current.kind === 'snow' ? 0.88 : 0,
+      initAtm.snowCover,
     );
     const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
     terrainMesh.receiveShadow = true;
@@ -3034,6 +3068,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const tmpFogSrgb = { r: 0.78, g: 0.91, b: 0.98 };
     const tmpCloudLit = new THREE.Color();
     const tmpCloudShade = new THREE.Color();
+    const tmpOvercastCol = new THREE.Color();
+    const tmpTempTintCol = new THREE.Color();
+    let smoothSnowCover = initAtm.snowCover;
 
     const applyLiveSolarAtmosphere = (
       lat: number,
@@ -3056,31 +3093,39 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         setSolarInfo(solar);
       }
 
-      const wKind = liveWeatherRef.current.kind;
-      const weatherDim =
-        wKind === 'storm'
-          ? 0.62
-          : wKind === 'hail'
-            ? 0.72
-            : wKind === 'rain'
-              ? 0.76
-              : wKind === 'cloudy'
-                ? 0.88
-                : 1.0;
-      const wantSunInt = solar.sunIntensity * weatherDim;
-      const wantHemiInt = solar.hemiIntensity * (wKind === 'snow' ? 1.1 : 1.0);
+      const wNow = liveWeatherRef.current;
+      const atm = getWeatherAtmosphereProfile(wNow.kind, wNow.intensity, wNow.tempC);
+      const wantSunInt = solar.sunIntensity * atm.sunDim;
+      const wantHemiInt = solar.hemiIntensity * atm.hemiMult;
       const kLerp = Math.min(1, dtSec * 3.2);
 
       sun.intensity += (wantSunInt - sun.intensity) * kLerp;
       hemi.intensity += (wantHemiInt - hemi.intensity) * kLerp;
-      sun.color.lerp(tmpSkyCol.setHex(solar.sunHex), kLerp);
+      tmpSkyCol.setHex(solar.sunHex);
+      if (atm.tempTintStrength > 0.005) {
+        tmpSkyCol.lerp(tmpTempTintCol.setHex(atm.tempTintHex), atm.tempTintStrength * 0.7);
+      }
+      sun.color.lerp(tmpSkyCol, kLerp);
       hemi.color.lerp(tmpSkyCol.setHex(solar.hemiSkyHex), kLerp);
       hemi.groundColor.lerp(tmpSkyCol.setHex(solar.hemiGroundHex), kLerp);
 
       tmpSkyCol.setHex(solar.skyHex);
       tmpHorCol.setHex(solar.horizonHex);
-      tmpMidCol.copy(tmpHorCol).lerp(tmpSkyCol, 0.52);
       tmpFogCol.setHex(solar.fogHex);
+
+      if (atm.overcastTintStrength > 0.005) {
+        const overcastNightScale = 0.35 + solar.daylightFactor * 0.65;
+        tmpOvercastCol.setHex(atm.overcastTintHex).multiplyScalar(overcastNightScale);
+        tmpSkyCol.lerp(tmpOvercastCol, atm.overcastTintStrength);
+        tmpHorCol.lerp(tmpOvercastCol, atm.overcastTintStrength * 0.82);
+        tmpFogCol.lerp(tmpOvercastCol, atm.overcastTintStrength * 0.72);
+      }
+      if (atm.tempTintStrength > 0.005) {
+        tmpTempTintCol.setHex(atm.tempTintHex);
+        tmpHorCol.lerp(tmpTempTintCol, atm.tempTintStrength * (0.45 + solar.daylightFactor * 0.55));
+        tmpFogCol.lerp(tmpTempTintCol, atm.tempTintStrength * 0.55);
+      }
+      tmpMidCol.copy(tmpHorCol).lerp(tmpSkyCol, 0.52);
 
       if (scene.background instanceof THREE.Color) {
         scene.background.lerp(tmpSkyCol, kLerp);
@@ -3096,15 +3141,43 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           waterMat.uniforms.uFogColor.value.setRGB(tmpFogSrgb.r, tmpFogSrgb.g, tmpFogSrgb.b);
         }
       }
+
+      smoothSnowCover += (atm.snowCover - smoothSnowCover) * Math.min(1, dtSec * 2.4);
+      syncTerrainGeoUniforms3D(
+        terrainMat,
+        adventureStyleRef.current !== 'vampire_rogue',
+        smoothSnowCover,
+      );
+
       const skyU = horizonBackdrop.userData?.skyUniforms;
       if (skyU) {
         skyU.uZenith?.value?.lerp?.(tmpSkyCol, kLerp);
         skyU.uMid?.value?.lerp?.(tmpMidCol, kLerp);
         skyU.uHorizon?.value?.lerp?.(tmpHorCol, kLerp);
         skyU.uFogColor?.value?.lerp?.(tmpFogCol, kLerp);
+        if (skyU.uCloudCover) {
+          skyU.uCloudCover.value += (atm.cloudCover - skyU.uCloudCover.value) * kLerp;
+        }
+        if (skyU.uCloudDarkness) {
+          skyU.uCloudDarkness.value += (atm.cloudDarkness - skyU.uCloudDarkness.value) * kLerp;
+        }
+        if (skyU.uCloudScroll) {
+          skyU.uCloudScroll.value += dtSec * atm.cloudSpeed;
+        }
         const df = solar.daylightFactor;
-        tmpCloudLit.setRGB(0.28 + df * 0.72, 0.32 + df * 0.67, 0.46 + df * 0.54);
-        tmpCloudShade.setRGB(0.16 + df * 0.58, 0.21 + df * 0.61, 0.34 + df * 0.58);
+        const dark = atm.cloudDarkness;
+        const litScale = 1.0 - dark * 0.56;
+        const shadeScale = 1.0 - dark * 0.64;
+        tmpCloudLit.setRGB(
+          (0.28 + df * 0.72) * litScale,
+          (0.32 + df * 0.67) * litScale,
+          (0.46 + df * 0.54) * (litScale + dark * 0.08),
+        );
+        tmpCloudShade.setRGB(
+          (0.16 + df * 0.58) * shadeScale,
+          (0.21 + df * 0.61) * shadeScale,
+          (0.34 + df * 0.58) * (shadeScale + dark * 0.08),
+        );
         skyU.uCloudLit?.value?.lerp?.(tmpCloudLit, kLerp);
         skyU.uCloudShade?.value?.lerp?.(tmpCloudShade, kLerp);
       }
@@ -3161,6 +3234,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           weatherVisuals3D.update({
             dt,
             kind: liveWeatherRef.current.kind,
+            intensity: liveWeatherRef.current.intensity,
             centerX: sim.px,
             centerY: sim.py,
             centerZ: sim.pz,
@@ -3199,7 +3273,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         syncTerrainGeoUniforms3D(
           terrainMat,
           adventureStyleRef.current !== 'vampire_rogue',
-          liveWeatherRef.current.kind === 'snow' ? 0.88 : 0,
+          smoothSnowCover,
         );
 
         if (!pausedRef.current && !externalPausedRef.current && !worldMapOpenRef.current && !inRunTownShopOpenRef.current && hubModalRef.current === 'none' && !endedRef.current) {
@@ -3605,6 +3679,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               sound.setWeatherAmbience(liveWeatherRef.current.kind, {
                 indoor: isIndoorNow,
                 isNight: solarInfoRef.current.lampGlow > 0.45,
+                intensity: liveWeatherRef.current.intensity,
               });
             }
           }
@@ -3653,6 +3728,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         weatherVisuals3D.update({
           dt,
           kind: liveWeatherRef.current.kind,
+          intensity: liveWeatherRef.current.intensity,
           centerX: sim.px,
           centerY: sim.py,
           centerZ: sim.pz,

@@ -1,4 +1,4 @@
-import type { WeatherKind } from './weatherSystem';
+import type { WeatherIntensity, WeatherKind } from './weatherSystem';
 
 /**
  * Procedural Continuous Web Audio Weather Ambience Synthesizer.
@@ -40,6 +40,7 @@ export class WeatherAmbienceEngine {
   private bedGainB: GainNode | null = null;
 
   private activeKind: WeatherKind | null = null;
+  private intensity: WeatherIntensity = 'moderate';
   private indoor = false;
   private isNight = false;
   private enabled = true;
@@ -100,15 +101,19 @@ export class WeatherAmbienceEngine {
 
   setWeather(
     kind: WeatherKind | null,
-    opts?: { indoor?: boolean; isNight?: boolean },
+    opts?: { indoor?: boolean; isNight?: boolean; intensity?: WeatherIntensity },
     ctx?: AudioContext | null,
   ) {
     const nextIndoor = opts?.indoor ?? this.indoor;
     const nextNight = opts?.isNight ?? this.isNight;
+    const nextIntensity: WeatherIntensity =
+      kind === 'clear' ? 'moderate' : (opts?.intensity ?? this.intensity);
     const kindChanged = kind !== this.activeKind;
+    const intensityChanged = nextIntensity !== this.intensity;
     const envChanged = nextIndoor !== this.indoor || nextNight !== this.isNight;
 
     this.activeKind = kind;
+    this.intensity = nextIntensity;
     this.indoor = nextIndoor;
     this.isNight = nextNight;
 
@@ -127,8 +132,8 @@ export class WeatherAmbienceEngine {
       this.syncBusParams(envChanged ? 0.45 : 0.3);
       if (!this.running) {
         this.startEngine();
-      } else if (kindChanged) {
-        // Smoothly morph the continuous bed into the new weather's spectral profile (NO abrupt cuts!)
+      } else if (kindChanged || intensityChanged) {
+        // Smoothly morph the continuous bed into the new weather/intensity profile (NO abrupt cuts!)
         this.applyWeatherBedTarget(0.85, 1.0);
         this.resetDiscreteSchedulers();
       }
@@ -386,6 +391,9 @@ export class WeatherAmbienceEngine {
 
     const now = ctx.currentTime;
     const d = driftFactor; // Smooth subtle multiplier ~0.86..1.14 (never drops abruptly!)
+    const lvl = this.intensity === 'light' ? 0 : this.intensity === 'heavy' ? 2 : 1;
+    const bedGainMult = [0.46, 1.0, 1.5][lvl];
+    const brightMult = [0.76, 1.0, 1.24][lvl];
 
     // Default calm clear open-air hush
     let hpAFreq = 120;
@@ -398,64 +406,65 @@ export class WeatherAmbienceEngine {
     let gainB = 0.004;
 
     if (kind === 'rain') {
-      // Steady, natural continuous rain curtain (flat Q, wide clean rain sheen!)
-      hpAFreq = 170;
-      lpAFreq = 1250 * (0.92 + (d - 0.85) * 0.55);
+      // Steady, natural continuous rain curtain scaled smoothly across light / moderate / heavy rain
+      hpAFreq = [210, 170, 130][lvl];
+      lpAFreq = 1250 * brightMult * (0.92 + (d - 0.85) * 0.55);
       qA = 0.55;
-      gainA = 0.14 * d;
+      gainA = 0.14 * bedGainMult * d;
 
-      hpBFreq = 620;
-      lpBFreq = 3600 * (0.9 + (d - 0.85) * 0.65);
-      gainB = 0.095 * d;
+      hpBFreq = [760, 620, 480][lvl];
+      lpBFreq = 3600 * brightMult * (0.9 + (d - 0.85) * 0.65);
+      gainB = 0.095 * bedGainMult * d;
     } else if (kind === 'storm') {
-      // Full, steady heavy downpour + warm low air rush (NO high-Q wah-wah!)
-      hpAFreq = 110;
-      lpAFreq = 1550 * (0.9 + (d - 0.85) * 0.6);
+      // Full, steady downpour + warm low air rush scaled by storm intensity
+      hpAFreq = [140, 110, 88][lvl];
+      lpAFreq = 1550 * brightMult * (0.9 + (d - 0.85) * 0.6);
       qA = 0.6;
-      gainA = 0.2 * d;
+      gainA = 0.19 * [0.64, 1.0, 1.38][lvl] * d;
 
-      hpBFreq = 520;
-      lpBFreq = 4600 * (0.92 + (d - 0.85) * 0.5);
-      gainB = 0.145 * d;
+      hpBFreq = [620, 520, 430][lvl];
+      lpBFreq = 4600 * brightMult * (0.92 + (d - 0.85) * 0.5);
+      gainB = 0.135 * [0.64, 1.0, 1.38][lvl] * d;
     } else if (kind === 'hail') {
       // Crisp cold sleet air backdrop underneath the prominent "咚咚咚" hailstone knocks
       hpAFreq = 180;
-      lpAFreq = 1100 * d;
+      lpAFreq = 1100 * brightMult * d;
       qA = 0.58;
-      gainA = 0.095 * d;
+      gainA = 0.095 * bedGainMult * d;
 
       hpBFreq = 750;
-      lpBFreq = 3200;
-      gainB = 0.055 * d;
+      lpBFreq = 3200 * brightMult;
+      gainB = 0.055 * bedGainMult * d;
     } else if (kind === 'windy') {
-      // Gradual wide open-air wind swells (gentle Q=0.88, slow 8-16s swells, never sudden!)
-      hpAFreq = 95;
-      lpAFreq = 440 + (d - 0.85) * 720; // Gently breathes ~440Hz <-> 650Hz over many seconds
-      qA = 0.88;
-      gainA = 0.16 * d;
+      // Gradual wide open-air wind swells (gentle Q=0.88, slow 8-16s swells, scaled by breeze/strong/gale!)
+      hpAFreq = [115, 95, 76][lvl];
+      lpAFreq = (420 + (d - 0.85) * 720) * [0.78, 1.0, 1.32][lvl];
+      qA = [0.72, 0.88, 1.02][lvl];
+      gainA = 0.16 * [0.46, 1.0, 1.52][lvl] * d;
 
       hpBFreq = 950;
-      lpBFreq = 2900;
-      gainB = 0.042 * Math.max(0.4, d);
+      lpBFreq = 2900 * brightMult;
+      gainB = 0.042 * [0.45, 1.0, 1.6][lvl] * Math.max(0.4, d);
     } else if (kind === 'snow') {
-      // Quiet, serene winter snow hush
+      // Quiet, serene winter snow hush -> brisker snowstorm whisper at heavy
       hpAFreq = 110;
-      lpAFreq = 520 * d;
+      lpAFreq = 520 * brightMult * d;
       qA = 0.55;
-      gainA = 0.052 * d;
+      gainA = 0.052 * [0.58, 1.0, 1.65][lvl] * d;
 
       hpBFreq = 1600;
       lpBFreq = 4200;
-      gainB = 0.012 * d;
+      gainB = 0.012 * [0.55, 1.0, 1.75][lvl] * d;
     } else if (kind === 'cloudy') {
-      hpAFreq = 110;
-      lpAFreq = 480;
+      // Light multi-cloud breeze -> overcast hush -> moody heavy cloud low air pressure
+      hpAFreq = [125, 110, 88][lvl];
+      lpAFreq = [460, 480, 560][lvl];
       qA = 0.55;
-      gainA = 0.034 * d;
+      gainA = [0.024, 0.036, 0.068][lvl] * d;
 
       hpBFreq = 850;
       lpBFreq = 2100;
-      gainB = 0.008 * d;
+      gainB = [0.005, 0.009, 0.018][lvl] * d;
     }
 
     const tau = Math.max(0.25, tauSec);
@@ -553,40 +562,69 @@ export class WeatherAmbienceEngine {
       if (!kind) return;
 
       let nextDelayMs = 450;
+      const lvl = this.intensity === 'light' ? 0 : this.intensity === 'heavy' ? 2 : 1;
+      const ampScale = [0.66, 1.0, 1.3][lvl];
+
       if (kind === 'rain') {
-        const burst = Math.random() < 0.34 ? 2 + Math.floor(Math.random() * 2) : 1;
+        const burst =
+          lvl === 0
+            ? 1
+            : lvl === 2
+              ? 2 + Math.floor(Math.random() * 3)
+              : Math.random() < 0.34
+                ? 2 + Math.floor(Math.random() * 2)
+                : 1;
+        const pipRatio = lvl === 0 ? 0.65 : lvl === 2 ? 0.34 : 0.48;
         for (let i = 0; i < burst; i++) {
-          const offsetSec = i * (0.025 + Math.random() * 0.055);
-          if (Math.random() < 0.48) {
-            this.triggerRaindropPip(offsetSec, 0.85);
+          const offsetSec = i * (0.02 + Math.random() * 0.05);
+          if (Math.random() < pipRatio) {
+            this.triggerRaindropPip(offsetSec, 0.85 * ampScale);
           } else {
-            this.triggerRainSplashPatter(offsetSec, 0.9);
+            this.triggerRainSplashPatter(offsetSec, 0.9 * ampScale);
           }
         }
-        nextDelayMs = 55 + Math.pow(Math.random(), 1.45) * 205;
+        const rateMul = [2.25, 1.0, 0.5][lvl];
+        nextDelayMs = (55 + Math.pow(Math.random(), 1.45) * 205) * rateMul;
       } else if (kind === 'storm') {
-        const burst = Math.random() < 0.52 ? 2 + Math.floor(Math.random() * 3) : 1;
+        const burst =
+          lvl === 0
+            ? Math.random() < 0.3 ? 2 : 1
+            : lvl === 2
+              ? 3 + Math.floor(Math.random() * 3)
+              : Math.random() < 0.52
+                ? 2 + Math.floor(Math.random() * 3)
+                : 1;
         for (let i = 0; i < burst; i++) {
-          const offsetSec = i * (0.018 + Math.random() * 0.045);
+          const offsetSec = i * (0.016 + Math.random() * 0.042);
           if (Math.random() < 0.38) {
-            this.triggerRaindropPip(offsetSec, 1.05);
+            this.triggerRaindropPip(offsetSec, 1.05 * ampScale);
           } else {
-            this.triggerRainSplashPatter(offsetSec, 1.15);
+            this.triggerRainSplashPatter(offsetSec, 1.15 * ampScale);
           }
         }
-        nextDelayMs = 36 + Math.pow(Math.random(), 1.55) * 140;
+        const rateMul = [1.8, 1.0, 0.58][lvl];
+        nextDelayMs = (36 + Math.pow(Math.random(), 1.55) * 140) * rateMul;
       } else if (kind === 'hail') {
-        const burst = Math.random() < 0.46 ? 2 + Math.floor(Math.random() * 3) : 1;
+        const burst =
+          lvl === 0
+            ? 1
+            : lvl === 2
+              ? 2 + Math.floor(Math.random() * 3)
+              : Math.random() < 0.46
+                ? 2 + Math.floor(Math.random() * 3)
+                : 1;
         for (let i = 0; i < burst; i++) {
-          const offsetSec = i * (0.022 + Math.random() * 0.058);
-          this.triggerHailImpact(offsetSec);
+          const offsetSec = i * (0.02 + Math.random() * 0.052);
+          this.triggerHailImpact(offsetSec, ampScale);
         }
-        nextDelayMs = 40 + Math.pow(Math.random(), 1.4) * 160;
+        const rateMul = [2.4, 1.0, 0.48][lvl];
+        nextDelayMs = (40 + Math.pow(Math.random(), 1.4) * 160) * rateMul;
       } else if (kind === 'snow') {
         if (!this.indoor) {
           this.triggerFrostShimmer();
         }
-        nextDelayMs = 280 + Math.random() * 580;
+        const rateMul = [1.7, 1.0, 0.6][lvl];
+        nextDelayMs = (280 + Math.random() * 580) * rateMul;
       } else if (kind === 'clear') {
         if (!this.indoor) {
           if (this.isNight) {
@@ -686,7 +724,7 @@ export class WeatherAmbienceEngine {
    * "咚咚咚" — Hard icy hailstone impact:
    * Resonant percussive body drop ("咚") + sharp ice click + realistic secondary ground bounce!
    */
-  private triggerHailImpact(offsetSec: number) {
+  private triggerHailImpact(offsetSec: number, ampScale = 1.0) {
     const ctx = this.ctx;
     const bus = this.busInput;
     if (!ctx || !bus || ctx.state !== 'running') return;
@@ -694,7 +732,7 @@ export class WeatherAmbienceEngine {
     const panVal = (Math.random() - 0.5) * 1.75;
     const stoneSize = 0.55 + Math.random() * 0.95;
     const baseFreq = 460 / stoneSize + (Math.random() - 0.5) * 70;
-    const mainPeak = 0.09 + stoneSize * 0.085;
+    const mainPeak = (0.09 + stoneSize * 0.085) * ampScale;
 
     this.playSingleHailHit(ctx.currentTime + offsetSec, baseFreq, mainPeak, panVal, true);
 

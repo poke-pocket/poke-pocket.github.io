@@ -377,10 +377,13 @@ export interface GamePrefs {
   enemyDisplayMode: EnemyDisplayMode;
   reduceFlashes: boolean;
   showFps: boolean;
-  // Minecraft-style World Settings (Difficulty, Mode, Weather Override, Peaceful Towns)
+  // Minecraft-style World Settings (Difficulty, Mode, Weather Override, Temperature, Peaceful Towns)
   worldDifficulty?: 'normal' | 'hard' | 'nightmare';
   worldGameMode?: 'story' | 'endless';
   worldWeatherMode?: 'auto' | 'clear' | 'cloudy' | 'rain' | 'storm' | 'hail' | 'snow' | 'windy';
+  worldWeatherIntensity?: 'light' | 'moderate' | 'heavy';
+  worldTempMode?: 'auto' | 'manual';
+  worldTempC?: number; // -25..45 °C when worldTempMode === 'manual'
   worldTimeMode?: 'auto' | 'day' | 'dusk' | 'night';
   townPeaceMode?: boolean;
   cameraFollowMode?: CameraFollowMode;
@@ -417,6 +420,9 @@ export const DEFAULT_GAME_PREFS: GamePrefs = {
   worldDifficulty: 'normal',
   worldGameMode: 'story',
   worldWeatherMode: 'auto',
+  worldWeatherIntensity: 'moderate',
+  worldTempMode: 'auto',
+  worldTempC: 22,
   worldTimeMode: 'auto',
   townPeaceMode: true,
   cameraFollowMode: 'hd2d',

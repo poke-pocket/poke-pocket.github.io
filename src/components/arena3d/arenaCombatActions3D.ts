@@ -469,7 +469,12 @@ export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
         (tac.castMode === 'charged' ? 1.42 : salvoBonus && tac.castMode === 'salvo' ? 1.28 : 1.0) *
         (sim.boostTimer > 0 ? 1.55 : 1.0);
       const syn = getElementalSynergyBonus(SPECIES_CATALOG[f.species].element, metaRef.current);
-      const wMod = getWeatherCombatBonus(liveWeatherRef.current.kind, SPECIES_CATALOG[f.species].element);
+      const wMod = getWeatherCombatBonus(
+        liveWeatherRef.current.kind,
+        SPECIES_CATALOG[f.species].element,
+        liveWeatherRef.current.intensity,
+        liveWeatherRef.current.tempC,
+      );
       const dmg = Math.round(
         sim.baseAtk * sim.atkMult * syn.atkMult * wMod.atkMult * meta.powerMult * (0.9 + f.level * 0.25) * modeMult,
       );

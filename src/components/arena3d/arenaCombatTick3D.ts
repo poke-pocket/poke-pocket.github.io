@@ -325,7 +325,12 @@ export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
                 if (en.hp > 0 && !f.dashHitIds?.has(en.id) && Math.hypot(en.x - f.x, en.z - f.z) < en.radius + contactR) {
                   f.dashHitIds?.add(en.id);
                   const syn = getElementalSynergyBonus(SPECIES_CATALOG[f.species].element, metaRef.current);
-                  const wMod = getWeatherCombatBonus(liveWeatherRef.current.kind, SPECIES_CATALOG[f.species].element);
+                  const wMod = getWeatherCombatBonus(
+                    liveWeatherRef.current.kind,
+                    SPECIES_CATALOG[f.species].element,
+                    liveWeatherRef.current.intensity,
+                    liveWeatherRef.current.tempC,
+                  );
                   const slamDmg = Math.round(
                     sim.baseAtk * sim.atkMult * syn.atkMult * wMod.atkMult * (f.species === 'munchlax' ? 1.55 : 1.15) * (0.9 + f.level * 0.25),
                   );
@@ -598,7 +603,12 @@ export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
                 f.cds[sIdx] = (f.cds[sIdx] ?? 0.5) - dt;
                 if (f.cds[sIdx] <= 0) {
                   const slotPace = 1 + sIdx * 0.14;
-                  const wModCd = getWeatherCombatBonus(liveWeatherRef.current.kind, SPECIES_CATALOG[f.species].element).cdMult;
+                  const wModCd = getWeatherCombatBonus(
+                    liveWeatherRef.current.kind,
+                    SPECIES_CATALOG[f.species].element,
+                    liveWeatherRef.current.intensity,
+                    liveWeatherRef.current.tempC,
+                  ).cdMult;
                   f.cds[sIdx] = Math.max(
                     0.42,
                     SURVIVOR_SKILLS[sid].baseCd * cdFactor * wModCd * slotPace * Math.max(0.6, 1 - f.level * 0.05),

@@ -581,6 +581,9 @@ export function createHorizonBackdropMesh(biome: BiomeId): THREE.Group {
   const skyMat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
+      uCloudScroll: { value: 0 },
+      uCloudCover: { value: 0.24 },
+      uCloudDarkness: { value: 0.0 },
       uZenith: { value: new THREE.Color(skyZenith) },
       uMid: { value: new THREE.Color(skyMid) },
       uHorizon: { value: new THREE.Color(skyHorizon) },
@@ -597,6 +600,9 @@ export function createHorizonBackdropMesh(biome: BiomeId): THREE.Group {
     `,
     fragmentShader: /* glsl */ `
       uniform float uTime;
+      uniform float uCloudScroll;
+      uniform float uCloudCover;
+      uniform float uCloudDarkness;
       uniform vec3 uZenith;
       uniform vec3 uMid;
       uniform vec3 uHorizon;
@@ -642,37 +648,42 @@ export function createHorizonBackdropMesh(biome: BiomeId): THREE.Group {
 
         vec3 sunDirSky = normalize(vec3(0.54, 0.62, 0.44));
         float sunDot = dot(d, sunDirSky);
-        if (sunDot > 0.85) {
-          float halo = smoothstep(0.85, 0.992, sunDot) * smoothstep(0.02, 0.14, elev);
+        float sunVis = 1.0 - smoothstep(0.45, 0.88, clamp(uCloudCover, 0.0, 1.0));
+        if (sunDot > 0.85 && sunVis > 0.01) {
+          float halo = smoothstep(0.85, 0.992, sunDot) * smoothstep(0.02, 0.14, elev) * sunVis;
           col = mix(col, vec3(1.0, 0.96, 0.82), halo * 0.48);
           if (sunDot > 0.9965 && elev > 0.06) {
-            col = vec3(1.0, 0.99, 0.90);
+            col = mix(col, vec3(1.0, 0.99, 0.90), sunVis);
           }
         }
 
-        // Real planar overhead projection: CRISP sharp-edged cel-shaded anime cumulus clouds drifting linearly West -> East!
+        // Real planar overhead projection: CRISP sharp-edged cel-shaded anime clouds reacting live to weather cloud cover & darkness!
         if (d.y > 0.075) {
           float projScale = 1.0 / (d.y + 0.16);
           vec2 skyPlane = d.xz * projScale;
-          vec2 wind = vec2(uTime * 0.042, uTime * 0.014);
+          float driftClock = uCloudScroll > 0.001 ? uCloudScroll : uTime;
+          vec2 wind = vec2(driftClock * 0.042, driftClock * 0.014);
           // Fine crisp pixel-snapped cloud grid (no blurry soft edges!)
           vec2 qPlane = floor((skyPlane * 0.52 + wind) * 58.0) / 58.0;
 
           float baseDens = cloudFbm(qPlane);
-          float detailDens = cloudFbm(qPlane * 2.1 + vec2(uTime * 0.008, -uTime * 0.005));
+          float detailDens = cloudFbm(qPlane * 2.1 + vec2(driftClock * 0.008, -driftClock * 0.005));
           float dens = baseDens * 0.74 + detailDens * 0.26;
 
-          float horizonFade = smoothstep(0.085, 0.20, d.y) * smoothstep(0.96, 0.50, d.y);
-          float cutoff = 0.565 + (1.0 - horizonFade) * 0.24;
+          float cover = clamp(uCloudCover, 0.0, 1.0);
+          float horizonFade = smoothstep(0.085, 0.20, d.y) * smoothstep(0.98, 0.45, d.y);
+          float baseCut = mix(0.67, 0.14, cover);
+          float cutoff = baseCut + (1.0 - horizonFade) * mix(0.24, 0.05, cover);
 
           // Razor-sharp crisp cel-shaded anime cloud silhouette!
           if (dens > cutoff) {
             float sunSample = cloudFbm(qPlane + vec2(-0.065, -0.055));
-            float lit = clamp(0.52 + (dens - sunSample) * 4.6 + (d.y - 0.12) * 0.55, 0.0, 1.0);
-            // Clean 3-tone hard-stepped anime cumulus volume (pure white top, soft cream mid, cool sky-blue base)
-            vec3 cMid = mix(uCloudShade, uCloudLit, 0.62);
-            vec3 cCol = lit > 0.62 ? uCloudLit : lit > 0.42 ? cMid : uCloudShade;
-            col = mix(col, cCol, horizonFade);
+            float lit = clamp(0.52 + (dens - sunSample) * 4.6 + (d.y - 0.12) * 0.55 - uCloudDarkness * 0.22, 0.0, 1.0);
+            // Clean 3-tone hard-stepped anime cumulus / brooding overcast volume
+            vec3 cMid = mix(uCloudShade, uCloudLit, 0.60);
+            vec3 cCol = lit > 0.62 ? uCloudLit : lit > 0.40 ? cMid : uCloudShade;
+            float cloudAlpha = mix(horizonFade, smoothstep(0.075, 0.17, d.y), cover * 0.65);
+            col = mix(col, cCol, cloudAlpha);
           }
         }
 

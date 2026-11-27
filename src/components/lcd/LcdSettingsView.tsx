@@ -5,6 +5,7 @@ import { DEFAULT_GAME_PREFS, type EnemyDisplayMode, type GamePrefs, type Graphic
 import { DEFAULT_KEY_BINDINGS } from '../../utils/petEngine';
 import { resetDevGrants, setDevGrants, useDevGrants, useDevMode } from '../../utils/devMode';
 import { sound } from '../../utils/sound';
+import { getTemperatureBand, getWeatherIntensityOptions, hasWeatherIntensity, type WeatherKind } from '../../utils/weatherSystem';
 import { PixelIcon, PixelItemImg } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -768,7 +769,12 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                           className="lcd-subtab"
                           onClick={() => {
                             sound.play('cursor');
-                            setPref({ worldTimeMode: 'auto', worldWeatherMode: 'auto' });
+                            setPref({
+                              worldTimeMode: 'auto',
+                              worldWeatherMode: 'auto',
+                              worldWeatherIntensity: 'moderate',
+                              worldTempMode: 'auto',
+                            });
                           }}
                         >
                           恢复实时
@@ -824,7 +830,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                     <div className="settings-card-head is-stacked">
                       <div>
                         <strong>世界天气与属性加成</strong>
-                        <small>默认按当前定位城市同步实时气象，调试模式下可手动切换验证天气与加成效果</small>
+                        <small>默认按当前定位城市同步实时气象，调试模式下可手动切换天气及对应程度</small>
                       </div>
                       <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
                         {(
@@ -853,8 +859,161 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                           </button>
                         ))}
                       </div>
+
+                      {(() => {
+                        const activeMode = prefs.worldWeatherMode ?? 'auto';
+                        if (activeMode === 'auto') return null;
+                        const wKind = activeMode as WeatherKind;
+                        if (!hasWeatherIntensity(wKind)) {
+                          return (
+                            <div className="weather-intensity-subrow">
+                              <small className="weather-intensity-note">
+                                晴朗无程度层级，可在下方「世界环境温度」单独调节温度
+                              </small>
+                            </div>
+                          );
+                        }
+                        const options = getWeatherIntensityOptions(wKind);
+                        const curIntensity = prefs.worldWeatherIntensity ?? 'moderate';
+                        const activeOpt = options.find((o) => o.id === curIntensity) ?? options[1];
+                        return (
+                          <div className="weather-intensity-subrow">
+                            <div className="weather-intensity-head">
+                              <span>天气程度</span>
+                              <small>{activeOpt?.hint}</small>
+                            </div>
+                            <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                              {options.map((opt) => (
+                                <button
+                                  key={opt.id}
+                                  type="button"
+                                  className={`lcd-subtab ${curIntensity === opt.id ? 'active' : ''}`}
+                                  onClick={() => {
+                                    sound.play('cursor');
+                                    setPref({ worldWeatherIntensity: opt.id });
+                                  }}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
+
+                  {(() => {
+                    const tempMode = prefs.worldTempMode ?? 'auto';
+                    const tempVal = Math.max(-25, Math.min(45, Math.round(prefs.worldTempC ?? 22)));
+                    const band = getTemperatureBand(tempVal);
+                    const sliderPct = ((tempVal - -25) / 70) * 100;
+                    const rangeClass =
+                      tempVal <= 10 ? 'is-blue' : tempVal >= 31 ? 'is-red' : 'is-amber';
+                    const presets = [
+                      { label: '极寒', val: -15 },
+                      { label: '严寒', val: 0 },
+                      { label: '凉爽', val: 12 },
+                      { label: '舒适', val: 22 },
+                      { label: '炎热', val: 32 },
+                      { label: '酷暑', val: 40 },
+                    ];
+                    return (
+                      <div className="settings-card">
+                        <div className="settings-card-head is-stacked">
+                          <div className="temp-card-top">
+                            <div>
+                              <strong className="inline-icon-row" style={{ gap: 5 }}>
+                                <PixelIcon name="thermometer" size={12} />
+                                <span>世界环境温度</span>
+                              </strong>
+                              <small>
+                                独立于天气类型单独调整，影响冷暖光影、零下结霜与极端温差属性加成
+                              </small>
+                            </div>
+                            <div className="inline-icon-row">
+                              <button
+                                type="button"
+                                className={`lcd-subtab ${tempMode === 'auto' ? 'active' : ''}`}
+                                onClick={() => {
+                                  sound.play('cursor');
+                                  setPref({ worldTempMode: 'auto' });
+                                }}
+                              >
+                                自动实时
+                              </button>
+                              <button
+                                type="button"
+                                className={`lcd-subtab ${tempMode === 'manual' ? 'active' : ''}`}
+                                onClick={() => {
+                                  sound.play('cursor');
+                                  setPref({ worldTempMode: 'manual', worldTempC: tempVal });
+                                }}
+                              >
+                                手动调节
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="temp-control-body">
+                            <div className="temp-status-row">
+                              <span
+                                className="temp-readout-pill"
+                                style={{ backgroundColor: tempMode === 'manual' ? band.color : '#868e96' }}
+                              >
+                                {tempMode === 'manual'
+                                  ? `${tempVal}°C · ${band.label}`
+                                  : '跟随当前天气温度'}
+                              </span>
+                              <small className="temp-buff-hint">
+                                {tempMode === 'manual'
+                                  ? (band.buffHint ?? '体感宜人，无极端温差修正')
+                                  : '拖动滑块或点选预设将切换为手动温度'}
+                              </small>
+                            </div>
+
+                            <input
+                              type="range"
+                              className={`pkb-range ${rangeClass}`}
+                              min={-25}
+                              max={45}
+                              step={1}
+                              value={tempVal}
+                              style={{ '--val': `${sliderPct}%` } as React.CSSProperties}
+                              onChange={(e) =>
+                                setPref({
+                                  worldTempMode: 'manual',
+                                  worldTempC: Number(e.target.value),
+                                })
+                              }
+                            />
+                            <div className="temp-scale-ticks">
+                              <span>-25°C 极寒</span>
+                              <span>0°C 冰点</span>
+                              <span>22°C 舒适</span>
+                              <span>45°C 酷暑</span>
+                            </div>
+
+                            <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                              {presets.map((p) => (
+                                <button
+                                  key={p.val}
+                                  type="button"
+                                  className={`lcd-subtab ${tempMode === 'manual' && tempVal === p.val ? 'active' : ''}`}
+                                  onClick={() => {
+                                    sound.play('cursor');
+                                    setPref({ worldTempMode: 'manual', worldTempC: p.val });
+                                  }}
+                                >
+                                  {p.label} {p.val}°C
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div className="settings-card">
                     <div className="settings-card-head">
