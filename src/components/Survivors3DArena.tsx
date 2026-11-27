@@ -21,7 +21,7 @@ import { getDevGrants, isDevModeEnabled, isDevVirtualPetId } from '../utils/devM
 import { HERO_ROSTER, LAB_UPGRADES, computeMetaCombatBonuses, countClaimableBounties, ensureFreshMetaProgress, getHeroDef, getLabUpgradeCost, getSkinDef, rerollBountySlot, type HeroId, type LabUpgradeId, type MetaProgressState } from '../data/metaProgression';
 import { type AppLang } from '../data/i18n';
 import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
-import { PokeballShutterOverlay, dismissInitialBootPokeballCurtain, type PokeballShutterState } from './PokeballShutterOverlay';
+import { PokeballShutterOverlay, dismissInitialBootPokeballCurtain, setBootCurtainProgress, type PokeballShutterState } from './PokeballShutterOverlay';
 import { type LiveMapSnapshot, type ScenicMountainSpot } from './WorldMapHud';
 import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { BGM_TRACK_LABELS, sound, type BgmTrackId } from '../utils/sound';
@@ -3128,11 +3128,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
 
     // Pre-compile shaders once up front behind the Poké Ball curtain so Frame 1 never stutters on shader link!
+    setBootCurtainProgress(80);
     try {
       renderer.compile(scene, camera);
     } catch {
       // ignore shader precompile warning
     }
+    setBootCurtainProgress(94);
     let scenePaintedFrames = 0;
     const mark3DFramePainted = () => {
       scenePaintedFrames += 1;
@@ -3782,7 +3784,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const pickedRegion = explicitBiome
       ? MAP_REGIONS.find((r) => r.id === explicitBiome) ?? MAP_REGIONS[0]
       : MAP_REGIONS[Math.floor(Math.random() * MAP_REGIONS.length)];
-    runWithPokeballShutter(`正在开启「${pickedRegion.name}」秘境…`, () => {
+    runWithPokeballShutter(`拨开齐腰深的草丛，深入「${pickedRegion.name}」…`, () => {
       setAdventureStyle('vampire_rogue');
       adventureStyleRef.current = 'vampire_rogue';
       setActiveGeoTerrainOrigin(null);
@@ -3807,8 +3809,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     sound.play('confirm');
     setWorldMapOpen(false);
     const shutterTitle = payload.isGymChallenge
-      ? `正在前往「${payload.gymName}」…`
-      : `正在进入「${payload.cityName}」…`;
+      ? `馆主已在场内等候，步入「${payload.gymName}」…`
+      : `列车缓缓进站，即将抵达「${payload.cityName}」…`;
     runWithPokeballShutter(shutterTitle, () => {
       if (resetCheckpointToCity || payload.isGymChallenge) {
         clearWorldCheckpoint();
@@ -4250,7 +4252,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       )}
 
       {/* Iconic Red-and-White Poké Ball Clasp Shutter Loading Transition! */}
-      <PokeballShutterOverlay state={pokeballShutter} />
+      <PokeballShutterOverlay state={pokeballShutter} save={save} />
     </div>
   );
 };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AdoptionModal } from './components/AdoptionModal';
 import { HandheldConsole, type AppSettingsPatch } from './components/HandheldConsole';
 import { LandscapeFullscreenCover } from './components/LandscapeFullscreenCover';
+import { dismissInitialBootPokeballCurtain, setBootCurtainProgress, syncBootShutterThemeCache } from './components/PokeballShutterOverlay';
 import { useFullscreenAndOrientation } from './utils/fullscreen';
 import {
   HOME_SIDE_ACTIONS,
@@ -194,6 +195,17 @@ export function App() {
       sound.setTrack('town');
     }
   }, [lcdMode, managerOpen]);
+
+  useEffect(() => {
+    setBootCurtainProgress(52);
+    if (save.pets.length === 0) {
+      dismissInitialBootPokeballCurtain();
+    }
+  }, [save.pets.length]);
+
+  useEffect(() => {
+    syncBootShutterThemeCache(effectiveSave);
+  }, [effectiveSave]);
 
   useEffect(() => {
     const unlockAudio = () => sound.unlock();
