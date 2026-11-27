@@ -1,15 +1,17 @@
 import type { LcdSharedCtx } from './lcdViewTypes';
-import React from 'react';
+import React, { useState } from 'react';
 import { ACCESSORY_CATALOG, FOOD_CATALOG, NATURE_CATALOG, ROOM_CATALOG, SPECIES_CATALOG, TALENT_CATALOG, getGrowthStage, getIvRank, getNextEvolutionHint, getPokemonCryId, getPokemonDexNo, getPokemonStageName, getXpForNextLevel } from '../../data/catalog';
 import { BOND_MILESTONES, POKEMON_SKIN_CATALOG, SPECIES_MEGA_FORMS, computePetBondBonuses, ensureFreshMetaProgress, getSkinDef } from '../../data/metaProgression';
 import { ALL_SURVIVOR_SKILL_IDS, SURVIVOR_SKILLS, type SurvivorSkillId } from '../../data/survivorsTactics';
+import { isDevVirtualPetId } from '../../utils/devMode';
 import { MAX_BOND_LEVEL, MAX_PET_SLOTS, getAccessoryAvailability, getBallAvailability, getPetBondInfo, getPetIVs, getPetNature, getPetTalent, getReleaseReward } from '../../utils/petEngine';
 import { sound } from '../../utils/sound';
 import { PixelIcon, PixelItemImg, PixelPetPortrait } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { STAT_BAR_ROWS, confirmReleaseId, detailReturnMode, mode, onAssignPetRoom, onDepositPet, onEquipAccessory, onHealPet, onNavigateMode, onReleasePet, onReleaseStoredPet, onSwitchPet, onUpdatePetConfig, onWithdrawPet, openedFromBattle, partyDetailIsStored, partyDetailPet, partyDetailTab, pet, petActionMenuOpen, save, setConfirmReleaseId, setPartyDetailTab, setPetActionMenuOpen } = ctx;
+  const { STAT_BAR_ROWS, confirmReleaseId, mode, onAssignPetRoom, onDepositPet, onEquipAccessory, onGoBack, onHealPet, onNavigateMode, onQuickCarePet, onReleasePet, onReleaseStoredPet, onSwitchPet, onUpdatePetConfig, onWithdrawPet, openedFromBattle, partyDetailIsStored, partyDetailPet, partyDetailTab, pet, petActionMenuOpen, save, setConfirmReleaseId, setPartyDetailTab, setPetActionMenuOpen } = ctx;
+  const [quickFeedOpen, setQuickFeedOpen] = useState(false);
   return (
     <>
         {/* PARTY 2ND-LEVEL DETAIL (Actions moved cleanly to top-right with icons + secondary dropdown!) */}
@@ -36,7 +38,14 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
             FOOD_CATALOG.find((f) => f.id === meta.favoriteFood) ?? FOOD_CATALOG[0];
           const curAccMeta =
             ACCESSORY_CATALOG.find((a) => a.id === p.accessory) ?? ACCESSORY_CATALOG[0];
-          const canHeal = isCur && (p.isSick || p.health < 100);
+          const isVirtualPet = isDevVirtualPetId(p.id);
+          const realBoxCount = save.pets.filter((x) => !isDevVirtualPetId(x.id)).length;
+          const canHeal = !isStored && (p.isSick || p.health < 100);
+          const canBath = !isStored && !p.isSleeping && (p.cleanliness < 100 || p.poopCount > 0);
+          const canPat = !isStored && !p.isSleeping && !(bond.level >= MAX_BOND_LEVEL && p.happiness >= 100);
+          const availableFoods = FOOD_CATALOG.filter(
+            (f) => f.unlimited || (save.inventory[f.id] ?? 0) > 0,
+          );
 
           return (
             <div className="lcd-submenu">
@@ -44,16 +53,18 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                 <span className="inline-icon-row">
                   <PixelItemImg src="/sprites/items/poke-ball.png" size={14} />
                   <span>{p.name}</span>
+                  {isVirtualPet && <em className="dev-pet-chip">调试</em>}
                 </span>
-                {/* Top-Right Pokémon Actions: Primary Frequent Outside + Secondary Infrequent Dropdown */}
+                {/* Top-Right Pokémon Actions: Status/Lead + Quick Care (Feed/Heal/Bath/Pat) + More + Back */}
                 <div className="lcd-head-actions detail-top-actions">
                   {isStored ? (
                     <button
                       type="button"
                       className="lcd-subtab detail-act-btn is-primary"
-                      disabled={Boolean(openedFromBattle) || save.pets.length >= MAX_PET_SLOTS}
+                      disabled={Boolean(openedFromBattle) || realBoxCount >= MAX_PET_SLOTS}
                       onClick={() => {
                         setPetActionMenuOpen(false);
+                        setQuickFeedOpen(false);
                         if (onWithdrawPet?.(p.id)) {
                           onNavigateMode('party');
                         }
@@ -61,13 +72,13 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                       title={
                         openedFromBattle
                           ? '战斗进行中无法取出'
-                          : save.pets.length >= MAX_PET_SLOTS
+                          : realBoxCount >= MAX_PET_SLOTS
                             ? `随身球盒已满 (${MAX_PET_SLOTS}/${MAX_PET_SLOTS})`
                             : `将 ${p.name} 放回随身球盒`
                       }
                     >
                       <PixelItemImg src="/sprites/items/poke-ball.png" size={12} />
-                      <span>{openedFromBattle ? '战后可取' : save.pets.length >= MAX_PET_SLOTS ? '球盒满' : '放回球盒'}</span>
+                      <span>{openedFromBattle ? '战后可取' : realBoxCount >= MAX_PET_SLOTS ? '球盒满' : '放回球盒'}</span>
                     </button>
                   ) : isCur ? (
                     <span className="cur-ball-pill" title="当前正在球舱与队列首位的宝可梦">
@@ -80,6 +91,7 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                       className="lcd-subtab detail-act-btn is-primary"
                       onClick={() => {
                         setPetActionMenuOpen(false);
+                        setQuickFeedOpen(false);
                         onSwitchPet(p.id);
                       }}
                       title={`将 ${p.name} 设为当前主力宝可梦`}
@@ -89,7 +101,63 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                     </button>
                   )}
 
-                  {/* Icon-only Heal Button (frequent action!) */}
+                  {/* Quick Feed Berry Dropdown (In-place quick feeding for ANY inspected Pokémon!) */}
+                  {!isStored && (
+                    <div className="detail-more-wrap">
+                      <button
+                        type="button"
+                        className={`lcd-subtab detail-icon-only-btn ${quickFeedOpen ? 'active' : p.hunger < 80 ? 'is-feed-ready' : ''}`}
+                        disabled={p.isSleeping}
+                        onClick={() => {
+                          setPetActionMenuOpen(false);
+                          sound.play('cursor');
+                          setQuickFeedOpen((o) => !o);
+                        }}
+                        title={p.isSleeping ? '睡眠中无法喂食' : `快速喂食树果（当前饱食 ${Math.round(p.hunger)}%）`}
+                        aria-label="快速喂食"
+                      >
+                        <PixelItemImg src="/sprites/items/oran-berry.png" size={13} />
+                      </button>
+                      {quickFeedOpen && (
+                        <div className="detail-action-dropdown detail-feed-popover">
+                          <div className="detail-feed-head">
+                            <span>快速喂食 · 饱食 {Math.round(p.hunger)}%</span>
+                          </div>
+                          {availableFoods.map((food) => {
+                            const isFav = meta.favoriteFood === food.id;
+                            const stockLabel = food.unlimited ? '∞' : `×${save.inventory[food.id] ?? 0}`;
+                            const canEat =
+                              !p.isSleeping &&
+                              (Boolean(food.levelUp && p.level < 100) ||
+                                Boolean(food.curesSick && p.isSick) ||
+                                Boolean(food.health && p.health < 100) ||
+                                p.hunger < 100);
+                            return (
+                              <button
+                                key={food.id}
+                                type="button"
+                                className={`detail-dd-item ${isFav ? 'is-fav-food' : ''}`}
+                                disabled={!canEat}
+                                onClick={() => {
+                                  onQuickCarePet?.(p.id, 'feed', food.id);
+                                }}
+                                title={food.description}
+                              >
+                                <PixelItemImg src={food.itemSprite} size={14} />
+                                <span className="detail-food-name">
+                                  {food.name}
+                                  {isFav ? ' ★' : ''}
+                                </span>
+                                <em className="detail-food-qty">{stockLabel}</em>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Quick Heal Potion (Works on ANY inspected Pokémon in-place!) */}
                   {!isStored && (
                     <button
                       type="button"
@@ -97,12 +165,53 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                       disabled={!canHeal}
                       onClick={() => {
                         setPetActionMenuOpen(false);
-                        onHealPet();
+                        setQuickFeedOpen(false);
+                        if (onQuickCarePet) {
+                          onQuickCarePet(p.id, 'heal');
+                        } else {
+                          onHealPet();
+                        }
                       }}
-                      title={canHeal ? `给 ${p.name} 使用伤药回满 HP` : '当前 HP 已满（仅可治疗当前主力）'}
+                      title={canHeal ? `给 ${p.name} 使用伤药回满 HP 并治愈生病` : `${p.name} 当前 HP 已满`}
                       aria-label="使用伤药"
                     >
                       <PixelItemImg src="/sprites/items/potion.png" size={13} />
+                    </button>
+                  )}
+
+                  {/* Quick Bath / Clean */}
+                  {!isStored && (
+                    <button
+                      type="button"
+                      className={`lcd-subtab detail-icon-only-btn ${canBath ? 'is-bath-ready' : ''}`}
+                      disabled={!canBath}
+                      onClick={() => {
+                        setPetActionMenuOpen(false);
+                        setQuickFeedOpen(false);
+                        onQuickCarePet?.(p.id, 'bath');
+                      }}
+                      title={canBath ? `给 ${p.name} 快速洗澡清理（当前清洁 ${Math.round(p.cleanliness)}%）` : `${p.name} 已经干干净净啦`}
+                      aria-label="快速洗澡"
+                    >
+                      <PixelItemImg src="/sprites/items/fresh-water.png" size={13} />
+                    </button>
+                  )}
+
+                  {/* Quick Pat / Bond */}
+                  {!isStored && (
+                    <button
+                      type="button"
+                      className={`lcd-subtab detail-icon-only-btn ${canPat ? 'is-pat-ready' : ''}`}
+                      disabled={!canPat}
+                      onClick={() => {
+                        setPetActionMenuOpen(false);
+                        setQuickFeedOpen(false);
+                        onQuickCarePet?.(p.id, 'pat');
+                      }}
+                      title={canPat ? `抚摸 ${p.name} 提升亲密度与心情` : `${p.name} 亲密度已达满级`}
+                      aria-label="快速抚摸"
+                    >
+                      <PixelIcon name="heart" size={11} />
                     </button>
                   )}
 
@@ -112,10 +221,11 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                       type="button"
                       className={`lcd-subtab detail-icon-only-btn ${petActionMenuOpen ? 'active' : ''}`}
                       onClick={() => {
+                        setQuickFeedOpen(false);
                         setConfirmReleaseId(null);
                         setPetActionMenuOpen((o) => !o);
                       }}
-                      title="更多操作（进球舱 / 放生）"
+                      title="更多操作（进球舱 / 寄存 / 放生）"
                       aria-label="更多操作"
                     >
                       <PixelIcon name="menu" size={11} />
@@ -147,7 +257,7 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                           <PixelIcon name="sound_on" size={11} />
                           <span>播放叫声</span>
                         </button>
-                        {!isStored && save.pets.length > 1 && onDepositPet && (
+                        {!isStored && !isVirtualPet && realBoxCount > 1 && onDepositPet && (
                           <button
                             type="button"
                             className="detail-dd-item"
@@ -164,7 +274,7 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                             <span>{openedFromBattle ? '寄存 (战后开放)' : '寄存到大木处'}</span>
                           </button>
                         )}
-                        {(isStored || save.pets.length > 1) &&
+                        {!isVirtualPet && (isStored || realBoxCount > 1) &&
                           (confirmReleaseId === p.id ? (
                             <button
                               type="button"
@@ -202,11 +312,13 @@ export const LcdPartyDetailView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => 
                     type="button"
                     className="lcd-mini-close"
                     onClick={() => {
+                      sound.play('cancel');
                       setPetActionMenuOpen(false);
-                      onNavigateMode(detailReturnMode);
+                      setQuickFeedOpen(false);
+                      onGoBack();
                     }}
                   >
-                    {detailReturnMode === 'squad' ? '返回队伍' : '返回'}
+                    返回
                   </button>
                 </div>
               </div>

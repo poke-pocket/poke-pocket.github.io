@@ -25,6 +25,8 @@ import type {
 import type { LiveRunTacticsBridge } from '../data/survivorsTactics';
 import { LcdScreen, type HomeIconActionId } from './LcdScreen';
 import { PixelIcon } from './PixelSprite';
+import { sound } from '../utils/sound';
+import { toggleDevMode, useDevMode } from '../utils/devMode';
 
 export interface AppSettingsPatch {
   muted?: boolean;
@@ -69,6 +71,16 @@ interface HandheldConsoleProps {
   onCleanPoop: () => void;
   onHealPet: () => void;
   onHealParty: () => void;
+  onFeedSquad?: (petIds: string[]) => { ok: boolean; message: string };
+  onQuickCarePet?: (
+    petId: string,
+    action: 'feed' | 'heal' | 'bath' | 'pat',
+    foodId?: FoodId,
+  ) => { ok: boolean; message: string };
+  onDevGrantItems99?: () => void;
+  onDevGrantPokeballs99?: () => void;
+  onDevGrantStardust99999?: () => void;
+  onDevGrantCoins99999?: () => void;
   onReleaseBallToRoom: () => void;
   onStartBattle: (isTrainer: boolean) => void;
   onFinishBattle: (fighterId: string, payload: BattleResultPayload) => void;
@@ -146,6 +158,12 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   onCleanPoop,
   onHealPet,
   onHealParty,
+  onFeedSquad,
+  onQuickCarePet,
+  onDevGrantItems99,
+  onDevGrantPokeballs99,
+  onDevGrantStardust99999,
+  onDevGrantCoins99999,
   onReleaseBallToRoom,
   onStartBattle,
   onFinishBattle,
@@ -202,6 +220,49 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   const shellRef = useRef<HTMLDivElement | null>(null);
   const padRef = useRef<HTMLDivElement | null>(null);
   const padPointerIdRef = useRef<number | null>(null);
+  const [devMode] = useDevMode();
+  const [devVibrating, setDevVibrating] = useState(false);
+  const [devToast, setDevToast] = useState<string | null>(null);
+  const powerTapRef = useRef<{ count: number; lastMs: number }>({ count: 0, lastMs: 0 });
+  const devToastTimerRef = useRef<number | null>(null);
+  const devVibeTimerRef = useRef<number | null>(null);
+
+  const handlePowerClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const now = Date.now();
+    if (now - powerTapRef.current.lastMs > 2600) {
+      powerTapRef.current.count = 0;
+    }
+    powerTapRef.current.lastMs = now;
+    powerTapRef.current.count += 1;
+
+    if (powerTapRef.current.count >= 10) {
+      powerTapRef.current.count = 0;
+      const nextEnabled = toggleDevMode();
+      sound.play(nextEnabled ? 'levelup' : 'cancel');
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try {
+          navigator.vibrate([45, 25, 75]);
+        } catch {
+          // ignore
+        }
+      }
+      setDevVibrating(false);
+      window.requestAnimationFrame(() => setDevVibrating(true));
+      if (devVibeTimerRef.current) window.clearTimeout(devVibeTimerRef.current);
+      devVibeTimerRef.current = window.setTimeout(() => setDevVibrating(false), 460);
+
+      setDevToast(
+        nextEnabled
+          ? '开发者调试模式已开启（系统设置中已解锁「调试」面板）'
+          : '开发者调试模式已关闭',
+      );
+      if (devToastTimerRef.current) window.clearTimeout(devToastTimerRef.current);
+      devToastTimerRef.current = window.setTimeout(() => setDevToast(null), 2600);
+    } else if (powerTapRef.current.count >= 6) {
+      sound.play('cursor');
+    }
+  };
 
   const isShellInteractiveTarget = (target: HTMLElement | null) =>
     !target ||
@@ -318,6 +379,12 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
       onCleanPoop={onCleanPoop}
       onHealPet={onHealPet}
       onHealParty={onHealParty}
+      onFeedSquad={onFeedSquad}
+      onQuickCarePet={onQuickCarePet}
+      onDevGrantItems99={onDevGrantItems99}
+      onDevGrantPokeballs99={onDevGrantPokeballs99}
+      onDevGrantStardust99999={onDevGrantStardust99999}
+      onDevGrantCoins99999={onDevGrantCoins99999}
       onReleaseBallToRoom={onReleaseBallToRoom}
       onStartBattle={onStartBattle}
       onFinishBattle={onFinishBattle}
@@ -379,7 +446,7 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
     >
       <div
         ref={shellRef}
-        className={`handheld-shell is-3d-chassis ${draggingShell ? 'is-dragging-3d' : ''}`}
+        className={`handheld-shell is-3d-chassis ${draggingShell ? 'is-dragging-3d' : ''} ${devVibrating ? 'is-dev-vibrate' : ''}`}
         onPointerDown={handleShellPointerDown}
         onPointerMove={handleShellPointerMove}
         onPointerUp={releaseShellDrag}
@@ -410,13 +477,24 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
         <div className="screen-bezel">
           <div className="bezel-glass-glint" aria-hidden="true" />
           <div className="lens-layout">
-            <div className="battery-column">
-              <span className="led-dot" />
+            <button
+              type="button"
+              className={`battery-column ${devMode ? 'is-dev-active' : ''}`}
+              onClick={handlePowerClick}
+              aria-label="电源指示灯"
+            >
+              <span className={`led-dot ${devMode ? 'is-dev-on' : ''}`} />
               <span className="battery-txt">POWER</span>
-            </div>
+            </button>
 
             {lcdNode}
           </div>
+
+          {devToast && (
+            <div className="dev-mode-bezel-toast" role="status" aria-live="polite">
+              {devToast}
+            </div>
+          )}
 
           <div className="bezel-brand-footer">
             <span className="gb-logo">POKé POCKET</span>

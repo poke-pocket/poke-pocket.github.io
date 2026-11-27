@@ -483,6 +483,8 @@ export interface ArenaSharedCtx {
   setBanishMode: React.Dispatch<React.SetStateAction<boolean>>;
   setRunNonce: React.Dispatch<React.SetStateAction<number>>;
   pickTargetForFollower: (f: ActiveFollower, enemies: Enemy3D[], priority: any) => Enemy3D[];
+  reorderBattleFollowers: (fromIdx: number, toIdx: number) => void;
+  removeBattleFollower: (followerId: string) => void;
   setHud: (updater: any) => void;
   setCaptureCutscene: (updater: any) => void;
   closeHubModal: () => void;

@@ -1172,7 +1172,7 @@ export const ACHIEVEMENTS: AchievementMeta[] = [
   {
     id: 'gym_badge_1',
     title: '首枚道馆徽章',
-    description: '获得第 1 枚关都道馆徽章',
+    description: '获得第 1 枚道馆徽章',
     rewardCoins: 100,
     badge: 'trophy',
     category: 'legend',
@@ -1181,7 +1181,7 @@ export const ACHIEVEMENTS: AchievementMeta[] = [
   {
     id: 'gym_badge_3',
     title: '半程挑战者',
-    description: '累计获得 3 枚关都道馆徽章',
+    description: '累计获得 3 枚道馆徽章',
     rewardCoins: 240,
     badge: 'trophy',
     category: 'legend',
@@ -1189,8 +1189,8 @@ export const ACHIEVEMENTS: AchievementMeta[] = [
   },
   {
     id: 'gym_badges_all',
-    title: '关东道馆大满贯',
-    description: '集齐全部 6 枚关都道馆徽章',
+    title: '道馆徽章大满贯',
+    description: '累计获得 6 枚道馆徽章',
     rewardCoins: 500,
     badge: 'crown',
     category: 'legend',

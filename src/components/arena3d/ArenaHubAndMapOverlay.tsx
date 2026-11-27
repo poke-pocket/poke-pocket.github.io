@@ -12,12 +12,13 @@ import { ShopOverlay } from '../ShopOverlay';
 import { sound } from '../../utils/sound';
 import { TimeEcologyModal } from '../TimeEcologyModal';
 import { PixelIcon, PixelItemImg } from '../PixelSprite';
+import type { PixelIconName } from '../../data/pixelIcons';
 import { TrimmedSpriteImg } from '../TrimmedSpriteImg';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaHubAndMapOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeSquadIdx, activeSquadPreset, activeWorldRun, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeSquadEditor, closingHubModal, closingMapSelect, closingProfile, closingSquadEditor, cycleLanguage, diffMeta, difficultyId, dockRowRef, effectiveSquadPets, gameMode, handleBuyLabUpgrade, handleClaimBonusChest, handleClaimBounty, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hubModal, isFullscreen, lang, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pet, petMeta, petStage, phase, profileDraft, profileOpen, pwaInstallPrompt, regionMeta, save, selectSquadPreset, setDifficultyId, setGameMode, setHubModal, setProfileDraft, setPwaInstallPrompt, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, solarInfo, squadEditorOpen, squadPresets, timeAlmanacOpen, togglePetInActiveSquad, trainerProfile, visibleDockCount, worldMapOpen } = ctx;
+  const { activeHeroDef, activeSquadIdx, activeSquadPreset, activeWorldRun, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeSquadEditor, closingHubModal, closingMapSelect, closingProfile, closingSquadEditor, cycleLanguage, diffMeta, difficultyId, dockRowRef, effectiveSquadPets, gameMode, handleBuyLabUpgrade, handleClaimBonusChest, handleClaimBounty, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hubModal, isFullscreen, labInitialTab, lang, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pet, petMeta, petStage, phase, profileDraft, profileOpen, pwaInstallPrompt, regionMeta, save, selectSquadPreset, setDifficultyId, setGameMode, setHubModal, setLabInitialTab, setProfileDraft, setPwaInstallPrompt, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, solarInfo, squadEditorOpen, squadPresets, timeAlmanacOpen, togglePetInActiveSquad, trainerProfile, visibleDockCount, worldMapOpen } = ctx;
   return (
     <>
       {/* =====================================================================
@@ -88,19 +89,36 @@ export const ArenaHubAndMapOverlay: React.FC<{ ctx: Record<string, any> }> = ({ 
             </div>
 
             <div className="pkb-top-right">
-              <button
-                type="button"
-                className="pkb-weather-pill"
-                style={{ borderColor: liveWeather.accentColor }}
-                onClick={() => {
-                  sound.play('confirm');
-                  setWorldMapOpen(true);
-                }}
-                title={`${liveWeather.locationLabel ?? '当地'} ${liveWeather.summary} · ${solarInfo.phaseEmoji}${solarInfo.phaseLabel}（日出 ${solarInfo.sunriseStr} / 日落 ${solarInfo.sunsetStr}）\n点击打开全球地图`}
-              >
-                <span>{solarInfo.phaseEmoji}</span>
-                <strong>{liveWeather.label} {liveWeather.tempC}°C</strong>
-              </button>
+              {(() => {
+                const hubWeatherIcon: PixelIconName =
+                  liveWeather.kind === 'cloudy'
+                    ? 'weather_cloudy'
+                    : liveWeather.kind === 'rain'
+                      ? 'weather_rain'
+                      : liveWeather.kind === 'storm'
+                        ? 'weather_storm'
+                        : liveWeather.kind === 'snow'
+                          ? 'weather_snow'
+                          : liveWeather.kind === 'windy'
+                            ? 'weather_windy'
+                            : solarInfo.phase === 'night'
+                              ? 'weather_night_clear'
+                              : 'weather_clear';
+                return (
+                  <button
+                    type="button"
+                    className="pkb-weather-pill"
+                    onClick={() => {
+                      sound.play('confirm');
+                      setWorldMapOpen(true);
+                    }}
+                    title={`${liveWeather.locationLabel ?? '当地'} ${liveWeather.label} ${liveWeather.tempC}°C · ${solarInfo.phaseLabel}（日出 ${solarInfo.sunriseStr} / 日落 ${solarInfo.sunsetStr}）\n点击打开全球地图`}
+                  >
+                    <PixelIcon name={hubWeatherIcon} size={15} />
+                    <strong>{liveWeather.label} {liveWeather.tempC}°C</strong>
+                  </button>
+                );
+              })()}
 
               <button
                 type="button"
@@ -445,7 +463,7 @@ export const ArenaHubAndMapOverlay: React.FC<{ ctx: Record<string, any> }> = ({ 
                         type="button"
                         className="pkb-news-ticker"
                         onClick={() => onOpenPokemonManager('news', false)}
-                        title="点击在掌机中查看《关都日报》"
+                        title="点击在掌机中查看《宝可梦中心日报》"
                       >
                         <PixelItemImg src="/sprites/items/poke-radar.png" size={16} />
                         <span className="pkb-news-pill">
@@ -729,19 +747,6 @@ export const ArenaHubAndMapOverlay: React.FC<{ ctx: Record<string, any> }> = ({ 
               onUpdatePetConfig={onUpdatePetConfig}
             />
           )}
-          {hubModal === 'lab' && (
-            <LabOverlay
-              meta={meta}
-              closing={closingHubModal}
-              onClose={closeHubModal}
-              onBuyLabUpgrade={handleBuyLabUpgrade}
-              onUnlockOrSelectHero={handleUnlockOrSelectHero}
-              onUpgradeHeroSkill={handleUpgradeHeroSkill}
-              onSelectTrainerTag={(tagId: TrainerTagId) => {
-                onUpdateMeta?.((prev) => ({ ...prev, activeTrainerTag: tagId }));
-              }}
-            />
-          )}
           {hubModal === 'bounties' && (
             <BountiesOverlay
               meta={meta}
@@ -760,6 +765,57 @@ export const ArenaHubAndMapOverlay: React.FC<{ ctx: Record<string, any> }> = ({ 
             />
           )}
         </div>
+      )}
+
+      {/* =====================================================================
+          NON-DESTRUCTIVE LAB / HERO DETAIL / BADGES OVERLAY (Works in Hub & Playing!)
+         ===================================================================== */}
+      {hubModal === 'lab' && (
+        <LabOverlay
+          meta={meta}
+          closing={closingHubModal}
+          initialTab={labInitialTab}
+          onClose={() => {
+            closeHubModal();
+            setLabInitialTab('universal');
+          }}
+          onBuyLabUpgrade={handleBuyLabUpgrade}
+          onUnlockOrSelectHero={handleUnlockOrSelectHero}
+          onUpgradeHeroSkill={handleUpgradeHeroSkill}
+          onSelectTrainerTag={(tagId: TrainerTagId) => {
+            onUpdateMeta?.((prev) => ({ ...prev, activeTrainerTag: tagId }));
+          }}
+          onToggleShowcaseBadge={(badgeId) => {
+            onUpdateMeta?.((prev) => {
+              const cur =
+                prev.showcaseBadgeIds && prev.showcaseBadgeIds.length > 0
+                  ? [...prev.showcaseBadgeIds]
+                  : ['boulder_badge', 'cascade_badge', 'thunder_badge', 'rainbow_badge', 'volcano_badge', 'earth_badge'];
+              const idx = cur.indexOf(badgeId);
+              if (idx >= 0) {
+                if (cur.length <= 1) return prev;
+                cur.splice(idx, 1);
+              } else {
+                if (cur.length >= 6) {
+                  cur.shift();
+                }
+                cur.push(badgeId);
+              }
+              return { ...prev, showcaseBadgeIds: cur };
+            });
+          }}
+          onOpenTrainerCard={() => {
+            setHubModal('none');
+            setLabInitialTab('universal');
+            onOpenPokemonManager('profile', phase === 'playing');
+          }}
+          onOpenAchievements={() => {
+            setHubModal('none');
+            setLabInitialTab('universal');
+            onOpenPokemonManager('achievements', phase === 'playing');
+          }}
+          achievementsLabel={`${save.unlockedAchievements.length}/${ACHIEVEMENTS.length}`}
+        />
       )}
 
       {/* =====================================================================

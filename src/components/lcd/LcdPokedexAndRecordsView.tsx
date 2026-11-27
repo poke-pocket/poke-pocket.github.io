@@ -10,7 +10,7 @@ import { PixelIcon, PixelItemImg, PixelPetIcon, PixelPetPortrait, PixelPetSprite
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdPokedexAndRecordsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { achCategory, confirmReset, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, menuCursor, mode, onCloseHandheldTo3D, onExitMode, onNavigateMode, onResetSave, onStartGame, openedEntryMode, pet, save, selectedDexSpecies, setAchCategory, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setPartyDetailTab, setPetActionMenuOpen, setSelectedDexSpecies, setSelectedPartyPetId } = ctx;
+  const { achCategory, confirmReset, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, menuCursor, mode, onExitMode, onGoBack, onNavigateMode, onResetSave, onStartGame, pet, save, selectedDexSpecies, setAchCategory, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setPartyDetailTab, setPetActionMenuOpen, setSelectedDexSpecies, setSelectedPartyPetId } = ctx;
   return (
     <>
         {/* POKEDEX+ MULTI-CATEGORY COLLECTION ENCYCLOPEDIA (总览 | 宝可梦 | 招式 | 道具 | 历程) */}
@@ -146,14 +146,11 @@ export const LcdPokedexAndRecordsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx 
                   type="button"
                   className="lcd-mini-close"
                   onClick={() => {
-                    if (openedEntryMode === 'pokedex' && onCloseHandheldTo3D) {
-                      onCloseHandheldTo3D();
-                    } else {
-                      onNavigateMode('menu');
-                    }
+                    sound.play('cancel');
+                    onGoBack();
                   }}
                 >
-                  {openedEntryMode === 'pokedex' && onCloseHandheldTo3D ? '关闭' : '返回'}
+                  返回
                 </button>
               </div>
 
@@ -491,9 +488,12 @@ export const LcdPokedexAndRecordsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx 
                 <button
                   type="button"
                   className="lcd-mini-close"
-                  onClick={() => onNavigateMode('pokedex')}
+                  onClick={() => {
+                    sound.play('cancel');
+                    onGoBack();
+                  }}
                 >
-                  返回图鉴
+                  返回
                 </button>
               </div>
 
@@ -720,14 +720,11 @@ export const LcdPokedexAndRecordsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx 
                   type="button"
                   className="lcd-mini-close"
                   onClick={() => {
-                    if (openedEntryMode === 'achievements' && onCloseHandheldTo3D) {
-                      onCloseHandheldTo3D();
-                    } else {
-                      onNavigateMode('menu');
-                    }
+                    sound.play('cancel');
+                    onGoBack();
                   }}
                 >
-                  {openedEntryMode === 'achievements' && onCloseHandheldTo3D ? '关闭' : '返回'}
+                  返回
                 </button>
               </div>
               <div className="ach-cat-bar">
@@ -792,14 +789,11 @@ export const LcdPokedexAndRecordsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx 
                 type="button"
                 className="lcd-mini-close"
                 onClick={() => {
-                  if (openedEntryMode === 'diary' && onCloseHandheldTo3D) {
-                    onCloseHandheldTo3D();
-                  } else {
-                    onNavigateMode('menu');
-                  }
+                  sound.play('cancel');
+                  onGoBack();
                 }}
               >
-                {openedEntryMode === 'diary' && onCloseHandheldTo3D ? '关闭' : '返回'}
+                返回
               </button>
             </div>
             <div className="lcd-diary-wrap">

@@ -38,9 +38,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '训练',
     desc: '强化主角与全队随从的基础伤害输出。',
     perLevelLabel: '每级伤害 +5%',
-    maxLevel: 8,
-    baseCost: 50,
-    costStep: 35,
+    maxLevel: 10,
+    baseCost: 60,
+    costStep: 45,
     icon: '/sprites/items/life-orb.png',
     accent: '#e03131',
   },
@@ -49,9 +49,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '韧性',
     desc: '提升主角出战时的最大生命值上限。',
     perLevelLabel: '每级最大 HP +14',
-    maxLevel: 8,
-    baseCost: 50,
-    costStep: 35,
+    maxLevel: 10,
+    baseCost: 60,
+    costStep: 45,
     icon: '/sprites/items/sitrus-berry.png',
     accent: '#2f9e44',
   },
@@ -59,10 +59,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'agility',
     name: '敏捷',
     desc: '提升 3D 野外探索与走位躲弹幕的移动速度。',
-    perLevelLabel: '每级移速 +3%',
-    maxLevel: 6,
-    baseCost: 60,
-    costStep: 40,
+    perLevelLabel: '每级移速 +2.5%',
+    maxLevel: 10,
+    baseCost: 70,
+    costStep: 50,
     icon: '/sprites/items/choice-scarf.png',
     accent: '#22b8cf',
   },
@@ -71,9 +71,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '钻研',
     desc: '提升对局中获取的经验值效率，更快成型。',
     perLevelLabel: '每级经验 +6%',
-    maxLevel: 6,
-    baseCost: 60,
-    costStep: 45,
+    maxLevel: 10,
+    baseCost: 70,
+    costStep: 55,
     icon: '/sprites/items/lucky-egg.png',
     accent: '#7950f2',
   },
@@ -82,9 +82,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '贸易',
     desc: '增加野外拾取与通关结算获得的宝可币。',
     perLevelLabel: '每级金币 +10%',
-    maxLevel: 6,
-    baseCost: 55,
-    costStep: 40,
+    maxLevel: 10,
+    baseCost: 65,
+    costStep: 50,
     icon: '/sprites/items/amulet-coin.png',
     accent: '#f59f00',
   },
@@ -92,10 +92,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'fortune',
     name: '财运',
     desc: '提升星星沙子结算倍率与幸运暴击触发率。',
-    perLevelLabel: '每级星沙与幸运 +8%',
-    maxLevel: 6,
-    baseCost: 75,
-    costStep: 50,
+    perLevelLabel: '每级星沙 +8% / 幸运 +1.5%',
+    maxLevel: 10,
+    baseCost: 85,
+    costStep: 65,
     icon: '/sprites/items/kings-rock.png',
     accent: '#ae3ec9',
   },
@@ -103,10 +103,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'magnet',
     name: '磁力',
     desc: '大幅扩张经验水晶与金币的自动吸附半径。',
-    perLevelLabel: '每级拾取范围 +0.85',
-    maxLevel: 5,
-    baseCost: 45,
-    costStep: 35,
+    perLevelLabel: '每级拾取范围 +0.7',
+    maxLevel: 10,
+    baseCost: 55,
+    costStep: 42,
     icon: '/sprites/items/magnet.png',
     accent: '#1971c2',
   },
@@ -115,9 +115,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '吃剩的东西',
     desc: '战斗中每秒持续回复主角生命值。',
     perLevelLabel: '每级再生 +0.5 HP/秒',
-    maxLevel: 5,
-    baseCost: 65,
-    costStep: 45,
+    maxLevel: 10,
+    baseCost: 75,
+    costStep: 55,
     icon: '/sprites/items/leftovers.png',
     accent: '#40c057',
   },
@@ -125,10 +125,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'haste',
     name: '迅捷',
     desc: '缩短全队宝可梦招式冷却，火力更密集。',
-    perLevelLabel: '每级攻速 +3.5%',
-    maxLevel: 5,
-    baseCost: 90,
-    costStep: 60,
+    perLevelLabel: '每级攻速 +3%',
+    maxLevel: 10,
+    baseCost: 100,
+    costStep: 75,
     icon: '/sprites/items/quick-claw.png',
     accent: '#fd7e14',
   },
@@ -137,9 +137,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '刷新',
     desc: '每次升级选卡时增加免费的选项刷新次数。',
     perLevelLabel: '每级刷新次数 +1',
-    maxLevel: 4,
-    baseCost: 80,
-    costStep: 55,
+    maxLevel: 8,
+    baseCost: 90,
+    costStep: 70,
     icon: '/sprites/items/vs-seeker.png',
     accent: '#3b5bdb',
   },
@@ -148,9 +148,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '携带上限',
     desc: '扩充 3D 野外探索时最多可同时上阵跟随的宝可梦数量。',
     perLevelLabel: '每级携带上限 +1',
-    maxLevel: 3,
-    baseCost: 140,
-    costStep: 110,
+    maxLevel: 4,
+    baseCost: 180,
+    costStep: 150,
     icon: '/sprites/items/ultra-ball.png',
     accent: '#e03131',
   },
@@ -159,20 +159,20 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '气势披带·复活',
     desc: '主角体力归零时自动原地满血爆发震退敌群并获得短暂无敌。',
     perLevelLabel: '每级复活次数 +1',
-    maxLevel: 3,
-    baseCost: 150,
-    costStep: 120,
+    maxLevel: 5,
+    baseCost: 180,
+    costStep: 160,
     icon: '/sprites/items/focus-sash.png',
     accent: '#f08c00',
   },
   {
     id: 'crit_rate',
     name: '焦点会心',
-    desc: '大幅提升主角与全队随从所有招式触发要害暴击的概率。',
-    perLevelLabel: '每级暴击率 +4%',
-    maxLevel: 5,
-    baseCost: 70,
-    costStep: 45,
+    desc: '提升主角与全队随从所有招式触发要害暴击的概率。',
+    perLevelLabel: '每级暴击率 +3.5%',
+    maxLevel: 8,
+    baseCost: 85,
+    costStep: 60,
     icon: '/sprites/items/scope-lens.png',
     accent: '#d6336c',
   },
@@ -180,10 +180,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'armor',
     name: '磐石护甲',
     desc: '强化训练师防具韧性，按百分比减免野怪碰撞与首领弹幕伤害。',
-    perLevelLabel: '每级受伤减免 -5%',
-    maxLevel: 5,
-    baseCost: 65,
-    costStep: 45,
+    perLevelLabel: '每级受伤减免 -4%',
+    maxLevel: 8,
+    baseCost: 80,
+    costStep: 60,
     icon: '/sprites/items/focus-band.png',
     accent: '#495057',
   },
@@ -191,10 +191,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'catch_master',
     name: '收服大师',
     desc: '提高野外投掷精灵球的收服成功率，并延长击晕精灵的留存时间。',
-    perLevelLabel: '每级收服率 +6% / 留存 +25%',
-    maxLevel: 5,
-    baseCost: 75,
-    costStep: 50,
+    perLevelLabel: '每级收服率 +4% / 留存 +20%',
+    maxLevel: 8,
+    baseCost: 90,
+    costStep: 65,
     icon: '/sprites/items/master-ball.png',
     accent: '#7048e8',
   },
@@ -203,16 +203,19 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '冒险补给包',
     desc: '每次出发探险时额外携带伤药补给次数，续航更持久。',
     perLevelLabel: '每级初始伤药 +1',
-    maxLevel: 4,
-    baseCost: 55,
-    costStep: 40,
+    maxLevel: 10,
+    baseCost: 65,
+    costStep: 50,
     icon: '/sprites/items/super-potion.png',
     accent: '#12b886',
   },
 ];
 
 export function getLabUpgradeCost(def: LabUpgradeDef, currentLv: number): number {
-  return def.baseCost + currentLv * def.costStep;
+  const linear = def.baseCost + currentLv * def.costStep;
+  const quad = Math.round(def.costStep * 0.42 * currentLv * currentLv);
+  const tierMult = currentLv >= 7 ? 1.35 : currentLv >= 4 ? 1.15 : 1;
+  return Math.round(((linear + quad) * tierMult) / 5) * 5;
 }
 
 export type HeroId = 'red' | 'misty' | 'brock' | 'blue';
@@ -472,8 +475,8 @@ export interface TrainerTagDef {
 export const TRAINER_TAG_CATALOG: TrainerTagDef[] = [
   {
     id: 'rookie_trainer',
-    name: '基础训练师',
-    tierLabel: '初始',
+    name: '见习训练师',
+    tierLabel: 'Lv.1',
     color: '#4dabf7',
     icon: '/sprites/items/poke-ball.png',
     unlockText: '初始解锁',
@@ -487,8 +490,8 @@ export const TRAINER_TAG_CATALOG: TrainerTagDef[] = [
   },
   {
     id: 'forest_ranger',
-    name: '关都巡林员',
-    tierLabel: '进阶',
+    name: '进阶训练师',
+    tierLabel: 'Lv.2',
     color: '#51cf66',
     icon: '/sprites/items/miracle-seed.png',
     unlockText: '累计击败 60 只宝可梦',
@@ -503,8 +506,8 @@ export const TRAINER_TAG_CATALOG: TrainerTagDef[] = [
   },
   {
     id: 'gym_challenger',
-    name: '道馆挑战者',
-    tierLabel: '精英',
+    name: '精英训练师',
+    tierLabel: 'Lv.3',
     color: '#ff922b',
     icon: '/sprites/items/great-ball.png',
     unlockText: '获得任意 1 枚道馆徽章',
@@ -518,11 +521,11 @@ export const TRAINER_TAG_CATALOG: TrainerTagDef[] = [
   },
   {
     id: 'gym_leader',
-    name: '道馆馆主',
-    tierLabel: '大师',
+    name: '王牌训练师',
+    tierLabel: 'Lv.4',
     color: '#ae3ec9',
     icon: '/sprites/items/ultra-ball.png',
-    unlockText: '获得 3 枚关都道馆徽章',
+    unlockText: '累计获得 3 枚道馆徽章',
     perkText: '全属性宝可梦 攻击 +16%、生命 +15%、冷却 -8%',
     atkBonus: 0.16,
     hpPctBonus: 0.15,
@@ -533,11 +536,11 @@ export const TRAINER_TAG_CATALOG: TrainerTagDef[] = [
   },
   {
     id: 'elite_four',
-    name: '关都四天王',
-    tierLabel: '传说',
+    name: '大师训练师',
+    tierLabel: 'Lv.5',
     color: '#f03e3e',
     icon: '/sprites/items/kings-rock.png',
-    unlockText: '获得 5 枚关都道馆徽章',
+    unlockText: '累计获得 5 枚道馆徽章',
     perkText: '火 / 水 / 幽灵 / 龙系 攻击 +24%、金币 +20%',
     targetElements: ['fire', 'water', 'ghost', 'dragon', 'psychic'],
     atkBonus: 0.24,
@@ -549,12 +552,12 @@ export const TRAINER_TAG_CATALOG: TrainerTagDef[] = [
   },
   {
     id: 'kanto_champion',
-    name: '关都冠军',
-    tierLabel: '至臻',
+    name: '冠军训练师',
+    tierLabel: 'Lv.6',
     color: '#ffd43b',
     icon: '/sprites/items/master-ball.png',
-    unlockText: '集齐全部 6 枚关都道馆徽章',
-    perkText: '全关都地区全属性 攻击 +28%、生命 +25%、冷却 -12%',
+    unlockText: '累计获得 6 枚道馆徽章',
+    perkText: '全属性宝可梦 攻击 +28%、生命 +25%、冷却 -12%',
     atkBonus: 0.28,
     hpPctBonus: 0.25,
     cdMultBonus: 0.88,
@@ -564,16 +567,41 @@ export const TRAINER_TAG_CATALOG: TrainerTagDef[] = [
   },
 ];
 
+export type GymBadgeCategory = 'kanto' | 'tour' | 'master';
+
 export type GymBadgeId =
   | 'boulder_badge'
   | 'cascade_badge'
   | 'thunder_badge'
   | 'rainbow_badge'
+  | 'soul_badge'
+  | 'marsh_badge'
   | 'volcano_badge'
-  | 'earth_badge';
+  | 'earth_badge'
+  | 'shanghai_pearl_badge'
+  | 'beijing_dragon_badge'
+  | 'tokyo_neon_badge'
+  | 'kyoto_sakura_badge'
+  | 'seoul_star_badge'
+  | 'taipei_cloud_badge'
+  | 'shiny_hunter_badge'
+  | 'dex_professor_badge'
+  | 'league_champion_badge'
+  | (string & {});
+
+export const MAX_SHOWCASE_BADGES = 6;
+export const DEFAULT_SHOWCASE_BADGE_IDS: GymBadgeId[] = [
+  'boulder_badge',
+  'cascade_badge',
+  'thunder_badge',
+  'rainbow_badge',
+  'volcano_badge',
+  'earth_badge',
+];
 
 export interface GymBadgeDef {
   id: GymBadgeId;
+  category: GymBadgeCategory;
   name: string;
   gymName: string;
   leaderName: string;
@@ -591,6 +619,7 @@ export interface GymBadgeDef {
 export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   {
     id: 'boulder_badge',
+    category: 'kanto',
     name: '灰色徽章',
     gymName: '尼比道馆',
     leaderName: '馆主 小刚',
@@ -604,6 +633,7 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   },
   {
     id: 'cascade_badge',
+    category: 'kanto',
     name: '蓝色徽章',
     gymName: '华蓝道馆',
     leaderName: '馆主 小霞',
@@ -617,6 +647,7 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   },
   {
     id: 'thunder_badge',
+    category: 'kanto',
     name: '橙色徽章',
     gymName: '枯叶道馆',
     leaderName: '馆主 马志士',
@@ -630,6 +661,7 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   },
   {
     id: 'rainbow_badge',
+    category: 'kanto',
     name: '彩虹徽章',
     gymName: '玉虹道馆',
     leaderName: '馆主 莉佳',
@@ -643,7 +675,36 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
     regenBonus: 0.6,
   },
   {
+    id: 'soul_badge',
+    category: 'kanto',
+    name: '粉红徽章',
+    gymName: '浅红道馆',
+    leaderName: '馆主 阿桔',
+    color: '#f06595',
+    icon: '/sprites/items/black-sludge.png',
+    unlockHint: '累计收服 12 只宝可梦或击败 200 只野怪',
+    perkText: '毒 / 恶 / 妖精系 攻击 +16%、暴击 +3%',
+    elements: ['poison', 'dark', 'fairy'],
+    atkBonus: 0.16,
+    cdReduction: 0.05,
+  },
+  {
+    id: 'marsh_badge',
+    category: 'kanto',
+    name: '金色徽章',
+    gymName: '金黄道馆',
+    leaderName: '馆主 娜姿',
+    color: '#fab005',
+    icon: '/sprites/items/twisted-spoon.png',
+    unlockHint: '累计解锁 20 种图鉴或完成 5 次探索',
+    perkText: '超能 / 幽灵系 攻击 +18%、冷却 -5%',
+    elements: ['psychic', 'ghost'],
+    atkBonus: 0.18,
+    cdReduction: 0.05,
+  },
+  {
     id: 'volcano_badge',
+    category: 'kanto',
     name: '深红徽章',
     gymName: '红莲道馆',
     leaderName: '烈焰试炼',
@@ -657,19 +718,161 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   },
   {
     id: 'earth_badge',
+    category: 'kanto',
     name: '绿色徽章',
     gymName: '常磐道馆',
     leaderName: '劲敌 小茂',
     color: '#7950f2',
     icon: '/sprites/items/kings-rock.png',
     unlockHint: '击败「劲敌 小茂」或通关天空冰川',
-    perkText: '幽灵 / 超能 & 关都全地区宝可梦 攻击 +12%、金币 +15%',
+    perkText: '幽灵 / 超能 & 全系宝可梦 攻击 +12%、金币 +15%',
     elements: ['all', 'ghost', 'psychic'],
     atkBonus: 0.12,
     cdReduction: 0.04,
     coinBonus: 0.15,
   },
+  // East Asia World Tour City Gym Badges
+  {
+    id: 'shanghai_pearl_badge',
+    category: 'tour',
+    name: '申江明珠徽章',
+    gymName: '魔都陆家嘴道馆',
+    leaderName: '巡礼馆主 明珠',
+    color: '#ff6b6b',
+    icon: '/sprites/items/light-ball.png',
+    unlockHint: '完成上海站巡礼道馆挑战',
+    perkText: '电 / 钢系 攻击 +14%、移速 +4%',
+    elements: ['electric', 'steel'],
+    atkBonus: 0.14,
+    cdReduction: 0.04,
+  },
+  {
+    id: 'beijing_dragon_badge',
+    category: 'tour',
+    name: '京华金龙徽章',
+    gymName: '紫禁太和道馆',
+    leaderName: '巡礼馆主 玄武',
+    color: '#e67700',
+    icon: '/sprites/items/dragon-fang.png',
+    unlockHint: '完成北京站巡礼道馆挑战',
+    perkText: '龙 / 火系 攻击 +16%、全队生命 +15',
+    elements: ['dragon', 'fire'],
+    atkBonus: 0.16,
+    cdReduction: 0.04,
+  },
+  {
+    id: 'tokyo_neon_badge',
+    category: 'tour',
+    name: '霓虹塔尖徽章',
+    gymName: '东京涩谷道馆',
+    leaderName: '巡礼馆主 隼人',
+    color: '#22b8cf',
+    icon: '/sprites/items/choice-scarf.png',
+    unlockHint: '完成东京站巡礼道馆挑战',
+    perkText: '电 / 飞行系 攻速 +7%、冷却 -4%',
+    elements: ['electric', 'flying'],
+    atkBonus: 0.12,
+    cdReduction: 0.06,
+  },
+  {
+    id: 'kyoto_sakura_badge',
+    category: 'tour',
+    name: '古都落樱徽章',
+    gymName: '京都岚山道馆',
+    leaderName: '巡礼馆主 樱绘',
+    color: '#faa2c1',
+    icon: '/sprites/items/berry-pouch.png',
+    unlockHint: '完成京都站巡礼道馆挑战',
+    perkText: '草 / 妖精系 攻击 +15%、回复 +0.4 HP/秒',
+    elements: ['grass', 'fairy'],
+    atkBonus: 0.15,
+    cdReduction: 0.04,
+    regenBonus: 0.4,
+  },
+  {
+    id: 'seoul_star_badge',
+    category: 'tour',
+    name: '汉江星耀徽章',
+    gymName: '首尔南山道馆',
+    leaderName: '巡礼馆主 智勋',
+    color: '#5c7cfa',
+    icon: '/sprites/items/scope-lens.png',
+    unlockHint: '完成首尔站巡礼道馆挑战',
+    perkText: '冰 / 格斗系 攻击 +16%、金币 +8%',
+    elements: ['ice', 'fighting'],
+    atkBonus: 0.16,
+    cdReduction: 0.04,
+    coinBonus: 0.08,
+  },
+  {
+    id: 'taipei_cloud_badge',
+    category: 'tour',
+    name: '碧海云巅徽章',
+    gymName: '台北信义道馆',
+    leaderName: '巡礼馆主 岚风',
+    color: '#20c997',
+    icon: '/sprites/items/quick-claw.png',
+    unlockHint: '完成台北站巡礼道馆挑战',
+    perkText: '水 / 飞行系 攻击 +14%、移速 +5%',
+    elements: ['water', 'flying'],
+    atkBonus: 0.14,
+    cdReduction: 0.05,
+  },
+  // Master / Endless Honor Badges
+  {
+    id: 'shiny_hunter_badge',
+    category: 'master',
+    name: '星闪猎手徽章',
+    gymName: '异色收藏殿堂',
+    leaderName: '星光认证',
+    color: '#ffd43b',
+    icon: '/sprites/items/bright-powder.png',
+    unlockHint: '在野外成功收服任意异色宝可梦',
+    perkText: '全系宝可梦 攻击 +8%、幸运与金币 +10%',
+    elements: ['all'],
+    atkBonus: 0.08,
+    cdReduction: 0.03,
+    coinBonus: 0.1,
+  },
+  {
+    id: 'dex_professor_badge',
+    category: 'master',
+    name: '图鉴博士徽章',
+    gymName: '大木研究所荣誉',
+    leaderName: '大木博士',
+    color: '#339af0',
+    icon: '/sprites/items/lucky-egg.png',
+    unlockHint: '宝可梦图鉴收录突破 45 种',
+    perkText: '全系宝可梦 攻击 +10%、经验效率 +15%',
+    elements: ['all'],
+    atkBonus: 0.1,
+    cdReduction: 0.04,
+  },
+  {
+    id: 'league_champion_badge',
+    category: 'master',
+    name: '石英冠军徽章',
+    gymName: '宝可梦联盟殿堂',
+    leaderName: '联盟冠军',
+    color: '#ae3ec9',
+    icon: '/sprites/items/master-ball.png',
+    unlockHint: '累计击败 10 位首领并通关全部关都区域',
+    perkText: '全系宝可梦 攻击 +16%、冷却 -6%、金币 +12%',
+    elements: ['all'],
+    atkBonus: 0.16,
+    cdReduction: 0.06,
+    coinBonus: 0.12,
+  },
 ];
+
+export function getShowcaseBadgeIds(meta: MetaProgressState): GymBadgeId[] {
+  const validIds = new Set(GYM_BADGE_CATALOG.map((b) => b.id));
+  const raw = Array.isArray(meta.showcaseBadgeIds)
+    ? meta.showcaseBadgeIds.filter((id) => validIds.has(id))
+    : [];
+  const base = raw.length > 0 ? raw : DEFAULT_SHOWCASE_BADGE_IDS;
+  return base.slice(0, MAX_SHOWCASE_BADGES);
+}
 
 export interface SquadPreset {
   id: string;
@@ -683,9 +886,10 @@ export interface MetaProgressState {
   activeHero: HeroId;
   unlockedHeroes: HeroId[];
   heroSkillLevels: Record<string, number>;
-  // Trainer Tags & Kanto Gym Badges
+  // Trainer Tags & Gym Badges (Unlimited catalog, pick up to 6 for HUD display / target tracking!)
   activeTrainerTag?: TrainerTagId;
   unlockedBadges?: GymBadgeId[];
+  showcaseBadgeIds?: GymBadgeId[];
   unlockedSkins?: string[];
   // Saved Battle Squad Presets (Switch & Edit 3 Saved Teams!)
   squadPresets?: SquadPreset[];
@@ -2129,23 +2333,26 @@ export function computeMetaCombatBonuses(meta: MetaProgressState): ComputedComba
   let dmgMult = 1 + lv('training') * 0.05 + hero.baseAtkBonus;
   let maxHpFlat = lv('vitality') * 14 + hero.baseHpBonus + Math.round(tag.hpPctBonus * 140);
   if (earnedBadges.has('boulder_badge')) maxHpFlat += 20;
-  let speedMult = 1 + lv('agility') * 0.03 + hero.baseSpeedBonus + tag.speedBonus;
+  let speedMult = 1 + lv('agility') * 0.025 + hero.baseSpeedBonus + tag.speedBonus;
   const xpMult = 1 + lv('study') * 0.06 + (tag.id === 'rookie_trainer' ? 0.1 : 0);
   let coinMult = 1 + lv('trade') * 0.1 + tag.coinBonus;
   if (earnedBadges.has('earth_badge')) coinMult += 0.15;
   let stardustMult = 1 + lv('fortune') * 0.08;
-  const pickupAdd = lv('magnet') * 0.85;
+  const pickupAdd = lv('magnet') * 0.7;
   let regenPerSec = lv('leftovers') * 0.5 + (earnedBadges.has('rainbow_badge') ? 0.6 : 0);
-  let cdMult = Math.max(0.55, (1 - lv('haste') * 0.035) * tag.cdMultBonus);
+  let cdMult = Math.max(0.5, (1 - lv('haste') * 0.03) * tag.cdMultBonus);
   const rerolls = lv('reroll');
   const extraSquadSlots = lv('squad_cap');
   const revives = lv('revives');
-  const catchRateBonus = lv('catch_master') * 0.06;
-  const koDurationMult = 1 + lv('catch_master') * 0.25;
+  const catchRateBonus = lv('catch_master') * 0.04;
+  const koDurationMult = 1 + lv('catch_master') * 0.2;
   const extraHealCharges = lv('supply_pack');
-  let dmgReduction = Math.min(0.45, lv('armor') * 0.05);
+  let dmgReduction = Math.min(0.45, lv('armor') * 0.04);
   let bossDmgMult = 1.0 + tag.bossBonus;
-  let critChance = 0.06 + lv('fortune') * 0.025 + lv('crit_rate') * 0.04 + (earnedBadges.has('volcano_badge') ? 0.06 : 0);
+  let critChance = Math.min(
+    0.75,
+    0.06 + lv('fortune') * 0.015 + lv('crit_rate') * 0.035 + (earnedBadges.has('volcano_badge') ? 0.06 : 0),
+  );
 
   if (hero.id === 'red') {
     dmgMult += s0 * 0.04 + (s0 >= 5 ? 0.18 : 0);

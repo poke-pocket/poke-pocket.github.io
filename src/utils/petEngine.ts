@@ -1889,6 +1889,48 @@ export function healAllPets(save: GameSave, now = Date.now()): ActionOutcome {
   };
 }
 
+/** One-click feed all hungry awake Pokémon in a target squad using basic unlimited Oran Berries */
+export function feedSquadPets(
+  save: GameSave,
+  petIds: string[],
+  now = Date.now(),
+): ActionOutcome {
+  const targetSet = new Set(petIds);
+  const food = FOOD_CATALOG.find((f) => f.id === 'oran_berry') ?? FOOD_CATALOG[0];
+  let fedCount = 0;
+  const pets = save.pets.map((p) => {
+    if (!targetSet.has(p.id) || p.isSleeping || p.hunger >= 100) return p;
+    fedCount += 1;
+    const isFav = SPECIES_CATALOG[p.species].favoriteFood === food.id;
+    const hungerGain = Math.max(25, food.hunger);
+    const happyGain = food.happiness + (isFav ? 6 : 0);
+    return {
+      ...p,
+      hunger: clampStat(p.hunger + hungerGain),
+      happiness: clampStat(p.happiness + happyGain),
+      health: clampStat(p.health + (food.health ?? 0)),
+      totalFeeds: p.totalFeeds + 1,
+      lastTickAt: now,
+    };
+  });
+  if (fedCount === 0) {
+    return {
+      ok: false,
+      save,
+      message: '当前队伍里的宝可梦都已经吃得饱饱的啦！',
+    };
+  }
+  const lead = getActivePet(save);
+  const diary = lead
+    ? addDiary(save, lead, 'riceball', `为队伍中 ${fedCount} 只伙伴一键喂食了${food.name}！`, now)
+    : save.diary;
+  return {
+    ok: true,
+    save: { ...save, pets, diary },
+    message: `已为 ${fedCount} 只出战伙伴一键喂食${food.name}，状态满满！`,
+  };
+}
+
 export function recordMiniGameResult(
   save: GameSave,
   petId: string,
@@ -2042,6 +2084,7 @@ export function equipAccessory(
   petId: string,
   accessoryId: AccessoryId,
   now = Date.now(),
+  ignoreStockCheck = false,
 ): ActionOutcome {
   const meta = ACCESSORY_CATALOG.find((a) => a.id === accessoryId);
   const pet = save.pets.find((p) => p.id === petId);
@@ -2056,7 +2099,7 @@ export function equipAccessory(
           : `${pet.name} 已经携带着「${meta.name}」`,
     };
   }
-  if (accessoryId !== 'none') {
+  if (accessoryId !== 'none' && !ignoreStockCheck) {
     const avail = getAccessoryAvailability(save, accessoryId);
     if (avail.available <= 0) {
       return {
@@ -2146,6 +2189,7 @@ export function assignPetBallRoom(
   petId: string,
   roomId: RoomThemeId,
   now = Date.now(),
+  ignoreStockCheck = false,
 ): ActionOutcome {
   const room = ROOM_CATALOG.find((r) => r.id === roomId);
   const pet = save.pets.find((p) => p.id === petId);
@@ -2153,13 +2197,15 @@ export function assignPetBallRoom(
   if ((pet.ballRoom ?? 'pokeball_room') === roomId) {
     return { ok: true, save, message: `${pet.name} 当前已居住在「${room.shortName}」` };
   }
-  const avail = getBallAvailability(save, roomId);
-  if (avail.available <= 0) {
-    return {
-      ok: false,
-      save,
-      message: `${room.shortName} 可用数量不足（余0），请先去友好商店购买！`,
-    };
+  if (!ignoreStockCheck) {
+    const avail = getBallAvailability(save, roomId);
+    if (avail.available <= 0) {
+      return {
+        ok: false,
+        save,
+        message: `${room.shortName} 可用数量不足（余0），请先去友好商店购买！`,
+      };
+    }
   }
   const pets = save.pets.map((p) =>
     p.id === petId ? { ...p, ballRoom: roomId } : p,

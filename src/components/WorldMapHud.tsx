@@ -27,6 +27,7 @@ import { generateTownLayout, hashCitySeed } from '../utils/townStreetGen';
 import { HIGHWAY_ROAD_WIDTH_3D, getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { SHANGHAI_DISTRICT_LABELS } from '../data/shanghaiMasterplan';
 import { BIOME_PALETTES, type BiomeId } from '../data/worldTextures3D';
+import { useDevGrants, useDevMode } from '../utils/devMode';
 import { sound } from '../utils/sound';
 import { PixelItemImg } from './PixelSprite';
 
@@ -140,6 +141,7 @@ export interface WorldMapData {
   onReturnToHubCity?: (dest: 'plaza' | 'home') => void;
   navTargets?: WorldMapNavTarget[];
   onAutoWalkTo?: (x: number, z: number, label: string) => void;
+  onTeleportTo?: (x: number, z: number, label: string) => void;
   onOpenGlobalWorldMap?: () => void;
 }
 
@@ -1525,6 +1527,9 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   closeLabel = '关闭',
 }) => {
   const { biome, regionName, snapshot } = data;
+  const [devMode] = useDevMode();
+  const [devGrants] = useDevGrants();
+  const canTeleport = devMode && devGrants.mapTeleport && Boolean(data.onTeleportTo);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [canvasSize, setCanvasSize] = useState({ w: 480, h: 430 });
@@ -2239,6 +2244,32 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
               >
                 🧭 自动寻路至最新标点 · 距离 {pinDistStr}
               </button>
+              {canTeleport && (
+                <button
+                  type="button"
+                  className="lcd-map-float-btn is-active"
+                  style={{
+                    background: '#74c0fc',
+                    color: '#161420',
+                    fontWeight: 900,
+                    padding: '5px 12px',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title="调试模式：直接传送至该标点位置"
+                  onClick={() => {
+                    sound.play('levelup');
+                    (onDismissTo3D ?? onClose)?.();
+                    const tx = latestPin.x;
+                    const tz = latestPin.z;
+                    const lbl = `地图标点 (${Math.round(tx)}, ${Math.round(tz)})`;
+                    window.requestAnimationFrame(() => {
+                      data.onTeleportTo?.(tx, tz, lbl);
+                    });
+                  }}
+                >
+                  ⚡ 传送
+                </button>
+              )}
             </div>
           );
         })()}
@@ -2431,6 +2462,35 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                         >
                           寻路
                         </button>
+                        {canTeleport && (
+                          <button
+                            type="button"
+                            className="lcd-map-poi-btn"
+                            style={{
+                              width: 'auto',
+                              flex: '0 0 auto',
+                              flexShrink: 0,
+                              justifyContent: 'center',
+                              padding: '0 8px',
+                              background: '#74c0fc',
+                              color: '#161420',
+                              fontWeight: 900,
+                            }}
+                            title={`直接传送至${item.label}`}
+                            onClick={() => {
+                              sound.play('levelup');
+                              (onDismissTo3D ?? onClose)?.();
+                              const tx = item.x;
+                              const tz = item.z;
+                              const lbl = item.label;
+                              window.requestAnimationFrame(() => {
+                                data.onTeleportTo?.(tx, tz, lbl);
+                              });
+                            }}
+                          >
+                            传送
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -2454,26 +2514,60 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
                       const isOriginCity = gc.city.id === (geoOrigin.startCityId ?? 'shanghai');
                       const isCurrent = isOriginCity && dKm < 2;
                       return (
-                        <button
+                        <div
                           key={gc.city.id}
-                          type="button"
-                          className={`lcd-map-poi-btn ${isOriginCity ? 'is-active' : ''}`}
-                          onClick={() => {
-                            sound.play('confirm');
-                            setPan({ x: gc.x - snapshot.px, z: gc.z - snapshot.pz });
-                            setZoom(0.05);
-                            setDrawerOpen(false);
-                          }}
+                          style={{ display: 'flex', gap: 4, alignItems: 'stretch' }}
                         >
-                          <span className="lcd-map-poi-ico" style={{ borderColor: gc.city.accentColor }}>
-                            <PixelItemImg src="/sprites/items/town-map.png" size={13} />
-                          </span>
-                          <span className="lcd-map-poi-lbl">
-                            {gc.city.name}
-                            {isOriginCity ? ' · 主城' : ''}
-                          </span>
-                          <em>{isCurrent ? '当前' : `${Math.max(1, dKm)}km`}</em>
-                        </button>
+                          <button
+                            type="button"
+                            className={`lcd-map-poi-btn ${isOriginCity ? 'is-active' : ''}`}
+                            style={{ flex: 1, minWidth: 0 }}
+                            onClick={() => {
+                              sound.play('confirm');
+                              setPan({ x: gc.x - snapshot.px, z: gc.z - snapshot.pz });
+                              setZoom(0.05);
+                              setDrawerOpen(false);
+                            }}
+                          >
+                            <span className="lcd-map-poi-ico" style={{ borderColor: gc.city.accentColor }}>
+                              <PixelItemImg src="/sprites/items/town-map.png" size={13} />
+                            </span>
+                            <span className="lcd-map-poi-lbl">
+                              {gc.city.name}
+                              {isOriginCity ? ' · 主城' : ''}
+                            </span>
+                            <em>{isCurrent ? '当前' : `${Math.max(1, dKm)}km`}</em>
+                          </button>
+                          {canTeleport && (
+                            <button
+                              type="button"
+                              className="lcd-map-poi-btn"
+                              style={{
+                                width: 'auto',
+                                flex: '0 0 auto',
+                                flexShrink: 0,
+                                justifyContent: 'center',
+                                padding: '0 8px',
+                                background: '#74c0fc',
+                                color: '#161420',
+                                fontWeight: 900,
+                              }}
+                              title={`直接传送至${gc.city.name}`}
+                              onClick={() => {
+                                sound.play('levelup');
+                                (onDismissTo3D ?? onClose)?.();
+                                const tx = gc.x;
+                                const tz = gc.z;
+                                const lbl = gc.city.name;
+                                window.requestAnimationFrame(() => {
+                                  data.onTeleportTo?.(tx, tz, lbl);
+                                });
+                              }}
+                            >
+                              传送
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                 </div>

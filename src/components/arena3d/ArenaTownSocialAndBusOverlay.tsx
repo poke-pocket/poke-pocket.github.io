@@ -382,6 +382,12 @@ export const ArenaTownSocialAndBusOverlay: React.FC<{ ctx: ArenaSharedCtx }> = (
     shopOpen,
     resultModal,
     nearbyKoTarget,
+    hubModal,
+    worldMapOpen,
+    timeAlmanacOpen,
+    profileOpen,
+    squadEditorOpen,
+    captureCutscene,
   } = ctx;
 
   const curSim = simRef.current;
@@ -390,7 +396,17 @@ export const ArenaTownSocialAndBusOverlay: React.FC<{ ctx: ArenaSharedCtx }> = (
 
   const menu: NearbyActionMenuState | null = nearbyInteract;
   const bubbles: ProjectedBubble2D[] = projectedBubbles ?? [];
-  const showFieldUi = !externalPaused && !levelChoices && !shopOpen && !resultModal;
+  const showFieldUi =
+    !externalPaused &&
+    !levelChoices &&
+    !shopOpen &&
+    !resultModal &&
+    !captureCutscene &&
+    hubModal === 'none' &&
+    !worldMapOpen &&
+    !timeAlmanacOpen &&
+    !profileOpen &&
+    !squadEditorOpen;
 
   const navList: { id: string; label: string; x: number; z: number }[] = (autoNavTargetsRef?.current ?? []).filter(
     (t: { id: string }) => !t.id.includes('suite_bed') && !t.id.includes('nav_house'),
@@ -425,7 +441,7 @@ export const ArenaTownSocialAndBusOverlay: React.FC<{ ctx: ArenaSharedCtx }> = (
               left: `${Math.max(14, Math.min(86, b.sx))}%`,
               top: `${Math.max(10, Math.min(78, b.sy))}%`,
               transform: 'translate(-50%, -100%)',
-              zIndex: b.isPlayerDialog ? 63 : 56,
+              zIndex: b.isPlayerDialog ? 12 : 9,
               pointerEvents: b.isPlayerDialog ? 'auto' : 'none',
               cursor: b.isPlayerDialog ? 'pointer' : 'default',
               maxWidth: b.isPlayerDialog ? 278 : 228,
@@ -539,7 +555,7 @@ export const ArenaTownSocialAndBusOverlay: React.FC<{ ctx: ArenaSharedCtx }> = (
               : { left: menu.inView ? `${Math.max(6, Math.min(66, menu.sx + 3.8))}%` : '54%' }),
             top: menu.inView ? `${Math.max(24, Math.min(73, menu.sy))}%` : '52%',
             transform: 'translateY(-50%)',
-            zIndex: 60,
+            zIndex: 14,
             display: 'flex',
             flexDirection: 'column',
             gap: 5,

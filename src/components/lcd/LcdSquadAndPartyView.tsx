@@ -1,15 +1,16 @@
 import type { LcdSharedCtx } from './lcdViewTypes';
 import React from 'react';
-import { NATURE_CATALOG, ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getIvRank } from '../../data/catalog';
+import { NATURE_CATALOG, ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getIvRank, getXpForNextLevel } from '../../data/catalog';
 import { ensureFreshMetaProgress } from '../../data/metaProgression';
 import { type PetRecord } from '../../types/pet';
+import { isDevVirtualPetId } from '../../utils/devMode';
 import { MAX_PET_SLOTS, getPetIVs, getPetNature, getReleaseReward } from '../../utils/petEngine';
 import { sound } from '../../utils/sound';
 import { PixelIcon, PixelItemImg, PixelPetSprite } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, mode, onCloseHandheldTo3D, onDepositPetsBatch, onNavigateMode, onReleasePetsBatch, onReleaseStoredPetsBatch, onSwitchPet, onUpdateMeta, onWithdrawPetsBatch, openedEntryMode, openedFromBattle, partyBatchMode, partyBoxTab, partyGradeFilter, partySearch, partySortBy, pet, save, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setDetailReturnMode, setGachaPhase, setMarketTab, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setSelectedPartyPetId, setSquadPickerSlot, squadPickerSlot } = ctx;
+  const { batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, mode, onDepositPetsBatch, onFeedSquad, onGoBack, onHealParty, onNavigateMode, onReleasePetsBatch, onReleaseStoredPetsBatch, onSwitchPet, onUpdateMeta, onWithdrawPetsBatch, openedFromBattle, partyBatchMode, partyBoxTab, partyGradeFilter, partySearch, partySortBy, pet, save, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setDetailReturnMode, setGachaPhase, setMarketTab, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setSelectedPartyPetId, setSquadPickerSlot, squadPickerSlot } = ctx;
   return (
     <>
         {/* CURRENT ACTIVE SQUAD MANAGER (支持多编队增删、全部移出、空槽位 '+' 卡片进入第二页球盒选人!) */}
@@ -170,7 +171,7 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                       setSquadPickerSlot(null);
                     }}
                   >
-                    ‹ 返回队伍
+                    返回
                   </button>
                 </div>
 
@@ -255,7 +256,45 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
             );
           }
 
-          // PAGE 1: Current Active Squad Slot Grid with '+' Cards!
+          const autoFillBestSquad = () => {
+            const rankScore = (p: PetRecord) => {
+              const r = getIvRank(getPetIVs(p));
+              const rw = r === 'SS' ? 40 : r === 'S' ? 28 : r === 'A' ? 16 : 6;
+              return p.level * 100 + rw + p.health * 0.2;
+            };
+            const bestIds = [...save.pets]
+              .filter((p) => !p.isSleeping)
+              .sort((a, b) => rankScore(b) - rankScore(a))
+              .slice(0, maxSquadSize)
+              .map((p) => p.id);
+            if (bestIds.length === 0) {
+              sound.play('error');
+              return;
+            }
+            sound.play('confirm');
+            const nextPresets = presets.map((pr, i) => (i === activeIdx ? { ...pr, petIds: bestIds } : pr));
+            savePresets(nextPresets, activeIdx);
+            if (bestIds[0] && bestIds[0] !== pet.id) onSwitchPet(bestIds[0]);
+          };
+
+          const sortSquadByLevel = () => {
+            if (activeTeamPets.length <= 1) {
+              sound.play('cursor');
+              return;
+            }
+            const sortedIds = [...activeTeamPets]
+              .sort((a, b) => b.level - a.level || b.health - a.health)
+              .map((p) => p.id);
+            sound.play('confirm');
+            const nextPresets = presets.map((pr, i) => (i === activeIdx ? { ...pr, petIds: sortedIds } : pr));
+            savePresets(nextPresets, activeIdx);
+            if (sortedIds[0] && sortedIds[0] !== pet.id) onSwitchPet(sortedIds[0]);
+          };
+
+          const injuredCount = activeTeamPets.filter((p) => p.isSick || p.health < 100).length;
+          const hungryCount = activeTeamPets.filter((p) => !p.isSleeping && p.hunger < 100).length;
+
+          // PAGE 1: Current Active Squad Slot Grid with '+' Cards + Status Bars + Bottom One-Click Operations!
           return (
             <div className="lcd-submenu">
               <div className="lcd-submenu-head">
@@ -276,40 +315,45 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                 </div>
                 <button
                   type="button"
-                  className="lcd-mini-close inline-icon-row"
+                  className="lcd-mini-close"
                   onClick={() => {
-                    if ((openedFromBattle || openedEntryMode === 'squad') && onCloseHandheldTo3D) {
-                      onCloseHandheldTo3D();
-                    } else {
-                      onNavigateMode('menu');
-                    }
+                    sound.play('cancel');
+                    onGoBack();
                   }}
                 >
-                  <span>{openedFromBattle ? '继续战斗' : openedEntryMode === 'squad' ? '关闭' : '返回'}</span>
+                  返回
                 </button>
               </div>
 
-              {/* Multi-Squad Preset Tabs + Add / Delete Squad Controls */}
+              {/* Multi-Squad Preset Tabs (Icon + Index + Top-Right Count Badge) + Uniform Ops */}
               <div className="squad-preset-bar">
                 <div className="squad-preset-scroll">
-                  {presets.map((pr, idx) => (
-                    <button
-                      key={pr.id}
-                      type="button"
-                      className={`squad-preset-pill ${idx === activeIdx ? 'active' : ''}`}
-                      onClick={() => selectPreset(idx)}
-                    >
-                      {pr.name} ({pr.petIds.filter((id) => save.pets.some((p) => p.id === id)).length})
-                    </button>
-                  ))}
+                  {presets.map((pr, idx) => {
+                    const cnt = pr.petIds.filter((id) => save.pets.some((p) => p.id === id)).length;
+                    return (
+                      <button
+                        key={pr.id}
+                        type="button"
+                        className={`squad-preset-pill ${idx === activeIdx ? 'active' : ''}`}
+                        title={`${pr.name}（${cnt}/${maxSquadSize} 只）`}
+                        aria-label={`${pr.name}，当前 ${cnt} 只`}
+                        onClick={() => selectPreset(idx)}
+                      >
+                        <PixelItemImg src="/sprites/items/poke-ball.png" size={12} />
+                        <span className="squad-preset-idx">{idx + 1}</span>
+                        <em className={`squad-preset-cnt ${cnt > 0 ? 'has-members' : ''}`}>{cnt}</em>
+                      </button>
+                    );
+                  })}
                   {presets.length < 8 && (
                     <button
                       type="button"
-                      className="squad-preset-add"
+                      className="squad-preset-add is-icon-only"
                       title="新建编队方案"
+                      aria-label="新建编队方案"
                       onClick={addNewPreset}
                     >
-                      + 新建
+                      +
                     </button>
                   )}
                 </div>
@@ -337,7 +381,7 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                 </div>
               </div>
 
-              {/* Spacious Squad Slot Grid: Filled Cards + Empty '+' Cards (Click '+' -> Page 2 Poké Box Picker!) */}
+              {/* Spacious Squad Slot Grid: Filled Cards with Status Attributes & Progress Bars + Empty '+' Cards */}
               <div className="squad-slots-stage scroll-y">
                 <div className="squad-active-grid is-spacious">
                   {Array.from({ length: maxSquadSize }).map((_, slotIdx) => {
@@ -359,9 +403,23 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                         </button>
                       );
                     }
+                    const spMeta = SPECIES_CATALOG[p.species];
                     const st = getGrowthStage(p.level, p.species);
                     const ivRank = getIvRank(getPetIVs(p));
                     const isLead = p.id === pet.id;
+                    const hpVal = Math.max(0, Math.min(100, Math.round(p.health)));
+                    const hungerVal = Math.max(0, Math.min(100, Math.round(p.hunger)));
+                    const xpNeed = Math.max(1, getXpForNextLevel(p.level));
+                    const xpPct = Math.max(0, Math.min(100, Math.round((p.xp / xpNeed) * 100)));
+                    const alertTag = p.isSick
+                      ? { text: '生病', cls: 'is-danger' }
+                      : hpVal < 60
+                        ? { text: '残血', cls: 'is-danger' }
+                        : hungerVal < 45
+                          ? { text: '饥饿', cls: 'is-warn' }
+                          : p.cleanliness < 45 || p.poopCount > 0
+                            ? { text: '待洗', cls: 'is-info' }
+                            : null;
                     return (
                       <div
                         key={p.id}
@@ -386,12 +444,12 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                             savePresets(nextPresets, activeIdx);
                           }
                         }}
-                        className={`squad-slot-card ${isLead ? 'is-lead' : ''}`}
+                        className={`squad-slot-card ${isLead ? 'is-lead' : ''} ${alertTag ? 'has-alert' : ''}`}
                       >
                         <button
                           type="button"
                           className="squad-slot-main"
-                          title={`查看「${p.name}」详情与招式配置`}
+                          title={`查看「${p.name}」详情与快捷养护（HP ${hpVal}% · 饱食 ${hungerVal}% · 清洁 ${Math.round(p.cleanliness)}%）`}
                           onClick={() => {
                             setSelectedPartyPetId(p.id);
                             setPartyDetailTab('stats');
@@ -400,13 +458,66 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                           }}
                         >
                           <div className="squad-slot-top">
-                            <span className={`tile-tl-badge iv-${ivRank}`}>{ivRank}</span>
+                            <span className="squad-slot-badges">
+                              <span className={`tile-tl-badge iv-${ivRank}`}>{ivRank}</span>
+                              <span
+                                className="squad-type-chip"
+                                style={{ backgroundColor: spMeta.typeColor }}
+                              >
+                                {spMeta.typeLabel}
+                              </span>
+                            </span>
                             <em className="tile-tr-lv">Lv.{p.level}</em>
                           </div>
-                          <PixelPetSprite species={p.species} pose="idle0" stage={st} size={56} />
+                          <div className="squad-slot-hero">
+                            <PixelPetSprite species={p.species} pose="idle0" stage={st} size={46} />
+                            {alertTag && (
+                              <span className={`squad-alert-pill ${alertTag.cls}`}>{alertTag.text}</span>
+                            )}
+                          </div>
                           <strong className="squad-slot-name">
                             {isLead ? '★ ' : ''}{p.name}
                           </strong>
+                          {/* Compact Attribute Progress Bars (HP / Hunger / EXP) */}
+                          <div className="squad-slot-stats">
+                            <div className="squad-stat-row">
+                              <span>HP</span>
+                              <div className="squad-stat-track">
+                                <div
+                                  className="squad-stat-fill"
+                                  style={{
+                                    width: `${hpVal}%`,
+                                    backgroundColor:
+                                      hpVal >= 60 ? '#40c057' : hpVal >= 30 ? '#fab005' : '#fa5252',
+                                  }}
+                                />
+                              </div>
+                              <em>{hpVal}</em>
+                            </div>
+                            <div className="squad-stat-row">
+                              <span>饱</span>
+                              <div className="squad-stat-track">
+                                <div
+                                  className="squad-stat-fill"
+                                  style={{
+                                    width: `${hungerVal}%`,
+                                    backgroundColor: hungerVal >= 45 ? '#fd7e14' : '#fa5252',
+                                  }}
+                                />
+                              </div>
+                              <em>{hungerVal}</em>
+                            </div>
+                            <div className="squad-stat-row">
+                              <span>XP</span>
+                              <div className="squad-stat-track">
+                                <div
+                                  className="squad-stat-fill"
+                                  style={{ width: `${xpPct}%`, backgroundColor: '#339af0' }}
+                                />
+                              </div>
+                              <em>{xpPct}%</em>
+                            </div>
+                          </div>
                         </button>
                         <div className="squad-slot-actions">
                           {!isLead && (
@@ -444,6 +555,53 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                   })}
                 </div>
               </div>
+
+              {/* Bottom One-Click Squad Operations Bar */}
+              <div className="squad-quick-bar">
+                <button
+                  type="button"
+                  className={`squad-quick-btn is-heal ${injuredCount > 0 ? 'is-needed' : ''}`}
+                  disabled={activeTeamPets.length === 0 || injuredCount === 0}
+                  onClick={() => {
+                    onHealParty?.();
+                  }}
+                  title="一键治愈全队生病并恢复满格 HP"
+                >
+                  <PixelItemImg src="/sprites/items/potion.png" size={14} />
+                  <span>{injuredCount > 0 ? `一键治疗 (${injuredCount})` : '全队满血'}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`squad-quick-btn is-feed ${hungryCount > 0 ? 'is-needed' : ''}`}
+                  disabled={activeTeamPets.length === 0 || hungryCount === 0}
+                  onClick={() => {
+                    onFeedSquad?.(curIds);
+                  }}
+                  title="一键使用橙橙果为当前队伍所有饥饿伙伴补满饱食度"
+                >
+                  <PixelItemImg src="/sprites/items/oran-berry.png" size={14} />
+                  <span>{hungryCount > 0 ? `一键喂食 (${hungryCount})` : '全队已饱'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="squad-quick-btn is-auto"
+                  onClick={autoFillBestSquad}
+                  title="根据等级与个体评级一键编入最强主力阵容"
+                >
+                  <PixelIcon name="sparkle" size={12} />
+                  <span>自动编队</span>
+                </button>
+                <button
+                  type="button"
+                  className="squad-quick-btn is-sort"
+                  disabled={activeTeamPets.length <= 1}
+                  onClick={sortSquadByLevel}
+                  title="将当前出战队伍按等级从高到低排序"
+                >
+                  <PixelIcon name="arrow_up" size={11} />
+                  <span>按级排序</span>
+                </button>
+              </div>
             </div>
           );
         })()}
@@ -479,7 +637,7 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
 
           const selectedSet = new Set(
             batchSelectedIds.filter((id) => {
-              if (!isStorageTab && id === pet.id) return false;
+              if (!isStorageTab && (id === pet.id || isDevVirtualPetId(id))) return false;
               return sourceList.some((p) => p.id === id);
             }),
           );
@@ -487,11 +645,12 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
           const previewCoins = selectedPets.reduce((acc, p) => acc + getReleaseReward(p).coins, 0);
           const selectableVisible = isStorageTab
             ? filteredPets
-            : filteredPets.filter((p) => p.id !== pet.id);
-          const freeBoxSlots = Math.max(0, MAX_PET_SLOTS - save.pets.length);
+            : filteredPets.filter((p) => p.id !== pet.id && !isDevVirtualPetId(p.id));
+          const realPetsCount = save.pets.filter((p) => !isDevVirtualPetId(p.id)).length;
+          const freeBoxSlots = Math.max(0, MAX_PET_SLOTS - realPetsCount);
 
           const toggleSelectPet = (id: string) => {
-            if (!isStorageTab && id === pet.id) return;
+            if (!isStorageTab && (id === pet.id || isDevVirtualPetId(id))) return;
             sound.play('cursor');
             setConfirmBatchRelease(false);
             setConfirmBatchDeposit(false);
@@ -522,7 +681,10 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                     }}
                   >
                     <PixelItemImg src="/sprites/items/poke-ball.png" size={13} />
-                    <span>球盒 ({save.pets.length}/{MAX_PET_SLOTS})</span>
+                    <span>
+                      球盒 ({realPetsCount}/{MAX_PET_SLOTS}
+                      {save.pets.length > realPetsCount ? ` +${save.pets.length - realPetsCount}` : ''})
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -564,21 +726,15 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                   </button>
                   <button
                     type="button"
-                    className="lcd-mini-close inline-icon-row"
+                    className="lcd-mini-close"
                     onClick={() => {
+                      sound.play('cancel');
                       setPartyBatchMode(false);
                       resetBatchState();
-                      if ((openedFromBattle || openedEntryMode === 'party') && onCloseHandheldTo3D) {
-                        onCloseHandheldTo3D();
-                      } else {
-                        onNavigateMode('menu');
-                      }
+                      onGoBack();
                     }}
                   >
-                    {openedFromBattle && <PixelIcon name="play" size={10} />}
-                    <span>
-                      {openedFromBattle ? '继续战斗' : openedEntryMode === 'party' ? '关闭' : '返回'}
-                    </span>
+                    返回
                   </button>
                 </div>
               </div>

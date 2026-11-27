@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ACCESSORY_CATALOG, ACHIEVEMENTS, FOOD_CATALOG, POKEDEX_ORDER, ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getPokemonCryId, getPokemonDexNo, getXpForNextLevel } from '../data/catalog';
+import { isDevVirtualPetId } from '../utils/devMode';
+import { NEWS_EDITIONS } from '../data/newsEditions';
 import { type PixelIconName } from '../data/pixelIcons';
 import { POOP_SPRITE, type PetAnimPose } from '../data/sprites';
 import { ALL_SURVIVOR_SKILL_IDS, CAST_MODE_OPTIONS, FORMATION_OPTIONS, SURVIVOR_SKILLS, TARGET_PRIORITY_OPTIONS, getRequiredLevelForSkillSlot, getUnlockedSkillSlotCount, type CastCadenceMode, type FollowerFormation, type LiveRunTacticsBridge, type SurvivorSkillId, type TargetPriority } from '../data/survivorsTactics';
@@ -108,6 +110,16 @@ interface LcdScreenProps {
   onCleanPoop: () => void;
   onHealPet: () => void;
   onHealParty: () => void;
+  onFeedSquad?: (petIds: string[]) => { ok: boolean; message: string };
+  onQuickCarePet?: (
+    petId: string,
+    action: 'feed' | 'heal' | 'bath' | 'pat',
+    foodId?: FoodId,
+  ) => { ok: boolean; message: string };
+  onDevGrantItems99?: () => void;
+  onDevGrantPokeballs99?: () => void;
+  onDevGrantStardust99999?: () => void;
+  onDevGrantCoins99999?: () => void;
   onReleaseBallToRoom: () => void;
   onStartBattle: (isTrainer: boolean) => void;
   onFinishBattle: (fighterId: string, payload: BattleResultPayload) => void;
@@ -193,6 +205,12 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   onCleanPoop,
   onHealPet,
   onHealParty,
+  onFeedSquad,
+  onQuickCarePet,
+  onDevGrantItems99,
+  onDevGrantPokeballs99,
+  onDevGrantStardust99999,
+  onDevGrantCoins99999,
   onFinishBattle,
   onFinishSurvivors,
   onSpendCoinsInRun,
@@ -262,8 +280,17 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [squadPickerSlot, setSquadPickerSlot] = useState<number | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [selectedNewsEditionId, setSelectedNewsEditionId] = useState<string | null>(null);
   const [selectedNewsId, setSelectedNewsId] = useState<string | null>(null);
   const [newsPhotoIdx, setNewsPhotoIdx] = useState(0);
+
+  useEffect(() => {
+    if (mode !== 'news') {
+      setSelectedNewsEditionId(null);
+      setSelectedNewsId(null);
+      setNewsPhotoIdx(0);
+    }
+  }, [mode]);
   const [achCategory, setAchCategory] = useState<'all' | 'care' | 'dex' | 'battle' | 'collect' | 'legend'>('all');
   const [captureWhoStage, setCaptureWhoStage] = useState(false);
 
@@ -295,7 +322,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmReleaseId, setConfirmReleaseId] = useState<string | null>(null);
   const [petActionMenuOpen, setPetActionMenuOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'world' | 'audio' | 'hud' | 'perf' | 'style' | 'keys'>('world');
+  const [settingsTab, setSettingsTab] = useState<'audio' | 'hud' | 'perf' | 'style' | 'keys' | 'world' | 'debug'>('audio');
   const [keysSubTab, setKeysSubTab] = useState<'keyboard' | 'gamepad'>('keyboard');
   const [connectedGamepadName, setConnectedGamepadName] = useState<string | null>(() => {
     if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
@@ -470,7 +497,58 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const dexSpeciesMeta = SPECIES_CATALOG[selectedDexSpecies];
   const dexDiscovered = save.discoveredSpecies.includes(selectedDexSpecies);
 
-  const lcdSubCtx = { STAT_BAR_ROWS, achCategory, bagTab, batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, confirmReleaseId, confirmReset, connectedGamepadName, detailReturnMode, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, feedbackSent, feedbackText, gachaBoxMeta, gachaPhase, gachaReleased, gachaResult, gachaTenResult, handleStartGacha, handleStartGachaTen, isFullscreen, keysSubTab, marketTab, menuCursor, mode, newsPhotoIdx, onAssignPetRoom, onBuyAccessory, onBuyFood, onBuyPokeball, onCloseHandheldTo3D, onDepositPet, onDepositPetsBatch, onEquipAccessory, onExitMode, onHealPet, onNavigateMode, onReleasePet, onReleasePetsBatch, onReleaseStoredPet, onReleaseStoredPetsBatch, onResetSave, onSelectFood, onStartGame, onSwitchPet, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdateSettings, onWithdrawPet, onWithdrawPetsBatch, openedEntryMode, openedFromBattle, partyBatchMode, partyBoxTab, partyDetailIsStored, partyDetailPet, partyDetailTab, partyGradeFilter, partySearch, partySortBy, pet, petActionMenuOpen, rebindingAction, releasedTenIds, save, selectedDexSpecies, selectedNewsId, setAchCategory, setBagTab, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setFeedbackSent, setFeedbackText, setGachaPhase, setGachaReleased, setKeysSubTab, setMarketTab, setNewsPhotoIdx, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setRebindingAction, setReleasedTenIds, setSelectedDexSpecies, setSelectedNewsId, setSelectedPartyPetId, setSettingsTab, setSquadPickerSlot, settingsTab, speciesMeta, squadPickerSlot, worldMapData };
+  const navHistoryRef = useRef<LcdMode[]>([]);
+  useEffect(() => {
+    // Reset subpage back stack whenever console opens at a fresh entry mode
+    navHistoryRef.current = [];
+  }, [openedEntryMode]);
+
+  const navigateWithHistory = (next: LcdMode) => {
+    if (next !== mode) {
+      const stack = navHistoryRef.current;
+      if (next === 'menu' || next === 'home') {
+        navHistoryRef.current = [];
+      } else if (stack[stack.length - 1] !== mode) {
+        stack.push(mode);
+        if (stack.length > 16) stack.shift();
+      }
+    }
+    onNavigateMode(next);
+  };
+
+  const handleGoBack = () => {
+    const stack = navHistoryRef.current;
+    while (stack.length > 0) {
+      const prev = stack.pop();
+      if (prev && prev !== mode) {
+        onNavigateMode(prev);
+        return;
+      }
+    }
+    if (openedEntryMode === mode && onCloseHandheldTo3D) {
+      onCloseHandheldTo3D();
+      return;
+    }
+    if (mode === 'party_detail') {
+      onNavigateMode(detailReturnMode);
+      return;
+    }
+    if (mode === 'pokedex_detail') {
+      onNavigateMode('pokedex');
+      return;
+    }
+    if (mode !== 'menu' && mode !== 'home') {
+      onNavigateMode('menu');
+      return;
+    }
+    if (onCloseHandheldTo3D) {
+      onCloseHandheldTo3D();
+    } else {
+      onExitMode();
+    }
+  };
+
+  const lcdSubCtx = { STAT_BAR_ROWS, achCategory, bagTab, batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, confirmReleaseId, confirmReset, connectedGamepadName, detailReturnMode, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, feedbackSent, feedbackText, gachaBoxMeta, gachaPhase, gachaReleased, gachaResult, gachaTenResult, handleStartGacha, handleStartGachaTen, isFullscreen, keysSubTab, marketTab, menuCursor, mode, newsPhotoIdx, onAssignPetRoom, onBuyAccessory, onBuyFood, onBuyPokeball, onCloseHandheldTo3D, onDepositPet, onDepositPetsBatch, onDevGrantCoins99999, onDevGrantItems99, onDevGrantPokeballs99, onDevGrantStardust99999, onEquipAccessory, onExitMode, onFeedSquad, onGoBack: handleGoBack, onHealParty, onHealPet, onNavigateMode: navigateWithHistory, onQuickCarePet, onReleasePet, onReleasePetsBatch, onReleaseStoredPet, onReleaseStoredPetsBatch, onResetSave, onSelectFood, onStartGame, onSwitchPet, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdateSettings, onWithdrawPet, onWithdrawPetsBatch, openedEntryMode, openedFromBattle, partyBatchMode, partyBoxTab, partyDetailIsStored, partyDetailPet, partyDetailTab, partyGradeFilter, partySearch, partySortBy, pet, petActionMenuOpen, rebindingAction, releasedTenIds, save, selectedDexSpecies, selectedNewsEditionId, selectedNewsId, setAchCategory, setBagTab, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setFeedbackSent, setFeedbackText, setGachaPhase, setGachaReleased, setKeysSubTab, setMarketTab, setNewsPhotoIdx, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setRebindingAction, setReleasedTenIds, setSelectedDexSpecies, setSelectedNewsEditionId, setSelectedNewsId, setSelectedPartyPetId, setSettingsTab, setSquadPickerSlot, settingsTab, speciesMeta, squadPickerSlot, worldMapData };
   return (
     <div
       className={`lcd-viewport ${pet.isSleeping ? 'is-night' : ''}`}
@@ -1025,84 +1103,126 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                 <PixelItemImg src="/sprites/items/amulet-coin.png" size={15} />
                 <span>{save.coins}</span>
               </span>
-              <button type="button" className="lcd-mini-close" onClick={onExitMode}>
-                返回
-              </button>
+              {!tacticsBridge?.inBattle && (
+                <button
+                  type="button"
+                  className="lcd-mini-close"
+                  onClick={
+                    openedEntryMode === 'menu' && onCloseHandheldTo3D
+                      ? onCloseHandheldTo3D
+                      : onExitMode
+                  }
+                >
+                  返回
+                </button>
+              )}
             </div>
 
-            <div className="lcd-grid-3 menu-grid">
-              <button
-                type="button"
-                className="lcd-menu-tile"
-                onClick={() => onNavigateMode('party')}
-              >
-                <PixelItemImg src="/sprites/items/poke-ball.png" size={30} />
-                <strong>精灵球盒</strong>
-                <small>{save.pets.length}/{MAX_PET_SLOTS} 只</small>
-              </button>
-              <button
-                type="button"
-                className="lcd-menu-tile"
-                onClick={() => onNavigateMode('pokedex')}
-              >
-                <PixelItemImg src="/sprites/items/town-map.png" size={30} />
-                <strong>宝可梦图鉴</strong>
-                <small>{save.discoveredSpecies.length}/{POKEDEX_ORDER.length} 收录</small>
-              </button>
-              <button
-                type="button"
-                className="lcd-menu-tile"
-                onClick={() => onNavigateMode('achievements')}
-              >
-                <PixelItemImg src="/sprites/items/kings-rock.png" size={30} />
-                <strong>成就徽章</strong>
-                <small>{save.unlockedAchievements.length}/{ACHIEVEMENTS.length}</small>
-              </button>
-              <button
-                type="button"
-                className="lcd-menu-tile"
-                onClick={() => onNavigateMode('diary')}
-              >
-                <PixelItemImg src="/sprites/items/vs-seeker.png" size={30} />
-                <strong>冒险日记</strong>
-                <small>成长记录</small>
-              </button>
-              <button
-                type="button"
-                disabled={!pet.isSick && pet.health >= 100}
-                className="lcd-menu-tile"
-                onClick={onHealPet}
-                title={
-                  pet.isSick || pet.health < 100
-                    ? `为 ${pet.name} 使用伤药回复全部 HP`
-                    : `${pet.name} 当前 HP 满格`
-                }
-              >
-                <PixelItemImg src="/sprites/items/potion.png" size={30} />
-                <strong>精灵治疗</strong>
-                <small>{pet.isSick ? '需治疗!' : pet.health < 100 ? `HP ${pet.health}%` : 'HP满格'}</small>
-              </button>
-              <button
-                type="button"
-                className="lcd-menu-tile"
-                onClick={() => onNavigateMode('settings')}
-              >
-                <PixelItemImg src="/sprites/items/exp-share.png" size={30} />
-                <strong>系统设置</strong>
-                <small>音量 / 外观 / 按键</small>
-              </button>
+            {/* Top News Ticker Banner (Directly opens Global Pokémon Center Daily archive!) */}
+            <button
+              type="button"
+              className="lcd-menu-tile is-news-wide is-top-news"
+              onClick={() => {
+                setSelectedNewsEditionId(null);
+                setSelectedNewsId(null);
+                setNewsPhotoIdx(0);
+                navigateWithHistory('news');
+              }}
+              title="查看全球宝可梦中心各版本日报"
+            >
+              <span className="menu-news-badge">NEWS</span>
+              <PixelItemImg src="/sprites/items/poke-radar.png" size={18} />
+              <div className="menu-news-copy">
+                <strong>宝可梦中心新闻</strong>
+                <small>
+                  {NEWS_EDITIONS[0]
+                    ? `${NEWS_EDITIONS[0].version} · ${NEWS_EDITIONS[0].title}`
+                    : '查看全球宝可梦中心各版本日报'}
+                </small>
+              </div>
+              <span className="menu-news-arrow">查看 ›</span>
+            </button>
+
+            <div className="menu-rows-wrap">
+              <div className="menu-row is-4">
+                <button
+                  type="button"
+                  className="lcd-menu-tile"
+                  onClick={() => navigateWithHistory('party')}
+                >
+                  <PixelItemImg src="/sprites/items/poke-ball.png" size={28} />
+                  <strong>精灵球盒</strong>
+                  <small>
+                    {save.pets.filter((p) => !isDevVirtualPetId(p.id)).length}/{MAX_PET_SLOTS} 只
+                  </small>
+                </button>
+                <button
+                  type="button"
+                  className="lcd-menu-tile"
+                  onClick={() => navigateWithHistory('squad')}
+                >
+                  <PixelItemImg src="/sprites/items/ultra-ball.png" size={28} />
+                  <strong>队伍管理</strong>
+                  <small>调整出战阵容</small>
+                </button>
+                <button
+                  type="button"
+                  className="lcd-menu-tile"
+                  onClick={() => navigateWithHistory('pokedex')}
+                >
+                  <PixelItemImg src="/sprites/items/town-map.png" size={28} />
+                  <strong>宝可梦图鉴</strong>
+                  <small>{save.discoveredSpecies.length}/{POKEDEX_ORDER.length} 收录</small>
+                </button>
+                <button
+                  type="button"
+                  className="lcd-menu-tile"
+                  onClick={() => {
+                    sound.play('confirm');
+                    onCloseHandheldTo3D?.();
+                    window.dispatchEvent(
+                      new CustomEvent('poke-pocket:open-lab', { detail: { tab: 'universal' } }),
+                    );
+                  }}
+                >
+                  <PixelItemImg src="/sprites/items/life-orb.png" size={28} />
+                  <strong>大木研究所</strong>
+                  <small>强化 / 主角 / 徽章</small>
+                </button>
+              </div>
+              <div className="menu-row is-3">
+                <button
+                  type="button"
+                  className="lcd-menu-tile"
+                  onClick={() => navigateWithHistory('achievements')}
+                >
+                  <PixelItemImg src="/sprites/items/kings-rock.png" size={28} />
+                  <strong>成就徽章</strong>
+                  <small>{save.unlockedAchievements.length}/{ACHIEVEMENTS.length}</small>
+                </button>
+                <button
+                  type="button"
+                  className="lcd-menu-tile"
+                  onClick={() => navigateWithHistory('diary')}
+                >
+                  <PixelItemImg src="/sprites/items/vs-seeker.png" size={28} />
+                  <strong>冒险日记</strong>
+                  <small>成长记录</small>
+                </button>
+                <button
+                  type="button"
+                  className="lcd-menu-tile"
+                  onClick={() => navigateWithHistory('settings')}
+                >
+                  <PixelItemImg src="/sprites/items/exp-share.png" size={28} />
+                  <strong>系统设置</strong>
+                  <small>音频 / 画面 / 世界</small>
+                </button>
+              </div>
             </div>
 
             {tacticsBridge?.inBattle && (
               <div className="lcd-menu-run-actions">
-                <button
-                  type="button"
-                  className="lcd-run-resume-btn"
-                  onClick={() => onCloseHandheldTo3D?.()}
-                >
-                  <PixelIcon name="play" size={11} />
-                  <span>继续当局冒险</span>
-                </button>
                 <button
                   type="button"
                   className="lcd-run-exit-btn"
@@ -1111,8 +1231,16 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                     tacticsBridge.onSettleAndExit();
                   }}
                 >
-                  <PixelIcon name="paw" size={11} />
-                  <span>退出当局游戏</span>
+                  <PixelIcon name="arrow_left" size={11} />
+                  <span>返回菜单</span>
+                </button>
+                <button
+                  type="button"
+                  className="lcd-run-resume-btn"
+                  onClick={() => onCloseHandheldTo3D?.()}
+                >
+                  <PixelIcon name="play" size={11} />
+                  <span>继续冒险</span>
                 </button>
               </div>
             )}

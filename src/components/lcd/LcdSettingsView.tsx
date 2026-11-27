@@ -1,18 +1,27 @@
 import type { LcdSharedCtx } from './lcdViewTypes';
-import React from 'react';
-import { SHELL_THEMES } from '../../data/catalog';
+import React, { useEffect } from 'react';
+import { POKEDEX_ORDER, SHELL_THEMES } from '../../data/catalog';
 import { DEFAULT_GAME_PREFS, type EnemyDisplayMode, type GamePrefs, type GraphicsQualityMode, type KeyBindings, ShellThemeId } from '../../types/pet';
 import { DEFAULT_KEY_BINDINGS } from '../../utils/petEngine';
+import { resetDevGrants, setDevGrants, useDevGrants, useDevMode } from '../../utils/devMode';
 import { sound } from '../../utils/sound';
-import { PixelIcon } from '../PixelSprite';
+import { PixelIcon, PixelItemImg } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { connectedGamepadName, isFullscreen, keysSubTab, mode, onCloseHandheldTo3D, onNavigateMode, onToggleFullscreen, onUpdateSettings, openedEntryMode, openedFromBattle, rebindingAction, save, setKeysSubTab, setRebindingAction, setSettingsTab, settingsTab } = ctx;
+  const { connectedGamepadName, isFullscreen, keysSubTab, mode, onDevGrantCoins99999, onDevGrantItems99, onDevGrantPokeballs99, onDevGrantStardust99999, onGoBack, onToggleFullscreen, onUpdateSettings, rebindingAction, save, setKeysSubTab, setRebindingAction, setSettingsTab, settingsTab } = ctx;
+  const [devMode, setDevMode] = useDevMode();
+  const [devGrants] = useDevGrants();
+
+  useEffect(() => {
+    if (!devMode && settingsTab === 'debug') {
+      setSettingsTab('audio');
+    }
+  }, [devMode, settingsTab, setSettingsTab]);
+
   return (
     <>
         {mode === 'settings' && (() => {
-          const directOpened = openedEntryMode === 'settings' && Boolean(onCloseHandheldTo3D);
           const cryOn = save.cryEnabled ?? true;
           const cryVol = save.cryVolume ?? 60;
           const combatSfxOn = save.combatSfxEnabled ?? true;
@@ -22,17 +31,6 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
             <div className="lcd-submenu">
               <div className="lcd-submenu-head">
                 <div className="lcd-subtabs is-settings-tabs">
-                  <button
-                    type="button"
-                    className={`lcd-subtab inline-icon-btn ${settingsTab === 'world' ? 'active' : ''}`}
-                    onClick={() => {
-                      setRebindingAction(null);
-                      setSettingsTab('world');
-                    }}
-                  >
-                    <PixelIcon name="house" size={11} />
-                    <span>世界</span>
-                  </button>
                   <button
                     type="button"
                     className={`lcd-subtab inline-icon-btn ${settingsTab === 'audio' ? 'active' : ''}`}
@@ -85,21 +83,41 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                     <PixelIcon name="gamepad" size={11} />
                     <span>按键</span>
                   </button>
+                  <button
+                    type="button"
+                    className={`lcd-subtab inline-icon-btn ${settingsTab === 'world' ? 'active' : ''}`}
+                    onClick={() => {
+                      setRebindingAction(null);
+                      setSettingsTab('world');
+                    }}
+                  >
+                    <PixelIcon name="house" size={11} />
+                    <span>世界</span>
+                  </button>
+                  {devMode && (
+                    <button
+                      type="button"
+                      className={`lcd-subtab inline-icon-btn is-debug-tab ${settingsTab === 'debug' ? 'active' : ''}`}
+                      onClick={() => {
+                        setRebindingAction(null);
+                        setSettingsTab('debug');
+                      }}
+                    >
+                      <PixelIcon name="bulb" size={11} />
+                      <span>调试</span>
+                    </button>
+                  )}
                 </div>
                 <button
                   type="button"
-                  className={`lcd-mini-close ${directOpened && openedFromBattle ? 'is-resume inline-icon-row' : ''}`}
+                  className="lcd-mini-close"
                   onClick={() => {
+                    sound.play('cancel');
                     setRebindingAction(null);
-                    if (directOpened && onCloseHandheldTo3D) {
-                      onCloseHandheldTo3D();
-                    } else {
-                      onNavigateMode('menu');
-                    }
+                    onGoBack();
                   }}
                 >
-                  {directOpened && openedFromBattle && <PixelIcon name="play" size={10} />}
-                  <span>{directOpened ? (openedFromBattle ? '继续战斗' : '关闭') : '返回'}</span>
+                  返回
                 </button>
               </div>
 
@@ -243,37 +261,6 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
 
                 {settingsTab === 'hud' && (
                   <div className="settings-grid-2">
-                    <div className="settings-card is-span-2">
-                      <div className="settings-card-head is-stacked">
-                        <div>
-                          <strong>3D 镜头视角模式</strong>
-                          <small className="audio-track-hint">进屋或经过高架桥底时会自动平滑缩放推进，绝不穿墙</small>
-                        </div>
-                        <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
-                          {(
-                            [
-                              ['hd2d', 'HD-2D俯视'],
-                              ['chase', '自动追尾'],
-                              ['free', '自由环绕'],
-                              ['overhead', '高空鸟瞰'],
-                            ] as const
-                          ).map(([cId, cLbl]) => (
-                            <button
-                              key={cId}
-                              type="button"
-                              className={`lcd-subtab ${(prefs.cameraFollowMode ?? 'hd2d') === cId ? 'active' : ''}`}
-                              onClick={() => {
-                                sound.play('cursor');
-                                setPref({ cameraFollowMode: cId });
-                              }}
-                            >
-                              {cLbl}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
                     <div className="settings-card">
                       <div className="settings-card-head">
                         <strong>界面大小</strong>
@@ -415,6 +402,37 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
 
                 {settingsTab === 'perf' && (
                   <div className="settings-grid-2">
+                    <div className="settings-card is-span-2">
+                      <div className="settings-card-head is-stacked">
+                        <div>
+                          <strong>3D 镜头视角模式</strong>
+                          <small className="audio-track-hint">户外四档视角任选，进入室内或高架桥下时自动平滑缩放推进</small>
+                        </div>
+                        <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                          {(
+                            [
+                              ['hd2d', 'HD-2D俯视'],
+                              ['chase', '自动追尾'],
+                              ['free', '自由环绕'],
+                              ['overhead', '高空鸟瞰'],
+                            ] as const
+                          ).map(([cId, cLbl]) => (
+                            <button
+                              key={cId}
+                              type="button"
+                              className={`lcd-subtab ${(prefs.cameraFollowMode ?? 'hd2d') === cId ? 'active' : ''}`}
+                              onClick={() => {
+                                sound.play('cursor');
+                                setPref({ cameraFollowMode: cId });
+                              }}
+                            >
+                              {cLbl}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
                     {onToggleFullscreen && (
                       <div className="settings-card">
                         <div className="settings-card-head">
@@ -678,30 +696,66 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                   <div className="settings-card">
                     <div className="settings-card-head is-stacked">
                       <div>
-                        <strong>3D 镜头视角模式</strong>
-                        <small>户外四档视角任选，进入室内或高架桥下时自动平滑缩放推进</small>
+                        <strong>世界难度</strong>
+                        <small>实时调整野外遭遇宝可梦的挑战强度</small>
                       </div>
-                      <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                      <div className="inline-icon-row">
                         {(
                           [
-                            ['hd2d', 'HD-2D俯视'],
-                            ['chase', '自动追尾'],
-                            ['free', '自由环绕'],
-                            ['overhead', '高空鸟瞰'],
+                            ['normal', '普通', 'sprout'],
+                            ['hard', '困难', 'sword'],
+                            ['nightmare', '噩梦', 'fire'],
                           ] as const
-                        ).map(([cId, cLbl]) => (
+                        ).map(([id, lbl, iconName]) => (
                           <button
-                            key={cId}
+                            key={id}
                             type="button"
-                            className={`lcd-subtab ${(prefs.cameraFollowMode ?? 'hd2d') === cId ? 'active' : ''}`}
+                            className={`lcd-subtab inline-icon-btn ${(prefs.worldDifficulty ?? 'normal') === id ? 'active' : ''}`}
                             onClick={() => {
                               sound.play('cursor');
-                              setPref({ cameraFollowMode: cId });
+                              setPref({ worldDifficulty: id });
                             }}
                           >
-                            {cLbl}
+                            <PixelIcon name={iconName} size={11} />
+                            <span>{lbl}</span>
                           </button>
                         ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {settingsTab === 'debug' && devMode && (
+                <div className="settings-stack scroll-y">
+                  <div className="settings-card is-debug-banner">
+                    <div className="settings-card-head">
+                      <div>
+                        <strong>开发者调试模式已开启</strong>
+                        <small>用于调试验证昼夜光影、实时天气与性能指标（仅开发/调试态可见）</small>
+                      </div>
+                      <div className="inline-icon-row">
+                        <button
+                          type="button"
+                          className="lcd-subtab"
+                          onClick={() => {
+                            sound.play('cursor');
+                            setPref({ worldTimeMode: 'auto', worldWeatherMode: 'auto' });
+                          }}
+                        >
+                          恢复实时
+                        </button>
+                        <button
+                          type="button"
+                          className="lcd-mini-close"
+                          onClick={() => {
+                            sound.play('cancel');
+                            setDevMode(false);
+                            setSettingsTab('audio');
+                          }}
+                        >
+                          退出调试
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -710,57 +764,28 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                     <div className="settings-card-head is-stacked">
                       <div>
                         <strong>昼夜与日出日落时间</strong>
-                        <small>默认根据当前经纬度实时计算天文日出日落与昼夜光影，也可手动预览</small>
+                        <small>默认按当前经纬度实时计算天文日出日落与光影，调试模式下可手动锁定预览</small>
                       </div>
                       <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
                         {(
                           [
-                            ['auto', '🌍 经纬度实时日出日落'],
-                            ['day', '☀️ 白天'],
-                            ['dusk', '🌇 黄昏'],
-                            ['night', '🌙 夜晚'],
+                            ['auto', '经纬度实时日出日落', 'clock'],
+                            ['day', '白天', 'sun'],
+                            ['dusk', '黄昏', 'sunset'],
+                            ['night', '夜晚', 'moon'],
                           ] as const
-                        ).map(([tId, tLbl]) => (
+                        ).map(([tId, tLbl, tIcon]) => (
                           <button
                             key={tId}
                             type="button"
-                            className={`lcd-subtab ${(prefs.worldTimeMode ?? 'auto') === tId ? 'active' : ''}`}
+                            className={`lcd-subtab inline-icon-btn ${(prefs.worldTimeMode ?? 'auto') === tId ? 'active' : ''}`}
                             onClick={() => {
                               sound.play('cursor');
                               setPref({ worldTimeMode: tId });
                             }}
                           >
-                            {tLbl}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="settings-card">
-                    <div className="settings-card-head is-stacked">
-                      <div>
-                        <strong>世界难度</strong>
-                        <small>类似《我的世界》实时调整野外敌人强度与收益倍率</small>
-                      </div>
-                      <div className="inline-icon-row">
-                        {(
-                          [
-                            ['normal', '普通 · ×1'],
-                            ['hard', '困难 · ×1.75'],
-                            ['nightmare', '噩梦 · ×2.5'],
-                          ] as const
-                        ).map(([id, lbl]) => (
-                          <button
-                            key={id}
-                            type="button"
-                            className={`lcd-subtab ${(prefs.worldDifficulty ?? 'normal') === id ? 'active' : ''}`}
-                            onClick={() => {
-                              sound.play('cursor');
-                              setPref({ worldDifficulty: id });
-                            }}
-                          >
-                            {lbl}
+                            <PixelIcon name={tIcon} size={11} />
+                            <span>{tLbl}</span>
                           </button>
                         ))}
                       </div>
@@ -771,30 +796,31 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                     <div className="settings-card-head is-stacked">
                       <div>
                         <strong>世界天气与属性加成</strong>
-                        <small>默认按 GPS/巡礼城市同步实时气象，也可手动切换体验各类天气加成</small>
+                        <small>默认按当前定位城市同步实时气象，调试模式下可手动切换验证天气与加成效果</small>
                       </div>
                       <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
                         {(
                           [
-                            ['auto', '自动实时'],
-                            ['clear', '☀️ 晴朗'],
-                            ['cloudy', '☁️ 阴天'],
-                            ['rain', '🌧️ 下雨'],
-                            ['storm', '⛈️ 雷雨'],
-                            ['snow', '❄️ 下雪'],
-                            ['windy', '💨 强风'],
+                            ['auto', '自动实时', 'sparkle'],
+                            ['clear', '晴朗', 'weather_clear'],
+                            ['cloudy', '阴天', 'weather_cloudy'],
+                            ['rain', '下雨', 'weather_rain'],
+                            ['storm', '雷雨', 'weather_storm'],
+                            ['snow', '下雪', 'weather_snow'],
+                            ['windy', '强风', 'weather_windy'],
                           ] as const
-                        ).map(([wId, wLbl]) => (
+                        ).map(([wId, wLbl, wIcon]) => (
                           <button
                             key={wId}
                             type="button"
-                            className={`lcd-subtab ${(prefs.worldWeatherMode ?? 'auto') === wId ? 'active' : ''}`}
+                            className={`lcd-subtab inline-icon-btn ${(prefs.worldWeatherMode ?? 'auto') === wId ? 'active' : ''}`}
                             onClick={() => {
                               sound.play('cursor');
                               setPref({ worldWeatherMode: wId });
                             }}
                           >
-                            {wLbl}
+                            <PixelIcon name={wIcon} size={11} />
+                            <span>{wLbl}</span>
                           </button>
                         ))}
                       </div>
@@ -804,19 +830,322 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                   <div className="settings-card">
                     <div className="settings-card-head">
                       <div>
-                        <strong>城镇和平与随从收纳</strong>
-                        <small>进入村庄/城镇自动收起多余随从仅留领队同行，并全面停火</small>
+                        <strong>调试控制中心</strong>
+                        <small>快捷开关（可回退）与一键资源补给</small>
                       </div>
-                      <button
-                        type="button"
-                        className={`px-switch ${(prefs.townPeaceMode ?? true) ? 'on' : ''}`}
-                        onClick={() => {
-                          sound.play('cursor');
-                          setPref({ townPeaceMode: !(prefs.townPeaceMode ?? true) });
-                        }}
+                      <div className="inline-icon-row">
+                        <button
+                          type="button"
+                          className="lcd-subtab"
+                          onClick={() => {
+                            sound.play('levelup');
+                            setDevGrants({
+                              allPets: true,
+                              allPokedex: true,
+                              allItems: true,
+                              allPokeballs: true,
+                              allLabUpgrades: true,
+                              allBadges: true,
+                              infiniteStardust: true,
+                              infiniteCoins: true,
+                              mapTeleport: true,
+                            });
+                          }}
+                        >
+                          全部开启
+                        </button>
+                        <button
+                          type="button"
+                          className="lcd-mini-close"
+                          onClick={() => {
+                            sound.play('cancel');
+                            resetDevGrants();
+                          }}
+                        >
+                          全部回退
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 5x2 Quick Toggle Switches Grid (Mobile Control Center Style) */}
+                    <div className="debug-cc-grid is-5">
+                      <div
+                        className={`debug-cc-tile ${devGrants.allPets ? 'is-active' : ''}`}
+                        title={`临时解锁全 ${POKEDEX_ORDER.length} 种精灵用于编队与体验，关闭即回退`}
                       >
-                        <span className="px-switch-knob" />
-                      </button>
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/poke-ball.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">全精灵</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.allPets ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allPets;
+                            sound.play(next ? 'levelup' : 'cancel');
+                            setDevGrants({ allPets: next });
+                          }}
+                        >
+                          {devGrants.allPets ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.allPokedex || devGrants.allPets ? 'is-active' : ''}`}
+                        title="条件状态：开启即视为全图鉴解锁，关闭后恢复真实图鉴（保留期间正常捕获的精灵）"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/town-map.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">全图鉴</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.allPokedex || devGrants.allPets ? 'is-on' : ''}`}
+                          disabled={devGrants.allPets}
+                          onClick={() => {
+                            const next = !devGrants.allPokedex;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ allPokedex: next });
+                          }}
+                        >
+                          {devGrants.allPokedex || devGrants.allPets ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.allLabUpgrades ? 'is-active' : ''}`}
+                        title="临时满级解锁全部研究所强化、主角与专属觉醒技能，关闭即还原真实进度"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/life-orb.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">全强化</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.allLabUpgrades ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allLabUpgrades;
+                            sound.play(next ? 'levelup' : 'cancel');
+                            setDevGrants({ allLabUpgrades: next });
+                          }}
+                        >
+                          {devGrants.allLabUpgrades ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.allBadges ? 'is-active' : ''}`}
+                        title="临时解锁全部道馆与荣誉徽章及对应训练师头衔，关闭即还原真实进度"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/kings-rock.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">全徽章</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.allBadges ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allBadges;
+                            sound.play(next ? 'levelup' : 'cancel');
+                            setDevGrants({ allBadges: next });
+                          }}
+                        >
+                          {devGrants.allBadges ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.mapTeleport ? 'is-active' : ''}`}
+                        title="开启后在地图选点下方及导航列表中显示「传送」按钮，点击直接瞬移抵达"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelIcon name="bolt" size={24} />
+                        </div>
+                        <strong className="debug-cc-name">地图传送</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.mapTeleport ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.mapTeleport;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ mapTeleport: next });
+                          }}
+                        >
+                          {devGrants.mapTeleport ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.allItems ? 'is-active' : ''}`}
+                        title="开启后所有树果与携带道具无限使用不消耗，关闭即还原真实库存"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/berry-pouch.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">无限道具</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.allItems ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allItems;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ allItems: next });
+                          }}
+                        >
+                          {devGrants.allItems ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.allPokeballs ? 'is-active' : ''}`}
+                        title="开启后解锁全部 9 种精灵球（含大师球）且无限使用，关闭即还原"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/ultra-ball.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">无限精灵球</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.allPokeballs ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allPokeballs;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ allPokeballs: next });
+                          }}
+                        >
+                          {devGrants.allPokeballs ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.infiniteStardust ? 'is-active' : ''}`}
+                        title="开启后星沙无限使用不消耗，关闭即还原真实星沙数量"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/bright-powder.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">无限星沙</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.infiniteStardust ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.infiniteStardust;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ infiniteStardust: next });
+                          }}
+                        >
+                          {devGrants.infiniteStardust ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.infiniteCoins ? 'is-active' : ''}`}
+                        title="开启后金币无限使用不消耗，关闭即还原真实金币数量"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/amulet-coin.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">无限金币</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.infiniteCoins ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.infiniteCoins;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ infiniteCoins: next });
+                          }}
+                        >
+                          {devGrants.infiniteCoins ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${prefs.showFps ? 'is-active' : ''}`}
+                        title="在 3D 画面左下角实时监控帧率"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelIcon name="chart" size={24} />
+                        </div>
+                        <strong className="debug-cc-name">FPS 浮窗</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${prefs.showFps ? 'is-on' : ''}`}
+                          onClick={() => setPref({ showFps: !prefs.showFps })}
+                        >
+                          {prefs.showFps ? '开' : '关'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 4x1 One-Click Resource Fill Buttons */}
+                    <div className="debug-cc-grid is-4-actions">
+                      <div
+                        className="debug-cc-tile is-action"
+                        title="点击将全部树果与携带道具补满至至少 99 个"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/oran-berry.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">获取道具</strong>
+                        <button
+                          type="button"
+                          className="debug-cc-btn"
+                          onClick={() => onDevGrantItems99?.()}
+                        >
+                          ×99 获取
+                        </button>
+                      </div>
+
+                      <div
+                        className="debug-cc-tile is-action"
+                        title="点击将全部 9 种精灵球（含大师球）补满至至少 99 个"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/master-ball.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">获取精灵球</strong>
+                        <button
+                          type="button"
+                          className="debug-cc-btn"
+                          onClick={() => onDevGrantPokeballs99?.()}
+                        >
+                          ×99 获取
+                        </button>
+                      </div>
+
+                      <div
+                        className="debug-cc-tile is-action"
+                        title="点击将星沙数量补满至至少 99999"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/bright-powder.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">获取星沙</strong>
+                        <button
+                          type="button"
+                          className="debug-cc-btn"
+                          onClick={() => onDevGrantStardust99999?.()}
+                        >
+                          99999
+                        </button>
+                      </div>
+
+                      <div
+                        className="debug-cc-tile is-action"
+                        title="点击将宝可币数量补满至至少 99999"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/amulet-coin.png" size={30} />
+                        </div>
+                        <strong className="debug-cc-name">获取金币</strong>
+                        <button
+                          type="button"
+                          className="debug-cc-btn"
+                          onClick={() => onDevGrantCoins99999?.()}
+                        >
+                          99999
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -906,6 +1235,41 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                               </div>
                             );
                           })}
+                        </div>
+
+                        <div className="keybind-section-title">3D 冒险与战斗全快捷键一览</div>
+                        <div className="keybind-ref-grid">
+                          {(
+                            [
+                              ['移动（360°）', 'WASD / 方向键'],
+                              ['3D 跳跃 / 飞行爬升', 'SPACE'],
+                              ['冲刺加速', 'SHIFT'],
+                              ['交互 / 触发事件 / 收服倒地', 'E'],
+                              ['切换交互选项', 'TAB'],
+                              ['打开世界大地图', 'M / ` / N'],
+                              ['打开队伍列表', 'L'],
+                              ['打开战术终端', 'P / Q'],
+                              ['打开球舱养成', 'F'],
+                              ['打开训练家菜单', 'ESC'],
+                              ['投掷精灵球（捕捉精灵）', 'K'],
+                              ['使用好伤药', 'V / H'],
+                              ['激活力量强化', 'B'],
+                              ['全队满蓝齐射', 'U'],
+                              ['切换 3D 镜头视角', 'G'],
+                              ['复位 3D 视角', 'R'],
+                              ['切换骑乘 / 飞行', 'T'],
+                              ['左右旋转视角', 'Z / C / [ / ]'],
+                              ['飞行下降', 'X / CTRL'],
+                              ['安全区治疗 / 商店', '1 / 2'],
+                              ['视角拖拽 / 缩放', '鼠标拖动 / 滚轮'],
+                              ['释放鼠标锁定', 'ALT'],
+                            ] as const
+                          ).map(([desc, keys]) => (
+                            <div key={desc} className="keybind-ref-item">
+                              <span>{desc}</span>
+                              <kbd>{keys}</kbd>
+                            </div>
+                          ))}
                         </div>
                       </>
                     ) : (

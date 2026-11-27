@@ -23,7 +23,7 @@ import { MONSTER_QUALITY_META, type FloatingTag2D } from './arenaTypesAndProps';
 const _tmpFogColor = new THREE.Color();
 
 export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
-  const { activeInteriorNow, activeTownNow, activeWorldRun, activeZone, autoNavTargetsRef, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, returnToHubCityRef, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, setWorldMapOpen, showBanner, sim, startAutoNavRef, terrainMat, worldBubblesRef } = rawCtx as ArenaSharedCtx;
+  const { activeInteriorNow, activeTownNow, activeWorldRun, activeZone, autoNavTargetsRef, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, returnToHubCityRef, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, setWorldMapOpen, showBanner, sim, startAutoNavRef, teleportDirectRef, terrainMat, worldBubblesRef } = rawCtx as ArenaSharedCtx;
           // Smooth Minecraft-style live biome atmosphere transition (only override fog color in Fantasy Rogue mode; Real-Earth mode uses unified Solar Horizon Mist!)
           const curBiomeAtPlayer = getSeamlessBiomeAt3D(sim.px, sim.pz, sim.py, selectedBiome);
           if (getActiveGeoTerrainOrigin() === null) {
@@ -359,6 +359,9 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
                 navTargets: autoNavTargetsRef?.current,
                 onAutoWalkTo: startAutoNavRef
                   ? (x: number, z: number, label: string) => startAutoNavRef.current({ label, x, z })
+                  : undefined,
+                onTeleportTo: teleportDirectRef
+                  ? (x: number, z: number, label: string) => teleportDirectRef.current(x, z, label)
                   : undefined,
                 onOpenGlobalWorldMap: setWorldMapOpen ? () => setWorldMapOpen(true) : undefined,
               });

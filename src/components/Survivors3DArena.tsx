@@ -15,7 +15,8 @@ import { clearWorldCheckpoint, loadWorldCheckpoint, saveWorldCheckpoint, setActi
 import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D';
 import { DEFAULT_WORLD_TOUR_STATE, WORLD_CITIES, getDefaultHomeByLanguage, type WorldCityDef } from '../data/worldTour';
 import { type WorldLaunchPayload } from './WorldMapOverlay';
-import { DEFAULT_GAME_PREFS, DEFAULT_TRAINER_PROFILE, type CameraFollowMode, type GamePrefs, type PetRecord, type PetSkinId, type SpeciesId, type TrainerProfile } from '../types/pet';
+import { DEFAULT_GAME_PREFS, DEFAULT_TRAINER_PROFILE, type CameraFollowMode, type GamePrefs, type PetRecord, type PetSkinId, type RoomThemeId, type SpeciesId, type TrainerProfile } from '../types/pet';
+import { getDevGrants, isDevModeEnabled, isDevVirtualPetId } from '../utils/devMode';
 import { HERO_ROSTER, LAB_UPGRADES, computeMetaCombatBonuses, countClaimableBounties, ensureFreshMetaProgress, getHeroDef, getLabUpgradeCost, getSkinDef, rerollBountySlot, type HeroId, type LabUpgradeId, type MetaProgressState } from '../data/metaProgression';
 import { type AppLang } from '../data/i18n';
 import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
@@ -79,8 +80,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const meta = ensureFreshMetaProgress(save.meta);
   const metaRef = useRef<MetaProgressState>(meta);
   metaRef.current = meta;
-  const savePetsCountRef = useRef(save.pets.length);
-  savePetsCountRef.current = save.pets.length;
+  const realPetsCount = save.pets.filter((p) => !isDevVirtualPetId(p.id)).length;
+  const savePetsCountRef = useRef(realPetsCount);
+  savePetsCountRef.current = realPetsCount;
+  const [selectedBallId, setSelectedBallId] = useState<RoomThemeId>('pokeball_room');
+  const selectedBallIdRef = useRef<RoomThemeId>('pokeball_room');
+  selectedBallIdRef.current = selectedBallId;
+  useEffect(() => {
+    if (selectedBallId === 'pokeball_room') return;
+    const stillHeld =
+      save.unlockedRooms.includes(selectedBallId) || (save.ballStock?.[selectedBallId] ?? 0) > 0;
+    if (!stillHeld) {
+      setSelectedBallId('pokeball_room');
+    }
+  }, [selectedBallId, save.unlockedRooms, save.ballStock]);
   const dockRowRef = useRef<HTMLDivElement | null>(null);
   const [visibleDockCount, setVisibleDockCount] = useState(8);
   const metaBonuses = computeMetaCombatBonuses(meta);
@@ -102,6 +115,32 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   // Hub Meta Overlays (Shop, Lab, Bounties, News, Guide, Feedback) with Bidirectional Close Animations!
   const [hubModal, setHubModal] = useState<'none' | 'shop' | 'lab' | 'bounties' | 'news' | 'guide' | 'feedback' | 'more'>('none');
+  const hubModalRef = useRef(hubModal);
+  hubModalRef.current = hubModal;
+  const [labInitialTab, setLabInitialTab] = useState<'universal' | 'heroes' | 'badges'>('universal');
+  const openHeroOrBadgeOverlay = (targetTab: 'heroes' | 'badges' | 'universal') => {
+    if (document.pointerLockElement) {
+      try {
+        document.exitPointerLock?.();
+      } catch {
+        // ignore
+      }
+    }
+    sound.play('confirm');
+    setLabInitialTab(targetTab);
+    setHubModal('lab');
+  };
+
+  useEffect(() => {
+    const onOpenLabEvt = (e: Event) => {
+      const detail = (e as CustomEvent<{ tab?: 'heroes' | 'badges' | 'universal' }>).detail;
+      const targetTab = detail?.tab ?? 'universal';
+      setLabInitialTab(targetTab);
+      setHubModal('lab');
+    };
+    window.addEventListener('poke-pocket:open-lab', onOpenLabEvt);
+    return () => window.removeEventListener('poke-pocket:open-lab', onOpenLabEvt);
+  }, []);
   const [inRunTownShopOpen, setInRunTownShopOpen] = useState(false);
   const inRunTownShopOpenRef = useRef(false);
   inRunTownShopOpenRef.current = inRunTownShopOpen;
@@ -129,14 +168,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const curLv = meta.labLevels[id] ?? 0;
     if (curLv >= def.maxLevel) return;
     const cost = getLabUpgradeCost(def, curLv);
-    if (meta.stardust < cost) {
+    const freeStardust = isDevModeEnabled() && getDevGrants().infiniteStardust;
+    if (!freeStardust && meta.stardust < cost) {
       sound.play('error');
       return;
     }
     sound.play('levelup');
     onUpdateMeta?.((prev) => ({
       ...prev,
-      stardust: Math.max(0, prev.stardust - cost),
+      stardust: freeStardust ? prev.stardust : Math.max(0, prev.stardust - cost),
       labLevels: { ...prev.labLevels, [id]: curLv + 1 },
     }));
   };
@@ -149,14 +189,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       onUpdateMeta?.((prev) => ({ ...prev, activeHero: heroId }));
       return;
     }
-    if (meta.stardust < def.unlockCost) {
+    const freeStardust = isDevModeEnabled() && getDevGrants().infiniteStardust;
+    if (!freeStardust && meta.stardust < def.unlockCost) {
       sound.play('error');
       return;
     }
     sound.play('hatch');
     onUpdateMeta?.((prev) => ({
       ...prev,
-      stardust: Math.max(0, prev.stardust - def.unlockCost),
+      stardust: freeStardust ? prev.stardust : Math.max(0, prev.stardust - def.unlockCost),
       unlockedHeroes: [...prev.unlockedHeroes, heroId],
       activeHero: heroId,
     }));
@@ -169,14 +210,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const curLv = meta.heroSkillLevels[skillId] ?? 0;
     if (curLv >= sk.maxLevel) return;
     const cost = sk.baseCost + curLv * sk.costStep;
-    if (meta.stardust < cost) {
+    const freeStardust = isDevModeEnabled() && getDevGrants().infiniteStardust;
+    if (!freeStardust && meta.stardust < cost) {
       sound.play('error');
       return;
     }
     sound.play(curLv + 1 >= sk.maxLevel ? 'hatch' : 'levelup');
     onUpdateMeta?.((prev) => ({
       ...prev,
-      stardust: Math.max(0, prev.stardust - cost),
+      stardust: freeStardust ? prev.stardust : Math.max(0, prev.stardust - cost),
       heroSkillLevels: { ...prev.heroSkillLevels, [skillId]: curLv + 1 },
     }));
   };
@@ -634,6 +676,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     name: string;
     sprite: string;
     ballSprite: string;
+    ballName?: string;
     level: number;
     isShiny: boolean;
     isNewSpecies: boolean;
@@ -705,6 +748,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       name: string;
       level: number;
       sprite: string;
+      staticSprite: string;
       skills: SurvivorSkillId[];
     }[]
   >([]);
@@ -873,6 +917,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
   }, []);
 
+  const persistSimFollowersToSquad = (followers: ActiveFollower[]) => {
+    if (!onUpdateMeta) return;
+    const nextPetIds = followers
+      .map((f) => f.sourcePetId)
+      .filter((id): id is string => Boolean(id));
+    if (nextPetIds.length === 0) return;
+    onUpdateMeta((prev) => {
+      const list = prev.squadPresets && prev.squadPresets.length > 0 ? prev.squadPresets : squadPresets;
+      const idx = Math.min(list.length - 1, Math.max(0, prev.activeSquadIdx ?? activeSquadIdx));
+      const nextList = list.map((pr, i) => (i === idx ? { ...pr, petIds: nextPetIds } : pr));
+      return { ...prev, squadPresets: nextList, activeSquadIdx: idx };
+    });
+  };
+
   const reorderBattleFollowers = (fromIdx: number, toIdx: number) => {
     const sim = simRef.current;
     if (!sim) return;
@@ -888,20 +946,32 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     sound.play('cursor');
     syncFollowersView();
     // Persist reordered petIds back into active squad preset
-    const nextPetIds = sim.followers
-      .map((f) => f.sourcePetId)
-      .filter((id): id is string => Boolean(id));
-    if (nextPetIds.length > 0 && onUpdateMeta) {
-      onUpdateMeta?.((prev) => {
-        const list = prev.squadPresets && prev.squadPresets.length > 0 ? prev.squadPresets : squadPresets;
-        const idx = Math.min(list.length - 1, Math.max(0, prev.activeSquadIdx ?? activeSquadIdx));
-        const nextList = list.map((pr, i) => (i === idx ? { ...pr, petIds: nextPetIds } : pr));
-        return { ...prev, squadPresets: nextList, activeSquadIdx: idx };
-      });
+    persistSimFollowersToSquad(sim.followers);
+  };
+
+  const removeBattleFollower = (followerId: string) => {
+    const sim = simRef.current;
+    if (!sim) return;
+    const idx = sim.followers.findIndex((f) => f.id === followerId);
+    if (idx === -1) return;
+    if (sim.followers.length <= 1) {
+      sound.play('error');
+      showBanner('至少保留 1 只宝可梦在当前队伍中！');
+      return;
     }
+    const [removed] = sim.followers.splice(idx, 1);
+    detachFollowerMeshes(removed);
+    sim.followers.forEach((f, i) => {
+      f.orbitAngle = (i * Math.PI * 2) / Math.max(1, sim.followers.length);
+    });
+    sound.play('cancel');
+    syncFollowersView();
+    persistSimFollowersToSquad(sim.followers);
+    showBanner(`已将「${removed.name}」移出当前队伍（可在编队或精灵球盒随时重新上阵）`, 2200);
   };
   const fastTravelCityRef = useRef<(cityId: string) => void>(() => {});
   const teleportGeoSpotRef = useRef<(spot: ScenicMountainSpot) => void>(() => {});
+  const teleportDirectRef = useRef<(tx: number, tz: number, label: string) => void>(() => {});
   const returnToHubCityRef = useRef<(dest: 'plaza' | 'home') => void>(() => {});
   const handleFastTravelCity = (cityId: string) => {
     fastTravelCityRef.current(cityId);
@@ -929,6 +999,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       onReturnToHubCity: (dest) => returnToHubCityRef.current(dest),
       navTargets: autoNavTargetsRef.current,
       onAutoWalkTo: (x, z, label) => startAutoNavRef.current({ label, x, z }),
+      onTeleportTo: (x, z, label) => teleportDirectRef.current(x, z, label),
       onOpenGlobalWorldMap: () => setWorldMapOpen(true),
     });
     onOpenPokemonManager('map', true);
@@ -1275,6 +1346,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         name: f.name,
         level: f.level,
         sprite: SPECIES_CATALOG[f.species].stageSprites[f.stage].animated,
+        staticSprite: SPECIES_CATALOG[f.species].stageSprites[f.stage].static,
         skills: [...f.skills],
       })),
     );
@@ -1377,7 +1449,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       sound.play('cancel');
       detachFollowerMeshes(sim.followers[idx]);
       sim.followers.splice(idx, 1);
+      sim.followers.forEach((f, i) => {
+        f.orbitAngle = (i * Math.PI * 2) / Math.max(1, sim.followers.length);
+      });
       syncFollowersView();
+      persistSimFollowersToSquad(sim.followers);
     } else {
       if (sim.followers.length >= maxFollowersRef.current) {
         sound.play('error');
@@ -1391,6 +1467,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         boxPet.id,
         boxPet.skin,
       );
+      persistSimFollowersToSquad(sim.followers);
     }
   };
 
@@ -2510,7 +2587,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     });
     syncSafeZones3D(0, 0);
 
-    const { vfxAtlas, spawnPixelParticles, spawnGroundDecalWave, spawnGlowFlash, spawnSpriteBurst, spawnSkillProjectile3D, damageEnemy3D, pickTargetForFollower, fireSkill, spawnEnemy3D } = createArenaCombatActions3D({ activeWorldRun, adventureStyleRef, buildResultSummary, camOrbitRef, captureFinishRef, comboRef, createSpriteEntity, diffMeta, endedRef, gameMode, getPixelTexture, liveOverlandCityRef, liveWeatherRef, metaBonusesRef, metaRef, onUpdateMeta, pausedRef, pet, prefsRef, regionMeta, save, savePetsCountRef, scene, setCaptureCutscene, setNearbyKoTarget, setResultSummary, shakeRef, showBanner, simRef, solarInfoRef, tacticsRef, triggerBattleActionRef });
+    const { vfxAtlas, spawnPixelParticles, spawnGroundDecalWave, spawnGlowFlash, spawnSpriteBurst, spawnSkillProjectile3D, damageEnemy3D, pickTargetForFollower, fireSkill, spawnEnemy3D } = createArenaCombatActions3D({ activeWorldRun, adventureStyleRef, buildResultSummary, camOrbitRef, captureFinishRef, comboRef, createSpriteEntity, diffMeta, endedRef, gameMode, getPixelTexture, liveOverlandCityRef, liveWeatherRef, metaBonusesRef, metaRef, onUpdateMeta, pausedRef, pet, prefsRef, regionMeta, save, savePetsCountRef, scene, selectedBallIdRef, setCaptureCutscene, setNearbyKoTarget, setResultSummary, shakeRef, showBanner, simRef, solarInfoRef, tacticsRef, triggerBattleActionRef });
 
     startStreetDuelRef.current = ({ npcName, npcSprite, species, x, z }) => {
       const curSim = simRef.current;
@@ -2728,6 +2805,48 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           : `🏙️ 已传送回主城「${hubName}」中心广场！`,
         2800,
       );
+    };
+
+    teleportDirectRef.current = (tx, tz, label) => {
+      const curSim = simRef.current;
+      if (!curSim) return;
+      stopAutoNavRef.current(true);
+      worldBubblesRef.current = [];
+      setProjectedBubbles([]);
+      const destGeo = worldToGeo(tx, tz);
+      if (destGeo) {
+        prefetchGeoDetailAround(destGeo.lat, destGeo.lng);
+      }
+      chunkState.x = 999999;
+      chunkState.z = 999999;
+      updateWorldAround(tx, tz);
+      geoHighwayStreamer?.updateAround(tx, tz, true);
+      const gy = Math.max(WATER_LEVEL_3D + 0.16, getWalkableSurfaceHeight3D(tx, tz));
+      curSim.px = tx;
+      curSim.pz = tz;
+      curSim.py = gy;
+      curSim.vy = 0;
+      camPivotRef.current.set(tx, gy + 1.52, tz);
+      curSim.followers.forEach((f, idx) => {
+        const ang = (idx * Math.PI * 2) / Math.max(1, curSim.followers.length) + 0.4;
+        f.x = tx + Math.cos(ang) * 1.85;
+        f.z = tz + Math.sin(ang) * 1.85;
+        f.y = Math.max(WATER_LEVEL_3D + 0.14, getWalkableSurfaceHeight3D(f.x, f.z));
+      });
+      const curOrg = getActiveGeoTerrainOrigin();
+      saveWorldCheckpoint({
+        mode: curOrg ? 'geo' : 'procedural',
+        cityId: curOrg?.startCityId ?? 'shanghai',
+        cityName: curOrg?.startCityName,
+        lat: destGeo?.lat,
+        lng: destGeo?.lng,
+        x: tx,
+        z: tz,
+        facingAngle: curSim.facingAngle,
+        updatedAt: Date.now(),
+      });
+      sound.play('levelup');
+      showBanner(`⚡ 已传送至「${label}」`, 2200);
     };
 
     teleportIntraCityBusRef.current = (tx, tz, label) => {
@@ -3080,7 +3199,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         );
         syncUrbanAt(sim.px,sim.pz);
 
-        if (!pausedRef.current && !externalPausedRef.current && !worldMapOpenRef.current && !inRunTownShopOpenRef.current && !endedRef.current) {
+        if (!pausedRef.current && !externalPausedRef.current && !worldMapOpenRef.current && !inRunTownShopOpenRef.current && hubModalRef.current === 'none' && !endedRef.current) {
           sim.elapsed += dt;
           if (sim.invuln > 0) sim.invuln = Math.max(0, sim.invuln - dt);
           if (sim.timers.safeHealCd > 0) sim.timers.safeHealCd = Math.max(0, sim.timers.safeHealCd - dt);
@@ -3525,7 +3644,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             horizonBackdrop.userData.skyUniforms.uTime.value = now * 0.001;
           }
 
-          stepArenaHudProjection3D({ activeInteriorNow, activeTownNow, activeWorldRun, activeZone, autoNavTargetsRef, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, returnToHubCityRef, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, setWorldMapOpen, showBanner, sim, startAutoNavRef, terrainMat, worldBubblesRef });
+          stepArenaHudProjection3D({ activeInteriorNow, activeTownNow, activeWorldRun, activeZone, autoNavTargetsRef, camOrbitRef, camera, closestNode, closestTownPoint, comboRef, dt, externalPausedRef, fpsSmooth, gameMode, handleFastTravelCity, interactActionCountRef, interactOptionIdxRef, latestMapSnapshotRef, liveOverlandCityRef, nearbyKoIdRef, nearestDist, nearestZone, occludeTown, onSyncWorldMapData, onUpdateMeta, overlandCityIdRef, pet, phase, projVec, regionMeta, returnToHubCityRef, scene, selectedBiome, setAskQuickNavOpen, setEdgeIndicators, setFloatingTags, setHud, setInteractOptionIdx, setLiveOverlandCity, setMapSnapshot, setNearbyInteract, setNearbyKoTarget, setProjectedBubbles, setWorldMapOpen, showBanner, sim, startAutoNavRef, teleportDirectRef, terrainMat, worldBubblesRef });
         } else if (sim.activeCaptures.length > 0 && !externalPausedRef.current && !endedRef.current) {
           stepArenaCaptureCinema3D({ addFollowerToRun, buildResultSummary, camera, captureFinishRef, damageEnemy3D, diffMeta, dt, endedRef, gameMode, horizonBackdrop, maxFollowersRef, now, onCaptureBoss, onShowCaptureInHandheld, pausedRef, pet, regionMeta, save, scene, setCaptureCutscene, setResultSummary, sim, spawnGlowFlash, spawnGroundDecalWave, spawnPixelParticles, syncFloraBillboards, vfxAtlas, waterMat });
         }
@@ -4005,7 +4124,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   useArenaKeyboardHotkeys({ CAM_MODE_META, activeBusStopModal, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, cycleCameraFollowMode, cycleInteractOptionRef, cycleRideMode, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, inRunTownShopOpen, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, programmaticUnlockRef, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setActiveBusStopModal, setBanishMode, setClosingLevelUp, setInRunTownShopOpen, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
   const bgmTrackLabel = BGM_TRACK_LABELS[activeBgmTrack] ?? '晴空微风 · 城镇漫步';
-  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
+  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, labInitialTab, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, openHeroOrBadgeOverlay, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, removeBattleFollower, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBallId, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLabInitialTab, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSelectedBallId, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
 
   return (
     <div ref={containerRef} className="world3d-stage">
