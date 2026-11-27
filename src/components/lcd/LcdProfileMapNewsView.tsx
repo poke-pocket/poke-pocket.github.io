@@ -166,7 +166,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
           const headerTitle = activeNews
             ? activeNews.title
             : activeEdition
-              ? `${activeEdition.version} · 第 ${activeEdition.issueNo} 期 · 宝可梦中心日报`
+              ? `第 ${activeEdition.issueNo} 期 · 宝可梦中心日报`
               : '全球宝可梦中心新闻';
 
           return (
@@ -199,7 +199,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
               {activeNews ? (
                 <div className="lcd-news-detail scroll-y">
                   <div className="lcd-news-head">
-                    <span className="news-edition-ver">{activeNews.version}</span>
+                    {activeEdition && <span className="news-edition-ver">第 {activeEdition.issueNo} 期</span>}
                     <span className="lcd-news-tag">{activeNews.tag}</span>
                     {activeNews.reporter && <span className="lcd-news-reporter">{activeNews.reporter}</span>}
                     <em>{activeNews.date}</em>
@@ -284,7 +284,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                       <span>POKÉMON CENTER DAILY</span>
                     </div>
                     <div className="paper-masthead-meta">
-                      <span>{activeEdition.version} · {activeEdition.date} · 第 {activeEdition.issueNo} 期</span>
+                      <span>{activeEdition.date} · 第 {activeEdition.issueNo} 期</span>
                       <span>{activeEdition.subtitle}</span>
                       <span>点击任意报道阅读全文</span>
                     </div>
@@ -530,7 +530,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                     <span>{activeEdition.weatherBrief}</span>
                   </footer>
 
-                  {/* Prev / Next Version Edition Switcher */}
+                  {/* Prev / Next Issue Switcher */}
                   <div className="paper-edition-pager">
                     <button
                       type="button"
@@ -542,7 +542,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                         setSelectedNewsEditionId(olderEdition.id);
                       }}
                     >
-                      {olderEdition ? `‹ 上一期 ${olderEdition.version}` : '‹ 最早期刊'}
+                      {olderEdition ? `‹ 第 ${olderEdition.issueNo} 期` : '‹ 最早期刊'}
                     </button>
                     <span className="paper-pager-mid">
                       第 {activeEdition.issueNo} 期 · 共 {NEWS_EDITIONS.length} 期
@@ -557,12 +557,12 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                         setSelectedNewsEditionId(newerEdition.id);
                       }}
                     >
-                      {newerEdition ? `下一期 ${newerEdition.version} ›` : '已是最新 ›'}
+                      {newerEdition ? `第 ${newerEdition.issueNo} 期 ›` : '已是最新 ›'}
                     </button>
                   </div>
                 </div>
               ) : (
-                /* Level 1: Versioned Newspaper Archive List (按版本排列的宝可梦中心日报列表) */
+                /* Level 1: Newspaper Archive List (历期宝可梦中心日报列表) */
                 <div className="news-archive-wrap scroll-y">
                   <header className="paper-masthead">
                     <div className="paper-masthead-top">
@@ -571,8 +571,8 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                       <span>POKÉMON CENTER DAILY</span>
                     </div>
                     <div className="paper-masthead-meta">
-                      <span>按版本收录 · 共 {NEWS_EDITIONS.length} 期</span>
-                      <span>最新发行：{NEWS_EDITIONS[0]?.version} 第 {NEWS_EDITIONS[0]?.issueNo} 期</span>
+                      <span>往期合订 · 共 {NEWS_EDITIONS.length} 期</span>
+                      <span>最新发行：第 {NEWS_EDITIONS[0]?.issueNo} 期 · {NEWS_EDITIONS[0]?.date}</span>
                       <span>点击任一期号翻阅本期日报</span>
                     </div>
                   </header>
@@ -596,8 +596,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                         </div>
                         <div className="news-edition-body">
                           <div className="news-edition-meta">
-                            <span className="news-edition-ver">{ed.version}</span>
-                            <span className="news-edition-issue">第 {ed.issueNo} 期</span>
+                            <span className="news-edition-ver">第 {ed.issueNo} 期</span>
                             <time>{ed.shortDate}</time>
                           </div>
                           <h3 className="news-edition-title">{ed.title}</h3>

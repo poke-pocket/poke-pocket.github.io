@@ -218,6 +218,44 @@ export function getLabUpgradeCost(def: LabUpgradeDef, currentLv: number): number
   return Math.round(((linear + quad) * tierMult) / 5) * 5;
 }
 
+export function getLabUpgradeEffectSummary(id: LabUpgradeId, lv: number): string {
+  const n = Math.max(0, lv);
+  switch (id) {
+    case 'training':
+      return `伤害 +${n * 5}%`;
+    case 'vitality':
+      return `最大 HP +${n * 14}`;
+    case 'agility':
+      return `移速 +${+(n * 2.5).toFixed(1)}%`;
+    case 'study':
+      return `经验 +${n * 6}%`;
+    case 'trade':
+      return `金币 +${n * 10}%`;
+    case 'fortune':
+      return `星沙 +${n * 8}% / 幸运 +${+(n * 1.5).toFixed(1)}%`;
+    case 'magnet':
+      return `拾取范围 +${+(n * 0.7).toFixed(1)}`;
+    case 'leftovers':
+      return `再生 +${+(n * 0.5).toFixed(1)} HP/秒`;
+    case 'haste':
+      return `攻速 +${n * 3}%`;
+    case 'reroll':
+      return `刷新次数 +${n}`;
+    case 'squad_cap':
+      return `携带上限 +${n}`;
+    case 'revives':
+      return `复活次数 +${n}`;
+    case 'crit_rate':
+      return `暴击率 +${+(n * 3.5).toFixed(1)}%`;
+    case 'armor':
+      return `受伤减免 -${n * 4}%`;
+    case 'catch_master':
+      return `收服率 +${n * 4}% / 留存 +${n * 20}%`;
+    case 'supply_pack':
+      return `初始伤药 +${n}`;
+  }
+}
+
 export type HeroId = 'red' | 'misty' | 'brock' | 'blue';
 
 export interface HeroExclusiveSkillDef {

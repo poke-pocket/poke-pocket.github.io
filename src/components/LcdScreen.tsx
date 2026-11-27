@@ -1128,7 +1128,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                 setNewsPhotoIdx(0);
                 navigateWithHistory('news');
               }}
-              title="查看全球宝可梦中心各版本日报"
+              title="查看全球宝可梦中心历期日报"
             >
               <span className="menu-news-badge">NEWS</span>
               <PixelItemImg src="/sprites/items/poke-radar.png" size={18} />
@@ -1136,8 +1136,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                 <strong>宝可梦中心新闻</strong>
                 <small>
                   {NEWS_EDITIONS[0]
-                    ? `${NEWS_EDITIONS[0].version} · ${NEWS_EDITIONS[0].title}`
-                    : '查看全球宝可梦中心各版本日报'}
+                    ? `第 ${NEWS_EDITIONS[0].issueNo} 期 · ${NEWS_EDITIONS[0].title}`
+                    : '查看全球宝可梦中心历期日报'}
                 </small>
               </div>
               <span className="menu-news-arrow">查看 ›</span>
