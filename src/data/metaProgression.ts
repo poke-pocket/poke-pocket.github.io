@@ -38,9 +38,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '训练',
     desc: '强化主角与全队随从的基础伤害输出。',
     perLevelLabel: '每级伤害 +5%',
-    maxLevel: 8,
-    baseCost: 50,
-    costStep: 35,
+    maxLevel: 10,
+    baseCost: 60,
+    costStep: 45,
     icon: '/sprites/items/life-orb.png',
     accent: '#e03131',
   },
@@ -49,9 +49,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '韧性',
     desc: '提升主角出战时的最大生命值上限。',
     perLevelLabel: '每级最大 HP +14',
-    maxLevel: 8,
-    baseCost: 50,
-    costStep: 35,
+    maxLevel: 10,
+    baseCost: 60,
+    costStep: 45,
     icon: '/sprites/items/sitrus-berry.png',
     accent: '#2f9e44',
   },
@@ -59,10 +59,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'agility',
     name: '敏捷',
     desc: '提升 3D 野外探索与走位躲弹幕的移动速度。',
-    perLevelLabel: '每级移速 +3%',
-    maxLevel: 6,
-    baseCost: 60,
-    costStep: 40,
+    perLevelLabel: '每级移速 +2.5%',
+    maxLevel: 10,
+    baseCost: 70,
+    costStep: 50,
     icon: '/sprites/items/choice-scarf.png',
     accent: '#22b8cf',
   },
@@ -71,9 +71,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '钻研',
     desc: '提升对局中获取的经验值效率，更快成型。',
     perLevelLabel: '每级经验 +6%',
-    maxLevel: 6,
-    baseCost: 60,
-    costStep: 45,
+    maxLevel: 10,
+    baseCost: 70,
+    costStep: 55,
     icon: '/sprites/items/lucky-egg.png',
     accent: '#7950f2',
   },
@@ -82,9 +82,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '贸易',
     desc: '增加野外拾取与通关结算获得的宝可币。',
     perLevelLabel: '每级金币 +10%',
-    maxLevel: 6,
-    baseCost: 55,
-    costStep: 40,
+    maxLevel: 10,
+    baseCost: 65,
+    costStep: 50,
     icon: '/sprites/items/amulet-coin.png',
     accent: '#f59f00',
   },
@@ -92,10 +92,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'fortune',
     name: '财运',
     desc: '提升星星沙子结算倍率与幸运暴击触发率。',
-    perLevelLabel: '每级星沙与幸运 +8%',
-    maxLevel: 6,
-    baseCost: 75,
-    costStep: 50,
+    perLevelLabel: '每级星沙 +8% / 幸运 +1.5%',
+    maxLevel: 10,
+    baseCost: 85,
+    costStep: 65,
     icon: '/sprites/items/kings-rock.png',
     accent: '#ae3ec9',
   },
@@ -103,10 +103,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'magnet',
     name: '磁力',
     desc: '大幅扩张经验水晶与金币的自动吸附半径。',
-    perLevelLabel: '每级拾取范围 +0.85',
-    maxLevel: 5,
-    baseCost: 45,
-    costStep: 35,
+    perLevelLabel: '每级拾取范围 +0.7',
+    maxLevel: 10,
+    baseCost: 55,
+    costStep: 42,
     icon: '/sprites/items/magnet.png',
     accent: '#1971c2',
   },
@@ -115,9 +115,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '吃剩的东西',
     desc: '战斗中每秒持续回复主角生命值。',
     perLevelLabel: '每级再生 +0.5 HP/秒',
-    maxLevel: 5,
-    baseCost: 65,
-    costStep: 45,
+    maxLevel: 10,
+    baseCost: 75,
+    costStep: 55,
     icon: '/sprites/items/leftovers.png',
     accent: '#40c057',
   },
@@ -125,10 +125,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'haste',
     name: '迅捷',
     desc: '缩短全队宝可梦招式冷却，火力更密集。',
-    perLevelLabel: '每级攻速 +3.5%',
-    maxLevel: 5,
-    baseCost: 90,
-    costStep: 60,
+    perLevelLabel: '每级攻速 +3%',
+    maxLevel: 10,
+    baseCost: 100,
+    costStep: 75,
     icon: '/sprites/items/quick-claw.png',
     accent: '#fd7e14',
   },
@@ -137,9 +137,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '刷新',
     desc: '每次升级选卡时增加免费的选项刷新次数。',
     perLevelLabel: '每级刷新次数 +1',
-    maxLevel: 4,
-    baseCost: 80,
-    costStep: 55,
+    maxLevel: 8,
+    baseCost: 90,
+    costStep: 70,
     icon: '/sprites/items/vs-seeker.png',
     accent: '#3b5bdb',
   },
@@ -148,9 +148,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '携带上限',
     desc: '扩充 3D 野外探索时最多可同时上阵跟随的宝可梦数量。',
     perLevelLabel: '每级携带上限 +1',
-    maxLevel: 3,
-    baseCost: 140,
-    costStep: 110,
+    maxLevel: 4,
+    baseCost: 180,
+    costStep: 150,
     icon: '/sprites/items/ultra-ball.png',
     accent: '#e03131',
   },
@@ -159,20 +159,20 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '气势披带·复活',
     desc: '主角体力归零时自动原地满血爆发震退敌群并获得短暂无敌。',
     perLevelLabel: '每级复活次数 +1',
-    maxLevel: 3,
-    baseCost: 150,
-    costStep: 120,
+    maxLevel: 5,
+    baseCost: 180,
+    costStep: 160,
     icon: '/sprites/items/focus-sash.png',
     accent: '#f08c00',
   },
   {
     id: 'crit_rate',
     name: '焦点会心',
-    desc: '大幅提升主角与全队随从所有招式触发要害暴击的概率。',
-    perLevelLabel: '每级暴击率 +4%',
-    maxLevel: 5,
-    baseCost: 70,
-    costStep: 45,
+    desc: '提升主角与全队随从所有招式触发要害暴击的概率。',
+    perLevelLabel: '每级暴击率 +3.5%',
+    maxLevel: 8,
+    baseCost: 85,
+    costStep: 60,
     icon: '/sprites/items/scope-lens.png',
     accent: '#d6336c',
   },
@@ -180,10 +180,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'armor',
     name: '磐石护甲',
     desc: '强化训练师防具韧性，按百分比减免野怪碰撞与首领弹幕伤害。',
-    perLevelLabel: '每级受伤减免 -5%',
-    maxLevel: 5,
-    baseCost: 65,
-    costStep: 45,
+    perLevelLabel: '每级受伤减免 -4%',
+    maxLevel: 8,
+    baseCost: 80,
+    costStep: 60,
     icon: '/sprites/items/focus-band.png',
     accent: '#495057',
   },
@@ -191,10 +191,10 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     id: 'catch_master',
     name: '收服大师',
     desc: '提高野外投掷精灵球的收服成功率，并延长击晕精灵的留存时间。',
-    perLevelLabel: '每级收服率 +6% / 留存 +25%',
-    maxLevel: 5,
-    baseCost: 75,
-    costStep: 50,
+    perLevelLabel: '每级收服率 +4% / 留存 +20%',
+    maxLevel: 8,
+    baseCost: 90,
+    costStep: 65,
     icon: '/sprites/items/master-ball.png',
     accent: '#7048e8',
   },
@@ -203,16 +203,19 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     name: '冒险补给包',
     desc: '每次出发探险时额外携带伤药补给次数，续航更持久。',
     perLevelLabel: '每级初始伤药 +1',
-    maxLevel: 4,
-    baseCost: 55,
-    costStep: 40,
+    maxLevel: 10,
+    baseCost: 65,
+    costStep: 50,
     icon: '/sprites/items/super-potion.png',
     accent: '#12b886',
   },
 ];
 
 export function getLabUpgradeCost(def: LabUpgradeDef, currentLv: number): number {
-  return def.baseCost + currentLv * def.costStep;
+  const linear = def.baseCost + currentLv * def.costStep;
+  const quad = Math.round(def.costStep * 0.42 * currentLv * currentLv);
+  const tierMult = currentLv >= 7 ? 1.35 : currentLv >= 4 ? 1.15 : 1;
+  return Math.round(((linear + quad) * tierMult) / 5) * 5;
 }
 
 export type HeroId = 'red' | 'misty' | 'brock' | 'blue';
@@ -2330,23 +2333,26 @@ export function computeMetaCombatBonuses(meta: MetaProgressState): ComputedComba
   let dmgMult = 1 + lv('training') * 0.05 + hero.baseAtkBonus;
   let maxHpFlat = lv('vitality') * 14 + hero.baseHpBonus + Math.round(tag.hpPctBonus * 140);
   if (earnedBadges.has('boulder_badge')) maxHpFlat += 20;
-  let speedMult = 1 + lv('agility') * 0.03 + hero.baseSpeedBonus + tag.speedBonus;
+  let speedMult = 1 + lv('agility') * 0.025 + hero.baseSpeedBonus + tag.speedBonus;
   const xpMult = 1 + lv('study') * 0.06 + (tag.id === 'rookie_trainer' ? 0.1 : 0);
   let coinMult = 1 + lv('trade') * 0.1 + tag.coinBonus;
   if (earnedBadges.has('earth_badge')) coinMult += 0.15;
   let stardustMult = 1 + lv('fortune') * 0.08;
-  const pickupAdd = lv('magnet') * 0.85;
+  const pickupAdd = lv('magnet') * 0.7;
   let regenPerSec = lv('leftovers') * 0.5 + (earnedBadges.has('rainbow_badge') ? 0.6 : 0);
-  let cdMult = Math.max(0.55, (1 - lv('haste') * 0.035) * tag.cdMultBonus);
+  let cdMult = Math.max(0.5, (1 - lv('haste') * 0.03) * tag.cdMultBonus);
   const rerolls = lv('reroll');
   const extraSquadSlots = lv('squad_cap');
   const revives = lv('revives');
-  const catchRateBonus = lv('catch_master') * 0.06;
-  const koDurationMult = 1 + lv('catch_master') * 0.25;
+  const catchRateBonus = lv('catch_master') * 0.04;
+  const koDurationMult = 1 + lv('catch_master') * 0.2;
   const extraHealCharges = lv('supply_pack');
-  let dmgReduction = Math.min(0.45, lv('armor') * 0.05);
+  let dmgReduction = Math.min(0.45, lv('armor') * 0.04);
   let bossDmgMult = 1.0 + tag.bossBonus;
-  let critChance = 0.06 + lv('fortune') * 0.025 + lv('crit_rate') * 0.04 + (earnedBadges.has('volcano_badge') ? 0.06 : 0);
+  let critChance = Math.min(
+    0.75,
+    0.06 + lv('fortune') * 0.015 + lv('crit_rate') * 0.035 + (earnedBadges.has('volcano_badge') ? 0.06 : 0),
+  );
 
   if (hero.id === 'red') {
     dmgMult += s0 * 0.04 + (s0 >= 5 ? 0.18 : 0);

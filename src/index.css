@@ -10830,18 +10830,13 @@ button.gba-status-box.is-clickable-card {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 14px;
-  border: 2.5px solid #161420;
-  box-shadow: 3px 3px 0 #161420;
-}
-
-.meta-ribbon.is-orange {
-  background: #f76707;
+  padding: 0;
   color: #fffdf5;
 }
 
+.meta-ribbon.is-orange,
 .meta-ribbon.is-purple {
-  background: #7950f2;
+  background: transparent;
   color: #fffdf5;
 }
 

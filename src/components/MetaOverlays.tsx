@@ -529,12 +529,6 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
                           <small>{evolved ? sk.evolvedDesc : sk.desc}</small>
                         </div>
                       </div>
-                      <div className="hero-evo-preview">
-                        <PixelIcon name="sparkle" size={12} />
-                        <span>
-                          Lv.{sk.maxLevel} 觉醒进化 → <b>{sk.evolvedName}</b>：{sk.evolvedDesc}
-                        </span>
-                      </div>
                       <div className="lab-pip-bar">
                         {Array.from({ length: sk.maxLevel }).map((_, i) => (
                           <i
