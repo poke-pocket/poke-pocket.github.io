@@ -12,6 +12,7 @@
   --paper: #ece7dc;
   --card-bg: #fffdf8;
   --lcd-inset: 10px;
+  --hud-top-card-h: 76px;
   --font-pixel: 'Fusion Pixel', 'Press Start 2P', monospace;
   --font-body: 'Fusion Pixel', 'Press Start 2P', monospace;
 }
@@ -2381,8 +2382,8 @@ button:disabled {
 
 .surv-right-stats {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  align-items: stretch;
+  gap: 6px;
   pointer-events: auto;
 }
 
@@ -5566,8 +5567,8 @@ button:disabled {
 }
 
 .surv-top-btn.is-lg {
-  width: 42px;
-  height: 42px;
+  width: var(--hud-top-card-h);
+  height: var(--hud-top-card-h);
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -5575,11 +5576,18 @@ button:disabled {
   font-size: 12px;
   white-space: nowrap;
   flex-shrink: 0;
-  border: 2.5px solid #161420;
+  border: 2px solid #12101a;
   box-shadow:
-    inset 1px 1px 0 rgba(255, 255, 255, 0.85),
-    3px 3px 0 #161420;
+    inset 1.5px 1.5px 0 rgba(255, 255, 255, 0.88),
+    3px 3px 0 rgba(9, 8, 15, 0.94);
   border-radius: 0;
+}
+
+.surv-top-btn.is-lg img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
 }
 
 .surv-top-btn.is-gear-btn {
@@ -10280,7 +10288,7 @@ h3,
 
 .surv-fps-badge {
   position: fixed;
-  top: 68px;
+  top: 94px;
   left: 16px;
   z-index: 15;
   padding: 2px 7px;
@@ -11546,8 +11554,10 @@ button.gba-status-box.is-clickable-card {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  min-width: 244px;
-  padding: 5px 11px 5px 6px;
+  min-width: 248px;
+  height: var(--hud-top-card-h);
+  min-height: var(--hud-top-card-h);
+  padding: 5px 11px 5px 7px;
   background: linear-gradient(180deg, rgba(28, 30, 48, 0.94), rgba(16, 18, 30, 0.94));
   border: 2px solid #12101a;
   box-shadow: 3px 3px 0 rgba(9, 8, 15, 0.94), inset 0 1px 0 rgba(255, 255, 255, 0.14);
@@ -11556,8 +11566,8 @@ button.gba-status-box.is-clickable-card {
 
 .surv-hero-avatar {
   position: relative;
-  width: 46px;
-  height: 46px;
+  width: 50px;
+  height: 50px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -11569,8 +11579,8 @@ button.gba-status-box.is-clickable-card {
 }
 
 .surv-hero-avatar img {
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   object-fit: contain;
   image-rendering: pixelated;
 }
@@ -11595,7 +11605,8 @@ button.gba-status-box.is-clickable-card {
   min-width: 176px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  justify-content: center;
+  gap: 3px;
 }
 
 .surv-hero-sub-badges {
@@ -12135,8 +12146,8 @@ button.gba-status-box.is-clickable-card {
   flex-direction: column;
   align-items: stretch;
   background: linear-gradient(180deg, rgba(28, 30, 48, 0.95), rgba(16, 18, 30, 0.95));
-  border: 2.5px solid #12101a;
-  box-shadow: 4px 4px 0 rgba(9, 8, 15, 0.92), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  border: 2px solid #12101a;
+  box-shadow: 3px 3px 0 rgba(9, 8, 15, 0.94), inset 0 1px 0 rgba(255, 255, 255, 0.14);
   pointer-events: auto;
 }
 
@@ -12144,6 +12155,7 @@ button.gba-status-box.is-clickable-card {
   display: flex;
   align-items: stretch;
   justify-content: space-between;
+  min-height: calc(var(--hud-top-card-h) - 4px);
 }
 
 .surv-top-nav-strip {
@@ -12245,9 +12257,9 @@ button.gba-status-box.is-clickable-card {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 3px;
-  padding: 5px 12px;
-  min-width: 118px;
+  gap: 7px;
+  padding: 7px 14px;
+  min-width: 132px;
 }
 
 .top-deck-wing.is-left {
@@ -12256,10 +12268,10 @@ button.gba-status-box.is-clickable-card {
 }
 
 .top-deck-wing.is-left strong {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 900;
   color: #fffdf5;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
 .top-deck-sub {
@@ -12300,14 +12312,14 @@ button.gba-status-box.is-clickable-card {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4px 16px;
-  min-width: 126px;
+  padding: 6px 18px;
+  min-width: 134px;
   background: rgba(12, 13, 22, 0.72);
-  gap: 1px;
+  gap: 3px;
 }
 
 .top-deck-center strong {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 900;
   color: #ffe066;
   font-variant-numeric: tabular-nums;
@@ -12315,10 +12327,10 @@ button.gba-status-box.is-clickable-card {
 }
 
 .top-deck-center small {
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 800;
-  color: #adb5bd;
-  line-height: 1;
+  color: #ced4da;
+  line-height: 1.1;
 }
 
 .top-deck-wing.is-right {
@@ -12326,9 +12338,9 @@ button.gba-status-box.is-clickable-card {
 }
 
 .top-trainer-tag {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 900;
-  padding: 1px 6px;
+  padding: 2px 6px;
   background: rgba(12, 13, 22, 0.8);
   border: 1.5px solid #4dabf7;
   line-height: 1.2;
@@ -12338,13 +12350,13 @@ button.gba-status-box.is-clickable-card {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 800;
   color: #ffe066;
 }
 
 .surv-event-banner.is-top-banner {
-  top: 78px !important;
+  top: 96px !important;
   bottom: auto !important;
   height: auto !important;
   padding: 5px 14px !important;
@@ -13581,9 +13593,9 @@ button.gba-status-box.is-clickable-card {
    NEO-BRUTALIST PIXEL ART MINIMAP & EXPANDABLE TOPOGRAPHIC WORLD MAP
    ========================================================================= */
 .surv-minimap-box {
-  position: fixed;
-  top: 56px;
-  right: 18px;
+  position: relative;
+  top: auto;
+  right: auto;
   z-index: 16;
   width: 122px;
   height: 122px;
@@ -13593,6 +13605,8 @@ button.gba-status-box.is-clickable-card {
   border: 3px solid #161420;
   box-shadow: 4px 4px 0 #161420;
   cursor: pointer;
+  pointer-events: auto;
+  flex-shrink: 0;
   overflow: hidden;
   transition: transform 0.12s ease;
 }
@@ -13637,7 +13651,7 @@ button.gba-status-box.is-clickable-card {
 }
 
 .surv-combo-badge {
-  top: 234px !important;
+  top: 296px !important;
 }
 
 .worldmap-modal {
@@ -15268,6 +15282,7 @@ body,
   .hud-col-right {
     order: 2;
     flex: 0 0 auto;
+    position: static;
   }
 
   .hud-col-center {
@@ -15279,6 +15294,8 @@ body,
   .surv-hero-card {
     min-width: 0;
     width: 100%;
+    height: 54px;
+    min-height: 54px;
     padding: 3px 6px 3px 4px;
     gap: 6px;
   }
@@ -15322,20 +15339,25 @@ body,
   }
 
   .surv-top-btn.is-lg {
-    height: 30px;
-    padding: 0 7px;
+    width: 48px;
+    height: 54px;
+    padding: 0;
     font-size: 10px;
     gap: 3px;
   }
 
   .surv-top-btn.is-lg img {
-    width: 13px !important;
-    height: 13px !important;
+    width: 24px !important;
+    height: 24px !important;
   }
 
   .surv-top-status-deck {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .surv-top-status-main {
+    min-height: 50px;
   }
 
   .top-deck-wing {
@@ -15372,7 +15394,8 @@ body,
   }
 
   .surv-minimap-box {
-    top: calc(max(6px, env(safe-area-inset-top)) + 110px);
+    position: fixed;
+    top: calc(max(6px, env(safe-area-inset-top)) + 122px);
     right: max(6px, env(safe-area-inset-right));
     width: 78px;
     height: 78px;
@@ -15878,14 +15901,16 @@ body,
   }
 
   .surv-top-btn.is-lg {
-    padding: 0 5px;
+    width: 42px;
+    height: 50px;
+    padding: 0;
     font-size: 9.5px;
     gap: 2px;
   }
 
   .surv-top-btn.is-lg img {
-    width: 11px !important;
-    height: 11px !important;
+    width: 22px !important;
+    height: 22px !important;
   }
 
   .surv-moba-wheel {
@@ -16237,6 +16262,8 @@ body,
   .surv-hero-card {
     min-width: 152px;
     max-width: 205px;
+    height: 48px;
+    min-height: 48px;
     padding: 3px 6px 3px 4px;
     gap: 6px;
   }
@@ -16276,6 +16303,10 @@ body,
     width: auto;
   }
 
+  .surv-top-status-main {
+    min-height: 44px;
+  }
+
   .top-deck-wing {
     min-width: 0;
     padding: 2px 7px;
@@ -16296,13 +16327,20 @@ body,
   }
 
   .surv-top-btn.is-lg {
-    height: 28px;
-    padding: 0 7px;
+    width: 48px;
+    height: 48px;
+    padding: 0;
     font-size: 10px;
   }
 
+  .surv-top-btn.is-lg img {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
   .surv-minimap-box {
-    top: 40px;
+    position: fixed;
+    top: 58px;
     right: max(10px, env(safe-area-inset-right));
     width: 74px;
     height: 74px;

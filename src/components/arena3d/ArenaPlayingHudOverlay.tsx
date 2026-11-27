@@ -183,7 +183,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                     }}
                     title="点击打开当前城市地图与自动寻路"
                   >
-                    <PixelItemImg src="/sprites/items/poke-ball.png" size={15} />
+                    <PixelItemImg src="/sprites/items/poke-ball.png" size={18} />
                     <strong>{adventureStyle === 'vampire_rogue' ? minStr : solarInfo.localTimeStr}</strong>
                     <small>
                       {adventureStyle === 'vampire_rogue'
@@ -264,7 +264,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   aria-label="战术终端"
                   title="战术终端"
                 >
-                  <PixelItemImg src="/sprites/items/vs-seeker.png" size={24} />
+                  <PixelItemImg src="/sprites/items/vs-seeker.png" size={40} />
                 </button>
                 <button
                   type="button"
@@ -273,7 +273,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   aria-label="掌机球舱"
                   title="掌机球舱与球盒管理"
                 >
-                  <PixelItemImg src={activeRoom.ballSprite} size={24} />
+                  <PixelItemImg src={activeRoom.ballSprite} size={40} />
                 </button>
                 <button
                   type="button"
@@ -282,9 +282,18 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   aria-label="训练家菜单与设置"
                   title="训练家菜单与系统设置（镜头视角可在设置中切换）"
                 >
-                  <PixelItemImg src="/sprites/items/poke-radar.png" size={24} />
+                  <PixelItemImg src="/sprites/items/poke-radar.png" size={40} />
                 </button>
               </div>
+
+              {!resultModal && (
+                <WorldMapHud
+                  biome={selectedBiome}
+                  regionName={regionMeta.name}
+                  snapshot={mapSnapshot}
+                  onToggleExpand={toggleWorldMap}
+                />
+              )}
 
               <button
                 type="button"
@@ -580,7 +589,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
             />
           )}
 
-          {/* Optional Live FPS Counter & Kill Combo Streak Badges + Neo-Brutalist Pixel Minimap & Big World Map */}
+          {/* Optional Live FPS Counter & Kill Combo Streak Badges */}
           {prefs.showFps && (
             <div className="surv-fps-badge">{hud.fps} FPS</div>
           )}
@@ -589,14 +598,6 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               <em>连续击败数</em>
               <strong>×{hud.combo}</strong>
             </div>
-          )}
-          {!resultModal && (
-            <WorldMapHud
-              biome={selectedBiome}
-              regionName={regionMeta.name}
-              snapshot={mapSnapshot}
-              onToggleExpand={toggleWorldMap}
-            />
           )}
 
           {/* Interactive World & NPC Prompts now render directly beside the target in 3D space via ArenaTownSocialAndBusOverlay! */}
