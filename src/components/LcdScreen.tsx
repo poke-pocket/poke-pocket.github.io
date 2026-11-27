@@ -1025,9 +1025,19 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                 <PixelItemImg src="/sprites/items/amulet-coin.png" size={15} />
                 <span>{save.coins}</span>
               </span>
-              <button type="button" className="lcd-mini-close" onClick={onExitMode}>
-                返回
-              </button>
+              {!tacticsBridge?.inBattle && (
+                <button
+                  type="button"
+                  className="lcd-mini-close"
+                  onClick={
+                    openedEntryMode === 'menu' && onCloseHandheldTo3D
+                      ? onCloseHandheldTo3D
+                      : onExitMode
+                  }
+                >
+                  返回
+                </button>
+              )}
             </div>
 
             <div className="lcd-grid-3 menu-grid">

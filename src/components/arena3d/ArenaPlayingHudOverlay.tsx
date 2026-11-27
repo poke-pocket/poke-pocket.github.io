@@ -35,7 +35,7 @@ function formatHudEta(sec: number): string {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, cycleRideMode, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, landRideMode, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, playerAltitudeM, prefs, regionMeta, reorderBattleFollowers, resetVirtualPad, resultModal, rideMode, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, cycleRideMode, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, landRideMode, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, playerAltitudeM, prefs, regionMeta, removeBattleFollower, reorderBattleFollowers, resetVirtualPad, resultModal, rideMode, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
   const isBgmOn = Boolean(save.bgmEnabled && !save.muted && save.bgmVolume > 0 && (prefs.masterVolume ?? 80) > 0);
   return (
     <>
@@ -391,7 +391,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
           {!resultModal && (
             <div
               className={`surv-party-list is-centered ${mobilePartyOpen ? 'is-mobile-open' : 'is-mobile-collapsed'}`}
-              title="拖拽或点击上下箭头调整出战顺序；点击卡片查看详情"
+              title="拖拽或点击右侧箭头调整顺序，也可直接移出队伍；点击卡片查看详情"
             >
               <button
                 type="button"
@@ -445,7 +445,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                     }}
                     className={`surv-party-card ${dragOverFollowerIdx === fIdx ? 'is-drag-over' : ''}`}
                     style={{ '--unit-accent': accentCol } as React.CSSProperties}
-                    title={`${f.name} Lv.${f.level} · HP ${vitals.hp}/${vitals.maxHp} · 拖拽或点右侧箭头调序`}
+                    title={`${f.name} Lv.${f.level} · HP ${vitals.hp}/${vitals.maxHp} · 右侧可调序或移出队伍`}
                     onClick={() => {
                       if (f.sourcePetId) {
                         onOpenPokemonManager('party_detail', true, f.sourcePetId);
@@ -494,26 +494,38 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                       </div>
                     </div>
                     {followersView.length > 1 && (
-                      <div className="party-reorder-col" onClick={(e) => e.stopPropagation()}>
+                      <div className="party-side-actions" onClick={(e) => e.stopPropagation()}>
+                        <div className="party-reorder-col">
+                          <button
+                            type="button"
+                            className="party-reorder-btn"
+                            disabled={fIdx === 0}
+                            aria-label="上移出战顺序"
+                            title="上移顺序"
+                            onClick={() => reorderBattleFollowers(fIdx, fIdx - 1)}
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            className="party-reorder-btn"
+                            disabled={fIdx === followersView.length - 1}
+                            aria-label="下移出战顺序"
+                            title="下移顺序"
+                            onClick={() => reorderBattleFollowers(fIdx, fIdx + 1)}
+                          >
+                            ▼
+                          </button>
+                        </div>
                         <button
                           type="button"
-                          className="party-reorder-btn"
-                          disabled={fIdx === 0}
-                          aria-label="上移出战顺序"
-                          title="上移顺序"
-                          onClick={() => reorderBattleFollowers(fIdx, fIdx - 1)}
+                          className="party-remove-btn"
+                          aria-label={`将 ${f.name} 移出队伍`}
+                          title={`将「${f.name}」移出当前队伍`}
+                          onClick={() => removeBattleFollower(f.id)}
                         >
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          className="party-reorder-btn"
-                          disabled={fIdx === followersView.length - 1}
-                          aria-label="下移出战顺序"
-                          title="下移顺序"
-                          onClick={() => reorderBattleFollowers(fIdx, fIdx + 1)}
-                        >
-                          ▼
+                          <span>移出</span>
+                          <span>队伍</span>
                         </button>
                       </div>
                     )}

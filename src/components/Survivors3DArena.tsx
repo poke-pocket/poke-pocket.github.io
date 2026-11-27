@@ -871,6 +871,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
   }, []);
 
+  const persistSimFollowersToSquad = (followers: ActiveFollower[]) => {
+    if (!onUpdateMeta) return;
+    const nextPetIds = followers
+      .map((f) => f.sourcePetId)
+      .filter((id): id is string => Boolean(id));
+    if (nextPetIds.length === 0) return;
+    onUpdateMeta((prev) => {
+      const list = prev.squadPresets && prev.squadPresets.length > 0 ? prev.squadPresets : squadPresets;
+      const idx = Math.min(list.length - 1, Math.max(0, prev.activeSquadIdx ?? activeSquadIdx));
+      const nextList = list.map((pr, i) => (i === idx ? { ...pr, petIds: nextPetIds } : pr));
+      return { ...prev, squadPresets: nextList, activeSquadIdx: idx };
+    });
+  };
+
   const reorderBattleFollowers = (fromIdx: number, toIdx: number) => {
     const sim = simRef.current;
     if (!sim) return;
@@ -886,17 +900,28 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     sound.play('cursor');
     syncFollowersView();
     // Persist reordered petIds back into active squad preset
-    const nextPetIds = sim.followers
-      .map((f) => f.sourcePetId)
-      .filter((id): id is string => Boolean(id));
-    if (nextPetIds.length > 0 && onUpdateMeta) {
-      onUpdateMeta?.((prev) => {
-        const list = prev.squadPresets && prev.squadPresets.length > 0 ? prev.squadPresets : squadPresets;
-        const idx = Math.min(list.length - 1, Math.max(0, prev.activeSquadIdx ?? activeSquadIdx));
-        const nextList = list.map((pr, i) => (i === idx ? { ...pr, petIds: nextPetIds } : pr));
-        return { ...prev, squadPresets: nextList, activeSquadIdx: idx };
-      });
+    persistSimFollowersToSquad(sim.followers);
+  };
+
+  const removeBattleFollower = (followerId: string) => {
+    const sim = simRef.current;
+    if (!sim) return;
+    const idx = sim.followers.findIndex((f) => f.id === followerId);
+    if (idx === -1) return;
+    if (sim.followers.length <= 1) {
+      sound.play('error');
+      showBanner('至少保留 1 只宝可梦在当前队伍中！');
+      return;
     }
+    const [removed] = sim.followers.splice(idx, 1);
+    detachFollowerMeshes(removed);
+    sim.followers.forEach((f, i) => {
+      f.orbitAngle = (i * Math.PI * 2) / Math.max(1, sim.followers.length);
+    });
+    sound.play('cancel');
+    syncFollowersView();
+    persistSimFollowersToSquad(sim.followers);
+    showBanner(`已将「${removed.name}」移出当前队伍（可在编队或精灵球盒随时重新上阵）`, 2200);
   };
   const fastTravelCityRef = useRef<(cityId: string) => void>(() => {});
   const teleportGeoSpotRef = useRef<(spot: ScenicMountainSpot) => void>(() => {});
@@ -1375,7 +1400,11 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       sound.play('cancel');
       detachFollowerMeshes(sim.followers[idx]);
       sim.followers.splice(idx, 1);
+      sim.followers.forEach((f, i) => {
+        f.orbitAngle = (i * Math.PI * 2) / Math.max(1, sim.followers.length);
+      });
       syncFollowersView();
+      persistSimFollowersToSquad(sim.followers);
     } else {
       if (sim.followers.length >= maxFollowersRef.current) {
         sound.play('error');
@@ -1389,6 +1418,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         boxPet.id,
         boxPet.skin,
       );
+      persistSimFollowersToSquad(sim.followers);
     }
   };
 
@@ -3971,7 +4001,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
   useArenaKeyboardHotkeys({ CAM_MODE_META, activeBusStopModal, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, cycleCameraFollowMode, cycleInteractOptionRef, cycleRideMode, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, inRunTownShopOpen, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, programmaticUnlockRef, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setActiveBusStopModal, setBanishMode, setClosingLevelUp, setInRunTownShopOpen, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
   const bgmTrackLabel = BGM_TRACK_LABELS[activeBgmTrack] ?? '晴空微风 · 城镇漫步';
-  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
+  const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, removeBattleFollower, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
 
   return (
     <div ref={containerRef} className="world3d-stage">

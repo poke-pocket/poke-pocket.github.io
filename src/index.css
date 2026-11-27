@@ -13717,7 +13717,7 @@ button.gba-status-box.is-clickable-card {
 .wm-compass.is-e { right: 6px; top: 50%; transform: translateY(-50%); }
 
 /* Handheld Console Native Town Map (mode === 'map') */
-/* Battle Left-Edge Party Card Reorder (Drag-and-Drop + Hover ▲/▼ Arrows) */
+/* Battle Left-Edge Party Card Side Actions (Drag-and-Drop + Hover ▲/▼ Order + Remove from Party) */
 .surv-party-card {
   position: relative;
 }
@@ -13727,25 +13727,33 @@ button.gba-status-box.is-clickable-card {
   transform: translateX(4px);
 }
 
-.party-reorder-col {
+.party-side-actions {
   position: absolute;
   top: 2px;
-  right: -20px;
   bottom: 2px;
-  width: 18px;
+  left: 100%;
+  padding-left: 4px;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 2px;
+  align-items: stretch;
+  gap: 3px;
+  z-index: 8;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease;
 }
 
-.surv-party-card:hover .party-reorder-col,
-.surv-party-card:focus-within .party-reorder-col {
+.surv-party-card:hover .party-side-actions,
+.surv-party-card:focus-within .party-side-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+.party-reorder-col {
+  width: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2px;
 }
 
 .party-reorder-btn {
@@ -13770,6 +13778,43 @@ button.gba-status-box.is-clickable-card {
 .party-reorder-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.party-remove-btn {
+  width: 30px;
+  padding: 0 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.05;
+  color: #ffe3e3;
+  background: #3b1820;
+  border: 1.5px solid #ff6b6b;
+  box-shadow: 1.5px 1.5px 0 #161420;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.party-remove-btn:hover {
+  background: #c92a2a;
+  border-color: #ffc9c9;
+  color: #ffffff;
+}
+
+.party-remove-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0.5px 0.5px 0 #161420;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .party-side-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 /* Handheld Active Squad Manager (mode === 'squad') */
@@ -16879,7 +16924,9 @@ body,
 
   .surv-party-list.is-mobile-open .surv-party-cards-wrap {
     display: flex;
-    width: 124px;
+    width: 180px;
+    padding-right: 56px;
+    box-sizing: border-box;
     max-height: 44dvh;
     overflow-y: auto;
   }
@@ -16953,7 +17000,9 @@ body,
 
   .surv-party-list.is-mobile-open .surv-party-cards-wrap {
     display: flex;
-    width: 126px;
+    width: 182px;
+    padding-right: 56px;
+    box-sizing: border-box;
     max-height: 52dvh;
     overflow-y: auto;
   }
