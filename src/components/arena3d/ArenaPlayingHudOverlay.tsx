@@ -2,7 +2,7 @@ import { MONSTER_QUALITY_META } from './arenaTypesAndProps';
 import type { ArenaSharedCtx } from './arenaTypesAndProps';
 import React from 'react';
 import { SURVIVOR_SKILLS, WORLD_TOWNS_3D } from '../../data/survivorsTactics';
-import { GYM_BADGE_CATALOG, getActiveTrainerTagDef } from '../../data/metaProgression';
+import { GYM_BADGE_CATALOG, getActiveTrainerTagDef, type GymBadgeId } from '../../data/metaProgression';
 import { ShopOverlay } from '../ShopOverlay';
 import { WorldMapHud } from '../WorldMapHud';
 import { sound } from '../../utils/sound';
@@ -44,6 +44,142 @@ const POKEBALL_RING_GRID: string[] = [
   '.....KKWWWWSSSSKK.....',
   '.......KKKKKKKK.......',
 ];
+
+const TRAINER_EMBLEM_GRID: string[] = [
+  '.KKKKKKKKKK.',
+  'KHHHHHHHHHHK',
+  'KCCCCCCCCCCK',
+  'KCCCYYYYCCCK',
+  'KCCYYWWYYCCK',
+  'KCCKKKKKKCCK',
+  '.KCCWWWWCCK.',
+  '.KCCCCCCCCK.',
+  '..KCCCCCCK..',
+  '...KCCCCK...',
+  '....KKKK....',
+  '............',
+];
+
+const GYM_BADGE_PIXEL_ART: Record<
+  GymBadgeId,
+  { grid: string[]; palette: Record<string, string> }
+> = {
+  boulder_badge: {
+    palette: { K: '#161420', W: '#ffffff', L: '#dee2e6', G: '#adb5bd', D: '#6c757d' },
+    grid: [
+      '...KKKKKK...',
+      '..KLLLLLLK..',
+      '.KLWWWWLLGK.',
+      'KLWWGGGGGGDK',
+      'KLWGGGGGGGGK',
+      'KLGGGGGGGGDK',
+      'KGGGGGGGGDDK',
+      'KGGGGGGGDDDK',
+      '.KGGGGGDDDK.',
+      '..KDDDDDDK..',
+      '...KKKKKK...',
+      '............',
+    ],
+  },
+  cascade_badge: {
+    palette: { K: '#10233b', W: '#ffffff', L: '#74c0fc', B: '#228be6', D: '#1864ab' },
+    grid: [
+      '.....KK.....',
+      '....KLLK....',
+      '...KLWWLK...',
+      '..KLWBBBLK..',
+      '.KLWBBBBBLK.',
+      '.KLBBBBBBBK.',
+      'KLBBBBBBBBBK',
+      'KBBBBBBBBBDK',
+      '.KBBBBBBBDK.',
+      '..KDDDDDDK..',
+      '...KKKKKK...',
+      '............',
+    ],
+  },
+  thunder_badge: {
+    palette: { K: '#3b2200', W: '#fff9db', Y: '#ffd43b', O: '#f08c00' },
+    grid: [
+      '.....KK.....',
+      '.KK..YY..KK.',
+      '.KYYKYYKYYK.',
+      '..KYYYYYYK..',
+      '.KYYWWWWYYK.',
+      'KYYWWOOOWYYK',
+      'KYYWOOOOYYYK',
+      '.KYYOOOOYYK.',
+      '..KYYYYYYK..',
+      '.KYYKYYKYYK.',
+      '.KK..KK..KK.',
+      '............',
+    ],
+  },
+  rainbow_badge: {
+    palette: { K: '#162818', R: '#ff6b6b', B: '#4dabf7', G: '#51cf66', P: '#cc5de8', Y: '#ffe066' },
+    grid: [
+      '....KKKK....',
+      '...KRRRRK...',
+      '.KKRRRRRRKK.',
+      'KBBBBYYGGGGK',
+      'KBBBYYYYGGGK',
+      'KBBBYYYYGGGK',
+      '.KKBYYYYGKK.',
+      '..KPPPPPPK..',
+      '..KPPPPPPK..',
+      '...KKKKKK...',
+      '............',
+      '............',
+    ],
+  },
+  volcano_badge: {
+    palette: { K: '#2b0b0e', W: '#fff9db', Y: '#ffd43b', R: '#fa5252' },
+    grid: [
+      '.....KK.....',
+      '....KRRK....',
+      '..KKRRRRKK..',
+      '.KRRRYYRRRK.',
+      'KRRRYWWYRRRK',
+      'KRRRYYYYRRRK',
+      'KRRRRYYRRRRK',
+      '.KRRRRRRRRK.',
+      '..KRRRRRRK..',
+      '...KKKKKK...',
+      '............',
+      '............',
+    ],
+  },
+  earth_badge: {
+    palette: { K: '#122618', L: '#8ce99a', G: '#2f9e44', Y: '#fcc419' },
+    grid: [
+      '.....KK.....',
+      '....KLLK....',
+      '..KKLLLLKK..',
+      '.KLLGGGGLLK.',
+      'KLLGGYYGGLLK',
+      '.KLLGYYGLLK.',
+      '..KLGYYGLK..',
+      '...KGYYGK...',
+      '....KYYK....',
+      '...KKKKKK...',
+      '............',
+      '............',
+    ],
+  },
+};
+
+const LOCKED_BADGE_PALETTE: Record<string, string> = {
+  K: '#141522',
+  W: '#6c738a',
+  L: '#5c6278',
+  G: '#494f63',
+  B: '#494f63',
+  R: '#494f63',
+  P: '#43485c',
+  Y: '#5c6278',
+  O: '#43485c',
+  D: '#363b4d',
+};
 
 function formatHudDistance(distM: number): string {
   if (!Number.isFinite(distM) || distM <= 0) return '0 m';
@@ -163,7 +299,14 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
             <div className="hud-col-left">
               {(() => {
                 const activeTag = getActiveTrainerTagDef(meta);
-                const badgeCount = (meta.unlockedBadges ?? []).length;
+                const earnedSet = new Set(meta.unlockedBadges ?? []);
+                const trainerPalette: Record<string, string> = {
+                  K: '#12101a',
+                  C: activeTag.color,
+                  H: '#ffffff',
+                  Y: '#ffe066',
+                  W: '#fffdf5',
+                };
                 return (
                   <div className="surv-hero-card">
                     <div className="surv-hero-avatar">
@@ -199,18 +342,39 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                       </div>
                       <div className="surv-hero-sub-badges">
                         <span
-                          className="top-trainer-tag"
-                          style={{ borderColor: activeTag.color, color: activeTag.color }}
+                          className="hero-badge-slot is-trainer-emblem is-earned"
+                          style={{ borderColor: activeTag.color }}
+                          title={`训练师头衔：${activeTag.name}\n加成：${activeTag.perkText}`}
                         >
-                          {activeTag.name}
+                          <PixelGrid
+                            grid={TRAINER_EMBLEM_GRID}
+                            palette={trainerPalette}
+                            size={15}
+                          />
                         </span>
-                        <span
-                          className="top-badge-mini"
-                          title={`已收集 ${badgeCount}/${GYM_BADGE_CATALOG.length} 枚道馆徽章`}
-                        >
-                          <PixelItemImg src="/sprites/items/kings-rock.png" size={11} />
-                          <span>徽章 {badgeCount}/{GYM_BADGE_CATALOG.length}</span>
-                        </span>
+                        <span className="hero-badge-divider" aria-hidden="true" />
+                        {GYM_BADGE_CATALOG.map((badge) => {
+                          const isEarned = earnedSet.has(badge.id);
+                          const art = GYM_BADGE_PIXEL_ART[badge.id];
+                          return (
+                            <span
+                              key={badge.id}
+                              className={`hero-badge-slot ${isEarned ? 'is-earned' : 'is-unearned'}`}
+                              style={isEarned ? { borderColor: badge.color } : undefined}
+                              title={
+                                isEarned
+                                  ? `已获得：${badge.name}（${badge.gymName} · ${badge.leaderName}）\n加成：${badge.perkText}`
+                                  : `未获得：${badge.name}（${badge.gymName}）\n获取条件：${badge.unlockHint}`
+                              }
+                            >
+                              <PixelGrid
+                                grid={art.grid}
+                                palette={isEarned ? art.palette : LOCKED_BADGE_PALETTE}
+                                size={15}
+                              />
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>

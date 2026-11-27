@@ -11573,11 +11573,11 @@ button.gba-status-box.is-clickable-card {
 .surv-hero-card {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  min-width: 248px;
+  gap: 9px;
+  min-width: 256px;
   height: var(--hud-top-card-h);
   min-height: var(--hud-top-card-h);
-  padding: 5px 11px 5px 7px;
+  padding: 6px 10px 6px 6px;
   background: linear-gradient(180deg, rgba(28, 30, 48, 0.94), rgba(16, 18, 30, 0.94));
   border: 2px solid #12101a;
   box-shadow: 3px 3px 0 rgba(9, 8, 15, 0.94), inset 0 1px 0 rgba(255, 255, 255, 0.14);
@@ -11586,21 +11586,22 @@ button.gba-status-box.is-clickable-card {
 
 .surv-hero-avatar {
   position: relative;
-  width: 50px;
-  height: 50px;
+  width: 60px;
+  height: 60px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(180deg, #fff9db, #ffe8a3);
-  border: 2px solid #ffe066;
-  outline: 2px solid #12101a;
-  overflow: visible;
+  border: 2px solid #12101a;
+  box-shadow: inset 0 0 0 2px #ffe066;
+  outline: none;
+  overflow: hidden;
 }
 
 .surv-hero-avatar img {
-  width: 46px;
-  height: 46px;
+  width: 52px;
+  height: 52px;
   object-fit: contain;
   image-rendering: pixelated;
 }
@@ -11608,11 +11609,12 @@ button.gba-status-box.is-clickable-card {
 .surv-hero-avatar em {
   position: absolute;
   left: 50%;
-  bottom: -6px;
+  bottom: 2px;
   transform: translateX(-50%);
-  padding: 0 5px;
+  padding: 0 4px;
   font-style: normal;
   font-size: 9px;
+  line-height: 1.1;
   font-weight: 900;
   color: #161420;
   background: #ffe066;
@@ -11622,19 +11624,53 @@ button.gba-status-box.is-clickable-card {
 
 .surv-hero-info {
   flex: 1;
-  min-width: 176px;
+  min-width: 172px;
+  height: 60px;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 3px;
+  justify-content: space-between;
+  gap: 0;
 }
 
 .surv-hero-sub-badges {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  margin-top: 1px;
+  gap: 3px;
+  margin-top: 0;
+}
+
+.hero-badge-slot {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 11, 18, 0.86);
+  border: 1.5px solid #2b2e44;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.hero-badge-slot.is-earned {
+  background: rgba(20, 22, 36, 0.95);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 4px rgba(255, 224, 102, 0.16);
+}
+
+.hero-badge-slot.is-unearned {
+  opacity: 0.56;
+  background: rgba(10, 11, 18, 0.65);
+  border-color: #25283b;
+}
+
+.hero-badge-divider {
+  width: 2px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  margin: 0 1px;
+  flex-shrink: 0;
 }
 
 .surv-hero-top {
@@ -15649,23 +15685,38 @@ body,
     width: 100%;
     height: 54px;
     min-height: 54px;
-    padding: 3px 6px 3px 4px;
+    padding: 4px 6px 4px 4px;
     gap: 6px;
   }
 
   .surv-hero-avatar {
-    width: 34px;
-    height: 34px;
+    width: 42px;
+    height: 42px;
   }
 
   .surv-hero-avatar img {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
   }
 
   .surv-hero-info {
     min-width: 0;
-    gap: 3px;
+    height: 42px;
+    gap: 0;
+  }
+
+  .hero-badge-slot {
+    width: 15px;
+    height: 15px;
+  }
+
+  .hero-badge-slot svg {
+    width: 11px;
+    height: 11px;
+  }
+
+  .hero-badge-divider {
+    height: 10px;
   }
 
   .surv-hero-top strong {
@@ -16603,27 +16654,38 @@ body,
   }
 
   .surv-hero-card {
-    min-width: 152px;
-    max-width: 205px;
+    min-width: 170px;
+    max-width: 220px;
     height: 48px;
     min-height: 48px;
-    padding: 3px 6px 3px 4px;
+    padding: 4px 6px 4px 4px;
     gap: 6px;
   }
 
   .surv-hero-avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .surv-hero-avatar img {
     width: 30px;
     height: 30px;
   }
 
-  .surv-hero-avatar img {
-    width: 28px;
-    height: 28px;
+  .surv-hero-info {
+    min-width: 112px;
+    height: 36px;
+    gap: 0;
   }
 
-  .surv-hero-info {
-    min-width: 96px;
-    gap: 3px;
+  .hero-badge-slot {
+    width: 14px;
+    height: 14px;
+  }
+
+  .hero-badge-slot svg {
+    width: 10px;
+    height: 10px;
   }
 
   .surv-hero-top strong {
