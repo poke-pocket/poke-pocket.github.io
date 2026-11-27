@@ -1,0 +1,69 @@
+/* =========================================================================
+   UNIVERSAL OVERFLOW / SAFE-AREA / TEXT-TRUNCATION & TOUCH DEVICE GUARDS
+   ========================================================================= */
+html,
+body,
+#root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.world3d-root-layer,
+.world3d-stage {
+  height: 100dvh;
+}
+
+.meta-panel,
+.surv-result-fullscreen {
+  height: 100dvh;
+}
+
+/* Prevent flex/grid children from pushing outside their boxes */
+.pkb-trainer-meta,
+.pkb-cta-txt,
+.pkb-sub-cta > .pkb-unskew-inner > div:last-child,
+.surv-hero-info,
+.party-info,
+.ko-prompt-meta,
+.bounty-info,
+.hero-pick-info,
+.gba-status-box,
+.lcd-submenu-head > .inline-icon-row {
+  min-width: 0;
+}
+
+.pkb-trainer-name,
+.pkb-trainer-sub,
+.party-head-line strong,
+.surv-hero-top strong,
+.gba-name-line strong,
+.top-deck-wing strong,
+.top-trainer-tag,
+.lcd-submenu-head-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pkb-cta-txt small,
+.pkb-sub-cta small,
+.pkb-ms-title-card p,
+.lab-card p,
+.bounty-info small,
+.news-card p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Hide desktop keyboard hints on touch devices for a clean native-app look */
+@media (pointer: coarse) {
+  .px-keycap,
+  .surv-cam-hint,
+  .surv-interact-key,
+  .pkb-launch-cta em,
+  .pkb-esc-btn em,
+  .mm-tab-chip {
+    display: none !important;
+  }
+}
+

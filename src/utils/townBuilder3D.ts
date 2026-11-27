@@ -25,7 +25,7 @@ import {
 } from '../world3d/townAssetLoader';
 import { getGroundTex } from '../world3d/townGroundTextures';
 import { createRoadKitJunctionStreamer, createRoadKitStreetlight, getRoadKitTexture, planRoadKitJunctions, roadLaneCount, type RoadKitCut } from '../world3d/roadModelStyle3D';
-import { buildRoadContinuity } from '../world3d/roadKitContinuity';
+import { buildRoadContinuity, roadsidePlantingStations } from '../world3d/roadKitContinuity';
 import { buildRoadKitDrains } from '../world3d/roadKitDrains3D';
 import { createRoadKitNetworkStreamer } from '../world3d/roadKitNetwork3D';
 import { roadSidewalkOuterHalfWidth } from '../world3d/roadKitDimensions';
@@ -249,14 +249,13 @@ export function buildProceduralTown3D(
         ? floraTex.flowers[idx % floraTex.flowers.length] ?? floraTex.flower
         : floraTex.bushes[idx % floraTex.bushes.length] ?? floraTex.bush;
 
-    if (seg.kind === 'arterial' && segLen >= 26) {
+    if (seg.kind === 'arterial') {
       // Keep asphalt lanes & center median 100% unobstructed — plant street trees ONLY along outer sidewalks at spacious 19m intervals!
       const vergeOff = roadSidewalkOuterHalfWidth(seg.width) + 1.15;
-      const sideSteps = Math.max(1, Math.floor((segLen - 12) / 19.0));
-      for (let si = 0; si < sideSteps; si++) {
-        const f = 0.14 + (sideSteps > 1 ? (si / (sideSteps - 1)) * 0.72 : 0.36);
-        const sx = seg.x1 + dirX * (segLen * f);
-        const sz = seg.z1 + dirZ * (segLen * f);
+      for (const station of roadsidePlantingStations(segLen,19,roadJoins.get(seg))) {
+        const si=station.slot;
+        const sx = seg.x1 + dirX * station.distance;
+        const sz = seg.z1 + dirZ * station.distance;
         for (const side of [-1, 1]) {
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;
@@ -272,13 +271,12 @@ export function buildProceduralTown3D(
       }
     }
 
-    if (seg.kind === 'street' && segLen >= 28) {
+    if (seg.kind === 'street') {
       const vergeOff = roadSidewalkOuterHalfWidth(seg.width) + 0.95;
-      const stepCount = Math.max(1, Math.floor((segLen - 12) / 21.0));
-      for (let ti = 0; ti < stepCount; ti++) {
-        const tFrac = 0.16 + (stepCount > 1 ? (ti / (stepCount - 1)) * 0.68 : 0.34);
-        const sx = seg.x1 + dirX * (segLen * tFrac);
-        const sz = seg.z1 + dirZ * (segLen * tFrac);
+      for (const station of roadsidePlantingStations(segLen,21,roadJoins.get(seg))) {
+        const ti=station.slot;
+        const sx = seg.x1 + dirX * station.distance;
+        const sz = seg.z1 + dirZ * station.distance;
         for (const side of [-1, 1]) {
           const tx = sx + nx * side * vergeOff;
           const tz = sz + nz * side * vergeOff;

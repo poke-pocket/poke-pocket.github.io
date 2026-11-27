@@ -1,0 +1,238 @@
+/* Pokédex+ 5-Tab Encyclopedia inside Handheld LCD */
+.lcd-subtabs.is-dex-tabs {
+  gap: 3px;
+}
+
+.lcd-subtabs.is-dex-tabs .lcd-subtab {
+  padding: 3px 6px;
+  font-size: 10px;
+}
+
+.dex-overview-wrap,
+.dex-journey-wrap,
+.dex-items-wrap,
+.train-tab-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 2px 6px;
+}
+
+.dex-overview-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: #fffdf4;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.dex-donut {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #161420;
+  flex-shrink: 0;
+}
+
+.dex-donut-inner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #fffdf4;
+  border: 1.5px solid #161420;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  line-height: 1.05;
+  font-weight: 800;
+}
+
+.dex-donut-inner small {
+  font-size: 7px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.dex-rank-kicker {
+  display: block;
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.dex-rank-title {
+  font-size: 14px;
+  color: #161420;
+}
+
+.dex-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.dex-cat-card {
+  padding: 8px;
+  text-align: left;
+  background: #fffdf4;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dex-cat-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.dex-cat-count {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+}
+
+.dex-cat-bar {
+  height: 6px;
+  background: #e9ecef;
+  border: 1.5px solid #161420;
+}
+
+.dex-cat-fill {
+  height: 100%;
+  background: #2f9e44;
+}
+
+.dex-cat-foot {
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.dex-skill-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dex-skill-card {
+  padding: 7px;
+  background: #fffdf4;
+  border: 2px solid #161420;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dex-skill-card.is-locked {
+  opacity: 0.6;
+}
+
+.dex-skill-desc {
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.dex-mastery-badge {
+  align-self: flex-start;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 800;
+  background: #d3f9d8;
+  border: 1px solid #161420;
+}
+
+.dex-section-bar {
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  background: #1c1f2e;
+  color: #ffe066;
+}
+
+.dex-item-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.dex-item-card {
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: #fffdf4;
+  border: 1.5px solid #161420;
+  font-size: 10px;
+}
+
+.dex-item-card.is-missing {
+  opacity: 0.52;
+}
+
+.dex-item-ico.is-dim {
+  filter: grayscale(1);
+}
+
+.dex-item-state {
+  font-size: 8px;
+  color: var(--ink-soft);
+}
+
+.dex-medal-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.dex-medal-row.is-diff-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dex-medal-card,
+.dex-diff-badge {
+  padding: 6px 4px;
+  text-align: center;
+  background: #fffdf4;
+  border: 1.5px solid #161420;
+  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dex-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.dex-kpi-card {
+  padding: 6px 4px;
+  text-align: center;
+  background: #fff9db;
+  border: 1.5px solid #161420;
+  display: flex;
+  flex-direction: column;
+}
+
+.dex-kpi-card strong {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+}
+
+.dex-kpi-card small {
+  font-size: 8px;
+  color: var(--ink-soft);
+}
+

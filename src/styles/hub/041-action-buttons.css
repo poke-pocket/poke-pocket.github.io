@@ -1,0 +1,60 @@
+/* Dynamic Angled Parallelogram Hero Buttons on Main Hub */
+.pkb-hero-cta.is-parallelogram,
+.pkb-sub-cta.is-parallelogram {
+  position: relative;
+  overflow: hidden;
+  transform: skewX(-7deg);
+  margin-inline: 5px;
+  transition:
+    transform 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.14s ease,
+    filter 0.14s ease;
+}
+
+.pkb-hero-cta.is-parallelogram::after,
+.pkb-sub-cta.is-parallelogram::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -60%;
+  width: 36%;
+  height: 140%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), transparent);
+  transform: skewX(18deg);
+  pointer-events: none;
+  transition: left 0.38s ease;
+}
+
+.pkb-hero-cta.is-parallelogram:hover::after,
+.pkb-sub-cta.is-parallelogram:hover::after {
+  left: 120%;
+}
+
+.pkb-hero-cta.is-parallelogram:hover {
+  transform: skewX(-7deg) translate(-2px, -2px);
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.45),
+    7px 7px 0 #161420;
+}
+
+.pkb-sub-cta.is-parallelogram:hover {
+  filter: brightness(1.07);
+  transform: skewX(-7deg) translate(-2px, -2px);
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.4),
+    6px 6px 0 #161420;
+}
+
+.pkb-hero-cta.is-parallelogram:active,
+.pkb-sub-cta.is-parallelogram:active {
+  transform: skewX(-7deg) translate(3px, 3px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+.pkb-unskew-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transform: skewX(7deg);
+}
+

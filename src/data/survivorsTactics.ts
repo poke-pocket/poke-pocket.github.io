@@ -11,7 +11,7 @@ import { roadSurfaceY, ROAD_WALK_CLEARANCE } from '../world3d/roadKitSurface';
 import { renderedTerrainHeight } from '../world3d/renderedTerrain3D';
 import { roadSidewalkOuterHalfWidth } from '../world3d/roadKitDimensions';
 import { gradeFoundationHeight, planBuildingFoundation, type FoundationPlan } from '../world3d/buildingFoundation3D';
-import { buildUrbanRegion, urbanGroundWeight, type UrbanRegion } from '../world3d/urbanGround3D';
+import { buildUrbanRegion, isUrbanWildTreeExcluded, urbanGroundWeight, type UrbanRegion } from '../world3d/urbanGround3D';
 
 export type SurvivorSkillId =
   | 'thunderbolt'
@@ -610,6 +610,7 @@ const activeUrbanRegions:UrbanRegion[]=[];
 export function getBuildingFoundationPlan3D(id:string):FoundationPlan|undefined{return activeFoundationPlans.get(id)}
 export function getUrbanRegions3D():readonly UrbanRegion[]{return activeUrbanRegions}
 export function urbanGroundWeight3D(x:number,z:number):number{return urbanGroundWeight(activeUrbanRegions,x,z)}
+export function isUrbanWildTreeExcluded3D(x:number,z:number):boolean{return isUrbanWildTreeExcluded(activeUrbanRegions,x,z)}
 
 export function registerActiveTownRoadLayouts3D(
   specs: {

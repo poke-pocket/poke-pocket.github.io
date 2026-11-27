@@ -1,0 +1,96 @@
+/* Mini-Games inside LCD */
+.lcd-minigame {
+  position: relative;
+  z-index: 5;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #e9f5db;
+  color: var(--ink);
+}
+
+.lcd-minigame-hud {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  background: #cfe1b9;
+  border-bottom: 2px solid var(--ink);
+}
+
+.hud-lives {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.lcd-minigame-arena {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.falling-item {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.minigame-player {
+  position: absolute;
+  bottom: 4px;
+  transform: translateX(-50%);
+  transition: left 0.08s linear;
+}
+
+.lcd-minigame-banner {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 30, 0.78);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-family: var(--font-pixel);
+}
+
+.lcd-minigame-hint {
+  padding: 3px 6px;
+  font-size: 10px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.78);
+  border-top: 2px solid var(--ink);
+}
+
+.lcd-peekaboo-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+}
+
+.peekaboo-pet { transition: transform 0.22s ease; }
+.peekaboo-pet.look-left { transform: translateX(-34px); }
+.peekaboo-pet.look-right { transform: translateX(34px); }
+
+.peekaboo-prompt { font-size: 12px; font-weight: 700; }
+
+.peekaboo-actions { display: flex; gap: 12px; }
+
+.lcd-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #fff;
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  border-radius: 0;
+}
+

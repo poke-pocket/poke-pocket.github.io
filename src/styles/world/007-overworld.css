@@ -1,0 +1,390 @@
+/* ===================================================
+   OPEN-WORLD POKEMON SURVIVORS & ROADSIDE SAFE ZONES
+   =================================================== */
+.survivors-screen {
+  position: relative;
+  z-index: 6;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #52ad50;
+  color: var(--ink);
+  user-select: none;
+}
+
+.survivors-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.surv-xp-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 8;
+  height: 11px;
+  background: #1c1926;
+  border-bottom: 2px solid #1c1926;
+  pointer-events: none;
+}
+
+.surv-xp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #228be6 0%, #4dabf7 100%);
+  transition: width 0.12s steps(6);
+}
+
+.surv-lv-tag {
+  position: absolute;
+  right: 5px;
+  top: -1px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  line-height: 10px;
+  color: #fff;
+  text-shadow: 1px 1px 0 #1c1926;
+}
+
+.surv-hud-row {
+  position: absolute;
+  top: 14px;
+  left: 6px;
+  right: 6px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.surv-weapons-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: auto;
+}
+
+.surv-wep-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: rgba(255, 253, 244, 0.92);
+  border: 2px solid var(--ink);
+  box-shadow: 1.5px 1.5px 0 var(--ink);
+}
+
+.surv-minion-ico {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.surv-wep-chip em {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  line-height: 9px;
+  padding: 0 2px;
+  background: #1c1926;
+  color: #ffe066;
+}
+
+.surv-clock {
+  padding: 2px 7px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: #fffdf5;
+  background: rgba(28, 25, 38, 0.85);
+  border: 2px solid #fffdf5;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+.surv-clock.is-safe {
+  background: #2f9e44;
+  border-color: #d3f9d8;
+  color: #fff;
+}
+
+.surv-right-stats {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.surv-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 5px;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: #fff;
+  background: rgba(28, 25, 38, 0.84);
+  border: 2px solid #1c1926;
+}
+
+.surv-stat-pill.is-coin {
+  color: #ffe066;
+}
+
+.surv-top-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--ink);
+  background: #fffdf5;
+  border: 2px solid var(--ink);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.75),
+    1.5px 1.5px 0 var(--ink);
+  border-radius: 0;
+}
+
+.surv-top-btn.is-ball {
+  background: #fff3bf;
+}
+
+.surv-top-btn:active {
+  transform: translate(1.5px, 1.5px);
+  box-shadow: 0 0 0 var(--ink);
+}
+
+.surv-compass-pill {
+  position: absolute;
+  top: 44px;
+  left: 6px;
+  z-index: 8;
+  padding: 2px 7px;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: #d3f9d8;
+  background: rgba(24, 62, 34, 0.88);
+  border: 2px solid #51cf66;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.surv-safe-actions {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.surv-safe-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+  color: var(--ink);
+  background: #fffdf5;
+  border: 2px solid var(--ink);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.75),
+    2px 2px 0 var(--ink);
+  border-radius: 0;
+  white-space: nowrap;
+}
+
+.surv-safe-btn.is-heal {
+  background: #d3f9d8;
+}
+
+.surv-safe-btn.is-shop {
+  background: #fff3bf;
+}
+
+.surv-safe-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--ink);
+}
+
+.surv-event-banner {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
+  right: 8px;
+  z-index: 8;
+  padding: 3px 8px;
+  font-size: 10px;
+  text-align: center;
+  color: #fffdf5;
+  background: rgba(24, 24, 34, 0.82);
+  border: 2px solid #fffdf5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.surv-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(18, 20, 28, 0.74);
+}
+
+.surv-upgrade-box {
+  width: 100%;
+  max-width: 396px;
+  max-height: 344px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  background: #fffdf5;
+  border: 3px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  overflow-y: auto;
+}
+
+.surv-upgrade-head {
+  padding: 4px 7px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: #fff;
+  background: #23293a;
+  border: 2px solid var(--ink);
+  text-align: center;
+}
+
+.shop-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  text-align: left;
+}
+
+.shop-coin-badge {
+  color: #ffe066;
+  font-size: 10px;
+}
+
+.surv-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.surv-choice-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--ink);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.8),
+    2px 2px 0 var(--ink);
+  border-radius: 0;
+}
+
+.surv-choice-card:hover:not(:disabled) {
+  background: #fff9db;
+}
+
+.surv-choice-card:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--ink);
+}
+
+.surv-choice-card:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.surv-choice-icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f1e4;
+  border: 2px solid var(--ink);
+}
+
+.surv-choice-img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.surv-choice-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.surv-choice-info strong {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.surv-choice-info small {
+  font-size: 10px;
+  color: var(--ink-soft);
+  line-height: 1.3;
+}
+
+.surv-lv-badge,
+.surv-price-tag {
+  margin-left: auto;
+  padding: 0 5px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #fff;
+  background: #228be6;
+  border: 1px solid var(--ink);
+}
+
+.surv-price-tag {
+  background: #f59f00;
+  color: #1c1926;
+}
+
+.surv-result-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 6px;
+  background: #f5f1e4;
+  border: 2px solid var(--ink);
+  font-size: 11px;
+}
+

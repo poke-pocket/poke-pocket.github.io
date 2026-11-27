@@ -1,0 +1,36 @@
+/* Mobile Portrait & Landscape adaptation for Pixel World Map */
+@media (max-width: 820px) {
+  .wt-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 42dvh minmax(0, 1fr);
+  }
+
+  .wt-drawer {
+    border-left: none;
+    border-top: 3px solid #161420;
+    padding: 8px 10px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .wt-status-pill {
+    order: 3;
+    width: 100%;
+  }
+}
+
+@media (max-height: 560px) and (orientation: landscape) {
+  .wt-header {
+    padding: 5px 10px;
+  }
+
+  .wt-body {
+    grid-template-columns: minmax(0, 1.15fr) minmax(270px, 320px);
+    grid-template-rows: 1fr;
+  }
+
+  .wt-drawer {
+    border-left: 3px solid #161420;
+    border-top: none;
+    padding: 8px;
+  }
+}
+

@@ -1,0 +1,323 @@
+/* =========================================================================
+   UPGRADED TOP-CENTER BATTLE STATUS DECK + TOP EVENT BANNER + EXIT RUN BUTTON
+   ========================================================================= */
+.surv-top-status-deck {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: linear-gradient(180deg, rgba(28, 30, 48, 0.95), rgba(16, 18, 30, 0.95));
+  border: 2px solid #12101a;
+  box-shadow: 3px 3px 0 rgba(9, 8, 15, 0.94), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  pointer-events: auto;
+}
+
+.surv-top-status-main {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  min-height: calc(var(--hud-top-card-h) - 4px);
+}
+
+.surv-top-nav-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 10px;
+  background: linear-gradient(90deg, rgba(48, 40, 16, 0.95), rgba(20, 24, 38, 0.96));
+  border-top: 2px solid #2b2d44;
+  color: #fff9db;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.surv-top-nav-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.surv-top-nav-compass {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.surv-top-nav-name {
+  color: #fff3bf;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 230px;
+}
+
+.surv-top-nav-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.surv-top-nav-dist {
+  padding: 1px 7px;
+  background: rgba(255, 212, 59, 0.18);
+  border: 1.5px solid #ffd43b;
+  color: #ffe066;
+  font-size: 11.5px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+.surv-top-nav-eta {
+  padding: 1px 7px;
+  background: rgba(99, 230, 190, 0.16);
+  border: 1.5px solid #63e6be;
+  color: #96f2d7;
+  font-size: 11px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.surv-top-nav-cancel {
+  padding: 1px 7px;
+  background: #ff6b6b;
+  color: #fff;
+  border: 1.5px solid #12101a;
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 1px 1px 0 #12101a;
+}
+
+.surv-top-nav-cancel:hover {
+  background: #fa5252;
+}
+
+@media (max-width: 760px) {
+  .surv-top-nav-strip {
+    padding: 3px 7px;
+    gap: 6px;
+    font-size: 10px;
+  }
+  .surv-top-nav-name {
+    max-width: 135px;
+  }
+  .surv-top-nav-dist,
+  .surv-top-nav-eta {
+    font-size: 10px;
+    padding: 1px 5px;
+  }
+}
+
+.top-deck-wing {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 14px;
+  min-width: 132px;
+}
+
+.top-deck-wing.is-left {
+  align-items: flex-start;
+  border-right: 2px solid #2b2d44;
+}
+
+.top-deck-wing.is-left strong {
+  font-size: 13px;
+  font-weight: 900;
+  color: #fffdf5;
+  line-height: 1.15;
+}
+
+.top-deck-sub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.top-deck-sub i {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 900;
+  color: #161420;
+  padding: 0 4px;
+  border: 1px solid #12101a;
+}
+
+.top-diff-tag {
+  font-size: 9px;
+  font-weight: 900;
+  padding: 0 4px;
+  color: #161420;
+  background: #69db7c;
+  border: 1px solid #12101a;
+}
+
+.top-diff-tag.is-hard {
+  background: #ffa94d;
+}
+
+.top-diff-tag.is-nightmare {
+  background: #ff6b6b;
+  color: #fff;
+}
+
+.top-deck-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  min-width: 158px;
+  max-width: 220px;
+  background: rgba(12, 13, 22, 0.72);
+  gap: 5px;
+}
+
+.top-deck-center.is-bgm-deck:hover {
+  background: rgba(24, 26, 42, 0.88);
+}
+
+.top-bgm-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #ffe066;
+  line-height: 1.1;
+}
+
+.top-deck-center.is-muted .top-bgm-head {
+  color: #868e96;
+}
+
+.top-bgm-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 10px;
+}
+
+.top-bgm-eq i {
+  display: block;
+  width: 2.5px;
+  height: 8px;
+  background: #69db7c;
+  animation: pixelEqBounce 0.65s steps(3, end) infinite alternate;
+}
+
+.top-bgm-eq i:nth-child(2) {
+  height: 10px;
+  background: #ffe066;
+  animation-delay: 0.18s;
+}
+
+.top-bgm-eq i:nth-child(3) {
+  height: 6px;
+  background: #74c0fc;
+  animation-delay: 0.34s;
+}
+
+@keyframes pixelEqBounce {
+  0% {
+    transform: scaleY(0.35);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+.top-deck-center strong.top-bgm-title {
+  font-size: 12px;
+  font-weight: 900;
+  color: #fffdf5;
+  line-height: 1.2;
+  max-width: 192px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-deck-center.is-muted strong.top-bgm-title {
+  color: #adb5bd;
+}
+
+.top-deck-wing.is-right {
+  align-items: flex-end;
+}
+
+.top-time-phase-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.top-live-clock {
+  font-size: 14px;
+  font-weight: 900;
+  color: #fffdf5;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.top-trainer-tag {
+  font-size: 10.5px;
+  font-weight: 900;
+  padding: 2px 6px;
+  background: rgba(12, 13, 22, 0.8);
+  border: 1.5px solid #4dabf7;
+  line-height: 1.2;
+}
+
+.top-trainer-tag.is-phase-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.top-badge-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #ffe066;
+}
+
+.surv-event-banner.is-top-banner {
+  top: 96px !important;
+  bottom: auto !important;
+  height: auto !important;
+  padding: 5px 14px !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  z-index: 20;
+}
+
+.moba-btn.is-primary.is-jump-main {
+  background: linear-gradient(180deg, #fffdf4, #f0e6c8);
+}
+
+.moba-btn.is-ball {
+  background: linear-gradient(180deg, #fff3bf, #ffd43b);
+}
+
+.moba-btn.is-ball.is-pulse,
+.moba-btn.is-ball.is-picker-open {
+  outline: 3px solid #ffe066;
+}
+
+.moba-btn.is-ball.is-pulse {
+  animation: mobaPulse 0.9s infinite alternate ease-in-out;
+}
+
+.moba-btn.is-salvo {
+  background: linear-gradient(180deg, #d0ebff, #4dabf7);
+}
+

@@ -1,0 +1,17 @@
+/* 4. Hub Layout: Always Single-Row 4-Tile Core Dock + Always-Visible More + Shifted Slightly Lower */
+.pkb-hub-body {
+  margin-top: auto !important;
+  margin-bottom: 10px !important;
+  align-items: flex-end !important;
+}
+
+.pkb-dock-row.is-single-row {
+  display: grid !important;
+  gap: 8px;
+  width: 100%;
+}
+
+.pkb-more-btn.is-always-visible {
+  display: inline-flex !important;
+}
+

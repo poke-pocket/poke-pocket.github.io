@@ -1,0 +1,39 @@
+/* =========================================================================
+   SETTINGS OVERLAP FIX, LEFT KEYS/GAMEPAD TABS, PIKACHU CRY AUDITION PICKER,
+   SINGLE-ROW HUB DOCK + LOWER HUB ANCHOR, SQUARE GUARDIAN TILES & PORTRAIT DIFFICULTY
+   ========================================================================= */
+
+/* 1. Fix Settings card title + subtitle overlap (ONLY stack label containers, never button rows!) */
+.settings-card-head > div:not(.inline-icon-row) {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-card-head .inline-icon-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.settings-card-head.is-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.settings-card-head.is-stacked .inline-icon-row {
+  flex-wrap: wrap;
+}
+
+.audio-track-hint {
+  display: block;
+  font-size: 9.5px;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+

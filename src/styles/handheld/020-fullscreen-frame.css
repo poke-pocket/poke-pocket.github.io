@@ -1,0 +1,57 @@
+/* Native Handheld Console Bezel Frame Bar (Shell Mode Popup over 3D) */
+.console-frame-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 530px;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.console-frame-btn {
+  padding: 6px 12px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--ink);
+  background: #fffdf5;
+  border: 2.5px solid #161420;
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.85),
+    3px 3px 0 #161420;
+  border-radius: 0;
+}
+
+.console-frame-btn.is-fs {
+  background: #ffe066;
+}
+
+.console-frame-btn.is-close {
+  background: #d3f9d8;
+}
+
+.console-frame-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+/* Native Integrated Top Bar inside Fullscreen LCD */
+.lcd-fs-native-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 38px;
+  padding: 6px 12px;
+  background: #23293a;
+  color: #fffdf5;
+  border-bottom: 2.5px solid var(--ink);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.lcd-fs-native-bar strong {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  font-weight: 400;
+}
+

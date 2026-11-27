@@ -1,0 +1,56 @@
+/* Complete 3D Adventure & Combat Keyboard Shortcuts Reference in Settings -> Keys */
+.keybind-section-title {
+  margin: 10px 0 6px;
+  padding-top: 8px;
+  border-top: 1.5px dashed rgba(22, 20, 32, 0.28);
+  font-size: 11px;
+  font-weight: 900;
+  color: #161420;
+}
+
+.keybind-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.keybind-ref-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 7px;
+  background: #fffdf5;
+  border: 1.5px solid rgba(22, 20, 32, 0.22);
+  font-size: 10px;
+  font-weight: 700;
+  color: #212529;
+}
+
+.keybind-ref-item kbd {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-family: var(--font-pixel);
+  font-size: 9.5px;
+  font-weight: 900;
+  color: #161420;
+  background: #ece7da;
+  border: 1.5px solid #161420;
+  box-shadow: 1.5px 1.5px 0 #161420;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .lab-showcase-dock {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .squad-quick-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .debug-cc-grid.is-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .debug-cc-grid.is-4-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

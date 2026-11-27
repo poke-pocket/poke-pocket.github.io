@@ -1,0 +1,126 @@
+/* =========================================================================
+   RESPONSIVE PROGRESSIVE DISCLOSURE:
+   - Wide Desktop (>= 900px wide & > 560px tall): Full 6-avatar squad bar + 7-tile dock laid out directly!
+   - Compact / Mobile (< 900px wide OR <= 560px tall): Converges cleanly into Squad entry pill + "More" drawer!
+   ========================================================================= */
+.pkb-top-squad-wide {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pkb-squad-entry-btn {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px 0 6px;
+  color: #fffdf5;
+  background: rgba(22, 26, 40, 0.92);
+  border: 2.5px solid #161420;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.16),
+    4px 4px 0 #161420;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.12s ease;
+}
+
+.pkb-more-btn {
+  position: relative;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 16px;
+  flex-shrink: 0;
+  color: #161420;
+  background: linear-gradient(180deg, #fff9db 0%, #ffe066 100%);
+  border: 2.5px solid #161420;
+  box-shadow:
+    inset 1.5px 1.5px 0 rgba(255, 255, 255, 0.85),
+    4px 4px 0 #161420;
+  cursor: pointer;
+  transition: transform 0.1s ease, filter 0.12s ease;
+}
+
+@media (max-width: 899px), (max-height: 560px) {
+  .pkb-top-squad-wide,
+  .pkb-dock-wide-only,
+  .pkb-wide-footer-item {
+    display: none !important;
+  }
+
+  .pkb-squad-entry-btn,
+  .pkb-more-btn {
+    display: inline-flex !important;
+  }
+}
+
+.pkb-squad-entry-btn:hover {
+  background: #2b3352;
+  transform: translateY(-1px);
+}
+
+.pkb-squad-entry-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+.pkb-squad-entry-ava {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff3bf;
+  border: 2px solid #161420;
+  flex-shrink: 0;
+}
+
+.pkb-squad-entry-btn strong {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pkb-squad-entry-count {
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  padding: 2px 6px;
+  color: #161420;
+  background: #ffe066;
+  border: 1.5px solid #161420;
+  white-space: nowrap;
+}
+
+.pkb-hub-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.pkb-hub-bar .pkb-news-ticker {
+  flex: 1;
+  min-width: 0;
+  margin-top: 0;
+}
+
+.pkb-more-btn:hover {
+  filter: brightness(1.04);
+  transform: translate(-1px, -1px);
+}
+
+.pkb-more-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+.pkb-more-btn strong {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+

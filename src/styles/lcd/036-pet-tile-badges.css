@@ -1,0 +1,66 @@
+/* Enlarged Top-Left (Pokéball + Rank) & Top-Right (Level) Corner Stamps on Pet Tiles */
+.tile-tl-group {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.tile-tl-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  line-height: 1;
+  color: #fff;
+  background: #339af0;
+  border: 1.5px solid #161420;
+}
+
+.tile-tl-badge.is-cur {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  background: #ff4f79;
+}
+
+.tile-tl-badge.iv-SS {
+  background: #f03e3e;
+}
+
+.tile-tl-badge.iv-S {
+  background: #f76707;
+}
+
+.tile-tl-badge.iv-A {
+  background: #1c7ed6;
+}
+
+.tile-tl-badge.iv-B {
+  background: #495057;
+}
+
+.tile-tr-lv {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  z-index: 2;
+  padding: 1px 4px;
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  line-height: 1.1;
+  color: #161420;
+  background: rgba(255, 253, 245, 0.92);
+  border: 1.5px solid #161420;
+  pointer-events: none;
+}
+

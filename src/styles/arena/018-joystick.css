@@ -1,0 +1,72 @@
+/* Mobile-Only Floating Dynamic Left-Area 360° Virtual Joystick (Hidden on Desktop & Hidden when idle!) */
+.vpad-touch-zone {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 96px;
+  bottom: 0;
+  width: 48vw;
+  max-width: 380px;
+  z-index: 6;
+  touch-action: none;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (hover: none), (pointer: coarse), (max-width: 960px), (max-height: 560px) {
+  .vpad-touch-zone {
+    display: block;
+  }
+}
+
+.vpad-360 {
+  position: absolute;
+  left: 22px;
+  bottom: 24px;
+  z-index: 10;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, rgba(74, 79, 96, 0.72) 0%, rgba(30, 34, 46, 0.78) 100%);
+  border: 3px solid #161420;
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  touch-action: none;
+}
+
+.vpad-360.is-floating {
+  bottom: auto;
+  transform: translate(-50%, -50%);
+}
+
+.surv-moba-wheel,
+.moba-btn,
+.surv-interact-pill,
+.ko-btn {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.surv-jump-btn.is-wide {
+  right: 24px;
+  bottom: 32px;
+  width: 76px;
+  height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 14px;
+}
+
+.surv-jump-btn.is-wide small {
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+

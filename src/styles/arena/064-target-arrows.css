@@ -1,0 +1,62 @@
+/* =========================================================================
+   SCREEN-PERIMETER PRIORITY TARGET DIRECTIONAL ARROWS
+   ========================================================================= */
+.surv-edge-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.surv-edge-pill {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  background: rgba(18, 20, 34, 0.94);
+  border: 2px solid #ffe066;
+  outline: 2px solid #12101a;
+  box-shadow: 3px 3px 0 rgba(9, 8, 15, 0.9);
+  white-space: nowrap;
+}
+
+.surv-edge-pill.is-boss {
+  border-color: #ff6b6b;
+}
+
+.surv-edge-pill.is-trainer {
+  border-color: #ffa94d;
+}
+
+.surv-edge-pill.is-ko,
+.surv-edge-pill.is-shiny {
+  border-color: #ffe066;
+}
+
+.edge-arrow {
+  display: inline-block;
+  font-size: 11px;
+  line-height: 1;
+  color: #ffe066;
+}
+
+.surv-edge-pill.is-boss .edge-arrow {
+  color: #ff6b6b;
+}
+
+.surv-edge-pill strong {
+  font-size: 10px;
+  font-weight: 900;
+  color: #fffdf5;
+}
+
+.surv-edge-pill em {
+  font-style: normal;
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #ffe066;
+  font-variant-numeric: tabular-nums;
+}
+

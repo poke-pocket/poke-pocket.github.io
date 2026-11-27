@@ -1,0 +1,199 @@
+/* Tactical Pause Panel Inner Controls */
+.lcd-mini-close.is-resume {
+  background: #51cf66;
+  color: #1c1926;
+}
+
+.tactics-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 230px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.tactics-tip {
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+
+.follower-selector-strip {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 28px;
+  gap: 5px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+
+.follower-sel-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--ink);
+  background: #f5f1e4;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+}
+
+.follower-sel-btn.is-active {
+  background: #ffe066;
+}
+
+.skill-loadout-body {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 5px;
+}
+
+.equipped-slots-row {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.eq-slot-box {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 7px;
+  background: #e7f5ff;
+  border: 2px solid var(--ink);
+  font-size: 11px;
+}
+
+.eq-slot-box small {
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.skill-pool-grid {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.skill-pool-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 6px;
+  background: #fff;
+  border: 2px solid #c9c3b4;
+  font-size: 10px;
+}
+
+.skill-pool-card small {
+  font-size: 9px;
+  color: var(--ink-soft);
+  line-height: 1.25;
+}
+
+.sk-tag {
+  margin-left: auto;
+  padding: 0 4px;
+  font-size: 9px;
+  color: #fff;
+  border: 1px solid var(--ink);
+}
+
+.sk-assign-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: auto;
+}
+
+.sk-assign-btn {
+  padding: 2px 3px;
+  font-size: 9px;
+  color: var(--ink);
+  background: #f1ede2;
+  border: 1.5px solid var(--ink);
+  border-radius: 0;
+}
+
+.sk-assign-btn.is-on {
+  background: #51cf66;
+  color: #1c1926;
+}
+
+.mode-sec-title {
+  font-size: 10px;
+  color: var(--ink);
+  padding-bottom: 2px;
+  border-bottom: 1.5px dashed rgba(35, 33, 45, 0.25);
+}
+
+.mode-opt-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.mode-opt-grid.two-col {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.mode-opt-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 6px;
+  text-align: left;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid #c9c3b4;
+  border-radius: 0;
+}
+
+.mode-opt-btn strong {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.mode-opt-btn small {
+  font-size: 9px;
+  color: var(--ink-soft);
+  line-height: 1.25;
+}
+
+.mode-opt-btn.is-on {
+  background: #fff3bf;
+  border-color: var(--ink);
+  box-shadow: 1.5px 1.5px 0 var(--ink);
+}
+
+.capture-offer-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: #f5f1e4;
+  border: 2px solid var(--ink);
+  text-align: center;
+  font-size: 11px;
+}
+
+.capture-boss-img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.capture-btn-row {
+  display: flex;
+  gap: 6px;
+}
+

@@ -7,6 +7,7 @@ import { DEFAULT_TACTICAL_CONFIG, DIFFICULTIES, MAP_REGIONS, SURVIVOR_SKILLS, WA
 import { BIOME_PALETTES, createHorizonBackdropMesh, createPixelWaterMaterial, createSculptedTerrainMaterial, getAnimatedGifTextures, getBiomeTextures, getHeroSpriteFrames, syncTerrainGeoUniforms3D, syncUrbanTerrainUniforms3D, type AnimatedSpriteSheet3D, type BiomeId } from '../data/worldTextures3D';
 import { computeInstantKickoffWaypoints3D, createAutoWalkPathJob3D, findForwardSpliceIndex3D, type AutoNavBuildingPortalInfo, type AutoNavWaypoint, type IncrementalAutoPathJob3D } from '../utils/autoPathfinder3D';
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
+import { advanceGroundJump, cameraRelativeMovement, GAME_JUMP_VELOCITY } from '../utils/cameraRigShared3D';
 import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
 import { extractDexIdFromSpriteUrl, getPmd8DirSheet, type Pmd8DirSheet3D } from '../data/pmdSprites3D';
 import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGeoCities, hasLocalDemCoverage, prefetchGeoDetailAround, setActiveGeoTerrainOrigin, subscribeGeoDemLoaded, worldToGeo, worldYToRealMeters3D } from '../data/geoTerrain3D';
@@ -2264,7 +2265,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     weatherPoints.visible = false;
     scene.add(weatherPoints);
     let windClock = 0;
-    const { syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround } = createArenaFloraStreamer3D({ chunkState, cattailMat, farTerrainGeo, farTerrainMesh, farWaterPlaneMesh, floatingLilyPads, floraGroup, isInsideAnyTownPlaza, lilyGeo, lilyMat, lotusMat, midTerrainGeo, midTerrainMesh, prefsRef, selectedBiome, terrainGeo, terrainMesh, terrainPosAttr, tex, waterPlaneMesh });
+    const { syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround, refreshUrbanFlora } = createArenaFloraStreamer3D({ chunkState, cattailMat, farTerrainGeo, farTerrainMesh, farWaterPlaneMesh, floatingLilyPads, floraGroup, isInsideAnyTownPlaza, lilyGeo, lilyMat, lotusMat, midTerrainGeo, midTerrainMesh, prefsRef, selectedBiome, terrainGeo, terrainMesh, terrainPosAttr, tex, waterPlaneMesh });
     // 4. 3D Roadside Safe Zones (Boxy placeholder buildings temporarily removed pending custom pixel-art redesign!)
     const safeZoneMeshes = new Map<string, { group: THREE.Group; ring: THREE.Mesh }>();
     const syncSafeZones3D = (_cx: number, _cz: number) => {
@@ -2532,6 +2533,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       // Building platforms depend on local elevations, so re-evaluate their
       // mode and height when DEM data changes before rebuilding any meshes.
       const foundationsChanged=registerActiveTownRoadLayouts3D(activeTownLayoutSpecs);
+      refreshUrbanFlora();
       syncUrbanAt(simRef.current?.px??0,simRef.current?.pz??0,true);
       if(needsCoastRebuild||foundationsChanged){
         for (const oldT of proceduralTowns) {
@@ -3299,10 +3301,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           // Camera-yaw rotation keys (Z/[ left, C/] right) + align movement to active 3D camera yaw!
           if (ks.has('z') || ks.has('[')) camOrbitRef.current.yaw -= dt * 1.9;
           if (ks.has('c') || ks.has(']')) camOrbitRef.current.yaw += dt * 1.9;
-          const cy = Math.cos(camOrbitRef.current.yaw);
-          const sy = Math.sin(camOrbitRef.current.yaw);
-          let worldMx = mx * cy + mz * sy;
-          let worldMz = -mx * sy + mz * cy;
+          const cameraMove=cameraRelativeMovement(mx,mz,camOrbitRef.current.yaw);
+          let worldMx = cameraMove.x;
+          let worldMz = cameraMove.z;
 
           // 1B. A* Auto-Pathfinding Steering (Cancels instantly on manual input; threads cleanly through building doorways!)
           const navNow = autoNavRef.current;
@@ -3503,16 +3504,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             if (jumpQueuedRef.current) {
               jumpQueuedRef.current = false;
               if (sim.py <= groundY + 0.18) {
-                sim.vy = 11.2;
+                sim.vy = GAME_JUMP_VELOCITY;
                 sound.play('jump');
               }
             }
-            sim.vy -= 23 * dt;
-            sim.py += sim.vy * dt;
-            if (sim.py < groundY) {
-              sim.py = groundY;
-              sim.vy = 0;
-            }
+            const jump=advanceGroundJump(sim.py-groundY,sim.vy,dt);
+            sim.py=groundY+jump.height;sim.vy=jump.velocity;
           }
 
           if (now - lastAltSyncMsRef.current > 220) {
@@ -3558,6 +3555,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     landmarkCityId: gc.city.id,
                   });
                   const existingFoundationsChanged=registerActiveTownRoadLayouts3D(activeTownLayoutSpecs);
+                  refreshUrbanFlora();
                   syncUrbanAt(sim.px,sim.pz,true);
                   if(existingFoundationsChanged){
                     for(const town of proceduralTowns){town.disposeRoadKit?.();townsGroup.remove(town.group)}

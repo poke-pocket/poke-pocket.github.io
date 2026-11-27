@@ -1,0 +1,273 @@
+/* Pixel Buttons & Modals (0px sharp pixel styling) */
+.pixel-btn {
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  background: #fff;
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  border-radius: 0;
+}
+
+.pixel-btn.primary { background: #ffe066; }
+.pixel-btn.secondary { background: #d3f9d8; }
+.pixel-btn.large { padding: 10px 20px; font-size: 14px; }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(24, 22, 32, 0.74);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.pixel-modal {
+  width: 100%;
+  max-width: 660px;
+  padding: 20px;
+  background: var(--card-bg);
+  border: 4px solid var(--ink);
+  box-shadow: 8px 8px 0 var(--ink);
+  border-radius: 0;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.modal-header h2 { margin: 0; font-size: 18px; }
+
+.modal-close-btn {
+  padding: 3px 9px;
+  font-weight: 700;
+  background: #ffe3e3;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+}
+
+.modal-subtitle {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.species-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 600px) {
+  .species-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.species-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 6px;
+  background: #faf6eb;
+  border: 3px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  border-radius: 0;
+}
+
+.species-card.is-active {
+  background: #ffe8a3;
+  transform: translate(-1px, -1px);
+}
+
+.dex-mini {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.selected-species-box {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 14px;
+  background: #f5f2e9;
+  border: 3px solid var(--ink);
+  margin-bottom: 16px;
+  border-radius: 0;
+}
+
+@media (max-width: 560px) {
+  .selected-species-box { flex-direction: column; }
+}
+
+.selected-preview {
+  width: 110px;
+  height: 110px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #d8f5df;
+  border: 3px solid var(--ink);
+}
+
+.selected-info { flex: 1; }
+.info-title { display: flex; align-items: center; gap: 8px; }
+
+.tag-pill {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--ink);
+  color: #fff;
+}
+
+.selected-info p { margin: 6px 0; font-size: 12px; }
+.fav-line { font-size: 12px; margin-bottom: 10px; }
+.fav-line span { font-weight: 700; color: #d9480f; }
+
+.name-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.name-input-row label { font-size: 12px; font-weight: 700; }
+
+.name-input-row input {
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  border: 2px solid var(--ink);
+  background: #fff;
+  width: 150px;
+  border-radius: 0;
+}
+
+.modal-footer { display: flex; justify-content: flex-end; }
+
+.hatch-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 10px;
+  gap: 16px;
+}
+
+.hatch-tip { font-size: 14px; font-weight: 700; margin: 0; }
+
+.pixel-egg-btn {
+  background: #e9f5db;
+  border: 4px solid var(--ink);
+  box-shadow: 5px 5px 0 var(--ink);
+  padding: 22px 32px;
+  border-radius: 0;
+}
+
+.pixel-egg-btn.is-shaking { animation: eggShake 0.25s ease-in-out; }
+
+.hatch-dots { display: flex; gap: 10px; }
+
+.hatch-dot {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--ink);
+  background: #ece8dc;
+}
+
+.hatch-dot.done { background: #51cf66; }
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-28px); }
+}
+
+@keyframes petHop {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes petSquish {
+  0%, 100% { transform: scale(1, 1) translateY(0); }
+  35% { transform: scale(1.08, 0.91) translateY(3px); }
+  70% { transform: scale(0.97, 1.04) translateY(-2px); }
+}
+
+@keyframes patHandStroke {
+  0% {
+    opacity: 0;
+    transform: translate(-10px, -16px) rotate(-14deg);
+  }
+  14% {
+    opacity: 1;
+    transform: translate(-12px, 4px) rotate(-10deg);
+  }
+  34% {
+    opacity: 1;
+    transform: translate(12px, 8px) rotate(10deg);
+  }
+  54% {
+    opacity: 1;
+    transform: translate(-11px, 5px) rotate(-9deg);
+  }
+  74% {
+    opacity: 1;
+    transform: translate(11px, 8px) rotate(9deg);
+  }
+  90% {
+    opacity: 1;
+    transform: translate(0px, 2px) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(4px, -14px) rotate(6deg);
+  }
+}
+
+@keyframes petMunch {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.06, 0.94); }
+}
+
+@keyframes petWiggle {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-6deg); }
+  75% { transform: rotate(6deg); }
+}
+
+@keyframes eggShake {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-10deg); }
+  75% { transform: rotate(10deg); }
+}
+
+@keyframes poopWiggle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes ledPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+@keyframes blinkAlert {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+

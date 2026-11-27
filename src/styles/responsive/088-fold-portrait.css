@@ -1,0 +1,34 @@
+/* Narrow phone portrait (<= 519px): symmetric left/right margins so Game Boy stays dead-center + 全屏 tag never clips! */
+@media (max-width: 519px) and (orientation: portrait) {
+  .manager-overlay-wrap {
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(48px, calc(44px + env(safe-area-inset-right)))
+      max(10px, env(safe-area-inset-bottom))
+      max(48px, calc(44px + env(safe-area-inset-left)));
+  }
+
+  .shell-side-charm-anchor {
+    top: 64px;
+  }
+
+  .shell-side-pendulum {
+    left: 4px;
+  }
+
+  .shell-side-cord {
+    width: 20px;
+    height: 26px;
+  }
+
+  .shell-side-charm-card {
+    width: 38px;
+    padding: 10px 3px 6px;
+    margin-left: -4px;
+  }
+
+  .charm-fs-label {
+    font-size: 10px;
+  }
+}
+

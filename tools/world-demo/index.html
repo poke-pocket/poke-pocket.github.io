@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0d1820"><title>像素世界 · 比例体验</title><link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./demo.css"></head>
+<body><main class="app"><aside class="panel"><div class="brand"><span class="brand-icon">▦</span><span>PIXEL WORLD <b>LAB</b></span></div><h1>走进模型里，<br><em>看看真实比例。</em></h1><p class="intro">用游戏中的训练师，对照道路和建筑。你可以走近、转动视角，或调整模型尺寸。</p>
+<section><div class="section-top"><span>选择场景</span><small>SCENE</small></div><div class="scene-list" id="scene-list"><button data-scene="network" class="scene active"><span>▤</span><span><strong>城市道路网</strong><small>高架 · 匝道 · 十字路口</small></span><i>01</i></button><button data-scene="complex" class="scene"><span>▦</span><span><strong>综合城市路网</strong><small>地形 · 隧道 · 站台</small></span><i>02</i></button><button data-scene="parametric" class="scene"><span>▤</span><span><strong>可配置道路</strong><small>车道 · 绿化带 · 弯坡</small></span><i>02</i></button><button data-scene="city" class="scene"><span>≡</span><span><strong>城市主辅路</strong><small>车道 · 人行道 · 路灯</small></span><i>02</i></button><button data-scene="tower" class="scene"><span>▥</span><span><strong>现代玻璃大楼</strong><small>大门 · 玻璃幕墙 · 商店</small></span><i>03</i></button><button data-scene="bridged" class="scene"><span>▨</span><span><strong>双塔与连廊</strong><small>高楼 · 空中连接</small></span><i>04</i></button><button data-scene="cobblestone" class="scene"><span>▧</span><span><strong>乡村石板路</strong><small>石板 · 草地 · 树木</small></span><i>05</i></button><button data-scene="dirt" class="scene"><span>☷</span><span><strong>乡间土路</strong><small>小路 · 绿地 · 树木</small></span><i>06</i></button></div></section>
+<details class="settings" open><summary>车辆对比</summary>
+<label class="check"><input id="vehicles-visible" type="checkbox" checked> 同时显示四辆车</label><p id="vehicle-info">轿车、公交、大巴、卡车按人物高度换算，在同一段道路并排展示。</p>
+<div class="compact"><label for="car-scale">出租车大小 <b id="car-scale-value">1.00×</b></label><input id="car-scale" type="range" min="0.80" max="1.40" step="0.05" value="1.00"></div><p>滑块调整出租车的预览大小。</p>
+<div class="compact"><label for="door-open">车门开合 <b id="door-open-value">0%</b></label><input id="door-open" type="range" min="0" max="100" step="5" value="0"></div>
+<label class="check"><input id="wheel-spin" type="checkbox"> 演示公交、大巴、卡车车轮转动</label><p>演示公交、大巴的乘客门和货车的后厢门；出租车原有可动节点保留在模型中。</p>
+<label class="check"><input id="merge-demo" type="checkbox" checked> 主辅路汇入／驶出演示</label><p>主辅路场景中的出租车交替沿示例轨迹行驶；不模拟避让。</p>
+<button id="goto-vehicle" class="side-action">查看四辆车</button></details>
+<details class="settings" open><summary>可配置道路</summary>
+<div class="setting-row"><label for="road-shape">道路形状</label><select id="road-shape"><option value="straight">直路</option><option value="curve">弯路</option><option value="slope">坡道</option><option value="curve-slope">弯路＋坡道</option></select></div>
+<div class="setting-row"><label for="road-lanes">双向车道数</label><select id="road-lanes"><option value="1">双向 2 车道</option><option value="2">双向 4 车道</option><option value="3" selected>双向 6 车道</option><option value="4">双向 8 车道</option></select></div>
+<div class="compact"><label for="median-width">中央预留带宽度 <b id="median-width-value">4.0</b></label><input id="median-width" type="range" min="0" max="10" step="0.5" value="4"></div>
+<div class="compact"><label for="bike-width">单侧非机动车道宽度 <b id="bike-width-value">3.0</b></label><input id="bike-width" type="range" min="0" max="6" step="0.5" value="3"></div>
+<div class="compact"><label for="parking-width">单侧路边停车带宽度 <b id="parking-width-value">7.0</b></label><input id="parking-width" type="range" min="0" max="10" step="0.5" value="7"></div>
+<div class="compact"><label for="parking-length">每个车位长度 <b id="parking-length-value">16.0</b></label><input id="parking-length" type="range" min="8" max="25" step="1" value="16"></div>
+<label class="check"><input id="tactile-enabled" type="checkbox" checked> 显示人行道盲道</label>
+<div class="compact"><label for="tactile-width">盲道宽度 <b id="tactile-width-value">0.6</b></label><input id="tactile-width" type="range" min="0.4" max="1.4" step="0.1" value="0.6"></div>
+<div class="compact"><label for="curb-width">路牙宽度 <b id="curb-width-value">0.4</b></label><input id="curb-width" type="range" min="0.2" max="1.0" step="0.1" value="0.4"></div>
+<div class="compact"><label for="edge-setback">边线距路牙 <b id="edge-setback-value">1.0</b></label><input id="edge-setback" type="range" min="0.2" max="2.5" step="0.1" value="1.0"></div>
+<div class="compact"><label for="drain-spacing">雨水口间距 <b id="drain-spacing-value">25.0</b></label><input id="drain-spacing" type="range" min="0" max="60" step="5" value="25"></div>
+<div class="compact"><label for="manhole-spacing">井盖间距 <b id="manhole-spacing-value">35.0</b></label><input id="manhole-spacing" type="range" min="0" max="60" step="5" value="35"></div>
+<div class="setting-row"><label for="manhole-style">井盖示意样式</label><select id="manhole-style"><option value="plain">通用</option><option value="shanghai">上海示意</option><option value="shenzhen">深圳示意</option></select></div>
+
+<p>道路形状、车道和停车带用于“可配置道路”；路牙、盲道、雨水口、井盖和边线间距也同步作用于综合路网。中央预留带可单独替换。</p>
+<button id="export-param-road" class="side-action">下载当前道路 GLB</button> <button id="export-param-config" class="side-action">下载道路配置与路径</button></details>
+<section class="scale-block"><div class="section-top"><label for="lane-width">车道宽度</label><strong id="lane-width-value">8.775 单位</strong></div><input type="range" id="lane-width" min="5.85" max="9.75" value="8.775" step="0.975"><div class="range-label"><span>较窄 5.85</span><span>较宽 9.75</span></div><p>调整实际车道宽度，适用于道路网、可配置道路、主辅路和楼前道路。</p></section>
+<section class="scale-block"><div class="section-top"><label for="sidewalk-width">人行道宽度</label><strong id="sidewalk-width-value">7.80 单位</strong></div><input type="range" id="sidewalk-width" min="3.9" max="7.8" value="7.8" step="1.95"><div class="range-label"><span>较窄 3.9</span><span>较宽 7.8</span></div><p>两侧人行道同步调整，斑马线随路口连接。</p></section>
+<details class="settings" open><summary>标线设置</summary>
+<div class="compact"><label for="stripe-width">白线宽度 <b id="stripe-width-value">0.65</b></label><input id="stripe-width" type="range" min="0.35" max="1.2" step="0.05" value="0.65"></div>
+<div class="compact"><label for="stripe-gap">白线间距 <b id="stripe-gap-value">0.80</b></label><input id="stripe-gap" type="range" min="0.25" max="1.5" step="0.05" value="0.8"></div>
+<div class="compact"><label for="cross-depth">过街带宽度 <b id="cross-depth-value">3.0</b></label><input id="cross-depth" type="range" min="2" max="4" step="0.25" value="3"></div>
+<div class="compact"><label for="cross-wear">斑马线磨损 <b id="cross-wear-value">14%</b></label><input id="cross-wear" type="range" min="0" max="50" step="1" value="14"></div>
+<div class="compact"><label for="line-wear">其他标线磨损 <b id="line-wear-value">10%</b></label><input id="line-wear" type="range" min="0" max="50" step="1" value="10"></div>
+<label class="check"><input type="checkbox" id="junction-markings" checked> 显示路口停止线和箭头</label>
+<p>斑马线设置用于城市道路网；磨损用于道路标线。</p></details>
+<details class="settings" open><summary>站台与道路设施</summary>
+<div class="setting-row"><label for="stop-style">候车站台风格</label><select id="stop-style"><option value="all">三种对比</option><option value="modern">现代玻璃</option><option value="metal">简约金属</option><option value="village">乡村木质</option><option value="none">不显示</option></select></div>
+<label class="check"><input id="street-furniture" type="checkbox" checked> 显示信号灯、标志和垃圾桶</label><p>站台与设施用于“综合城市路网”示例；信号灯仅展示外观。</p><button id="export-complex-road" class="side-action">下载综合路网与设施 GLB</button></details>
+<details class="settings" open><summary>人行道与隔离设施</summary>
+<div class="setting-row"><label for="pavement-color">人行道颜色</label><input id="pavement-color" type="color" value="#bdc9c2"></div>
+<div class="setting-row"><label for="pavement-style">铺装风格</label><select id="pavement-style"><option value="0">马赛克</option><option value="1">素色水泥</option><option value="2">错缝砖</option></select></div>
+<label class="check"><input type="checkbox" id="complex-greenery" checked> 综合路网路边绿化</label>
+<label class="check"><input type="checkbox" id="roadside-trees"> 显示路边树木</label>
+<label class="check"><input type="checkbox" id="road-lights" checked> 显示路灯</label>
+<div class="compact"><label for="light-height">路灯高度 <b id="light-height-value">10.0</b></label><input id="light-height" type="range" min="8" max="14" step="0.5" value="10"></div>
+<div class="compact"><label for="light-size">路灯粗细与灯臂 <b id="light-size-value">1.00×</b></label><input id="light-size" type="range" min="0.6" max="1.6" step="0.1" value="1"></div>
+<div class="setting-row"><label for="median-style">中央分隔</label><select id="median-style"><option value="none">不显示</option><option value="barrier">隔离栏杆</option><option value="planter">绿化花坛</option></select></div>
+<p>设施示意用于道路网、主辅路和楼前道路。</p></details>
+
+<button id="download-config" class="side-action">下载当前道路配置</button>
+<section class="scale-block"><div class="section-top"><label for="scale">模型比例</label><strong id="scale-value">1.00×</strong></div><input type="range" id="scale" min="0.4" max="2" value="1" step="0.05"><div class="range-label"><span>缩小模型</span><span>原始比例</span><span>放大模型</span></div><p>角色保持游戏原始尺度，便于比较。</p></section>
+<div class="note"><strong>尺寸与素材</strong><p>道路尺寸以游戏单位展示；车辆和角色保持原大小。</p><p>出租车：Voxel Cars by Sneznyj 3D (sneznyj.com), CC BY 4.0。公交车、大巴、卡车：City Bus / Touring Coach / Box Truck by vinish.dev (vinish.dev/free-3d-models/), CC BY 4.0；已转为体素模型，保留可控制的车轮和原有可拆车门，并调整尺寸与朝向。</p></div><footer>独立场景预览 · 不修改游戏存档</footer></aside>
+<div class="viewport"><div id="canvas-container"></div><div class="topbar"><div><span class="eyebrow">SCALE EXPLORER</span><h2 id="scene-title">城市道路网</h2><p id="scene-subtitle">把角色放在道路上，看看车道、人行道和高架的尺度。</p></div><button id="reset-view" class="ghost">重置视角</button></div><div class="model-label" id="model-label">路网 · 默认车道 3 米</div><div class="bottom"><div class="help"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动人物</span><span>鼠标拖动旋转 · 滚轮缩放</span></div><div class="jump" id="jump-list"></div></div><div class="loading" id="loading"><div class="loader"></div><span>正在加载场景…</span></div><div class="error" id="error" hidden></div><div class="mobile-controls" aria-label="移动角色"><button data-move="w">▲</button><div><button data-move="a">◀</button><button data-move="s">▼</button><button data-move="d">▶</button></div></div></div></main><script type="module" src="./src/main.ts"></script></body></html>

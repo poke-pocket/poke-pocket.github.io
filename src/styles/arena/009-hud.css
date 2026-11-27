@@ -1,0 +1,155 @@
+/* Live 3D HUD Sub-Row, Boss Bar, Jump Button & Projected Tags */
+.surv-tags-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.surv-float-tag {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  text-shadow: 1px 1px 0 #1c1926, -1px 0 0 #1c1926, 0 -1px 0 #1c1926;
+  white-space: nowrap;
+}
+
+.surv-float-tag.is-trainer-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 1px 4px;
+  background: rgba(24, 22, 32, 0.86);
+  border: 1.5px solid #ff6b6b;
+  text-shadow: none;
+}
+
+.tag-hp-track {
+  width: 44px;
+  height: 4px;
+  background: #3b1c22;
+}
+
+.tag-hp-fill {
+  height: 100%;
+  background: #ff4d4d;
+}
+
+.surv-subhud-row {
+  position: absolute;
+  top: 42px;
+  left: 6px;
+  right: 6px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.surv-hp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #fff;
+  background: rgba(24, 24, 34, 0.84);
+  border: 2px solid #1c1926;
+}
+
+.surv-hp-track {
+  width: 58px;
+  height: 6px;
+  background: #3b1c22;
+  border: 1px solid #1c1926;
+}
+
+.surv-hp-fill {
+  height: 100%;
+}
+
+.surv-hp-pill em {
+  font-style: normal;
+  color: #d3f9d8;
+}
+
+.surv-compass-inline {
+  padding: 2px 6px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #d3f9d8;
+  background: rgba(24, 62, 34, 0.86);
+  border: 1.5px solid #51cf66;
+}
+
+.surv-mode-badge {
+  margin-left: auto;
+  padding: 2px 6px;
+  font-size: 9px;
+  color: #ffe066;
+  background: rgba(35, 41, 58, 0.86);
+  border: 1.5px solid #ffe066;
+}
+
+.surv-top-btn.is-tactics {
+  background: #d0ebff;
+}
+
+.surv-boss-bar {
+  position: absolute;
+  top: 66px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px 6px;
+  font-size: 10px;
+  color: #fff;
+  background: rgba(40, 12, 18, 0.9);
+  border: 2px solid #ff6b6b;
+  pointer-events: none;
+}
+
+.boss-hp-track {
+  width: 100%;
+  height: 7px;
+  background: #2b1116;
+  border: 1px solid #1c1926;
+}
+
+.boss-hp-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ff4d4d 0%, #ffa94d 100%);
+}
+
+.surv-jump-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 34px;
+  z-index: 9;
+  width: 44px;
+  height: 30px;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--ink);
+  background: rgba(255, 243, 191, 0.94);
+  border: 2px solid var(--ink);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.85),
+    2px 2px 0 var(--ink);
+  border-radius: 0;
+}
+
+.surv-jump-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 0 0 0 var(--ink);
+}
+

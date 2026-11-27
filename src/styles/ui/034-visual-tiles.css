@@ -1,0 +1,241 @@
+/* =========================================================================
+   ICON-FIRST VISUAL TILE SYSTEM (BIG SPRITES/ICONS + FLOATING CORNER NAMES
+   + HOVER / SELECT INSPECTOR ACTION DECK!)
+   ========================================================================= */
+.eq-slot-box.is-visual {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 7px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.eq-slot-box.is-visual.is-inspected {
+  background: #fff9db;
+}
+
+.eq-slot-ico {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fffdf5;
+  border: 1.5px solid var(--ink);
+}
+
+.eq-slot-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.eq-slot-meta strong {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.skill-icon-grid {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+
+.skill-icon-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 70px;
+  background: #fff;
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  cursor: pointer;
+  overflow: hidden;
+  user-select: none;
+}
+
+.skill-icon-tile.is-equipped {
+  background: #f2fbf4;
+}
+
+.skill-icon-tile.is-inspected {
+  background: #fff9db;
+  outline: 2px solid var(--sk-color, #fab005);
+  outline-offset: -3px;
+}
+
+.sk-hero-ico {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sk-corner-tag {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  padding: 0 3px;
+  font-size: 8px;
+  line-height: 1.3;
+  color: #fff;
+  border: 1px solid var(--ink);
+  z-index: 2;
+}
+
+.sk-corner-eq {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0 3px;
+  font-style: normal;
+  font-size: 8px;
+  line-height: 1.3;
+  color: #161420;
+  background: #51cf66;
+  border: 1px solid var(--ink);
+  z-index: 2;
+}
+
+.sk-corner-name {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  padding: 1px 5px;
+  font-size: 9px;
+  line-height: 1.3;
+  color: #161420;
+  background: rgba(255, 253, 245, 0.94);
+  border-top: 2px solid var(--ink);
+  border-left: 2px solid var(--ink);
+  max-width: 84%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.sk-hover-ops {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  padding: 3px;
+  background: rgba(22, 20, 32, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.08s linear;
+}
+
+.skill-icon-tile:hover .sk-hover-ops {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sk-op-mini {
+  flex: 1;
+  padding: 2px 2px;
+  font-size: 9px;
+  color: #161420;
+  background: #fffdf5;
+  border: 1.5px solid #161420;
+  cursor: pointer;
+}
+
+.sk-op-mini.is-on {
+  background: #51cf66;
+}
+
+.skill-inspector-bar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 7px;
+  background: #fffdf5;
+  border: 2px solid var(--ink);
+  border-left-width: 4px;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.sk-insp-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sk-insp-info strong {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.sk-insp-info small {
+  font-size: 9px;
+  color: var(--ink-soft);
+  line-height: 1.25;
+}
+
+.sk-insp-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+/* Non-intrusive Bottom-Right Flush Corner Name Badge (Matches Wireframe Sketch!) */
+.party-compact-tile,
+.dex-compact-grid .lcd-dex-tile {
+  position: relative;
+  padding: 4px !important;
+  height: 82px;
+  min-height: 82px !important;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.party-sprite-hero,
+.dex-sprite-hero {
+  width: 60px !important;
+  height: 60px !important;
+}
+
+.tile-corner-name {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  line-height: 1.3;
+  color: #161420;
+  background: rgba(255, 253, 245, 0.94);
+  border-top: 2px solid var(--ink);
+  border-left: 2px solid var(--ink);
+  max-width: 84%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.tile-corner-name em {
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  color: #495057;
+}
+

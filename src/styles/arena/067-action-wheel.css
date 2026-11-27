@@ -1,0 +1,371 @@
+/* =========================================================================
+   BOTTOM-RIGHT MOBA RADIAL ACTION WHEEL (1.4x Enlarged Tight-Fill Pixel Buttons!)
+   ========================================================================= */
+.surv-moba-wheel {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  width: 368px;
+  height: 274px;
+  z-index: 16;
+  pointer-events: none;
+}
+
+.moba-btn {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px;
+  border: 3px solid #12101a;
+  box-shadow: 5px 5px 0 rgba(9, 8, 15, 0.94), inset 0 2px 0 rgba(255, 255, 255, 0.42);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.1s ease, filter 0.12s ease, box-shadow 0.1s ease;
+}
+
+.moba-btn .moba-icon-fill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(1.5px 1.5px 0 rgba(18, 16, 26, 0.45));
+}
+
+.moba-btn:hover:not(:disabled) {
+  transform: translate(-1px, -2px) scale(1.04);
+  filter: brightness(1.06);
+}
+
+.moba-btn:active:not(:disabled) {
+  transform: translate(2px, 2px) scale(0.97);
+  box-shadow: 1px 1px 0 #09080f;
+}
+
+.moba-btn.is-cd,
+.moba-btn:disabled {
+  opacity: 0.62;
+  filter: grayscale(0.45);
+  cursor: not-allowed;
+}
+
+.moba-btn span {
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  color: #161420;
+  letter-spacing: 0.02em;
+}
+
+/* Primary Main Button (Bottom-Right Corner, 112x112 = 1.4x) */
+.moba-btn.is-primary {
+  right: 0;
+  bottom: 0;
+  width: 112px;
+  height: 112px;
+  border-width: 3.5px;
+  background: linear-gradient(180deg, #fff3bf, #ffd43b);
+  box-shadow: 6px 6px 0 rgba(9, 8, 15, 0.96), inset 0 3px 0 rgba(255, 255, 255, 0.55);
+}
+
+.moba-btn.is-primary span {
+  font-size: 13px;
+  margin-top: 1px;
+}
+
+.moba-btn.is-primary.is-pulse {
+  outline: 3px solid #ffe066;
+  animation: mobaPulse 0.9s infinite alternate ease-in-out;
+}
+
+@keyframes mobaPulse {
+  from {
+    box-shadow: 6px 6px 0 rgba(9, 8, 15, 0.96), 0 0 0 0 rgba(255, 224, 102, 0.75);
+  }
+  to {
+    box-shadow: 6px 6px 0 rgba(9, 8, 15, 0.96), 0 0 0 8px rgba(255, 224, 102, 0.15);
+  }
+}
+
+/* 3 Quarter-Circle Arc Satellites (82x82 = 1.4x) around Primary Center (right:56, bottom:56) */
+.moba-btn.is-sat {
+  width: 82px;
+  height: 82px;
+}
+
+.moba-btn.is-sat-0 {
+  right: 156px;
+  bottom: 14px;
+}
+
+.moba-btn.is-sat-45 {
+  right: 118px;
+  bottom: 118px;
+}
+
+.moba-btn.is-sat-90 {
+  right: 14px;
+  bottom: 156px;
+}
+
+.moba-btn.is-heal {
+  background: linear-gradient(180deg, #d3f9d8, #69db7c);
+}
+
+.moba-btn.is-boost {
+  background: linear-gradient(180deg, #ffe8cc, #ffa94d);
+}
+
+.moba-btn.is-boost.is-active {
+  outline: 2.5px solid #ffe066;
+}
+
+.moba-btn.is-salvo {
+  background: linear-gradient(180deg, #d0ebff, #4dabf7);
+}
+
+/* Enlarged Far-Left Poké Ball Anchor + Long-Press Left Ball Switcher (82x82 matching satellites!) */
+.moba-ball-anchor {
+  position: absolute;
+  right: 260px;
+  bottom: 14px;
+  width: 82px;
+  height: 82px;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.moba-ball-anchor > .moba-btn.is-aux-jump {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  width: 82px;
+  height: 82px;
+}
+
+.moba-btn.is-aux-jump {
+  right: 260px;
+  bottom: 14px;
+  width: 82px;
+  height: 82px;
+  background: linear-gradient(180deg, #fffdf4, #e9e0c6);
+}
+
+.moba-btn.is-aux-jump span {
+  font-size: 10px;
+}
+
+.moba-ball-switch-hint {
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px !important;
+  color: #fffdf5 !important;
+  background: #161420;
+  border: 1.5px solid #ffe066;
+  pointer-events: none;
+}
+
+.moba-badge.is-ball-tag {
+  background: #161420;
+  color: #ffe066;
+  border-color: var(--ball-accent, #ffe066);
+}
+
+@keyframes mobaBallPickerIn {
+  from {
+    opacity: 0;
+    transform: translate(6px, -50%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+}
+
+.moba-ball-picker {
+  position: absolute;
+  right: calc(100% + 12px);
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  background: rgba(16, 18, 28, 0.92);
+  border: 3px solid #ffe066;
+  box-shadow: 5px 5px 0 rgba(9, 8, 15, 0.96);
+  max-width: min(560px, calc(100vw - 360px));
+  overflow-x: auto;
+  z-index: 25;
+  animation: mobaBallPickerIn 0.12s ease-out;
+}
+
+.moba-ball-opt {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  background: #23263a;
+  border: 2px solid #495057;
+  box-shadow: 2px 2px 0 #09080f;
+  color: #fffdf5;
+  cursor: pointer;
+  transition: transform 0.08s ease, background-color 0.08s ease, border-color 0.08s ease;
+}
+
+.moba-ball-opt:hover {
+  transform: translateY(-2px);
+  background: #2e324b;
+  border-color: var(--ball-accent, #ffe066);
+}
+
+.moba-ball-opt.is-active {
+  background: #3a3418;
+  border-color: #ffe066;
+  box-shadow: 0 0 0 1.5px #ffe066, 2px 2px 0 #09080f;
+}
+
+.moba-ball-opt.is-master {
+  border-color: #be4bdb;
+}
+
+/* 4-Equal-Slot Tactics + Gear Tab Styling */
+.tac-poke-ov-moves.is-four {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+}
+
+.tac-ov-move-pill.is-compact {
+  padding: 2px 5px;
+  gap: 4px;
+}
+
+.tac-ov-move-pill.is-compact strong {
+  font-size: 9px;
+}
+
+.tac-l2-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.equipped-slots-row.is-four {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+}
+
+.eq-slot-box.is-compact {
+  padding: 4px 6px;
+}
+
+.eq-slot-box.is-compact .eq-slot-meta strong {
+  font-size: 10px;
+}
+
+.eq-slot-box.is-compact .eq-slot-meta small {
+  font-size: 8px;
+}
+
+.tac-gear-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tac-gear-cur {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #fff9db;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.tac-gear-cur-ico {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fffdf4;
+  border: 1.5px solid #161420;
+}
+
+.tac-gear-cur-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tac-gear-cur-meta strong {
+  font-size: 10px;
+  color: #161420;
+}
+
+.tac-gear-cur-meta small {
+  font-size: 9px;
+  color: #495057;
+}
+
+.tac-gear-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.tac-gear-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  background: #fffdf4;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
+  text-align: center;
+}
+
+.tac-gear-tile.is-active {
+  background: #d3f9d8;
+  border-color: #2b8a3e;
+}
+
+.tac-gear-tile strong {
+  font-size: 9px;
+  color: #161420;
+}
+
+.tac-gear-tile small {
+  font-size: 8px;
+  color: #495057;
+  line-height: 1.2;
+}
+
+.tac-gear-empty {
+  padding: 12px;
+  font-size: 10px;
+  color: #495057;
+  background: #f8f9fa;
+  border: 2px dashed #adb5bd;
+  text-align: center;
+}
+

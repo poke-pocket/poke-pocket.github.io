@@ -1,0 +1,176 @@
+@font-face {
+  font-family: 'Fusion Pixel';
+  src: url('/fonts/fusion-pixel.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --ink: #22202b;
+  --ink-soft: #595469;
+  --paper: #ece7dc;
+  --card-bg: #fffdf8;
+  --lcd-inset: 10px;
+  --hud-top-card-h: 76px;
+  --font-pixel: 'Fusion Pixel', 'Press Start 2P', monospace;
+  --font-body: 'Fusion Pixel', 'Press Start 2P', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: #e6dfd0;
+  background-image:
+    radial-gradient(circle at 50% 42%, rgba(255, 252, 240, 0.72) 0%, rgba(214, 204, 184, 0.45) 75%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(34, 32, 43, 0.025) 0 12px,
+      transparent 12px 24px
+    ),
+    radial-gradient(#bfb6a2 1.5px, transparent 1.5px);
+  background-size: 100% 100%, 34px 34px, 24px 24px;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.pixel-icon-svg,
+.pixel-art-img,
+.pixel-pokemon-img {
+  display: inline-block;
+  flex-shrink: 0;
+  vertical-align: middle;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.pixel-pet-wrap {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.pixel-pokemon-img {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.pixel-pet-wrap.is-sleeping {
+  align-items: center;
+}
+
+.pixel-pet-wrap.is-sleeping .pixel-pokemon-img {
+  width: 100%;
+  height: 100%;
+}
+
+.pixel-pet-wrap.is-sad {
+  filter: saturate(0.75);
+}
+
+.inline-icon-row,
+.inline-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px;
+}
+
+.corner-controls-wrap {
+  position: fixed;
+  top: 16px;
+  right: 18px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.corner-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.corner-toast {
+  padding: 4px 8px;
+  font-size: 12px;
+  background: #fff9db;
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  animation: popIn 0.14s ease-out;
+}
+
+.corner-shell-swatch {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ink);
+  flex-shrink: 0;
+}
+
+.solo-console-stage {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.console-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: min(650px, 92vw);
+}
+
+@media (max-width: 600px) {
+  .console-column {
+    max-width: 96vw;
+  }
+}
+

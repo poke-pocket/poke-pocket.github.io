@@ -1,0 +1,76 @@
+/* Announcements / Guide / Feedback Modal */
+.pkb-info-modal {
+  width: min(560px, 94vw) !important;
+}
+
+.info-modal-body {
+  padding: 12px;
+  max-height: 62vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.news-card,
+.guide-box {
+  padding: 10px 12px;
+  background: #fffdf4;
+  border: 2px solid #161420;
+  box-shadow: 3px 3px 0 #161420;
+}
+
+.news-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.news-tag {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fffdf5;
+  background: #e03131;
+  border: 1.5px solid #161420;
+}
+
+.news-card-head em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+
+.news-card p,
+.guide-box p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pkb-prof-form textarea {
+  padding: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  background: #fffdf5;
+  border: 2px solid #161420;
+  resize: vertical;
+}
+
+.fb-done-box {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+}
+

@@ -1,0 +1,71 @@
+/* 9. Bidirectional Exit / Close Animations (Zero abrupt pop-out!) */
+@keyframes backdropFadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes consoleTuckDown {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(48px) scale(0.92);
+  }
+}
+
+@keyframes modalPopOut {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.93);
+  }
+}
+
+@keyframes mapSelectSlideOut {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+}
+
+.manager-overlay-wrap.is-closing {
+  animation: backdropFadeOut 0.21s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  pointer-events: none;
+}
+
+.manager-overlay-wrap.is-closing .solo-console-stage {
+  animation: consoleTuckDown 0.21s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+
+.surv-modal-backdrop.is-closing {
+  animation: backdropFadeOut 0.16s ease forwards !important;
+  pointer-events: none;
+}
+
+.surv-modal-backdrop.is-closing .surv-upgrade-box {
+  animation: modalPopOut 0.16s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+}
+
+.pkb-mapselect-overlay.is-closing {
+  animation: mapSelectSlideOut 0.17s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  pointer-events: none;
+}
+
+.surv-result-fullscreen.is-closing {
+  animation: mapSelectSlideOut 0.18s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  pointer-events: none;
+}
+

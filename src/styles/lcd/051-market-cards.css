@@ -1,0 +1,78 @@
+/* 6. Market Hero-Icon Corner-Tag Showcase Tiles (Big 42px Icon + Corner Stock/Price/Name!) */
+.market-hero-tile {
+  position: relative;
+  min-height: 86px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #fffbe6;
+}
+
+.market-hero-tile .mk-hero-img {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(2px 2px 0 rgba(22, 20, 32, 0.28));
+  transition: transform 0.14s ease;
+}
+
+.market-hero-tile .mk-hero-img img {
+  width: 52px !important;
+  height: 52px !important;
+}
+
+.lab-card-ico img {
+  width: 44px !important;
+  height: 44px !important;
+}
+
+.sq-edit-tile img {
+  width: 52px !important;
+  height: 52px !important;
+}
+
+.market-hero-tile:hover:not(:disabled) .mk-hero-img {
+  transform: scale(1.1);
+}
+
+.mk-corner-stock {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px 5px;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #495057;
+  background: rgba(255, 255, 255, 0.88);
+  border-right: 1.5px solid #161420;
+  border-bottom: 1.5px solid #161420;
+}
+
+.mk-corner-price {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  font-weight: 800;
+  color: #161420;
+  background: #ffe066;
+  border-left: 1.5px solid #161420;
+  border-bottom: 1.5px solid #161420;
+}
+
+.mk-corner-price em {
+  font-style: normal;
+}
+
+.tile-tl-badge.is-sleep {
+  background: #5c7cfa;
+  color: #ffffff;
+}
+

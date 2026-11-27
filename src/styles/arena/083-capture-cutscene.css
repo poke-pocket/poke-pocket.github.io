@@ -1,0 +1,102 @@
+/* Full-Pause Capture Cutscene: "Who's That Pokémon?" Silhouette + Pokédex Reveal + Water Surf Pill */
+.cap-mon-wrap.is-who_is_it img {
+  filter: brightness(0) saturate(100%) invert(14%) sepia(65%) saturate(2200%) hue-rotate(205deg) contrast(1.2) drop-shadow(0 0 12px #74c0fc) !important;
+  animation: capWhoPulse 0.45s ease-in-out infinite alternate;
+}
+
+.cap-mon-wrap.is-pokedex_new,
+.cap-mon-wrap.is-caught {
+  animation: capRevealPop 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes capWhoPulse {
+  from { transform: scale(0.96); }
+  to { transform: scale(1.06); }
+}
+
+@keyframes capRevealPop {
+  0% { transform: scale(0.2); opacity: 0; filter: brightness(3); }
+  70% { transform: scale(1.12); opacity: 1; filter: brightness(1.3); }
+  100% { transform: scale(1); opacity: 1; filter: brightness(1); }
+}
+
+.cap-who-banner {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 14px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #161420;
+  background: #ffe066;
+  border: 2.5px solid #161420;
+  box-shadow: 3px 3px 0 #161420;
+  z-index: 3;
+}
+
+.cap-dex-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  background: #fff9db;
+  border-top: 2.5px solid #161420;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: left;
+}
+
+.cap-dex-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #161420;
+}
+
+.cap-dex-badge {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: #e03131;
+  border: 1.5px solid #161420;
+}
+
+.cap-dex-card p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #343a40;
+}
+
+.cap-continue-btn {
+  margin-top: 4px;
+  align-self: flex-end;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #161420;
+  background: #69db7c;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
+}
+
+.cap-continue-btn:hover {
+  background: #8ce99a;
+}
+
+.surv-surf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #161420;
+  background: #74c0fc;
+  border: 1.5px solid #161420;
+}
+

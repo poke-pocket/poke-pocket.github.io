@@ -4,6 +4,18 @@ type End = { segment:TownStreetSeg; end:'start'|'end'; dx:number; dz:number; wid
 type Normal = { x:number; z:number };
 export type RoadJoin = { start?:Normal; end?:Normal; phaseStart:number; phaseSign:number };
 
+/** Spacing uses a shared road-chain phase, so segment joins do not reset it. */
+export function roadsidePlantingStations(length:number,spacing:number,join?:RoadJoin):{distance:number;slot:number}[]{
+ if(length<=0||spacing<=0)return [];
+ const phaseStart=join?.phaseStart??0,sign=join?.phaseSign??1,phaseEnd=phaseStart+sign*length;
+ const first=Math.ceil((Math.min(phaseStart,phaseEnd)-1e-7)/spacing),last=Math.floor((Math.max(phaseStart,phaseEnd)+1e-7)/spacing),out:{distance:number;slot:number}[]=[];
+ for(let slot=first;slot<=last;slot++){
+  const distance=(slot*spacing-phaseStart)/sign;
+  if(distance>=-1e-7&&distance<length-1e-7)out.push({distance:Math.max(0,distance),slot});
+ }
+ return out.sort((a,b)=>a.distance-b.distance);
+}
+
 /** Join only matching, almost tangent, same-level roads. Junctions and bridges
  * remain owned by their existing layout, rather than welding across them. */
 export function buildRoadContinuity(streets:TownStreetSeg[]):Map<TownStreetSeg,RoadJoin> {

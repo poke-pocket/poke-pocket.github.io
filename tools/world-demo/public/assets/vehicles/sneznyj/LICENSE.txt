@@ -1,0 +1,13 @@
+VOXEL CARS FREE - LICENSE
+Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+You may use, modify and share these 3 cars (meshes, textures and animations) in any game or project,
+commercial ones included. The only condition is credit. Add this line to your game's credits, store page or README:
+
+    Voxel Cars by Sneznyj 3D (sneznyj.com), CC BY 4.0
+
+The full paid Voxel Cars pack keeps its regular royalty-free asset license.
+Get it here: https://sneznyj.itch.io/voxel-cars
+
+Made by Sneznyj 3D - https://sneznyj.com - https://sneznyj.itch.io

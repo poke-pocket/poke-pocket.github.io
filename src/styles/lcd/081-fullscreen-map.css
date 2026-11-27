@@ -1,0 +1,249 @@
+/* Full-Bleed Edge-to-Edge Handheld Console Town Map (mode === 'map') */
+.lcd-submenu.is-fullbleed-map {
+  padding: 0;
+  background: #2f9e44;
+}
+
+.lcd-map-fullbleed {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+}
+
+.lcd-map-stage.is-fullbleed {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: none;
+  box-shadow: none;
+  background: #2f9e44;
+  overflow: hidden;
+}
+
+.lcd-map-float-tl {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: #161420;
+  background: rgba(255, 253, 244, 0.94);
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  pointer-events: none;
+}
+
+.lcd-map-float-tl span {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #495057;
+}
+
+.lcd-map-float-tr {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 16;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lcd-map-float-btn {
+  height: 25px;
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #161420;
+  background: #fffdf4;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
+}
+
+.lcd-map-float-btn.is-active {
+  background: #ffe066;
+}
+
+.lcd-map-float-btn.is-close {
+  background: #ffe3e3;
+}
+
+.lcd-map-drawer {
+  position: absolute;
+  top: 38px;
+  right: 7px;
+  bottom: 112px;
+  width: 164px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px;
+  background: rgba(255, 253, 244, 0.97);
+  border: 2.5px solid #161420;
+  box-shadow: 4px 4px 0 #161420;
+  animation: slideFromRight 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.lcd-map-shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(130px, 1fr);
+  gap: 8px;
+  overflow: hidden;
+}
+
+.lcd-map-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 2.5px solid #161420;
+  background: #2f9e44;
+  box-shadow: 2px 2px 0 #161420;
+  overflow: hidden;
+}
+
+.lcd-map-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  cursor: grab;
+}
+
+.lcd-map-canvas:active {
+  cursor: grabbing;
+}
+
+.wm-compass-rose.is-lcd {
+  left: 6px;
+  bottom: 6px;
+  width: 42px;
+  gap: 2px;
+}
+
+.wm-compass-rose.is-lcd .wm-rose-lbl {
+  font-size: 6px;
+}
+
+.wm-compass-rose.is-lcd .wm-rose-lbl.is-n { top: 2px; }
+.wm-compass-rose.is-lcd .wm-rose-lbl.is-s { top: 28px; }
+.wm-compass-rose.is-lcd .wm-rose-lbl.is-w { top: 15px; left: 5px; }
+.wm-compass-rose.is-lcd .wm-rose-lbl.is-e { top: 15px; right: 5px; }
+
+.wm-zoom-bar.is-lcd {
+  right: 5px;
+  bottom: 5px;
+  gap: 3px;
+}
+
+.wm-zoom-bar.is-lcd button {
+  min-width: 28px;
+  height: 22px;
+  padding: 0 4px;
+  font-size: 9px;
+}
+
+.lcd-map-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  background: #fffdf4;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.lcd-map-side-head {
+  font-size: 10px;
+  font-weight: 800;
+  padding-bottom: 4px;
+  border-bottom: 1.5px solid #161420;
+  color: #161420;
+  flex-shrink: 0;
+}
+
+.lcd-map-poi-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.lcd-map-poi-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 3px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #161420;
+  background: #fff;
+  border: 1.5px solid #161420;
+  cursor: pointer;
+  text-align: left;
+}
+
+.lcd-map-poi-btn:hover,
+.lcd-map-poi-btn.is-active {
+  background: #fff3bf;
+  box-shadow: 1.5px 1.5px 0 #161420;
+}
+
+.lcd-map-poi-ico {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #161420;
+  background: #fffdf4;
+}
+
+.lcd-map-poi-lbl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lcd-map-poi-btn em {
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: #495057;
+}
+
+.lcd-map-pin-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1.5px dashed #ced4da;
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.lcd-map-hint {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.35;
+  color: #495057;
+  flex-shrink: 0;
+}
+

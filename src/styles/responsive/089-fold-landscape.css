@@ -1,0 +1,48 @@
+/* Foldable / mid-height landscape (561px .. 680px tall, e.g. 860x608 unfolded phone — symmetric margins!) */
+@media (min-height: 561px) and (max-height: 680px) and (orientation: landscape) {
+  .manager-overlay-wrap {
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(68px, calc(60px + env(safe-area-inset-right)))
+      max(10px, env(safe-area-inset-bottom))
+      max(68px, calc(60px + env(safe-area-inset-left)));
+    align-items: center !important;
+    overflow: hidden;
+  }
+
+  .console-column {
+    width: 100%;
+    max-width: min(780px, 100%) !important;
+  }
+
+  .handheld-shell,
+  .handheld-shell.is-3d-chassis {
+    padding: 8px 10px;
+    border-radius: 16px;
+    transform: none !important;
+  }
+
+  .battery-column,
+  .bezel-brand-footer,
+  .shell-embossed-logo,
+  .controls-deck,
+  .lower-deck {
+    display: none !important;
+  }
+
+  .lens-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .shell-side-charm-anchor {
+    display: block !important;
+    top: 36px;
+  }
+
+  .handheld-shell .lcd-viewport {
+    height: calc(100dvh - 54px) !important;
+    min-height: 340px !important;
+    max-height: 560px !important;
+  }
+}
+

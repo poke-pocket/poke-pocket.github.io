@@ -1,0 +1,49 @@
+/* =========================================================================
+   POLISH PASS: BEZEL FULLSCREEN, BACKDROP HINT, COMPACT 4-COL BOX/DEX,
+   TOP-RIGHT DETAIL DROPDOWN, 2-COL PLAY GRID & RICH VISUAL BATTLE SUMMARY
+   ========================================================================= */
+
+.bezel-brand-footer {
+  position: relative;
+}
+
+.bezel-fs-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  color: #fffdf5;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.bezel-fs-btn:hover {
+  background: #ffe066;
+  color: #161420;
+  border-color: #161420;
+}
+
+.console-backdrop-hint {
+  margin-top: 8px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: #fffdf5;
+  background: rgba(22, 20, 32, 0.85);
+  border: 2px solid #ffe066;
+  box-shadow: 3px 3px 0 #161420;
+  cursor: pointer;
+  user-select: none;
+}
+
+.lcd-fs-toggle-btn {
+  background: #fff3bf !important;
+}
+

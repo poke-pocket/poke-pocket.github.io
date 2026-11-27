@@ -1,0 +1,109 @@
+/* Horizontal 3-Card Neo-Brutalist Pixel Level-Up Draft */
+.surv-draft-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(860px, 94vw);
+  animation: modalPopArcade 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.surv-modal-backdrop.is-closing .surv-draft-stage {
+  animation: modalPopOut 0.16s ease forwards !important;
+}
+
+.surv-draft-ribbon {
+  padding: 7px 28px;
+  transform: skewX(-10deg);
+  background: #ff6b35;
+  color: #fffdf5;
+  border: 3px solid #161420;
+  box-shadow: 5px 5px 0 #161420;
+  font-size: 20px;
+  font-weight: 800;
+  text-shadow: 2px 2px 0 #161420;
+}
+
+.surv-draft-ribbon span {
+  display: inline-block;
+  transform: skewX(10deg);
+}
+
+.surv-draft-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.surv-draft-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  text-align: left;
+  background: #1c2030;
+  color: #fffdf5;
+  border: 3px solid #161420;
+  box-shadow: 6px 6px 0 #161420;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.14s ease, box-shadow 0.14s ease;
+}
+
+.surv-draft-card:hover {
+  transform: translate(-3px, -5px);
+  box-shadow: 9px 11px 0 #161420;
+}
+
+.surv-draft-card.is-banish-target {
+  border-color: #ff4d4d;
+  box-shadow: 0 0 0 2px #ff4d4d, 6px 6px 0 #161420;
+}
+
+.draft-card-banner {
+  position: relative;
+  height: 138px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--card-col, #f76707);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.18) 0 12px,
+    transparent 12px 24px
+  );
+  border-bottom: 3px solid #161420;
+}
+
+.draft-tl-tag,
+.draft-tr-tag {
+  position: absolute;
+  top: 7px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fffdf5;
+  background: rgba(22, 20, 32, 0.85);
+  border: 1.5px solid #161420;
+}
+
+.draft-tl-tag {
+  left: 7px;
+}
+
+.draft-tr-tag {
+  right: 7px;
+  background: #ffe066;
+  color: #161420;
+}
+
+.draft-hero-art .trimmed-sprite-box,
+.draft-hero-art img {
+  filter: drop-shadow(4px 4px 0 #161420);
+  transition: transform 0.16s ease;
+}
+
+.surv-draft-card:hover .draft-hero-art .trimmed-sprite-box {
+  transform: scale(1.08);
+}
+

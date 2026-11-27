@@ -1,0 +1,44 @@
+/* =========================================================================
+   PIXEL KEYCAPS, PARALLELOGRAM ARCADE HERO BUTTONS, SCREEN TRANSITIONS
+   & FULL-SCREEN ZERO-SCROLL SETTLEMENT DASHBOARD
+   ========================================================================= */
+
+/* Crisp Neo-Brutalist Pixel Keycap Badge ([1] [2] [Q] [E] [M] [ESC]) */
+.px-keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  line-height: 1;
+  color: #161420;
+  background: #fffdf5;
+  border: 1.5px solid #161420;
+  box-shadow: 0 2px 0 #161420;
+  border-radius: 0;
+  flex-shrink: 0;
+}
+
+.px-keycap.is-lg {
+  min-width: 22px;
+  height: 22px;
+  font-size: 10px;
+  background: #ffe066;
+}
+
+.px-keycap.on-hero {
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  transform: skewX(7deg);
+  background: #fffdf5;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  min-width: 20px;
+  height: 20px;
+  font-size: 9px;
+}
+

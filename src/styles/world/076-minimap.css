@@ -1,0 +1,141 @@
+/* =========================================================================
+   NEO-BRUTALIST PIXEL ART MINIMAP & EXPANDABLE TOPOGRAPHIC WORLD MAP
+   ========================================================================= */
+.surv-minimap-box {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 16;
+  width: 122px;
+  height: 122px;
+  padding: 2px;
+  box-sizing: border-box;
+  background: #161420;
+  border: 3px solid #161420;
+  box-shadow: 4px 4px 0 #161420;
+  cursor: pointer;
+  pointer-events: auto;
+  flex-shrink: 0;
+  overflow: hidden;
+  transition: transform 0.12s ease;
+}
+
+.surv-minimap-box:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 #161420;
+}
+
+.surv-minimap-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.mm-cardinal {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 4px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #ffe066;
+  background: rgba(22, 20, 32, 0.88);
+  border: 1px solid #161420;
+  pointer-events: none;
+}
+
+.mm-tab-chip {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 1px 4px;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: #161420;
+  background: #ffe066;
+  border: 1px solid #161420;
+  pointer-events: none;
+}
+
+.surv-combo-badge {
+  top: 224px !important;
+}
+
+.worldmap-modal {
+  width: min(820px, 94vw);
+  background: #f8f4e6;
+  color: var(--ink);
+  border: 3px solid #161420;
+  box-shadow: 8px 8px 0 #161420;
+  overflow: hidden;
+  animation: modalPopArcade 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.surv-modal-backdrop.is-closing .worldmap-modal {
+  animation: modalPopOut 0.16s ease forwards !important;
+}
+
+.worldmap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #1c1f2e;
+  color: #fffdf5;
+  border-bottom: 3px solid #161420;
+}
+
+.worldmap-sub {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: #ffe066;
+}
+
+.worldmap-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 248px;
+  gap: 12px;
+  padding: 12px;
+}
+
+.worldmap-canvas-wrap {
+  position: relative;
+  border: 3px solid #161420;
+  box-shadow: 4px 4px 0 #161420;
+  background: #1c1f2e;
+  aspect-ratio: 1 / 1;
+  max-height: 500px;
+  overflow: hidden;
+}
+
+.worldmap-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+  cursor: grab;
+}
+
+.worldmap-canvas:active {
+  cursor: grabbing;
+}
+
+.wm-compass {
+  position: absolute;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #ffe066;
+  background: #161420;
+  border: 1.5px solid #fffdf5;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.wm-compass.is-n { top: 6px; left: 50%; transform: translateX(-50%); }
+.wm-compass.is-s { bottom: 6px; left: 50%; transform: translateX(-50%); }
+.wm-compass.is-w { left: 6px; top: 50%; transform: translateY(-50%); }
+.wm-compass.is-e { right: 6px; top: 50%; transform: translateY(-50%); }
+

@@ -1,0 +1,209 @@
+/* Collapsible Combat Party Toggle (Desktop: hidden, shows cards directly; Mobile: pure toggle pill!) */
+.surv-party-mobile-toggle {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fffdf5;
+  background: rgba(22, 26, 40, 0.92);
+  border: 2px solid #161420;
+  box-shadow: 3px 3px 0 #161420;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.surv-party-mobile-toggle em {
+  font-style: normal;
+  font-size: 8px;
+  color: #ffe066;
+}
+
+.surv-party-cards-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+@media (max-width: 768px) {
+  .pkb-topbar {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+  }
+
+  .pkb-top-squad {
+    order: 0 !important;
+    width: auto !important;
+    overflow: visible !important;
+    flex-shrink: 0;
+  }
+
+  .pkb-squad-entry-btn {
+    height: 36px;
+    padding: 0 8px 0 4px;
+    gap: 5px;
+  }
+
+  .pkb-squad-entry-ava {
+    width: 24px;
+    height: 24px;
+  }
+
+  .pkb-squad-entry-btn strong {
+    font-size: 11px;
+  }
+
+  .pkb-squad-entry-count {
+    font-size: 9px;
+    padding: 1px 4px;
+  }
+
+  .pkb-top-right {
+    order: 0 !important;
+    width: auto !important;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-end !important;
+    gap: 5px !important;
+  }
+
+  .pkb-profile-pill {
+    height: 36px !important;
+    flex: 0 1 138px;
+    min-width: 0;
+  }
+
+  .pkb-trainer-sub {
+    display: none !important;
+  }
+
+  .pkb-weather-pill,
+  .pkb-coin-standalone,
+  .pkb-icon-btn {
+    height: 36px !important;
+  }
+
+  .pkb-hub-bar {
+    gap: 7px;
+  }
+
+  .pkb-more-btn {
+    padding: 0 12px;
+  }
+
+  .pkb-more-btn strong {
+    font-size: 12px;
+  }
+
+  .pkb-more-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .pkb-more-grid .pkb-dock-tile {
+    min-height: 66px;
+    padding: 8px 4px 6px;
+  }
+
+  /* Live 3D Combat: keep left edge wide open on mobile until tapped! */
+  .surv-party-list.is-centered {
+    width: auto !important;
+    align-items: flex-start;
+  }
+
+  .surv-party-mobile-toggle {
+    display: inline-flex;
+  }
+
+  .surv-party-list.is-mobile-collapsed .surv-party-cards-wrap {
+    display: none;
+  }
+
+  .surv-party-list.is-mobile-open .surv-party-cards-wrap {
+    display: flex;
+    width: 180px;
+    padding-right: 56px;
+    box-sizing: border-box;
+    max-height: 44dvh;
+    overflow-y: auto;
+  }
+}
+
+@media (max-height: 560px) and (orientation: landscape) {
+  .pkb-topbar {
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+  }
+
+  .pkb-top-squad {
+    order: 0 !important;
+    width: auto !important;
+    flex-shrink: 0;
+  }
+
+  .pkb-top-right {
+    order: 0 !important;
+    width: auto !important;
+    flex: 0 1 auto !important;
+  }
+
+  .pkb-squad-entry-btn {
+    height: 32px;
+    padding: 0 8px 0 4px;
+    gap: 5px;
+  }
+
+  .pkb-squad-entry-ava {
+    width: 22px;
+    height: 22px;
+  }
+
+  .pkb-squad-entry-btn strong {
+    font-size: 11px;
+  }
+
+  .pkb-hub-bar {
+    margin-top: 4px;
+    gap: 8px;
+  }
+
+  .pkb-more-btn {
+    padding: 0 12px;
+  }
+
+  .pkb-more-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .pkb-more-grid .pkb-dock-tile {
+    min-height: 58px;
+    padding: 6px 4px;
+  }
+
+  .surv-party-list.is-centered {
+    width: auto !important;
+    align-items: flex-start;
+  }
+
+  .surv-party-mobile-toggle {
+    display: inline-flex;
+  }
+
+  .surv-party-list.is-mobile-collapsed .surv-party-cards-wrap {
+    display: none;
+  }
+
+  .surv-party-list.is-mobile-open .surv-party-cards-wrap {
+    display: flex;
+    width: 182px;
+    padding-right: 56px;
+    box-sizing: border-box;
+    max-height: 52dvh;
+    overflow-y: auto;
+  }
+}
+

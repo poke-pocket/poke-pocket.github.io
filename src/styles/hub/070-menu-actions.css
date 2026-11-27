@@ -1,0 +1,32 @@
+/* Menu Exit / Resume Run Action Bar (Left narrower '返回菜单', Right wider '继续冒险') */
+.lcd-menu-run-actions {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1.95fr;
+  gap: 8px;
+}
+
+.lcd-run-resume-btn,
+.lcd-run-exit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 8px;
+  font-size: 10px;
+  font-weight: 900;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
+}
+
+.lcd-run-resume-btn {
+  background: #69db7c;
+  color: #161420;
+}
+
+.lcd-run-exit-btn {
+  background: #ff6b6b;
+  color: #fffdf5;
+}
+

@@ -1,0 +1,2346 @@
+{
+  "units": "metres",
+  "axes": "Y-up",
+  "lanes": [
+    {
+      "id": "main_w1:F2",
+      "edge": "main_w1",
+      "from": "west",
+      "to": "west_merge",
+      "points": [
+        {
+          "x": -150.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_w1:F3",
+      "edge": "main_w1",
+      "from": "west",
+      "to": "west_merge",
+      "points": [
+        {
+          "x": -150.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w1:R0",
+      "edge": "main_w1",
+      "from": "west_merge",
+      "to": "west",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": -150.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w1:R1",
+      "edge": "main_w1",
+      "from": "west_merge",
+      "to": "west",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": -150.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "main_w2:F2",
+      "edge": "main_w2",
+      "from": "west_merge",
+      "to": "cross",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_w2:F3",
+      "edge": "main_w2",
+      "from": "west_merge",
+      "to": "cross",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w2:R0",
+      "edge": "main_w2",
+      "from": "cross",
+      "to": "west_merge",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w2:R1",
+      "edge": "main_w2",
+      "from": "cross",
+      "to": "west_merge",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "main_e1:F2",
+      "edge": "main_e1",
+      "from": "cross",
+      "to": "east_merge",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_e1:F3",
+      "edge": "main_e1",
+      "from": "cross",
+      "to": "east_merge",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e1:R0",
+      "edge": "main_e1",
+      "from": "east_merge",
+      "to": "cross",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e1:R1",
+      "edge": "main_e1",
+      "from": "east_merge",
+      "to": "cross",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "main_e2:F2",
+      "edge": "main_e2",
+      "from": "east_merge",
+      "to": "east",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": 150.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_e2:F3",
+      "edge": "main_e2",
+      "from": "east_merge",
+      "to": "east",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 150.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e2:R0",
+      "edge": "main_e2",
+      "from": "east",
+      "to": "east_merge",
+      "points": [
+        {
+          "x": 150.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e2:R1",
+      "edge": "main_e2",
+      "from": "east",
+      "to": "east_merge",
+      "points": [
+        {
+          "x": 150.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "north_road:F1",
+      "edge": "north_road",
+      "from": "north",
+      "to": "cross",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": -65.0
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "id": "north_road:R0",
+      "edge": "north_road",
+      "from": "cross",
+      "to": "north",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": -65.0
+        }
+      ]
+    },
+    {
+      "id": "south_inner:F1",
+      "edge": "south_inner",
+      "from": "cross",
+      "to": "front_cross",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "south_inner:R0",
+      "edge": "south_inner",
+      "from": "front_cross",
+      "to": "cross",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "id": "south_road:F1",
+      "edge": "south_road",
+      "from": "front_cross",
+      "to": "south",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 79.175
+        }
+      ]
+    },
+    {
+      "id": "south_road:R0",
+      "edge": "south_road",
+      "from": "south",
+      "to": "front_cross",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 79.175
+        },
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "merge_w:F0",
+      "edge": "merge_w",
+      "from": "west_merge",
+      "to": "front_w",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": -92.0,
+          "y": 0.025,
+          "z": 11.266
+        },
+        {
+          "x": -84.0,
+          "y": 0.025,
+          "z": 13.978
+        },
+        {
+          "x": -76.0,
+          "y": 0.025,
+          "z": 17.811
+        },
+        {
+          "x": -68.0,
+          "y": 0.025,
+          "z": 22.206
+        },
+        {
+          "x": -60.0,
+          "y": 0.025,
+          "z": 26.601
+        },
+        {
+          "x": -52.0,
+          "y": 0.025,
+          "z": 30.435
+        },
+        {
+          "x": -44.0,
+          "y": 0.025,
+          "z": 33.146
+        },
+        {
+          "x": -36.0,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "frontage_w:F1",
+      "edge": "frontage_w",
+      "from": "front_w",
+      "to": "front_cross",
+      "points": [
+        {
+          "x": -36.0,
+          "y": 0.025,
+          "z": 37.587
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 37.587
+        }
+      ]
+    },
+    {
+      "id": "frontage_w:R0",
+      "edge": "frontage_w",
+      "from": "front_cross",
+      "to": "front_w",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 30.762
+        },
+        {
+          "x": -36.0,
+          "y": 0.025,
+          "z": 30.762
+        }
+      ]
+    },
+    {
+      "id": "frontage_e:F1",
+      "edge": "frontage_e",
+      "from": "front_cross",
+      "to": "front_e",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 37.587
+        },
+        {
+          "x": 36.0,
+          "y": 0.025,
+          "z": 37.587
+        }
+      ]
+    },
+    {
+      "id": "frontage_e:R0",
+      "edge": "frontage_e",
+      "from": "front_e",
+      "to": "front_cross",
+      "points": [
+        {
+          "x": 36.0,
+          "y": 0.025,
+          "z": 30.762
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 30.762
+        }
+      ]
+    },
+    {
+      "id": "merge_e:F0",
+      "edge": "merge_e",
+      "from": "front_e",
+      "to": "east_merge",
+      "points": [
+        {
+          "x": 36.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 44.0,
+          "y": 0.025,
+          "z": 33.146
+        },
+        {
+          "x": 52.0,
+          "y": 0.025,
+          "z": 30.435
+        },
+        {
+          "x": 60.0,
+          "y": 0.025,
+          "z": 26.601
+        },
+        {
+          "x": 68.0,
+          "y": 0.025,
+          "z": 22.206
+        },
+        {
+          "x": 76.0,
+          "y": 0.025,
+          "z": 17.811
+        },
+        {
+          "x": 84.0,
+          "y": 0.025,
+          "z": 13.978
+        },
+        {
+          "x": 92.0,
+          "y": 0.025,
+          "z": 11.266
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "approach:F1",
+      "edge": "approach",
+      "from": "north",
+      "to": "ramp_start",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -61.587
+        },
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -61.587
+        }
+      ]
+    },
+    {
+      "id": "approach:R0",
+      "edge": "approach",
+      "from": "ramp_start",
+      "to": "north",
+      "points": [
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -68.412
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -68.412
+        }
+      ]
+    },
+    {
+      "id": "ramp_up:F1",
+      "edge": "ramp_up",
+      "from": "ramp_start",
+      "to": "bridge_start",
+      "points": [
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -61.587
+        },
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -61.587
+        }
+      ]
+    },
+    {
+      "id": "ramp_up:R0",
+      "edge": "ramp_up",
+      "from": "bridge_start",
+      "to": "ramp_start",
+      "points": [
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -68.412
+        },
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -68.412
+        }
+      ]
+    },
+    {
+      "id": "overpass:F1",
+      "edge": "overpass",
+      "from": "bridge_start",
+      "to": "bridge_end",
+      "points": [
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -61.587
+        },
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -61.587
+        }
+      ]
+    },
+    {
+      "id": "overpass:R0",
+      "edge": "overpass",
+      "from": "bridge_end",
+      "to": "bridge_start",
+      "points": [
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -68.412
+        },
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -68.412
+        }
+      ]
+    },
+    {
+      "id": "ramp_down:F1",
+      "edge": "ramp_down",
+      "from": "bridge_end",
+      "to": "ramp_end",
+      "points": [
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -61.587
+        },
+        {
+          "x": 92.0,
+          "y": 0.025,
+          "z": -61.587
+        }
+      ]
+    },
+    {
+      "id": "ramp_down:R0",
+      "edge": "ramp_down",
+      "from": "ramp_end",
+      "to": "bridge_end",
+      "points": [
+        {
+          "x": 92.0,
+          "y": 0.025,
+          "z": -68.412
+        },
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -68.412
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "main_w1:F2->main_w2:F2",
+      "node": "west_merge",
+      "from_lane": "main_w1:F2",
+      "to_lane": "main_w2:F2",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_w1:F2->main_w2:F3",
+      "node": "west_merge",
+      "from_lane": "main_w1:F2",
+      "to_lane": "main_w2:F3",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w1:F3->main_w2:F2",
+      "node": "west_merge",
+      "from_lane": "main_w1:F3",
+      "to_lane": "main_w2:F2",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_w1:F3->main_w2:F3",
+      "node": "west_merge",
+      "from_lane": "main_w1:F3",
+      "to_lane": "main_w2:F3",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w1:F3->merge_w:F0",
+      "node": "west_merge",
+      "from_lane": "main_w1:F3",
+      "to_lane": "merge_w:F0",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w2:R0->main_w1:R0",
+      "node": "west_merge",
+      "from_lane": "main_w2:R0",
+      "to_lane": "main_w1:R0",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w2:R0->main_w1:R1",
+      "node": "west_merge",
+      "from_lane": "main_w2:R0",
+      "to_lane": "main_w1:R1",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "main_w2:R1->main_w1:R0",
+      "node": "west_merge",
+      "from_lane": "main_w2:R1",
+      "to_lane": "main_w1:R0",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w2:R1->main_w1:R1",
+      "node": "west_merge",
+      "from_lane": "main_w2:R1",
+      "to_lane": "main_w1:R1",
+      "points": [
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -100.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "main_w2:F2->main_e1:F2",
+      "node": "cross",
+      "from_lane": "main_w2:F2",
+      "to_lane": "main_e1:F2",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_w2:F2->main_e1:F3",
+      "node": "cross",
+      "from_lane": "main_w2:F2",
+      "to_lane": "main_e1:F3",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w2:F2->north_road:R0",
+      "node": "cross",
+      "from_lane": "main_w2:F2",
+      "to_lane": "north_road:R0",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "id": "main_w2:F3->main_e1:F2",
+      "node": "cross",
+      "from_lane": "main_w2:F3",
+      "to_lane": "main_e1:F2",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_w2:F3->main_e1:F3",
+      "node": "cross",
+      "from_lane": "main_w2:F3",
+      "to_lane": "main_e1:F3",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_w2:F3->south_inner:F1",
+      "node": "cross",
+      "from_lane": "main_w2:F3",
+      "to_lane": "south_inner:F1",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "id": "main_e1:R0->main_w2:R0",
+      "node": "cross",
+      "from_lane": "main_e1:R0",
+      "to_lane": "main_w2:R0",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e1:R0->main_w2:R1",
+      "node": "cross",
+      "from_lane": "main_e1:R0",
+      "to_lane": "main_w2:R1",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "main_e1:R0->north_road:R0",
+      "node": "cross",
+      "from_lane": "main_e1:R0",
+      "to_lane": "north_road:R0",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "id": "main_e1:R1->main_w2:R0",
+      "node": "cross",
+      "from_lane": "main_e1:R1",
+      "to_lane": "main_w2:R0",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e1:R1->main_w2:R1",
+      "node": "cross",
+      "from_lane": "main_e1:R1",
+      "to_lane": "main_w2:R1",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "main_e1:R1->south_inner:F1",
+      "node": "cross",
+      "from_lane": "main_e1:R1",
+      "to_lane": "south_inner:F1",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "id": "north_road:F1->main_w2:R0",
+      "node": "cross",
+      "from_lane": "north_road:F1",
+      "to_lane": "main_w2:R0",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "north_road:F1->main_w2:R1",
+      "node": "cross",
+      "from_lane": "north_road:F1",
+      "to_lane": "main_w2:R1",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "north_road:F1->main_e1:F2",
+      "node": "cross",
+      "from_lane": "north_road:F1",
+      "to_lane": "main_e1:F2",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "north_road:F1->main_e1:F3",
+      "node": "cross",
+      "from_lane": "north_road:F1",
+      "to_lane": "main_e1:F3",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "north_road:F1->south_inner:F1",
+      "node": "cross",
+      "from_lane": "north_road:F1",
+      "to_lane": "south_inner:F1",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "id": "south_inner:R0->main_w2:R0",
+      "node": "cross",
+      "from_lane": "south_inner:R0",
+      "to_lane": "main_w2:R0",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "south_inner:R0->main_w2:R1",
+      "node": "cross",
+      "from_lane": "south_inner:R0",
+      "to_lane": "main_w2:R1",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "south_inner:R0->main_e1:F2",
+      "node": "cross",
+      "from_lane": "south_inner:R0",
+      "to_lane": "main_e1:F2",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "south_inner:R0->main_e1:F3",
+      "node": "cross",
+      "from_lane": "south_inner:R0",
+      "to_lane": "main_e1:F3",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "south_inner:R0->north_road:R0",
+      "node": "cross",
+      "from_lane": "south_inner:R0",
+      "to_lane": "north_road:R0",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 0.0
+        }
+      ]
+    },
+    {
+      "id": "main_e1:F2->main_e2:F2",
+      "node": "east_merge",
+      "from_lane": "main_e1:F2",
+      "to_lane": "main_e2:F2",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_e1:F2->main_e2:F3",
+      "node": "east_merge",
+      "from_lane": "main_e1:F2",
+      "to_lane": "main_e2:F3",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 3.413
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e1:F3->main_e2:F2",
+      "node": "east_merge",
+      "from_lane": "main_e1:F3",
+      "to_lane": "main_e2:F2",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 3.413
+        }
+      ]
+    },
+    {
+      "id": "main_e1:F3->main_e2:F3",
+      "node": "east_merge",
+      "from_lane": "main_e1:F3",
+      "to_lane": "main_e2:F3",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e2:R0->main_e1:R0",
+      "node": "east_merge",
+      "from_lane": "main_e2:R0",
+      "to_lane": "main_e1:R0",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e2:R0->main_e1:R1",
+      "node": "east_merge",
+      "from_lane": "main_e2:R0",
+      "to_lane": "main_e1:R1",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -10.238
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "main_e2:R1->main_e1:R0",
+      "node": "east_merge",
+      "from_lane": "main_e2:R1",
+      "to_lane": "main_e1:R0",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -10.238
+        }
+      ]
+    },
+    {
+      "id": "main_e2:R1->main_e1:R1",
+      "node": "east_merge",
+      "from_lane": "main_e2:R1",
+      "to_lane": "main_e1:R1",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -3.413
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 0.0
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": -3.413
+        }
+      ]
+    },
+    {
+      "id": "merge_e:F0->main_e2:F3",
+      "node": "east_merge",
+      "from_lane": "merge_e:F0",
+      "to_lane": "main_e2:F3",
+      "points": [
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        },
+        {
+          "x": 100.0,
+          "y": 0.025,
+          "z": 10.238
+        }
+      ]
+    },
+    {
+      "id": "north_road:R0->approach:F1",
+      "node": "north",
+      "from_lane": "north_road:R0",
+      "to_lane": "approach:F1",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": -65.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -65.0
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -61.587
+        }
+      ]
+    },
+    {
+      "id": "approach:R0->north_road:F1",
+      "node": "north",
+      "from_lane": "approach:R0",
+      "to_lane": "north_road:F1",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -68.412
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": -65.0
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": -65.0
+        }
+      ]
+    },
+    {
+      "id": "merge_w:F0->frontage_w:F1",
+      "node": "front_w",
+      "from_lane": "merge_w:F0",
+      "to_lane": "frontage_w:F1",
+      "points": [
+        {
+          "x": -36.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": -36.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": -36.0,
+          "y": 0.025,
+          "z": 37.587
+        }
+      ]
+    },
+    {
+      "id": "south_inner:F1->south_road:F1",
+      "node": "front_cross",
+      "from_lane": "south_inner:F1",
+      "to_lane": "south_road:F1",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "south_inner:F1->frontage_w:R0",
+      "node": "front_cross",
+      "from_lane": "south_inner:F1",
+      "to_lane": "frontage_w:R0",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 30.762
+        }
+      ]
+    },
+    {
+      "id": "south_inner:F1->frontage_e:F1",
+      "node": "front_cross",
+      "from_lane": "south_inner:F1",
+      "to_lane": "frontage_e:F1",
+      "points": [
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 37.587
+        }
+      ]
+    },
+    {
+      "id": "south_road:R0->south_inner:R0",
+      "node": "front_cross",
+      "from_lane": "south_road:R0",
+      "to_lane": "south_inner:R0",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "south_road:R0->frontage_w:R0",
+      "node": "front_cross",
+      "from_lane": "south_road:R0",
+      "to_lane": "frontage_w:R0",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 30.762
+        }
+      ]
+    },
+    {
+      "id": "south_road:R0->frontage_e:F1",
+      "node": "front_cross",
+      "from_lane": "south_road:R0",
+      "to_lane": "frontage_e:F1",
+      "points": [
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 37.587
+        }
+      ]
+    },
+    {
+      "id": "frontage_w:F1->south_inner:R0",
+      "node": "front_cross",
+      "from_lane": "frontage_w:F1",
+      "to_lane": "south_inner:R0",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 37.587
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "frontage_w:F1->south_road:F1",
+      "node": "front_cross",
+      "from_lane": "frontage_w:F1",
+      "to_lane": "south_road:F1",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 37.587
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "frontage_w:F1->frontage_e:F1",
+      "node": "front_cross",
+      "from_lane": "frontage_w:F1",
+      "to_lane": "frontage_e:F1",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 37.587
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 37.587
+        }
+      ]
+    },
+    {
+      "id": "frontage_e:R0->south_inner:R0",
+      "node": "front_cross",
+      "from_lane": "frontage_e:R0",
+      "to_lane": "south_inner:R0",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 30.762
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 3.413,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "frontage_e:R0->south_road:F1",
+      "node": "front_cross",
+      "from_lane": "frontage_e:R0",
+      "to_lane": "south_road:F1",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 30.762
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": -3.413,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "frontage_e:R0->frontage_w:R0",
+      "node": "front_cross",
+      "from_lane": "frontage_e:R0",
+      "to_lane": "frontage_w:R0",
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 30.762
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 0.0,
+          "y": 0.025,
+          "z": 30.762
+        }
+      ]
+    },
+    {
+      "id": "frontage_e:F1->merge_e:F0",
+      "node": "front_e",
+      "from_lane": "frontage_e:F1",
+      "to_lane": "merge_e:F0",
+      "points": [
+        {
+          "x": 36.0,
+          "y": 0.025,
+          "z": 37.587
+        },
+        {
+          "x": 36.0,
+          "y": 0.025,
+          "z": 34.175
+        },
+        {
+          "x": 36.0,
+          "y": 0.025,
+          "z": 34.175
+        }
+      ]
+    },
+    {
+      "id": "approach:F1->ramp_up:F1",
+      "node": "ramp_start",
+      "from_lane": "approach:F1",
+      "to_lane": "ramp_up:F1",
+      "points": [
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -61.587
+        },
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -65.0
+        },
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -61.587
+        }
+      ]
+    },
+    {
+      "id": "ramp_up:R0->approach:R0",
+      "node": "ramp_start",
+      "from_lane": "ramp_up:R0",
+      "to_lane": "approach:R0",
+      "points": [
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -68.412
+        },
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -65.0
+        },
+        {
+          "x": 18.0,
+          "y": 0.025,
+          "z": -68.412
+        }
+      ]
+    },
+    {
+      "id": "ramp_up:F1->overpass:F1",
+      "node": "bridge_start",
+      "from_lane": "ramp_up:F1",
+      "to_lane": "overpass:F1",
+      "points": [
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -61.587
+        },
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -65.0
+        },
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -61.587
+        }
+      ]
+    },
+    {
+      "id": "overpass:R0->ramp_up:R0",
+      "node": "bridge_start",
+      "from_lane": "overpass:R0",
+      "to_lane": "ramp_up:R0",
+      "points": [
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -68.412
+        },
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -65.0
+        },
+        {
+          "x": 42.0,
+          "y": 6.025,
+          "z": -68.412
+        }
+      ]
+    },
+    {
+      "id": "overpass:F1->ramp_down:F1",
+      "node": "bridge_end",
+      "from_lane": "overpass:F1",
+      "to_lane": "ramp_down:F1",
+      "points": [
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -61.587
+        },
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -65.0
+        },
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -61.587
+        }
+      ]
+    },
+    {
+      "id": "ramp_down:R0->overpass:R0",
+      "node": "bridge_end",
+      "from_lane": "ramp_down:R0",
+      "to_lane": "overpass:R0",
+      "points": [
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -68.412
+        },
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -65.0
+        },
+        {
+          "x": 68.0,
+          "y": 6.025,
+          "z": -68.412
+        }
+      ]
+    }
+  ],
+  "crosswalks": [
+    {
+      "edge": "main_w2",
+      "node": "cross",
+      "width": 3.0,
+      "road_width": 27.3,
+      "stripe_pitch": 1.4500000000000002,
+      "stripe_width": 0.65,
+      "stripe_gap": 0.8,
+      "paint_grid": 0.125,
+      "center": {
+        "x": -9.325,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "endpoints": [
+        {
+          "x": -9.325,
+          "y": 0.0,
+          "z": 13.65
+        },
+        {
+          "x": -9.325,
+          "y": 0.0,
+          "z": -13.65
+        }
+      ]
+    },
+    {
+      "edge": "main_e1",
+      "node": "cross",
+      "width": 3.0,
+      "road_width": 27.3,
+      "stripe_pitch": 1.4500000000000002,
+      "stripe_width": 0.65,
+      "stripe_gap": 0.8,
+      "paint_grid": 0.125,
+      "center": {
+        "x": 9.325,
+        "y": 0.0,
+        "z": 0.0
+      },
+      "endpoints": [
+        {
+          "x": 9.325,
+          "y": 0.0,
+          "z": -13.65
+        },
+        {
+          "x": 9.325,
+          "y": 0.0,
+          "z": 13.65
+        }
+      ]
+    },
+    {
+      "edge": "north_road",
+      "node": "cross",
+      "width": 3.0,
+      "road_width": 13.65,
+      "stripe_pitch": 1.4500000000000002,
+      "stripe_width": 0.65,
+      "stripe_gap": 0.8,
+      "paint_grid": 0.125,
+      "center": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": -16.15
+      },
+      "endpoints": [
+        {
+          "x": -6.825,
+          "y": 0.0,
+          "z": -16.15
+        },
+        {
+          "x": 6.825,
+          "y": 0.0,
+          "z": -16.15
+        }
+      ]
+    },
+    {
+      "edge": "south_inner",
+      "node": "cross",
+      "width": 3.0,
+      "road_width": 13.65,
+      "stripe_pitch": 1.4500000000000002,
+      "stripe_width": 0.65,
+      "stripe_gap": 0.8,
+      "paint_grid": 0.125,
+      "center": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 16.15
+      },
+      "endpoints": [
+        {
+          "x": 6.825,
+          "y": 0.0,
+          "z": 16.15
+        },
+        {
+          "x": -6.825,
+          "y": 0.0,
+          "z": 16.15
+        }
+      ]
+    }
+  ],
+  "ramps": [
+    {
+      "edge": "ramp_up",
+      "start": {
+        "x": 18.0,
+        "y": 0.0,
+        "z": -65.0
+      },
+      "end": {
+        "x": 42.0,
+        "y": 6.0,
+        "z": -65.0
+      },
+      "width": 13.65,
+      "sidewalk_width": 5.85
+    },
+    {
+      "edge": "ramp_down",
+      "start": {
+        "x": 68.0,
+        "y": 6.0,
+        "z": -65.0
+      },
+      "end": {
+        "x": 92.0,
+        "y": 0.0,
+        "z": -65.0
+      },
+      "width": 13.65,
+      "sidewalk_width": 5.85
+    }
+  ],
+  "junction_arrows": [
+    {
+      "edge": "main_w2",
+      "lane_index_from_right": 0,
+      "turns": [
+        "straight",
+        "right"
+      ]
+    },
+    {
+      "edge": "main_w2",
+      "lane_index_from_right": 1,
+      "turns": [
+        "straight",
+        "left"
+      ]
+    },
+    {
+      "edge": "main_e1",
+      "lane_index_from_right": 0,
+      "turns": [
+        "straight",
+        "right"
+      ]
+    },
+    {
+      "edge": "main_e1",
+      "lane_index_from_right": 1,
+      "turns": [
+        "straight",
+        "left"
+      ]
+    },
+    {
+      "edge": "north_road",
+      "lane_index_from_right": 0,
+      "turns": [
+        "straight",
+        "left",
+        "right"
+      ]
+    },
+    {
+      "edge": "south_inner",
+      "lane_index_from_right": 0,
+      "turns": [
+        "straight",
+        "left",
+        "right"
+      ]
+    }
+  ]
+}

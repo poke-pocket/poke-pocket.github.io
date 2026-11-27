@@ -1,0 +1,92 @@
+/* =========================================================================
+   DANGLING TOP-RIGHT HANDHELD LANYARD CHARM FOR FULLSCREEN TOGGLE
+   ========================================================================= */
+.handheld-shell {
+  position: relative;
+}
+
+.shell-fs-charm-anchor {
+  position: absolute;
+  top: 12px;
+  right: -6px;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.shell-charm-lug {
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #161420;
+  border: 2px solid #ffe066;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.shell-charm-pendulum {
+  position: relative;
+  left: 2px;
+  top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  transform-origin: 0px 0px;
+  animation: shellCharmSway 3.4s ease-in-out infinite;
+  pointer-events: auto;
+}
+
+.shell-charm-pendulum:hover {
+  animation-duration: 1.1s;
+}
+
+.shell-charm-cord {
+  display: block;
+  margin-left: 0;
+  margin-bottom: -3px;
+  pointer-events: none;
+  filter: drop-shadow(1px 2px 0 rgba(22, 20, 32, 0.45));
+}
+
+.shell-fs-charm-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  margin-left: 2px;
+  padding: 6px 8px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1;
+  color: #161420;
+  background: linear-gradient(180deg, #fff3bf 0%, #ffd43b 100%);
+  border: 2.5px solid #161420;
+  box-shadow:
+    inset 1.5px 1.5px 0 rgba(255, 255, 255, 0.8),
+    3px 3px 0 #161420;
+  border-radius: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.shell-fs-charm-btn:hover {
+  background: linear-gradient(180deg, #fff9db 0%, #ffe066 100%);
+  transform: scale(1.06);
+}
+
+.shell-fs-charm-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+@keyframes shellCharmSway {
+  0%, 100% {
+    transform: rotate(-4.5deg);
+  }
+  50% {
+    transform: rotate(5.5deg);
+  }
+}
+

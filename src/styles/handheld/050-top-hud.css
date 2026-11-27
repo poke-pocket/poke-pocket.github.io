@@ -1,0 +1,57 @@
+/* 5. Handheld Home Top HUD Exact Height Alignment (Left Card === Right 2-Row Stack!) */
+.gba-hud-row {
+  align-items: stretch !important;
+}
+
+.gba-status-box.is-clickable-card {
+  height: auto !important;
+  min-height: 82px;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 8;
+  transition: transform 0.1s ease, background-color 0.1s ease;
+}
+
+.gba-status-box.is-clickable-card:hover {
+  background: #fff8d6;
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.gba-dex-coin {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px !important;
+  min-height: 82px;
+}
+
+.hud-top-actions {
+  height: 38px !important;
+  align-items: stretch !important;
+}
+
+.hud-top-actions .hud-coin-btn,
+.hud-top-actions .lcd-sq-btn {
+  height: 38px !important;
+}
+
+.hud-sub-row.is-full-stamina {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+}
+
+.hud-sub-row.is-full-stamina .hud-stamina-pill {
+  width: 100% !important;
+  flex: 1;
+  min-height: 38px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+}
+

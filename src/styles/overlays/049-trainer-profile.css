@@ -1,0 +1,110 @@
+/* 4. Trainer Profile Social Card Modal */
+.pkb-profile-modal {
+  width: min(460px, 92vw) !important;
+}
+
+.pkb-prof-body {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pkb-prof-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: #fff9db;
+  border: 2px solid #161420;
+  box-shadow: 3px 3px 0 #161420;
+}
+
+.pkb-prof-avatar-lg {
+  width: 66px;
+  height: 66px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border: 2px solid #161420;
+}
+
+.pkb-prof-avatar-lg img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.pkb-prof-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.pkb-prof-stats strong {
+  font-size: 15px;
+  color: #161420;
+}
+
+.pkb-prof-title-badge {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: #fffdf5;
+  background: #3b5bdb;
+  border: 1.5px solid #161420;
+}
+
+.pkb-prof-stats p {
+  margin: 2px 0;
+  font-size: 11px;
+  color: #495057;
+}
+
+.pkb-prof-kpis {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  color: #161420;
+}
+
+.pkb-prof-kpis span {
+  padding: 1px 5px;
+  background: #fffdf4;
+  border: 1.5px solid #161420;
+}
+
+.pkb-prof-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pkb-prof-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #161420;
+}
+
+.pkb-prof-form input {
+  padding: 7px 9px;
+  font-family: inherit;
+  font-size: 12px;
+  color: #161420;
+  background: #fffdf5;
+  border: 2px solid #161420;
+  outline: none;
+}
+
+.pkb-prof-form input:focus {
+  background: #ffffff;
+  box-shadow: 0 0 0 2px #ffd43b;
+}
+

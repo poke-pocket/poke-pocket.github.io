@@ -1,0 +1,269 @@
+/* =========================================================================
+   3D PHYSICAL GAME BOY CHASSIS DEPTH + INTERACTIVE PARALLAX TILT
+   + SIDE-MOUNTED COLLECTIBLE POKEMON KEYCHAIN CHARM
+   ========================================================================= */
+.handheld-3d-stage {
+  perspective: 1450px;
+  perspective-origin: 50% 48%;
+}
+
+.handheld-shell.is-3d-chassis {
+  position: relative;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--tilt-rx, 2.2deg)) rotateY(var(--tilt-ry, -2.8deg));
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s ease;
+  cursor: grab;
+  border: 2px solid rgba(22, 20, 32, 0.42);
+  /* Layered physical 3D plastic casing extrusion (right + bottom thickness wall!) */
+  box-shadow:
+    inset 3px 3px 5px rgba(255, 255, 255, 0.62),
+    inset -4px -6px 12px rgba(0, 0, 0, 0.26),
+    2px 2px 0 var(--shell-shadow, #7048e8),
+    4px 5px 0 var(--shell-shadow, #7048e8),
+    6px 8px 0 color-mix(in srgb, var(--shell-shadow, #7048e8) 82%, #141220),
+    8px 11px 0 color-mix(in srgb, var(--shell-shadow, #7048e8) 64%, #100e18),
+    10px 14px 0 #161420,
+    22px 34px 48px rgba(8, 6, 16, 0.58),
+    0 10px 24px rgba(8, 6, 16, 0.36);
+}
+
+.handheld-shell.is-3d-chassis.is-dragging-3d {
+  cursor: grabbing;
+  transition: transform 0.04s linear, background 0.3s ease;
+}
+
+.handheld-shell.is-3d-chassis .lcd-glass {
+  cursor: default;
+}
+
+/* Physical 3D Side Hardware Nubs (Left Volume Wheel, Right Power Switch, Side Grip Grooves) */
+.shell-hw-vol {
+  position: absolute;
+  left: -6px;
+  top: 122px;
+  width: 6px;
+  height: 44px;
+  background: repeating-linear-gradient(
+    180deg,
+    #495057 0px,
+    #495057 3px,
+    #1c1e26 3px,
+    #1c1e26 6px
+  );
+  border: 1.5px solid #161420;
+  border-right: none;
+  border-radius: 3px 0 0 3px;
+  box-shadow: -2px 2px 3px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.shell-hw-pwr {
+  position: absolute;
+  right: -7px;
+  top: 62px;
+  width: 7px;
+  height: 30px;
+  background: linear-gradient(180deg, #ff6b6b 0%, #c92a2a 100%);
+  border: 1.5px solid #161420;
+  border-left: none;
+  border-radius: 0 3px 3px 0;
+  box-shadow: 2px 3px 0 #161420;
+  pointer-events: none;
+}
+
+.shell-hw-grip-l,
+.shell-hw-grip-r {
+  position: absolute;
+  bottom: 138px;
+  width: 4px;
+  height: 76px;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(22, 20, 32, 0.36) 0px,
+    rgba(22, 20, 32, 0.36) 3px,
+    rgba(255, 255, 255, 0.25) 3px,
+    rgba(255, 255, 255, 0.25) 7px
+  );
+  pointer-events: none;
+}
+
+.shell-hw-grip-l { left: 4px; }
+.shell-hw-grip-r { right: 4px; }
+
+/* Recessed 3D Screen Bezel with Dynamic Subtle Acrylic Glass Glint */
+.handheld-shell.is-3d-chassis .screen-bezel {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid rgba(12, 12, 20, 0.72);
+  box-shadow:
+    inset 0 4px 10px rgba(0, 0, 0, 0.75),
+    inset 2px 2px 0 rgba(255, 255, 255, 0.08),
+    0 2px 0 rgba(255, 255, 255, 0.42);
+}
+
+.bezel-glass-glint {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: radial-gradient(
+    ellipse 62% 45% at var(--glare-x, 28%) var(--glare-y, 18%),
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.03) 42%,
+    transparent 72%
+  );
+  pointer-events: none;
+}
+
+/* Deeper 3D Physical Extrusion on A/B Buttons & D-Pad */
+.handheld-shell.is-3d-chassis .round-btn {
+  box-shadow:
+    inset 2px 3px 5px rgba(255, 255, 255, 0.52),
+    inset -2px -4px 6px rgba(0, 0, 0, 0.32),
+    2px 4px 0 #161420,
+    4px 7px 10px rgba(0, 0, 0, 0.45);
+}
+
+.handheld-shell.is-3d-chassis .round-btn:active {
+  transform: translate(1px, 3px);
+  box-shadow:
+    inset 2px 2px 4px rgba(0, 0, 0, 0.38),
+    0 1px 0 #161420;
+}
+
+.handheld-shell.is-3d-chassis .omni-pad {
+  box-shadow:
+    0 6px 0 #161420,
+    0 10px 16px rgba(0, 0, 0, 0.48),
+    inset 0 2px 3px rgba(255, 255, 255, 0.28),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.48);
+}
+
+/* Side-Mounted Collectible Pokémon Acrylic Keychain Charm */
+.shell-side-charm-anchor {
+  position: absolute;
+  top: 112px;
+  left: calc(100% - 2px);
+  z-index: 22;
+  pointer-events: none;
+}
+
+.shell-side-lug {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 11px;
+  height: 16px;
+  background: linear-gradient(180deg, #adb5bd 0%, #495057 100%);
+  border: 2px solid #161420;
+  border-left: none;
+  border-radius: 0 5px 5px 0;
+  box-shadow: 2px 3px 0 #161420;
+}
+
+.shell-side-pendulum {
+  position: relative;
+  left: 8px;
+  top: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  transform-origin: 0px 4px;
+  animation: sideCharmPendulum 3.6s ease-in-out infinite;
+  pointer-events: auto;
+}
+
+.shell-side-pendulum:hover {
+  animation: sideCharmWiggle 0.9s ease-in-out infinite;
+}
+
+.shell-side-cord {
+  display: block;
+  margin-left: 0;
+  margin-bottom: -4px;
+  pointer-events: none;
+  filter: drop-shadow(2px 3px 0 rgba(22, 20, 32, 0.45));
+}
+
+.shell-side-charm-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 50px;
+  padding: 13px 6px 8px;
+  margin-left: -6px;
+  background: linear-gradient(155deg, rgba(255, 253, 245, 0.98) 0%, #fff3bf 55%, #ffd43b 100%);
+  border: 2.5px solid #161420;
+  border-radius: 5px;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.85),
+    inset -2px -2px 0 rgba(217, 158, 22, 0.4),
+    3px 4px 0 #161420,
+    8px 12px 18px rgba(10, 8, 18, 0.45);
+  cursor: pointer;
+  overflow: hidden;
+  transform: rotate(var(--charm-lag, 0deg));
+  transition: transform 0.25s ease-out;
+}
+
+.charm-acrylic-sheen {
+  position: absolute;
+  top: -12px;
+  left: -14px;
+  width: 34px;
+  height: 92px;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0) 70%);
+  transform: rotate(24deg);
+  pointer-events: none;
+}
+
+.charm-pin-hole {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #23293a;
+  border: 1.5px solid #161420;
+  pointer-events: none;
+}
+
+.charm-fs-label {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1;
+  color: #161420;
+  white-space: nowrap;
+}
+
+.shell-side-charm-card:hover {
+  filter: brightness(1.05);
+}
+
+.shell-side-charm-card:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+@keyframes sideCharmPendulum {
+  0%, 100% {
+    transform: rotate(-3.8deg);
+  }
+  50% {
+    transform: rotate(5.2deg);
+  }
+}
+
+@keyframes sideCharmWiggle {
+  0%, 100% {
+    transform: rotate(-7deg);
+  }
+  50% {
+    transform: rotate(8deg);
+  }
+}
+

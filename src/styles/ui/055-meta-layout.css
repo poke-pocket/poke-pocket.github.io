@@ -1,0 +1,16 @@
+/* =========================================================================
+   NEO-BRUTALIST PIXEL ART STYLES FOR:
+   - 7-Tile Hub Dock + News Ticker + Community/Guide/Feedback/Language Footer
+   - Research Lab (Universal Upgrades + 4 Switchable Heroes + Awakening Skills)
+   - Daily & Weekly Bounties + Announcements/Guide/Feedback Modals
+   - Horizontal 3-Card Level-Up Draft + Saved Squad Preset Picker/Editor
+   - Pokédex+ 5-Tab Encyclopedia + Pet Detail Enhance/SkillPool + Status Button
+   ========================================================================= */
+
+button.gba-status-box.is-clickable-card {
+  text-align: left;
+  font: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+

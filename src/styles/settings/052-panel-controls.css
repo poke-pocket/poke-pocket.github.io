@@ -1,0 +1,194 @@
+/* 7. Pro 5-Tab Settings Panel & Pokéball Sliders */
+.lcd-subtabs.is-settings-tabs {
+  gap: 3px;
+}
+
+.lcd-subtabs.is-settings-tabs .lcd-subtab {
+  padding: 3px 6px;
+  font-size: 10px;
+}
+
+.settings-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding-bottom: 6px;
+}
+
+.settings-card.is-span-2 {
+  grid-column: span 2;
+}
+
+.settings-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.settings-card-head strong {
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.vol-pill {
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  padding: 1px 5px;
+  color: #fffdf5;
+  background: #1c1926;
+}
+
+/* True Neo-Brutalist Pixel Sliding Toggle Switch (Sharp 0px Pixel Knob!) */
+.px-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 54px;
+  height: 24px;
+  padding: 0 7px;
+  font-size: 9px;
+  font-weight: 900;
+  color: #dee2e6;
+  background: #495057;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420, inset 0 2px 0 rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.px-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fffdf4;
+  border: 2px solid #161420;
+  box-shadow: inset -2px -2px 0 #d9d1b8;
+  transition: left 0.14s steps(3, end);
+}
+
+.px-switch.is-on {
+  justify-content: flex-start;
+  color: #fffdf5;
+  background: #2f9e44;
+}
+
+.px-switch.is-on::after {
+  left: 32px;
+}
+
+/* Neo-Brutalist Filled Pixel Slider + Sharp Square Pixel Pokéball Thumb (Zero Circular Rounding!) */
+.pkb-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  margin-top: 6px;
+  --fill-col: #f59f00;
+  background: linear-gradient(
+    to right,
+    var(--fill-col) 0%,
+    var(--fill-col) var(--val, 50%),
+    #e9ecef var(--val, 50%),
+    #e9ecef 100%
+  );
+  border: 2px solid #161420;
+  box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.14);
+  outline: none;
+  cursor: pointer;
+}
+
+.pkb-range.is-amber {
+  --fill-col: #f59f00;
+}
+
+.pkb-range.is-pink {
+  --fill-col: #e64980;
+}
+
+.pkb-range.is-red {
+  --fill-col: #e03131;
+}
+
+.pkb-range.is-blue {
+  --fill-col: #228be6;
+}
+
+.pkb-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 0;
+  background: linear-gradient(
+    180deg,
+    #e03131 0 42%,
+    #161420 42% 58%,
+    #fffdf4 58% 100%
+  );
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.pkb-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 0;
+  background: linear-gradient(
+    180deg,
+    #e03131 0 42%,
+    #161420 42% 58%,
+    #fffdf4 58% 100%
+  );
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.gamepad-guide-box {
+  margin-top: 8px;
+  padding: 7px 8px;
+  background: #fff9db;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.gamepad-guide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 900;
+  color: #161420;
+}
+
+.gamepad-status-pill {
+  padding: 1px 5px;
+  font-size: 8.5px;
+  font-weight: 900;
+  border: 1.5px solid #161420;
+  background: #e9ecef;
+  color: #495057;
+}
+
+.gamepad-status-pill.is-live {
+  background: #69db7c;
+  color: #161420;
+}
+
+.gamepad-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #2b2838;
+}
+

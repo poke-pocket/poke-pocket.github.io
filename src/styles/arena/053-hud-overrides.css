@@ -1,0 +1,91 @@
+/* 8. Combat HUD Extras (Boss HP Text, FPS, Combo, Pointer-Lock Hint & Non-Overlapping Banner) */
+.surv-boss-bar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.surv-boss-bar-head em {
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: #ffe066;
+}
+
+.surv-fps-badge {
+  position: fixed;
+  bottom: 10px;
+  left: 16px;
+  z-index: 15;
+  padding: 2px 7px;
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: #8ce99a;
+  background: rgba(22, 20, 32, 0.82);
+  border: 1.5px solid #161420;
+}
+
+.surv-combo-badge {
+  position: fixed;
+  top: 186px;
+  right: 18px;
+  z-index: 15;
+  width: 122px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 5px 8px;
+  background: rgba(22, 20, 32, 0.88);
+  border: 2.5px solid #ffd43b;
+  box-shadow: 3px 3px 0 #161420;
+}
+
+.surv-combo-badge em {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  color: #ffd43b;
+}
+
+.surv-combo-badge strong {
+  font-family: var(--font-pixel);
+  font-size: 18px;
+  color: #ffffff;
+}
+
+.surv-event-banner.is-wide {
+  bottom: 48px;
+}
+
+.surv-event-banner.is-wide.is-compact {
+  padding: 3px 10px;
+  font-size: 11px;
+}
+
+.surv-cam-hint {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  padding: 3px 10px;
+  font-size: 10px;
+  color: rgba(255, 253, 245, 0.88);
+  background: rgba(22, 20, 32, 0.72);
+  border: 1.5px solid rgba(255, 253, 245, 0.25);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.surv-cam-hint.is-locked {
+  color: #b2f2bb;
+  border-color: rgba(105, 219, 124, 0.55);
+}
+
+.world3d-canvas.is-pointer-locked {
+  cursor: none;
+}
+

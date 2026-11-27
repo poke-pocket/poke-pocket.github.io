@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { CameraFollowMode } from '../types/pet';
 import { getWalkableSurfaceHeight3D } from '../data/survivorsTactics';
+import { cameraOrbitPosition, SHARED_CAMERA_MODES } from './cameraRigShared3D';
 import {
   computeCameraWallClipT,
   isInsideBuildingInterior,
@@ -8,39 +9,7 @@ import {
   type ProceduralTownInstance,
 } from './townBuilder3D';
 
-export const CAM_MODE_SPECS: Record<
-  CameraFollowMode,
-  { label: string; short: string; pitch: number; dist: number; desc: string }
-> = {
-  hd2d: {
-    label: 'HD-2D斜俯视',
-    short: 'HD-2D俯视',
-    pitch: 0.58,
-    dist: 15.2,
-    desc: '经典斜俯视广角，进屋或过桥底时自动平滑推进缩放',
-  },
-  chase: {
-    label: '自动追尾跟随',
-    short: '自动追尾',
-    pitch: 0.34,
-    dist: 10.6,
-    desc: '行进时镜头平滑自动回正到角色身后',
-  },
-  free: {
-    label: '自由环绕视角',
-    short: '自由环绕',
-    pitch: 0.28,
-    dist: 10.4,
-    desc: '鼠标拖拽或 Z/C 键 360° 自由环绕观察',
-  },
-  overhead: {
-    label: '高空全景鸟瞰',
-    short: '高空鸟瞰',
-    pitch: 0.92,
-    dist: 23.5,
-    desc: '街区大视野鸟瞰，进室内或高架下自动推近放大',
-  },
-};
+export const CAM_MODE_SPECS:Record<CameraFollowMode,{label:string;short:string;pitch:number;dist:number;desc:string}>=SHARED_CAMERA_MODES;
 
 export const CAM_MODE_LIST: CameraFollowMode[] = ['hd2d', 'chase', 'free', 'overhead'];
 
@@ -179,10 +148,8 @@ export function updatePhysicalCameraRig3D(opts: {
   const yaw = orbit.yaw;
   const pitch = smooth.pitch;
   const baseDist = smooth.dist;
-  const horiz = Math.cos(pitch) * baseDist;
-  const rawCamX = pivot.x + Math.sin(yaw) * horiz;
-  const rawCamZ = pivot.z + Math.cos(yaw) * horiz;
-  const rawCamY = Math.min(pivot.y + Math.sin(pitch) * baseDist, smooth.ceilMaxY);
+  const rawCamera=cameraOrbitPosition(pivot,yaw,pitch,baseDist,smooth.ceilMaxY);
+  const rawCamX=rawCamera.x,rawCamY=rawCamera.y,rawCamZ=rawCamera.z;
 
   // 3. Universal 3D Wall Spring-Arm Zoom-In across ALL modes (zooms in cleanly before walls — NEVER clips into buildings!)
   const targetClipT = occludeTown

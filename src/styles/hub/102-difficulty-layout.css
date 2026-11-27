@@ -1,0 +1,55 @@
+/* 6. Map Select Difficulty: Horizontal 3-Column Row in Portrait / Compact Viewports */
+.pkb-diff-compact-badge,
+.pkb-diff-compact-note {
+  display: none;
+}
+
+@media (max-width: 900px), (orientation: portrait) {
+  .pkb-diff-list {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  .pkb-diff-btn {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+    padding: 7px 6px !important;
+    text-align: center;
+  }
+
+  .pkb-diff-full-desc {
+    display: none !important;
+  }
+
+  .pkb-diff-compact-badge {
+    display: block;
+    font-size: 9px;
+    opacity: 0.9;
+  }
+
+  .pkb-diff-compact-note {
+    display: block;
+    margin-top: 4px;
+    padding: 4px 8px;
+    font-size: 10px;
+    color: #495057;
+    background: #f5f1e4;
+    border: 1.5px solid #c9c3b4;
+    text-align: center;
+  }
+
+  .pkb-guard-tile {
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+  }
+
+  .pkb-guard-tile-img {
+    width: 36px;
+    height: 36px;
+  }
+}
+

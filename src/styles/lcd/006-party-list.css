@@ -1,0 +1,141 @@
+/* Compact Party List */
+.lcd-party-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-right: 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.lcd-party-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 7px;
+  background: #fff;
+  border: 2px solid #d5cfc0;
+  border-radius: 0;
+  text-align: left;
+}
+
+.lcd-party-row.is-selected,
+.lcd-party-row:hover {
+  background: #fff3bf;
+  border-color: var(--ink);
+}
+
+.party-avatar-box {
+  width: 36px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f2e8;
+  border: 2px solid var(--ink);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.party-info-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.party-mini-bars {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+.lcd-party-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: #d3f9d8;
+  border: 2px solid var(--ink);
+  box-shadow: 2px 2px 0 var(--ink);
+  border-radius: 0;
+}
+
+.lcd-bar-track {
+  height: 10px;
+  background: #e9e4d5;
+  border: 1.5px solid var(--ink);
+}
+
+.lcd-bar-fill {
+  height: 100%;
+}
+
+.lcd-evo-view {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+}
+
+.lcd-evo-chain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.lcd-evo-node {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 4px;
+  background: #fff;
+  border: 2px solid var(--ink);
+  font-size: 10px;
+}
+
+.lcd-evo-node.current {
+  background: #d3f9d8;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.lcd-evo-node.locked {
+  opacity: 0.55;
+  filter: grayscale(0.45);
+}
+
+.evo-next { font-weight: 700; }
+
+.lcd-evo-foot {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  padding-top: 8px;
+  border-top: 2px dashed rgba(35, 33, 45, 0.25);
+}
+
+.lcd-diary-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.diary-snippet { font-size: 10px; }
+
+.lcd-reset-row {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+

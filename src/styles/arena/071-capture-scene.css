@@ -1,0 +1,326 @@
+/* =========================================================================
+   CINEMATIC CLOSE-UP POKÉ BALL CAPTURE CUTSCENE OVERLAY
+   ========================================================================= */
+.surv-capture-cutscene {
+  position: absolute;
+  inset: 0;
+  z-index: 42;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  pointer-events: none;
+  animation: pkbModalIn 0.16s ease-out;
+}
+
+.surv-capture-cutscene.is-interactive {
+  background: rgba(10, 11, 20, 0.56);
+  pointer-events: auto;
+}
+
+.cap-cinema-subtitle {
+  position: absolute;
+  bottom: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fffdf5;
+  background: rgba(16, 18, 28, 0.86);
+  border: 2.5px solid #ffe066;
+  box-shadow: 3px 3px 0 #161420;
+  white-space: nowrap;
+  z-index: 4;
+}
+
+/* Handheld Console Shell Frame for Capture Result / New Pokédex Registration! */
+.cap-handheld-shell {
+  width: min(440px, 90vw);
+  padding: 14px 16px 16px;
+  background: linear-gradient(180deg, #f8d030 0%, #e6b800 100%);
+  border: 3.5px solid #161420;
+  box-shadow:
+    inset 3px 3px 0 rgba(255, 255, 255, 0.55),
+    inset -3px -3px 0 rgba(140, 96, 0, 0.4),
+    8px 8px 0 #161420;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.cap-hh-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #161420;
+}
+
+.cap-hh-led {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #ff4d4f;
+  border: 1.5px solid #161420;
+  margin-right: 5px;
+  box-shadow: 0 0 6px #ff4d4f;
+}
+
+.cap-hh-bezel {
+  padding: 8px;
+  background: #232736;
+  border: 3px solid #161420;
+  box-shadow: inset 2px 2px 0 rgba(0, 0, 0, 0.4);
+}
+
+.cap-hh-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 0;
+}
+
+.cap-hh-dpad {
+  width: 34px;
+  height: 34px;
+  position: relative;
+}
+
+.cap-hh-dpad::before,
+.cap-hh-dpad::after {
+  content: '';
+  position: absolute;
+  background: #232736;
+  border: 2px solid #161420;
+}
+
+.cap-hh-dpad::before {
+  left: 11px;
+  top: 0;
+  width: 12px;
+  height: 34px;
+}
+
+.cap-hh-dpad::after {
+  top: 11px;
+  left: 0;
+  width: 34px;
+  height: 12px;
+}
+
+.cap-hh-ab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cap-hh-btn-a {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fffdf5;
+  background: #e03131;
+  border: 2.5px solid #161420;
+  box-shadow: 3px 3px 0 #161420;
+  cursor: pointer;
+}
+
+.cap-hh-btn-a:hover {
+  background: #fa5252;
+  transform: translateY(-1px);
+}
+
+.cap-letterbox {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 44px;
+  background: #0b0a12;
+  border-color: #ffe066;
+}
+
+.cap-letterbox.is-top {
+  top: 0;
+  border-bottom: 2px solid #ffe066;
+}
+
+.cap-letterbox.is-bottom {
+  bottom: 0;
+  border-top: 2px solid #ffe066;
+}
+
+.cap-stage-card {
+  position: relative;
+  width: 380px;
+  background: linear-gradient(180deg, #1b1e34, #101222);
+  border: 3px solid #ffe066;
+  outline: 3px solid #12101a;
+  box-shadow: 8px 8px 0 rgba(9, 8, 15, 0.94);
+  overflow: hidden;
+}
+
+.cap-speedlines {
+  position: absolute;
+  inset: 0;
+  opacity: 0.16;
+  background: repeating-conic-gradient(from 0deg, #ffe066 0deg 6deg, transparent 6deg 18deg);
+  animation: capSpin 9s linear infinite;
+}
+
+@keyframes capSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cap-head-strip {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px;
+  background: #12101a;
+  border-bottom: 2px solid #2b2d44;
+  color: #fffdf5;
+}
+
+.cap-head-strip strong {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.cap-head-strip em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 900;
+  color: #ffe066;
+}
+
+.cap-head-strip small {
+  font-size: 10px;
+  color: #adb5bd;
+}
+
+.cap-arena-viewport {
+  position: relative;
+  z-index: 2;
+  height: 186px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cap-mon-wrap {
+  position: absolute;
+  filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.45));
+  transition: transform 0.38s ease, filter 0.3s ease, opacity 0.35s ease;
+}
+
+.cap-mon-wrap.is-absorb {
+  transform: scale(0.08) translateY(-10px);
+  filter: brightness(4) saturate(0) drop-shadow(0 0 14px #ff4d4d);
+  opacity: 0.15;
+}
+
+.cap-ball-wrap {
+  position: relative;
+  z-index: 3;
+  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.5));
+}
+
+.cap-ball-wrap.is-throw {
+  animation: capBallThrow 0.46s cubic-bezier(0.2, 0.85, 0.3, 1) forwards;
+}
+
+@keyframes capBallThrow {
+  0% {
+    transform: translate(-150px, 85px) scale(0.55) rotate(-360deg);
+  }
+  55% {
+    transform: translate(-24px, -54px) scale(1.15) rotate(-120deg);
+  }
+  100% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+}
+
+.cap-ball-wrap.is-wobble {
+  animation: capBallWobble 0.36s ease-in-out infinite;
+}
+
+@keyframes capBallWobble {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-24deg) translateX(-6px);
+  }
+  75% {
+    transform: rotate(24deg) translateX(6px);
+  }
+}
+
+.cap-ball-wrap.is-caught {
+  filter: drop-shadow(0 0 18px #ffe066);
+  transform: scale(1.08);
+}
+
+.cap-flash-ring {
+  position: absolute;
+  width: 140px;
+  height: 140px;
+  border: 6px solid #ff6b6b;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9), rgba(255, 77, 77, 0.25) 60%, transparent 72%);
+  animation: capRingBurst 0.44s ease-out forwards;
+}
+
+@keyframes capRingBurst {
+  from {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.75);
+    opacity: 0;
+  }
+}
+
+.cap-stars-burst {
+  position: absolute;
+  top: 24px;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  color: #ffe066;
+  filter: drop-shadow(0 3px 0 #161420);
+  animation: capStarsPop 0.45s cubic-bezier(0.2, 1.35, 0.4, 1) forwards;
+}
+
+@keyframes capStarsPop {
+  0% {
+    transform: translateY(24px) scale(0.3);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1.1);
+    opacity: 1;
+  }
+}
+
+.cap-status-footer {
+  position: relative;
+  z-index: 2;
+  padding: 10px 14px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 900;
+  color: #ffe066;
+  background: #12101a;
+  border-top: 2px solid #2b2d44;
+}
+

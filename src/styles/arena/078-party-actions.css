@@ -1,0 +1,100 @@
+/* Battle Left-Edge Party Card Side Actions (Drag-and-Drop + Hover ▲/▼ Order + Remove from Party) */
+.surv-party-card {
+  position: relative;
+}
+
+.surv-party-card.is-drag-over {
+  outline: 2.5px solid #ffe066;
+  transform: translateX(4px);
+}
+
+.party-side-actions {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 100%;
+  padding-left: 4px;
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  z-index: 8;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.surv-party-card:hover .party-side-actions,
+.surv-party-card:focus-within .party-side-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.party-reorder-col {
+  width: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+.party-reorder-btn {
+  flex: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  line-height: 1;
+  color: #161420;
+  background: #ffe066;
+  border: 1.5px solid #161420;
+  box-shadow: 1.5px 1.5px 0 #161420;
+  cursor: pointer;
+}
+
+.party-reorder-btn:hover:not(:disabled) {
+  background: #fff3bf;
+}
+
+.party-reorder-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.party-remove-btn {
+  width: 30px;
+  padding: 0 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.05;
+  color: #ffe3e3;
+  background: #3b1820;
+  border: 1.5px solid #ff6b6b;
+  box-shadow: 1.5px 1.5px 0 #161420;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.party-remove-btn:hover {
+  background: #c92a2a;
+  border-color: #ffc9c9;
+  color: #ffffff;
+}
+
+.party-remove-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 0.5px 0.5px 0 #161420;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .party-side-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+

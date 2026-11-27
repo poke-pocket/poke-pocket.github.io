@@ -1,0 +1,47 @@
+/* Compact 4-Column Pokéball Box & Enlarged Hero Pokémon Sprites */
+.party-compact-grid {
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 5px !important;
+}
+
+.party-compact-tile {
+  padding: 14px 3px 4px !important;
+  gap: 2px !important;
+  min-height: 82px;
+}
+
+.party-sprite-hero,
+.dex-sprite-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  margin: 0 auto;
+}
+
+.party-tile-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  padding: 0 2px;
+}
+
+.party-tile-foot strong {
+  font-size: 11px !important;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.party-tile-foot em {
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: #495057;
+  flex-shrink: 0;
+}
+

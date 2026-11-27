@@ -1,0 +1,81 @@
+/* ===================================================
+   FULL-VIEWPORT 3D STAGE & POKEBONK-GRADE PIXEL UI
+   =================================================== */
+.world3d-root-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  width: 100vw;
+  height: 100vh;
+}
+
+.world3d-root-layer.is-behind-manager {
+  pointer-events: none;
+  filter: brightness(0.45);
+}
+
+.world3d-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+  background: #5db2e8;
+}
+
+.world3d-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.manager-overlay-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(14, 17, 28, 0.72);
+  backdrop-filter: blur(4px);
+  overflow-y: auto;
+}
+
+.manager-top-return {
+  position: fixed;
+  top: 14px;
+  left: 18px;
+  z-index: 35;
+}
+
+.pkb-return-3d-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-family: var(--font-pixel);
+  font-size: 13px;
+  color: #fffdf5;
+  background: linear-gradient(135deg, #e84848 0%, #f06543 100%);
+  border: 3px solid #161420;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.35),
+    4px 4px 0 #161420;
+  border-radius: 0;
+}
+
+.pkb-return-3d-btn:hover {
+  filter: brightness(1.06);
+}
+
+.pkb-return-3d-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 #161420;
+}
+

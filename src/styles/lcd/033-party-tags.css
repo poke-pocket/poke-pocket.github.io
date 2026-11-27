@@ -1,0 +1,19 @@
+/* Uniform Pixel Tag Alignment across Pokédex & Party Detail Headers */
+.lcd-dex-meta .rarity-pill,
+.lcd-dex-meta .poke-type-pill.mini,
+.lcd-dex-meta .iv-rank-pill.mini,
+.lcd-dex-meta .cry-play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 1;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+

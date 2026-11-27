@@ -1,0 +1,36 @@
+/* =========================================================================
+   CENTERED HUB, TOP-LEFT SQUAD AVATARS, TRAINER PROFILE MODAL, PRO SETTINGS,
+   HERO CORNER-TAG MARKET CARDS, HANDHELD HUD ALIGNMENT, BOLD TITLES &
+   BIDIRECTIONAL CLOSE ANIMATIONS
+   ========================================================================= */
+
+/* 1. Bold Crisp Pixel Typography on Titles & Headings (Descriptions stay clean & light!) */
+h1,
+h2,
+h3,
+.lcd-submenu-head > span,
+.lcd-submenu-head strong,
+.pkb-hero-cta strong,
+.pkb-sub-cta strong,
+.pkb-ms-ribbon,
+.pkb-map-detail-head h2,
+.res-title-row h3,
+.surv-upgrade-head,
+.settings-card-title,
+.settings-card-head strong,
+.gba-name-line strong,
+.pkb-trainer-name {
+  font-weight: 800;
+  text-shadow: 0.65px 0 0 currentColor;
+}
+
+.pkb-hero-cta strong,
+.pkb-sub-cta strong,
+.pkb-title-block h1,
+.res-title-row h3,
+.pkb-ms-ribbon {
+  text-shadow:
+    1px 0 0 rgba(22, 20, 32, 0.9),
+    2px 2px 0 #161420;
+}
+

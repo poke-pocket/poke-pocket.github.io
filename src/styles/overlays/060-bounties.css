@@ -1,0 +1,260 @@
+/* Daily & Weekly Bounties 2-Column Dashboard */
+.bounties-grid-2 {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.bounty-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fffdf4;
+  border: 2.5px solid #161420;
+  box-shadow: 5px 5px 0 #161420;
+  overflow: hidden;
+}
+
+.bounty-col-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px 14px;
+  color: #fffdf5;
+  border-bottom: 2.5px solid #161420;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.14) 0 10px,
+    transparent 10px 20px
+  );
+}
+
+.bounty-col.is-daily .bounty-col-head {
+  background-color: #f08c00;
+}
+
+.bounty-col.is-weekly .bounty-col-head {
+  background-color: #6741d9;
+}
+
+.bounty-col-head h3 {
+  margin: 2px 0;
+  font-size: 18px;
+}
+
+.bounty-countdown {
+  font-size: 11px;
+  opacity: 0.92;
+}
+
+.bounty-streak-pill {
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #161420;
+  color: #ffe066;
+}
+
+.bounty-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 24px;
+}
+
+.bounty-steps span {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  background: #e9ecef;
+  border: 2px solid #161420;
+}
+
+.bounty-steps span.is-done {
+  background: #40c057;
+  color: #ffffff;
+}
+
+.bounty-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 12px;
+  flex: 1;
+}
+
+.bounty-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #ffffff;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.bounty-card.is-ready {
+  background: #fff9db;
+  border-color: #f08c00;
+}
+
+.bounty-card.is-claimed {
+  opacity: 0.65;
+}
+
+.bounty-ico {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f3f5;
+  border: 2px solid #161420;
+  flex-shrink: 0;
+}
+
+.bounty-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bounty-tier {
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #ffffff;
+  background: #2f9e44;
+  border: 1.5px solid #161420;
+}
+
+.bounty-tier.tier-medium,
+.bounty-tier.tier-weekly_2 {
+  background: #1c7ed6;
+}
+
+.bounty-tier.tier-hard,
+.bounty-tier.tier-weekly_3 {
+  background: #e03131;
+}
+
+.bounty-prog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.bounty-prog-track {
+  flex: 1;
+  height: 7px;
+  background: #dee2e6;
+  border: 1.5px solid #161420;
+}
+
+.bounty-prog-fill {
+  height: 100%;
+  background: #f59f00;
+}
+
+.bounty-prog-row em {
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+}
+
+.bounty-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.bounty-reward-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  font-weight: 800;
+  color: #6741d9;
+}
+
+.bounty-claim-btn {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #161420;
+  background: #ffe066;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
+}
+
+.bounty-reroll-btn {
+  padding: 2px 6px;
+  font-size: 10px;
+  background: #f1f3f5;
+  border: 1.5px solid #161420;
+  cursor: pointer;
+}
+
+.bounty-done-tag {
+  font-size: 11px;
+  font-weight: 800;
+  color: #2f9e44;
+}
+
+.bounty-chest-box {
+  margin: 0 12px 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #f1f3f5;
+  border: 2px solid #161420;
+}
+
+.bounty-chest-box.is-ready {
+  background: #fff3bf;
+  border-color: #f08c00;
+}
+
+.bounty-chest-box strong {
+  display: block;
+  font-size: 12px;
+}
+
+.bounty-chest-box small {
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+
+.bounty-chest-btn {
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #ffe066;
+  color: #161420;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
+}
+
+.bounty-chest-btn:disabled {
+  background: #dee2e6;
+  color: #868e96;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+

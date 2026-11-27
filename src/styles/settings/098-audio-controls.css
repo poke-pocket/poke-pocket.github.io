@@ -1,0 +1,50 @@
+/* 2. Pikachu Cry Audition Picker inside Settings -> Audio */
+.pika-cry-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.pika-cry-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #f5f1e4;
+  border: 1.5px solid #161420;
+}
+
+.pika-cry-opt.is-active {
+  background: #fff3bf;
+  box-shadow: 2px 2px 0 #161420;
+}
+
+.pika-cry-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pika-cry-info strong {
+  font-size: 10.5px;
+  color: #161420;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pika-cry-info small {
+  font-size: 9px;
+  color: #495057;
+}
+
+.pika-cry-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+

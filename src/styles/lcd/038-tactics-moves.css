@@ -1,0 +1,153 @@
+/* =========================================================================
+   TACTICS LEVEL-1 SQUAD MOVE OVERVIEW -> LEVEL-2 MOVE DETAIL PAGE
+   ========================================================================= */
+.tac-squad-l1-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tac-poke-overview-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+  background: #fff;
+  border: 2px solid var(--ink);
+  box-shadow: 2.5px 2.5px 0 var(--ink);
+  border-radius: 0;
+  cursor: pointer;
+}
+
+.tac-poke-overview-card:hover {
+  background: #fff9db;
+}
+
+.tac-poke-ov-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 58px;
+  flex-shrink: 0;
+}
+
+.tac-poke-ov-avatar {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f1e4;
+  border: 2px solid var(--ink);
+}
+
+.tac-poke-ov-avatar img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.tac-ov-lv {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  padding: 0 3px;
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  color: #161420;
+  background: #ffe066;
+  border: 1.5px solid #161420;
+}
+
+.tac-poke-ov-left strong {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.tac-poke-ov-moves {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.tac-ov-move-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
+  background: #fffdf5;
+  border: 2px solid var(--ink);
+  border-left-width: 4px;
+}
+
+.tac-ov-move-txt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tac-ov-move-txt strong {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tac-ov-move-txt small {
+  font-size: 9px;
+  color: var(--ink-soft);
+}
+
+.tac-ov-enter {
+  flex-shrink: 0;
+  padding: 4px 6px;
+  font-size: 10px;
+  color: #161420;
+  background: #ffe066;
+  border: 2px solid var(--ink);
+}
+
+.tac-l2-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.tac-l2-back {
+  background: #f5f1e4;
+}
+
+.tac-l2-pet {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  background: #fff9db;
+  border: 2px solid var(--ink);
+}
+
+.tac-l2-pet strong {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.tac-l2-pet em {
+  font-style: normal;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: #495057;
+}
+

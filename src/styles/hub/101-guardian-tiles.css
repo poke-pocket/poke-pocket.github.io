@@ -1,0 +1,65 @@
+/* 5. Map Select Guardians: Crisp Non-Wrapping Square Backpack-Style Tiles with Bottom-Right Name Tag */
+.pkb-guard-chain {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap !important;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pkb-guard-chain::-webkit-scrollbar {
+  display: none;
+}
+
+.pkb-guard-tile {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fffdf5;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  overflow: hidden;
+}
+
+.pkb-guard-tile.is-sanctuary {
+  margin-left: auto;
+  background: #d3f9d8;
+  border-color: #161420;
+}
+
+.pkb-guard-tile-img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  transform: translateY(-4px);
+}
+
+.pkb-guard-tile-name {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  max-width: calc(100% - 4px);
+  padding: 0 3px;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: #161420;
+  background: rgba(255, 253, 245, 0.92);
+  border: 1px solid rgba(22, 20, 32, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkb-guard-tile.is-sanctuary .pkb-guard-tile-name {
+  background: rgba(211, 249, 216, 0.94);
+  color: #1b4332;
+}
+

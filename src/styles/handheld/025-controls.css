@@ -1,0 +1,277 @@
+/* ===================================================
+   REALISTIC MOLDED HARDWARE CONTROLS (GBC AUTHENTIC)
+   =================================================== */
+.controls-deck {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 14px 8px;
+}
+
+.dpad-well {
+  width: 126px;
+  height: 126px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(
+    circle at 60% 60%,
+    rgba(255, 255, 255, 0.16),
+    rgba(0, 0, 0, 0.14)
+  );
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* 360° / 8-Direction Tactile Omnidirectional Thumbpad (Supports Diagonals!) */
+.omni-pad {
+  position: relative;
+  width: 108px;
+  height: 108px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 32%, #4a4f60 0%, var(--shell-dpad, #2d303b) 62%, #1d2028 100%);
+  box-shadow:
+    0 5px 7px rgba(0, 0, 0, 0.42),
+    inset 0 2px 3px rgba(255, 255, 255, 0.22),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+
+.omni-pad.is-active {
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.45),
+    inset 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+.omni-cross-v,
+.omni-cross-h {
+  position: absolute;
+  border-radius: 4px;
+  background: linear-gradient(175deg, rgba(255, 255, 255, 0.09), rgba(0, 0, 0, 0.2));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+
+.omni-cross-v {
+  width: 28px;
+  height: 88px;
+}
+
+.omni-cross-h {
+  width: 88px;
+  height: 28px;
+}
+
+.omni-arrow {
+  position: absolute;
+  font-size: 7px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.42);
+  pointer-events: none;
+}
+
+.omni-up { top: 15px; }
+.omni-down { bottom: 15px; }
+.omni-left { left: 16px; }
+.omni-right { right: 16px; }
+
+.omni-diag {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.omni-ul { top: 23px; left: 23px; }
+.omni-ur { top: 23px; right: 23px; }
+.omni-dl { bottom: 23px; left: 23px; }
+.omni-dr { bottom: 23px; right: 23px; }
+
+.omni-puck {
+  position: relative;
+  z-index: 2;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #585e72 0%, #2a2d38 72%, #1b1d25 100%);
+  box-shadow:
+    0 3px 6px rgba(0, 0, 0, 0.55),
+    inset 0 1px 2px rgba(255, 255, 255, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.05s linear;
+  pointer-events: none;
+}
+
+.omni-puck-dimple {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 60% 60%, #3a3e4d, #1c1e26);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.55);
+}
+
+/* Realistic Recessed A & B Circular Buttons */
+.ab-cluster {
+  padding-right: 6px;
+}
+
+.ab-pair {
+  display: flex;
+  gap: 18px;
+  align-items: flex-end;
+}
+
+.round-btn-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.btn-b-wrap {
+  transform: translateY(12px);
+}
+
+.btn-socket {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.16);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.28),
+    0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.round-btn {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: none;
+  background: radial-gradient(
+    circle at 32% 28%,
+    rgba(255, 255, 255, 0.45) 0%,
+    var(--shell-accent, #e63946) 45%,
+    rgba(0, 0, 0, 0.25) 100%
+  );
+  background-color: var(--shell-accent, #e63946);
+  box-shadow:
+    0 4px 5px rgba(0, 0, 0, 0.38),
+    inset 0 2px 2px rgba(255, 255, 255, 0.45),
+    inset 0 -3px 5px rgba(0, 0, 0, 0.28);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.round-btn:active {
+  transform: translateY(2px);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.38),
+    inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.silkscreen-lbl {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+/* Lower Deck: Rubber SELECT/START Pills + Perforated Speaker Matrix */
+.lower-deck {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: 22px;
+  padding: 0 8px 0 84px;
+}
+
+.rubber-pills-row {
+  display: flex;
+  gap: 18px;
+}
+
+.rubber-pill-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  padding: 0;
+  transform: rotate(-22deg);
+}
+
+.rubber-cap {
+  width: 34px;
+  height: 11px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #626775 0%, #3d414d 100%);
+  box-shadow:
+    0 2px 3px rgba(0, 0, 0, 0.35),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3);
+}
+
+.rubber-pill-btn:active .rubber-cap {
+  transform: translateY(1px);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+}
+
+.rubber-lbl {
+  font-family: system-ui, sans-serif;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: rgba(0, 0, 0, 0.42);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.speaker-matrix {
+  display: grid;
+  grid-template-columns: repeat(6, 5px);
+  gap: 5px;
+  transform: rotate(-18deg);
+  padding-right: 4px;
+}
+
+.spk-hole {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.keyboard-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.legend-item { white-space: nowrap; }
+
+.keyboard-legend code {
+  padding: 1px 4px;
+  background: #fff;
+  border: 1.5px solid var(--ink);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+}
+

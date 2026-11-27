@@ -1,0 +1,106 @@
+/* =========================================================================
+   CO-LINEAR 60° PARALLELOGRAM HERO DECK, FULL-WIDTH DOCK, PROMINENT ICONS,
+   CAMERA ORBIT HINT & INDEPENDENT AUDIO TRACK STYLING
+   ========================================================================= */
+.pkb-hub-left .pkb-hero-grid {
+  max-width: none !important;
+  width: 100%;
+}
+
+/* Shared Slant Container: Red right edge, Purple left edge & Green left edge form ONE EXACT PARALLEL DIAGONAL LINE at sleek -7deg! */
+.pkb-hero-grid.is-slanted-deck {
+  transform: skewX(-7deg);
+  padding-inline: 10px;
+  box-sizing: border-box;
+  gap: 14px;
+}
+
+.pkb-hero-grid.is-slanted-deck .pkb-hero-cta,
+.pkb-hero-grid.is-slanted-deck .pkb-sub-cta {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.14s ease,
+    filter 0.14s ease;
+}
+
+.pkb-hero-grid.is-slanted-deck .pkb-hero-cta::after,
+.pkb-hero-grid.is-slanted-deck .pkb-sub-cta::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -60%;
+  width: 34%;
+  height: 140%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.34), transparent);
+  pointer-events: none;
+  transition: left 0.36s ease;
+}
+
+.pkb-hero-grid.is-slanted-deck .pkb-hero-cta:hover::after,
+.pkb-hero-grid.is-slanted-deck .pkb-sub-cta:hover::after {
+  left: 120%;
+}
+
+.pkb-hero-grid.is-slanted-deck .pkb-hero-cta:hover,
+.pkb-hero-grid.is-slanted-deck .pkb-sub-cta:hover {
+  filter: brightness(1.06);
+  transform: translate(-2px, -2px);
+}
+
+.pkb-hero-grid.is-slanted-deck .pkb-hero-cta:active,
+.pkb-hero-grid.is-slanted-deck .pkb-sub-cta:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+.pkb-hero-grid.is-slanted-deck .pkb-unskew-inner {
+  transform: skewX(7deg);
+  gap: 14px;
+}
+
+.pkb-hero-grid.is-slanted-deck .px-keycap.on-hero {
+  transform: skewX(7deg);
+}
+
+/* Clean Enlarged Direct Pixel Icons on the 3 Hero Buttons (No Background Box!) */
+.pkb-hero-ico-box {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  filter: drop-shadow(3px 3px 0 rgba(22, 20, 32, 0.85));
+}
+
+.pkb-hero-ico-box.is-lg {
+  width: 62px;
+  height: 62px;
+  background: transparent;
+}
+
+/* Full-Width Evenly Spaced Square Dock Tiles (Zero right dead gap!) */
+.pkb-dock-row {
+  max-width: none !important;
+  width: 100%;
+  display: flex !important;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px !important;
+}
+
+/* Independent Audio Track Colors */
+.vol-fill.cry {
+  background: #f06595;
+}
+
+.audio-track-hint {
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+

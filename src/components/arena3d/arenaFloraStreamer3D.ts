@@ -14,6 +14,7 @@ import {
   getWalkableSurfaceHeight3D,
   isNearAnyRoadOrRailForFlora3D,
   urbanGroundWeight3D,
+  isUrbanWildTreeExcluded3D,
 } from '../../data/survivorsTactics';
 import { HIGHWAY_ROAD_WIDTH_3D, getNearestGeoHighwayProjection3D } from '../../utils/interCityHighwayGraph';
 import { BILLBOARD_PITCH_TILT, UPRIGHT_QUAD_GEO, createLushTreeSprite3D } from './arenaTypesAndProps';
@@ -538,7 +539,7 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
         if (isTreeCell) {
           const tx = wx + ((h % 3) - 1) * 0.55;
           const tz = wz + (((h >> 2) % 3) - 1) * 0.55;
-          if (!isNearAnyRoadOrRailForFlora3D(tx, tz, 1.5)) {
+          if (!isUrbanWildTreeExcluded3D(tx,tz) && !isNearAnyRoadOrRailForFlora3D(tx, tz, 1.5)) {
             if (!isUpgradeFromFar) {
               const spriteCount = localTexCell.treeSprites.length;
               const domIdx =
@@ -560,6 +561,7 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
               treeBb.userData.swayPhase = tx * 0.22 + tz * 0.16;
               const treeScale = 0.86 + (h2 % 4) * 0.1;
               tree.position.set(tx, gy - 0.04, tz);
+              tree.userData.isWildGroveTree = true;
               tree.scale.setScalar(treeScale);
               floraGroup.add(tree);
               floraBillboards.add(treeBb);
@@ -796,5 +798,16 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
     }
   };
 
-  return { floraBillboards, syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround };
+  const refreshUrbanFlora=()=>{
+    for(const [key,entry] of placedFloraCells){
+      if(!entry.objs.some(obj=>obj.userData.isWildGroveTree&&isUrbanWildTreeExcluded3D(obj.position.x,obj.position.z)))continue;
+      for(const obj of entry.objs)floraGroup.remove(obj);
+      for(const bb of entry.bbs)floraBillboards.delete(bb);
+      for(const id of entry.nodeIds)worldInteractNodes.delete(id);
+      if(entry.lilies)for(const lily of entry.lilies)floatingLilyPads.delete(lily);
+      placedFloraCells.delete(key);
+    }
+    floraPendingPass=true;
+  };
+  return { floraBillboards, syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround, refreshUrbanFlora };
 }

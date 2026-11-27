@@ -1,0 +1,31 @@
+/* "More" Modal Drawer */
+.pkb-more-modal {
+  width: min(500px, 94vw) !important;
+  max-height: 88dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.pkb-more-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 12px 10px;
+}
+
+.pkb-more-grid .pkb-dock-tile {
+  width: 100%;
+  height: auto;
+  min-height: 76px;
+  padding: 10px 6px 8px;
+}
+
+.pkb-more-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px 12px;
+  border-top: 2px dashed rgba(22, 20, 32, 0.18);
+}
+

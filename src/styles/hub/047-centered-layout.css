@@ -1,0 +1,19 @@
+/* 2. Centered Main Hub Body (Opens up scenic 3D rolling hills & sky all around!) */
+.pkb-hub-body {
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  max-width: 860px !important;
+  width: 100%;
+  margin: auto;
+}
+
+.pkb-hub-left {
+  width: 100%;
+  max-width: 820px;
+}
+
+.pkb-title-block {
+  text-align: center;
+}
+

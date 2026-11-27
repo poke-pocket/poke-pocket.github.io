@@ -1,0 +1,300 @@
+{
+  "grid_m": 0.25,
+  "height_step_m": 0.25,
+  "sidewalk_lane_width_m": 1.95,
+  "default_sidewalk_lanes": 3,
+  "sidewalk_enabled": true,
+  "colors": {
+    "road": "#3b4c5a",
+    "mark": "#f5efdb",
+    "center": "#f6c654",
+    "sidewalk": "#9dada9",
+    "crosswalk": "#f5f0da",
+    "concrete": "#82999d",
+    "rail": "#c5d6d2",
+    "grass": "#79a96b",
+    "ground": "#92b181"
+  },
+  "nodes": {
+    "west": {
+      "x": -150,
+      "y": 0,
+      "z": 0
+    },
+    "west_merge": {
+      "x": -100,
+      "y": 0,
+      "z": 0
+    },
+    "cross": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "east_merge": {
+      "x": 100,
+      "y": 0,
+      "z": 0
+    },
+    "east": {
+      "x": 150,
+      "y": 0,
+      "z": 0
+    },
+    "north": {
+      "x": 0,
+      "y": 0,
+      "z": -65
+    },
+    "south": {
+      "x": 0,
+      "y": 0,
+      "z": 79.175
+    },
+    "front_w": {
+      "x": -36,
+      "y": 0,
+      "z": 34.175
+    },
+    "front_cross": {
+      "x": 0,
+      "y": 0,
+      "z": 34.175
+    },
+    "front_e": {
+      "x": 36,
+      "y": 0,
+      "z": 34.175
+    },
+    "ramp_start": {
+      "x": 18,
+      "y": 0,
+      "z": -65
+    },
+    "bridge_start": {
+      "x": 42,
+      "y": 6,
+      "z": -65
+    },
+    "bridge_end": {
+      "x": 68,
+      "y": 6,
+      "z": -65
+    },
+    "ramp_end": {
+      "x": 92,
+      "y": 0,
+      "z": -65
+    }
+  },
+  "edges": [
+    {
+      "id": "main_w1",
+      "from": "west",
+      "to": "west_merge",
+      "forward_lanes": 2,
+      "reverse_lanes": 2,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "main_w2",
+      "from": "west_merge",
+      "to": "cross",
+      "forward_lanes": 2,
+      "reverse_lanes": 2,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "main_e1",
+      "from": "cross",
+      "to": "east_merge",
+      "forward_lanes": 2,
+      "reverse_lanes": 2,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "main_e2",
+      "from": "east_merge",
+      "to": "east",
+      "forward_lanes": 2,
+      "reverse_lanes": 2,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "north_road",
+      "from": "north",
+      "to": "cross",
+      "forward_lanes": 1,
+      "reverse_lanes": 1,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "south_inner",
+      "from": "cross",
+      "to": "front_cross",
+      "forward_lanes": 1,
+      "reverse_lanes": 1,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "south_road",
+      "from": "front_cross",
+      "to": "south",
+      "forward_lanes": 1,
+      "reverse_lanes": 1,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "merge_w",
+      "from": "west_merge",
+      "to": "front_w",
+      "forward_lanes": 1,
+      "reverse_lanes": 0,
+      "lane_width_m": 6.825,
+      "via": [
+        {
+          "x": -92.0,
+          "y": 0,
+          "z": 11.266
+        },
+        {
+          "x": -84.0,
+          "y": 0,
+          "z": 13.978
+        },
+        {
+          "x": -76.0,
+          "y": 0,
+          "z": 17.811
+        },
+        {
+          "x": -68.0,
+          "y": 0,
+          "z": 22.206
+        },
+        {
+          "x": -60.0,
+          "y": 0,
+          "z": 26.601
+        },
+        {
+          "x": -52.0,
+          "y": 0,
+          "z": 30.435
+        },
+        {
+          "x": -44.0,
+          "y": 0,
+          "z": 33.146
+        }
+      ],
+      "start_offset_z": 10.2375
+    },
+    {
+      "id": "frontage_w",
+      "from": "front_w",
+      "to": "front_cross",
+      "forward_lanes": 1,
+      "reverse_lanes": 1,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "frontage_e",
+      "from": "front_cross",
+      "to": "front_e",
+      "forward_lanes": 1,
+      "reverse_lanes": 1,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "merge_e",
+      "from": "front_e",
+      "to": "east_merge",
+      "forward_lanes": 1,
+      "reverse_lanes": 0,
+      "lane_width_m": 6.825,
+      "via": [
+        {
+          "x": 44.0,
+          "y": 0,
+          "z": 33.146
+        },
+        {
+          "x": 52.0,
+          "y": 0,
+          "z": 30.435
+        },
+        {
+          "x": 60.0,
+          "y": 0,
+          "z": 26.601
+        },
+        {
+          "x": 68.0,
+          "y": 0,
+          "z": 22.206
+        },
+        {
+          "x": 76.0,
+          "y": 0,
+          "z": 17.811
+        },
+        {
+          "x": 84.0,
+          "y": 0,
+          "z": 13.978
+        },
+        {
+          "x": 92.0,
+          "y": 0,
+          "z": 11.266
+        }
+      ],
+      "end_offset_z": 10.2375
+    },
+    {
+      "id": "approach",
+      "from": "north",
+      "to": "ramp_start",
+      "forward_lanes": 1,
+      "reverse_lanes": 1,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "ramp_up",
+      "from": "ramp_start",
+      "to": "bridge_start",
+      "forward_lanes": 1,
+      "reverse_lanes": 1,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "overpass",
+      "from": "bridge_start",
+      "to": "bridge_end",
+      "forward_lanes": 1,
+      "reverse_lanes": 1,
+      "lane_width_m": 6.825
+    },
+    {
+      "id": "ramp_down",
+      "from": "bridge_end",
+      "to": "ramp_end",
+      "forward_lanes": 1,
+      "reverse_lanes": 1,
+      "lane_width_m": 6.825
+    }
+  ],
+  "round_sidewalk_corners": true,
+  "corner_radius_m": 2,
+  "crosswalk_width_m": 3.0,
+  "crosswalk_wear": 0.14,
+  "crosswalk_seed": 17,
+  "crosswalk_stripe_gap_m": 0.8,
+  "crosswalk_stripe_width_m": 0.65,
+  "road_marking_wear": 0.0,
+  "junction_markings": true,
+  "road_lights": false,
+  "streetlight_height": 10.0,
+  "streetlight_size": 1.0
+}

@@ -1,0 +1,67 @@
+/* 7. Pokéball Box Storage Switcher & Battle-Locked Notice */
+.party-storage-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.party-storage-notice {
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7f1d1d;
+  background: #ffe3e3;
+  border: 1.5px solid #c92a2a;
+}
+
+.party-storage-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
+  background: #fffdf5;
+  border: 1.5px solid #161420;
+  text-align: center;
+}
+
+.party-storage-card strong {
+  font-size: 10px;
+  color: #161420;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.party-storage-card small {
+  font-size: 9px;
+  color: #495057;
+}
+
+.party-batch-deposit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #fffdf5;
+  background: #1971c2;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  cursor: pointer;
+}
+
+.party-batch-deposit-btn.is-confirm {
+  background: #2b8a3e;
+}
+
+.party-batch-deposit-btn:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+

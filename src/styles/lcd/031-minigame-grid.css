@@ -1,0 +1,57 @@
+/* 2-Column Mini-Game Selector Grid */
+.play-menu-grid {
+  gap: 8px !important;
+  align-content: stretch !important;
+}
+
+.lcd-game-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 10px;
+  text-align: center;
+  background: #fff;
+  border: 2.5px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  border-radius: 0;
+}
+
+.lcd-game-tile.is-selected,
+.lcd-game-tile:hover {
+  background: #d3f9d8;
+}
+
+.game-tile-ico {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff9db;
+  border: 2px solid var(--ink);
+}
+
+.lcd-game-tile strong {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink);
+}
+
+.lcd-game-tile small {
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.game-tile-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 10px;
+  background: #ffe066;
+  border: 1.5px solid var(--ink);
+}
+

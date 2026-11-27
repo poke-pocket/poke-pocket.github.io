@@ -1,0 +1,173 @@
+/* ===================================================
+   REALISTIC MOLDED PHYSICAL HANDHELD HARDWARE SHELL
+   =================================================== */
+.handheld-shell {
+  position: relative;
+  width: 100%;
+  padding: 14px 18px 18px;
+  background: linear-gradient(
+    158deg,
+    var(--shell-hi, #fff199) 0%,
+    var(--shell-body, #ffd84d) 38%,
+    var(--shell-shadow, #d99e16) 100%
+  );
+  border-radius: 26px 26px 64px 26px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.65),
+    inset 2px 0 4px rgba(255, 255, 255, 0.35),
+    inset -4px -8px 14px rgba(0, 0, 0, 0.2),
+    0 24px 48px rgba(20, 18, 28, 0.28),
+    0 6px 14px rgba(20, 18, 28, 0.18);
+  transition: background 0.3s ease;
+}
+
+/* Recessed Screen Lens */
+.screen-bezel {
+  padding: 12px 12px 8px;
+  background: linear-gradient(170deg, #323540 0%, #23262f 100%);
+  border-radius: 14px 14px 36px 14px;
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.65),
+    0 1px 1px rgba(255, 255, 255, 0.42);
+}
+
+.lens-layout {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+
+.battery-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  align-self: start;
+  padding: 38px 0 0 0;
+  background: transparent;
+  border: none;
+  cursor: default;
+  outline: none;
+}
+
+.led-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ff8a95, #e61e2a 65%, #8a0f18 100%);
+  box-shadow:
+    0 0 8px rgba(255, 45, 58, 0.9),
+    0 0 2px rgba(0, 0, 0, 0.8);
+  animation: ledPulse 2.2s infinite;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.led-dot.is-dev-on {
+  background: radial-gradient(circle at 35% 35%, #b2f2bb, #40c057 65%, #186a2a 100%);
+  box-shadow:
+    0 0 10px rgba(81, 207, 102, 0.95),
+    0 0 2px rgba(0, 0, 0, 0.85);
+}
+
+.handheld-shell.is-dev-vibrate {
+  animation: consoleDevVibrate 0.44s steps(4, end);
+}
+
+@keyframes consoleDevVibrate {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  18% { transform: translate(-5px, 2px) rotate(-0.8deg); }
+  36% { transform: translate(5px, -2px) rotate(0.8deg); }
+  54% { transform: translate(-4px, -1px) rotate(-0.5deg); }
+  72% { transform: translate(4px, 2px) rotate(0.5deg); }
+  88% { transform: translate(-2px, 0) rotate(-0.2deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+.dev-mode-bezel-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #b2f2bb;
+  background: #12161c;
+  border: 2px solid #40c057;
+  box-shadow: 2px 2px 0 #09080f;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.lcd-subtab.is-debug-tab {
+  border-color: #2f9e44;
+  color: #186a2a;
+  background: #ebfbee;
+}
+
+.lcd-subtab.is-debug-tab.active {
+  background: #40c057;
+  color: #0e1c11;
+  border-color: #12101a;
+}
+
+.settings-card.is-debug-banner {
+  background: #ebfbee;
+  border-color: #2f9e44;
+}
+
+.battery-txt {
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: rgba(255, 255, 255, 0.56);
+  font-family: system-ui, sans-serif;
+}
+
+.bezel-brand-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.gb-logo {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 0.8px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.gbc-word {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+}
+
+.gbc-word i {
+  font-style: normal;
+}
+
+.shell-embossed-logo {
+  margin: 12px auto 0;
+  width: fit-content;
+  padding: 2px 12px;
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  color: rgba(0, 0, 0, 0.28);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.14),
+    0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
