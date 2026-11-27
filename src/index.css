@@ -4467,6 +4467,214 @@ button:disabled {
   border-style: dashed;
 }
 
+.paper-bento-card.is-full-width {
+  grid-column: span 12;
+}
+
+/* Global Pokémon Center Daily — Versioned Newspaper Archive List */
+.news-archive-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 8px 10px;
+  background: #f8f4e6;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  color: #161420;
+}
+
+.news-archive-wrap > * {
+  flex-shrink: 0;
+}
+
+.news-archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.news-edition-card {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px;
+  background: #fffdf5;
+  border: 2px solid #161420;
+  box-shadow: 2px 2px 0 #161420;
+  color: #161420;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.08s ease, transform 0.08s ease;
+}
+
+.news-edition-card:hover {
+  background: #fff9db;
+}
+
+.news-edition-card:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 #161420;
+}
+
+.news-edition-card.is-latest {
+  background: #fffdf0;
+  border-color: #c92a2a;
+}
+
+.news-edition-card.is-latest:hover {
+  background: #fff3bf;
+}
+
+.news-edition-cover {
+  position: relative;
+  width: 92px;
+  height: 62px;
+  border: 2px solid #161420;
+  background: #161420;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.news-edition-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.news-edition-latest-badge {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  padding: 1px 4px;
+  font-size: 8px;
+  font-weight: 900;
+  color: #fffdf5;
+  background: #c92a2a;
+  border: 1px solid #161420;
+  line-height: 1.1;
+}
+
+.news-edition-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.news-edition-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 9px;
+}
+
+.news-edition-ver {
+  padding: 1px 5px;
+  font-family: var(--font-pixel);
+  font-size: 8.5px;
+  font-weight: 900;
+  color: #fffdf5;
+  background: #1d3557;
+  border: 1px solid #161420;
+}
+
+.news-edition-card.is-latest .news-edition-ver {
+  background: #c92a2a;
+}
+
+.news-edition-issue {
+  font-weight: 800;
+  color: #495057;
+}
+
+.news-edition-meta time {
+  margin-left: auto;
+  font-family: var(--font-pixel);
+  font-size: 8px;
+  color: #6c757d;
+}
+
+.news-edition-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.3;
+  color: #161420;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.news-edition-sub {
+  margin: 0;
+  font-size: 9.5px;
+  color: #495057;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.news-edition-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: #6c757d;
+  font-weight: 700;
+}
+
+.news-edition-arrow {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 900;
+  color: #c92a2a;
+  white-space: nowrap;
+}
+
+.paper-edition-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1.5px dashed rgba(22, 20, 32, 0.3);
+}
+
+.paper-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 9.5px;
+  font-weight: 900;
+  color: #161420;
+  background: #fffdf5;
+  border: 1.5px solid #161420;
+  box-shadow: 1.5px 1.5px 0 #161420;
+  cursor: pointer;
+}
+
+.paper-pager-btn:hover:not(:disabled) {
+  background: #ffe066;
+}
+
+.paper-pager-btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.paper-pager-mid {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #495057;
+}
+
 .paper-archive-copy {
   display: flex;
   flex-direction: column;
@@ -4569,6 +4777,24 @@ button:disabled {
   .paper-bento-card.is-archive-right {
     grid-column: span 3;
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .paper-bento-card.is-full-width {
+    grid-column: span 6;
+  }
+
+  .news-edition-card {
+    grid-template-columns: 74px minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .news-edition-cover {
+    width: 74px;
+    height: 54px;
+  }
+
+  .news-edition-arrow {
+    display: none;
   }
 
   .paper-archive-thumb {

@@ -27,7 +27,7 @@ const DICT: Record<AppLang, Record<string, string>> = {
     dockAchieve: '成就',
     dockDiary: '日记',
     newsTag: '公告',
-    newsHeadline: '东亚 14 城道馆+日本新馆+华夏限定配色上线！点击阅读《关都日报》',
+    newsHeadline: '全球宝可梦中心各版本日报已收录！点击翻阅《宝可梦中心日报》',
     guideBtn: '指南',
     feedbackBtn: '反馈',
     fullscreenBtn: '全屏',

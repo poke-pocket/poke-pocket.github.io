@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ACCESSORY_CATALOG, ACHIEVEMENTS, FOOD_CATALOG, POKEDEX_ORDER, ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getPokemonCryId, getPokemonDexNo, getXpForNextLevel } from '../data/catalog';
 import { isDevVirtualPetId } from '../utils/devMode';
-import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
+import { NEWS_EDITIONS } from '../data/newsEditions';
 import { type PixelIconName } from '../data/pixelIcons';
 import { POOP_SPRITE, type PetAnimPose } from '../data/sprites';
 import { ALL_SURVIVOR_SKILL_IDS, CAST_MODE_OPTIONS, FORMATION_OPTIONS, SURVIVOR_SKILLS, TARGET_PRIORITY_OPTIONS, getRequiredLevelForSkillSlot, getUnlockedSkillSlotCount, type CastCadenceMode, type FollowerFormation, type LiveRunTacticsBridge, type SurvivorSkillId, type TargetPriority } from '../data/survivorsTactics';
@@ -280,8 +280,17 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [squadPickerSlot, setSquadPickerSlot] = useState<number | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
   const [feedbackSent, setFeedbackSent] = useState(false);
+  const [selectedNewsEditionId, setSelectedNewsEditionId] = useState<string | null>(null);
   const [selectedNewsId, setSelectedNewsId] = useState<string | null>(null);
   const [newsPhotoIdx, setNewsPhotoIdx] = useState(0);
+
+  useEffect(() => {
+    if (mode !== 'news') {
+      setSelectedNewsEditionId(null);
+      setSelectedNewsId(null);
+      setNewsPhotoIdx(0);
+    }
+  }, [mode]);
   const [achCategory, setAchCategory] = useState<'all' | 'care' | 'dex' | 'battle' | 'collect' | 'legend'>('all');
   const [captureWhoStage, setCaptureWhoStage] = useState(false);
 
@@ -539,7 +548,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
     }
   };
 
-  const lcdSubCtx = { STAT_BAR_ROWS, achCategory, bagTab, batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, confirmReleaseId, confirmReset, connectedGamepadName, detailReturnMode, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, feedbackSent, feedbackText, gachaBoxMeta, gachaPhase, gachaReleased, gachaResult, gachaTenResult, handleStartGacha, handleStartGachaTen, isFullscreen, keysSubTab, marketTab, menuCursor, mode, newsPhotoIdx, onAssignPetRoom, onBuyAccessory, onBuyFood, onBuyPokeball, onCloseHandheldTo3D, onDepositPet, onDepositPetsBatch, onDevGrantCoins99999, onDevGrantItems99, onDevGrantPokeballs99, onDevGrantStardust99999, onEquipAccessory, onExitMode, onFeedSquad, onGoBack: handleGoBack, onHealParty, onHealPet, onNavigateMode: navigateWithHistory, onQuickCarePet, onReleasePet, onReleasePetsBatch, onReleaseStoredPet, onReleaseStoredPetsBatch, onResetSave, onSelectFood, onStartGame, onSwitchPet, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdateSettings, onWithdrawPet, onWithdrawPetsBatch, openedEntryMode, openedFromBattle, partyBatchMode, partyBoxTab, partyDetailIsStored, partyDetailPet, partyDetailTab, partyGradeFilter, partySearch, partySortBy, pet, petActionMenuOpen, rebindingAction, releasedTenIds, save, selectedDexSpecies, selectedNewsId, setAchCategory, setBagTab, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setFeedbackSent, setFeedbackText, setGachaPhase, setGachaReleased, setKeysSubTab, setMarketTab, setNewsPhotoIdx, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setRebindingAction, setReleasedTenIds, setSelectedDexSpecies, setSelectedNewsId, setSelectedPartyPetId, setSettingsTab, setSquadPickerSlot, settingsTab, speciesMeta, squadPickerSlot, worldMapData };
+  const lcdSubCtx = { STAT_BAR_ROWS, achCategory, bagTab, batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, confirmReleaseId, confirmReset, connectedGamepadName, detailReturnMode, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, feedbackSent, feedbackText, gachaBoxMeta, gachaPhase, gachaReleased, gachaResult, gachaTenResult, handleStartGacha, handleStartGachaTen, isFullscreen, keysSubTab, marketTab, menuCursor, mode, newsPhotoIdx, onAssignPetRoom, onBuyAccessory, onBuyFood, onBuyPokeball, onCloseHandheldTo3D, onDepositPet, onDepositPetsBatch, onDevGrantCoins99999, onDevGrantItems99, onDevGrantPokeballs99, onDevGrantStardust99999, onEquipAccessory, onExitMode, onFeedSquad, onGoBack: handleGoBack, onHealParty, onHealPet, onNavigateMode: navigateWithHistory, onQuickCarePet, onReleasePet, onReleasePetsBatch, onReleaseStoredPet, onReleaseStoredPetsBatch, onResetSave, onSelectFood, onStartGame, onSwitchPet, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdateSettings, onWithdrawPet, onWithdrawPetsBatch, openedEntryMode, openedFromBattle, partyBatchMode, partyBoxTab, partyDetailIsStored, partyDetailPet, partyDetailTab, partyGradeFilter, partySearch, partySortBy, pet, petActionMenuOpen, rebindingAction, releasedTenIds, save, selectedDexSpecies, selectedNewsEditionId, selectedNewsId, setAchCategory, setBagTab, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setFeedbackSent, setFeedbackText, setGachaPhase, setGachaReleased, setKeysSubTab, setMarketTab, setNewsPhotoIdx, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setRebindingAction, setReleasedTenIds, setSelectedDexSpecies, setSelectedNewsEditionId, setSelectedNewsId, setSelectedPartyPetId, setSettingsTab, setSquadPickerSlot, settingsTab, speciesMeta, squadPickerSlot, worldMapData };
   return (
     <div
       className={`lcd-viewport ${pet.isSleeping ? 'is-night' : ''}`}
@@ -1109,22 +1118,27 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
               )}
             </div>
 
-            {/* Top News Ticker Banner (Directly reuses Kanto Daily news page!) */}
+            {/* Top News Ticker Banner (Directly opens Global Pokémon Center Daily archive!) */}
             <button
               type="button"
               className="lcd-menu-tile is-news-wide is-top-news"
               onClick={() => {
+                setSelectedNewsEditionId(null);
                 setSelectedNewsId(null);
                 setNewsPhotoIdx(0);
                 navigateWithHistory('news');
               }}
-              title="查看关都日报与最新更新公告"
+              title="查看全球宝可梦中心各版本日报"
             >
               <span className="menu-news-badge">NEWS</span>
               <PixelItemImg src="/sprites/items/poke-radar.png" size={18} />
               <div className="menu-news-copy">
-                <strong>新闻公告 · 关都日报</strong>
-                <small>{DEFAULT_ANNOUNCEMENTS[0]?.title ?? '查看近期更新与活动情报'}</small>
+                <strong>宝可梦中心新闻</strong>
+                <small>
+                  {NEWS_EDITIONS[0]
+                    ? `${NEWS_EDITIONS[0].version} · ${NEWS_EDITIONS[0].title}`
+                    : '查看全球宝可梦中心各版本日报'}
+                </small>
               </div>
               <span className="menu-news-arrow">查看 ›</span>
             </button>

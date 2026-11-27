@@ -4,13 +4,30 @@ import { POKEDEX_ORDER } from '../../data/catalog';
 import { ensureFreshMetaProgress, getHeroDef } from '../../data/metaProgression';
 import { DEFAULT_TRAINER_PROFILE } from '../../types/pet';
 import { sound } from '../../utils/sound';
-import { DEFAULT_ANNOUNCEMENTS } from '../MetaOverlays';
+import { DEFAULT_ANNOUNCEMENTS, NEWS_EDITIONS } from '../../data/newsEditions';
 import { HandheldWorldMapView } from '../WorldMapHud';
 import { PixelIcon, PixelItemImg } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { feedbackSent, feedbackText, mode, newsPhotoIdx, onCloseHandheldTo3D, onGoBack, onUpdateSettings, save, selectedNewsId, setFeedbackSent, setFeedbackText, setNewsPhotoIdx, setSelectedNewsId, worldMapData } = ctx;
+  const {
+    feedbackSent,
+    feedbackText,
+    mode,
+    newsPhotoIdx,
+    onCloseHandheldTo3D,
+    onGoBack,
+    onUpdateSettings,
+    save,
+    selectedNewsEditionId,
+    selectedNewsId,
+    setFeedbackSent,
+    setFeedbackText,
+    setNewsPhotoIdx,
+    setSelectedNewsEditionId,
+    setSelectedNewsId,
+    worldMapData,
+  } = ctx;
   return (
     <>
         {/* TRAINER PROFILE & SOCIAL CARD INSIDE HANDHELD */}
@@ -117,11 +134,25 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
           </div>
         )}
 
-        {/* OFFICIAL ANNOUNCEMENTS & PATCH NOTES INSIDE HANDHELD (Click to view full detail!) */}
+        {/* GLOBAL POKÉMON CENTER DAILY — VERSIONED NEWSPAPER ARCHIVE LIST -> EDITION FRONT PAGE -> FULL ARTICLE */}
         {mode === 'news' && (() => {
           const activeNews = selectedNewsId
             ? DEFAULT_ANNOUNCEMENTS.find((n) => n.id === selectedNewsId) ?? null
             : null;
+          const activeEdition = selectedNewsEditionId
+            ? NEWS_EDITIONS.find((ed) => ed.id === selectedNewsEditionId) ?? null
+            : activeNews
+              ? NEWS_EDITIONS.find((ed) => ed.id === activeNews.editionId) ?? null
+              : null;
+          const activeEditionIdx = activeEdition
+            ? NEWS_EDITIONS.findIndex((ed) => ed.id === activeEdition.id)
+            : -1;
+          const newerEdition = activeEditionIdx > 0 ? NEWS_EDITIONS[activeEditionIdx - 1] : null;
+          const olderEdition =
+            activeEditionIdx >= 0 && activeEditionIdx < NEWS_EDITIONS.length - 1
+              ? NEWS_EDITIONS[activeEditionIdx + 1]
+              : null;
+
           const activePhotos = activeNews
             ? (activeNews.photos && activeNews.photos.length > 0
                 ? activeNews.photos
@@ -131,16 +162,20 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
             : [];
           const safePhotoIdx = activePhotos.length > 0 ? Math.min(newsPhotoIdx, activePhotos.length - 1) : 0;
           const curPhoto = activePhotos[safePhotoIdx] ?? null;
+
+          const headerTitle = activeNews
+            ? activeNews.title
+            : activeEdition
+              ? `${activeEdition.version} · 第 ${activeEdition.issueNo} 期 · 宝可梦中心日报`
+              : '全球宝可梦中心新闻';
+
           return (
             <div className="lcd-submenu">
               <div className="lcd-submenu-head">
                 <div className="inline-icon-row">
                   <PixelItemImg src="/sprites/items/poke-radar.png" size={16} />
-                  <span
-                    className="lcd-submenu-head-title"
-                    title={activeNews ? activeNews.title : '官方公告与版本更新'}
-                  >
-                    {activeNews ? activeNews.title : '官方公告与版本更新'}
+                  <span className="lcd-submenu-head-title" title={headerTitle}>
+                    {headerTitle}
                   </span>
                 </div>
                 <button
@@ -151,6 +186,8 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                     if (activeNews) {
                       setSelectedNewsId(null);
                       setNewsPhotoIdx(0);
+                    } else if (activeEdition) {
+                      setSelectedNewsEditionId(null);
                     } else {
                       onGoBack();
                     }
@@ -162,6 +199,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
               {activeNews ? (
                 <div className="lcd-news-detail scroll-y">
                   <div className="lcd-news-head">
+                    <span className="news-edition-ver">{activeNews.version}</span>
                     <span className="lcd-news-tag">{activeNews.tag}</span>
                     {activeNews.reporter && <span className="lcd-news-reporter">{activeNews.reporter}</span>}
                     <em>{activeNews.date}</em>
@@ -236,25 +274,25 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                     </ul>
                   )}
                 </div>
-              ) : (
+              ) : activeEdition ? (
                 <div className="kanto-paper scroll-y">
-                  {/* Classic Newspaper Masthead (报头) */}
+                  {/* Global Pokémon Center Newspaper Masthead (报头) */}
                   <header className="paper-masthead">
                     <div className="paper-masthead-top">
-                      <span>关都联盟官方特刊</span>
-                      <strong>关 都 日 报</strong>
-                      <span>KANTO DAILY</span>
+                      <span>全球宝可梦中心联合通讯社</span>
+                      <strong>宝 可 梦 中 心 日 报</strong>
+                      <span>POKÉMON CENTER DAILY</span>
                     </div>
                     <div className="paper-masthead-meta">
-                      <span>关都历 11月26日 · 第 149 期</span>
-                      <span>✈ 东亚 14 城巡礼 · 华夏限定色上线</span>
+                      <span>{activeEdition.version} · {activeEdition.date} · 第 {activeEdition.issueNo} 期</span>
+                      <span>{activeEdition.subtitle}</span>
                       <span>点击任意报道阅读全文</span>
                     </div>
                   </header>
 
                   {/* Lead Front-Page Story (头版头条) */}
-                  {DEFAULT_ANNOUNCEMENTS[0] && (() => {
-                    const lead = DEFAULT_ANNOUNCEMENTS[0];
+                  {activeEdition.articles[0] && (() => {
+                    const lead = activeEdition.articles[0];
                     const photoCount = lead.photos?.length ?? (lead.photo ? 1 : 0);
                     return (
                       <article
@@ -277,7 +315,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                       >
                         <div className="paper-kicker-row">
                           <span className="paper-kicker is-red">头版头条 · {lead.tag}</span>
-                          <span className="paper-byline">{lead.reporter ?? '关都日报记者'}</span>
+                          <span className="paper-byline">{lead.reporter ?? '宝可梦中心记者'}</span>
                           <time>{lead.date}</time>
                         </div>
                         <h3 className="paper-lead-headline">{lead.title}</h3>
@@ -297,12 +335,13 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                     );
                   })()}
 
-                  {/* Asymmetric Broadsheet Editorial Mosaic (不规则报刊版面：按重要级别区分大小与图文形态) */}
-                  {DEFAULT_ANNOUNCEMENTS.length > 1 && (
+                  {/* Asymmetric Broadsheet Editorial Mosaic (本期其余报道) */}
+                  {activeEdition.articles.length > 1 && (
                     <div className="paper-bento-grid">
-                      {DEFAULT_ANNOUNCEMENTS.slice(1).map((a) => {
+                      {activeEdition.articles.slice(1).map((a) => {
                         const photoCount = a.photos?.length ?? (a.photo ? 1 : 0);
                         const layout = a.layout ?? 'feature_tall';
+                        const fullCls = a.fullWidth ? ' is-full-width' : '';
                         const openArticle = () => {
                           sound.play('cursor');
                           setSelectedNewsId(a.id);
@@ -319,7 +358,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                           return (
                             <article
                               key={a.id}
-                              className="paper-bento-card is-photo-spotlight"
+                              className={`paper-bento-card is-photo-spotlight${fullCls}`}
                               role="button"
                               tabIndex={0}
                               onClick={openArticle}
@@ -349,7 +388,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                           return (
                             <article
                               key={a.id}
-                              className="paper-bento-card is-wide-horizontal"
+                              className={`paper-bento-card is-wide-horizontal${fullCls}`}
                               role="button"
                               tabIndex={0}
                               onClick={openArticle}
@@ -369,7 +408,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                                 <h4 className="paper-col-headline is-lg">{a.title}</h4>
                                 <p className="paper-col-excerpt">{a.body}</p>
                                 <div className="paper-col-foot">
-                                  <span>{a.reporter?.split('·')[1]?.trim() ?? '技术专报'}</span>
+                                  <span>{a.reporter?.split('·')[1]?.trim() ?? '中心专报'}</span>
                                   <em>阅读全文 ›</em>
                                 </div>
                               </div>
@@ -381,7 +420,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                           return (
                             <article
                               key={a.id}
-                              className="paper-bento-card is-text-wire"
+                              className={`paper-bento-card is-text-wire${fullCls}`}
                               role="button"
                               tabIndex={0}
                               onClick={openArticle}
@@ -394,7 +433,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                               <h4 className="paper-wire-headline">{a.title}</h4>
                               <p className="paper-wire-excerpt">{a.body}</p>
                               <div className="paper-col-foot">
-                                <span>{photoCount > 0 ? `含 ${photoCount} 张现场图` : '快讯'}</span>
+                                <span>{photoCount > 0 ? `含 ${photoCount} 张现场图` : '中心快讯'}</span>
                                 <em>详情 ›</em>
                               </div>
                             </article>
@@ -405,7 +444,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                           return (
                             <article
                               key={a.id}
-                              className="paper-bento-card is-photo-title"
+                              className={`paper-bento-card is-photo-title${fullCls}`}
                               role="button"
                               tabIndex={0}
                               onClick={openArticle}
@@ -430,7 +469,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                           return (
                             <article
                               key={a.id}
-                              className="paper-bento-card is-archive-right"
+                              className={`paper-bento-card is-archive-right${fullCls}`}
                               role="button"
                               tabIndex={0}
                               onClick={openArticle}
@@ -454,11 +493,10 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                           );
                         }
 
-                        // Default: 'feature_tall' (large feature photo + headline + summary + footer)
                         return (
                           <article
                             key={a.id}
-                            className="paper-bento-card is-feature-tall"
+                            className={`paper-bento-card is-feature-tall${fullCls}`}
                             role="button"
                             tabIndex={0}
                             onClick={openArticle}
@@ -477,7 +515,7 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                             )}
                             <p className="paper-col-excerpt">{a.body}</p>
                             <div className="paper-col-foot">
-                              <span>{a.reporter?.split('·')[1]?.trim() ?? '前线快讯'}</span>
+                              <span>{a.reporter?.split('·')[1]?.trim() ?? '中心快讯'}</span>
                               <em>全文 ›</em>
                             </div>
                           </article>
@@ -486,11 +524,94 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                     </div>
                   )}
 
-                  {/* Bottom Newspaper Weather & Regional Brief Strip */}
+                  {/* Bottom Global Center Weather Strip */}
                   <footer className="paper-brief-strip">
-                    <strong>【东亚航线气象】</strong>
-                    <span>上海 18°C 晴 · 深圳/香港 25°C 多云 · 东京/京都 16°C 樱风 · 札幌/哈尔滨 -3°C 小雪</span>
+                    <strong>【全球中心气象】</strong>
+                    <span>{activeEdition.weatherBrief}</span>
                   </footer>
+
+                  {/* Prev / Next Version Edition Switcher */}
+                  <div className="paper-edition-pager">
+                    <button
+                      type="button"
+                      className="paper-pager-btn"
+                      disabled={!olderEdition}
+                      onClick={() => {
+                        if (!olderEdition) return;
+                        sound.play('cursor');
+                        setSelectedNewsEditionId(olderEdition.id);
+                      }}
+                    >
+                      {olderEdition ? `‹ 上一期 ${olderEdition.version}` : '‹ 最早期刊'}
+                    </button>
+                    <span className="paper-pager-mid">
+                      第 {activeEdition.issueNo} 期 · 共 {NEWS_EDITIONS.length} 期
+                    </span>
+                    <button
+                      type="button"
+                      className="paper-pager-btn"
+                      disabled={!newerEdition}
+                      onClick={() => {
+                        if (!newerEdition) return;
+                        sound.play('cursor');
+                        setSelectedNewsEditionId(newerEdition.id);
+                      }}
+                    >
+                      {newerEdition ? `下一期 ${newerEdition.version} ›` : '已是最新 ›'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Level 1: Versioned Newspaper Archive List (按版本排列的宝可梦中心日报列表) */
+                <div className="news-archive-wrap scroll-y">
+                  <header className="paper-masthead">
+                    <div className="paper-masthead-top">
+                      <span>全球宝可梦中心联合通讯社</span>
+                      <strong>宝 可 梦 中 心 日 报</strong>
+                      <span>POKÉMON CENTER DAILY</span>
+                    </div>
+                    <div className="paper-masthead-meta">
+                      <span>按版本收录 · 共 {NEWS_EDITIONS.length} 期</span>
+                      <span>最新发行：{NEWS_EDITIONS[0]?.version} 第 {NEWS_EDITIONS[0]?.issueNo} 期</span>
+                      <span>点击任一期号翻阅本期日报</span>
+                    </div>
+                  </header>
+
+                  <div className="news-archive-list">
+                    {NEWS_EDITIONS.map((ed) => (
+                      <button
+                        key={ed.id}
+                        type="button"
+                        className={`news-edition-card ${ed.isLatest ? 'is-latest' : ''}`}
+                        onClick={() => {
+                          sound.play('cursor');
+                          setSelectedNewsEditionId(ed.id);
+                          setSelectedNewsId(null);
+                          setNewsPhotoIdx(0);
+                        }}
+                      >
+                        <div className="news-edition-cover">
+                          <img src={ed.coverPhoto} alt={ed.title} draggable={false} />
+                          {ed.isLatest && <span className="news-edition-latest-badge">最新</span>}
+                        </div>
+                        <div className="news-edition-body">
+                          <div className="news-edition-meta">
+                            <span className="news-edition-ver">{ed.version}</span>
+                            <span className="news-edition-issue">第 {ed.issueNo} 期</span>
+                            <time>{ed.shortDate}</time>
+                          </div>
+                          <h3 className="news-edition-title">{ed.title}</h3>
+                          <p className="news-edition-sub">{ed.subtitle}</p>
+                          <div className="news-edition-foot">
+                            <span>收录 {ed.articles.length} 篇专题报道</span>
+                            <span>·</span>
+                            <span>{ed.articles.map((a) => a.tag).join(' / ')}</span>
+                          </div>
+                        </div>
+                        <span className="news-edition-arrow">翻阅 ›</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

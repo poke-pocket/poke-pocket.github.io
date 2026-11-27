@@ -21,217 +21,23 @@ import {
 } from '../data/metaProgression';
 import { PixelIcon, PixelItemImg } from './PixelSprite';
 import { sound } from '../utils/sound';
+import {
+  DEFAULT_ANNOUNCEMENTS,
+  NEWS_EDITIONS,
+  type NewsCardLayout,
+  type NewsEdition,
+  type NewsPhotoItem,
+  type ServerAnnouncement,
+} from '../data/newsEditions';
 
-export interface NewsPhotoItem {
-  src: string;
-  caption: string;
-}
-
-export type NewsCardLayout =
-  | 'lead_banner'
-  | 'feature_tall'
-  | 'photo_spotlight'
-  | 'wide_horizontal'
-  | 'text_wire'
-  | 'photo_title'
-  | 'archive_right_thumb';
-
-export interface ServerAnnouncement {
-  id: string;
-  tag: string;
-  date: string;
-  title: string;
-  body: string;
-  layout?: NewsCardLayout;
-  photo?: string;
-  photoCaption?: string;
-  photos?: NewsPhotoItem[];
-  reporter?: string;
-  details?: string[];
-}
-
-/** Local seed announcements (immersive in-world Kanto dispatches with multi-photo GBA pixel-art press shots!) */
-export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
-  {
-    id: 'ann_east_asia_14_gyms',
-    layout: 'lead_banner',
-    tag: '航线复航',
-    date: '关都历 11-26',
-    title: '东亚跨海航路全线复航！京都、大阪、札幌、福冈、冲绳五地道馆恢复接待',
-    body: '此前受太平洋秋季异常气流与跨海信标干扰，飞往京都、大阪、札幌、福冈及冲绳的定期航班一度停飞，各地道馆亦暂缓跨区接待。经航空管理局与西尔佛公司联合检修信标，今起东亚 14 城航线全面恢复通航，各地不动产登记处亦同步恢复训练家跨城置业落户服务！',
-    photo: '/sprites/news/news-east-asia-tour.png',
-    photoCaption: '空域信标检修完毕后首班复航客机掠过樱花古塔与海滨道馆广场',
-    photos: [
-      {
-        src: '/sprites/news/news-east-asia-tour.png',
-        caption: '空域信标检修完毕后首班复航客机掠过樱花古塔与海滨道馆广场',
-      },
-      {
-        src: '/sprites/news/news-gym-arena.png',
-        caption: '京都圆朱凤王古殿、大阪通天阁雷炎馆、札幌雪峰冰馆等道馆现已恢复挑战预约',
-      },
-    ],
-    reporter: '关都日报环球特派记者 · 芽衣',
-    details: [
-      '随着太平洋空域恢复平静，北京、上海、杭州、广州、深圳、成都、哈尔滨、香港与东京、京都、大阪、札幌、福冈、冲绳 14 座地标道馆均已恢复全天候接待。',
-      '联盟民航局重申跨城客票规程：常规巡礼往返均按实景航程核定往返机票（起飞 3,000 币起），仅在当地办理置业迁居的训练家可申购单程迁居客票。',
-      '各地城建署同步公布最新置业地价（依城市区位 108,000–320,000 币不等）；在当地拥有私宅的训练家日后乘机往返无须另付旅馆宿费，并可享受私宅全队状态休整。',
-      '精灵图鉴卫星定位模块已完成室内基站校频，此前在建筑内部偶发的信号失锁问题现已排除，无卫星环境下将自动借由基站网络锚定家乡。',
-    ],
-  },
-  {
-    id: 'ann_chinese_species_palettes',
-    layout: 'feature_tall',
-    tag: '生态特刊',
-    date: '关都历 11-26',
-    title: '季风转暖！华夏古道重现凤王与熊猫踪迹，多地观测到青花瓷、朱砂红等地域变色个体',
-    body: '伴随秋末山地雾气散去，先前隐居深山竹林与古刹遗迹的凤王、顽皮熊猫、功夫鼬、小火焰猴、老翁龙及古老封印地宝可梦近日频繁现身郊野。观测站同时证实，京沪杭蓉及北国雪原的野生族群中本就栖息着青花瓷、朱砂红等地域变色个体！',
-    photo: '/sprites/news/news-chinese-palettes.png',
-    photoCaption: '江南古园实拍：竹林宫灯间现身的青花瓷与翡翠青地域变色个体',
-    photos: [
-      {
-        src: '/sprites/news/news-chinese-palettes.png',
-        caption: '江南古园实拍：竹林宫灯间现身的青花瓷与翡翠青地域变色个体',
-      },
-      {
-        src: '/sprites/news/news-lab-shiny.png',
-        caption: '经大木研究所校准图鉴波频后，上述 13 支族群与 16 种战斗招式档案现已完整收录',
-      },
-    ],
-    reporter: '东亚生态特约记者 · 莎莉娜',
-    details: [
-      '受暖湿气流回升影响，凤王、晃晃斑、小火焰猴、铜镜怪、暖暖猪、功夫鼬、顽皮熊猫、老翁龙、熊徒弟及四处古老遗迹宝可梦陆续回归视野。',
-      '受各地水土矿脉长期滋养，沪深「青花瓷」、北京「朱砂红」、杭州「翡翠青」、成都「水墨丹青」、广港「敦煌丹霞」及北境「冰裂釉」等地域色个体在野外均有目击报告。',
-      '由于此前精灵雷达滤镜失真，不少训练家错过了这些稀有变色个体；校准完成后，击晕投球收服即可完整保留其原本的地域体色。',
-    ],
-  },
-  {
-    id: 'ann_real_dem_overland',
-    layout: 'photo_spotlight',
-    tag: '摄影特写',
-    date: '关都历 11-25',
-    title: '深港跨湾步道修缮重开！徒步可贯通森林、雪山与沙海地貌',
-    body: '此前因南海大潮冲刷封闭检修的深港沿岸海滨栈道今日重新开放！随着高空测绘气球回传的地貌图拼接完毕，训练家不仅可沿海岸线跨城徒步，还能在原野中自然穿越相连的森林、雪山、沙漠与熔岩裂谷。',
-    photo: '/sprites/news/news-szhk-coast.png',
-    photoCaption: '修缮重开的跨湾木栈道与晴空海湾，训练家正携水系伙伴沿真实海岸徒步前行',
-    photos: [
-      {
-        src: '/sprites/news/news-szhk-coast.png',
-        caption: '修缮重开的跨湾木栈道与晴空海湾，训练家正携水系伙伴沿真实海岸徒步前行',
-      },
-      {
-        src: '/sprites/news/news-rail-viaduct.png',
-        caption: '联盟地理局已完成全境地貌拼图，森林、雪山、沙海与火山裂谷现已无缝连通',
-      },
-    ],
-    reporter: '地理测绘特派员 · 阿驯',
-    details: [
-      '海堤加固完工后，训练家可直接从深圳湾向南徒步跨越海岸边界进入香港维港生态圈。',
-      '野外地貌测绘表明：随着海拔与气候变化，原野自然衔接青翠森林、高耸雪山、金沙沙漠、热带海湾与熔岩火山带，不同地貌栖息着各自特色的植被与野生族群。',
-      '高空卫星航图仪已完成变焦镜头校准，现支持从全球地貌一路平滑推近至街道实景。',
-    ],
-  },
-  {
-    id: 'ann_mobile_and_combat_upgrade',
-    layout: 'wide_horizontal',
-    tag: '西尔佛通告',
-    date: '关都历 11-26',
-    title: '西尔佛掌机检修固件推送！大木博士寄放箱重申「战后存取」安全规程',
-    body: '西尔佛工程部已排查修复随身掌机宽屏掉帧、摇杆偶发回弹卡滞与返回键失灵等硬件故障；大木研究所亦重申：随身球盒满 24 只期间野外无法投球，需先放生或待冒险结束后再办理寄放箱存取！',
-    photo: '/sprites/news/news-handheld-mobile.png',
-    photoCaption: '西尔佛技术工坊实拍：工程师连夜完成掌机全屏显示模块与卫星雷达驱动检修',
-    photos: [
-      {
-        src: '/sprites/news/news-handheld-mobile.png',
-        caption: '西尔佛技术工坊实拍：工程师连夜完成掌机全屏显示模块与卫星雷达驱动检修',
-      },
-    ],
-    reporter: '西尔佛工程特讯 · 健太',
-    details: [
-      '为避免野外激战中传输信号波动导致精灵球遗失，随身球盒达到 24 只上限后投球锁止机制将自动生效，请先放生多余伙伴或返回大厅后再前往大木寄放箱寄存。',
-      '西尔佛掌机固件已修复切换全屏时的画面拖影、触控缩放卡顿及摇杆卡向问题，并修复皮卡丘语音播放时偶发的高频刺耳杂音（可在音频设置中自由挑选音色）。',
-      '野外补给投放规程已重新规范，空投仅提供随从特训强化、被动秘笈与伤药补给，野生伙伴请统一通过正规投球收服。',
-    ],
-  },
-  {
-    id: 'ann_gym_reopen',
-    layout: 'text_wire',
-    tag: '联盟电讯',
-    date: '关都历 11-25',
-    title: '尼比与华蓝等关都 6 大道馆全面重开',
-    body: '此前因风暴海岸强雷雨及山谷大雾暂停接待的关都道馆已恢复开放，小刚、小霞、马志士等馆主整装待发，击败即可点亮徽章永久增益！',
-    photo: '/sprites/news/news-gym-reopen.png',
-    photoCaption: '雨后放晴的海滨道馆广场，彩旗飘扬、训练家陆续抵达现场',
-    photos: [
-      {
-        src: '/sprites/news/news-gym-reopen.png',
-        caption: '雨后放晴的海滨道馆广场，彩旗飘扬、训练家陆续抵达现场',
-      },
-      {
-        src: '/sprites/news/news-gym-arena.png',
-        caption: '道馆室内竞技场与关都 6 大徽章展示台已就绪，首场友谊赛火热开打',
-      },
-    ],
-    reporter: '关都日报前线记者 · 芽衣',
-    details: [
-      '尼比道馆（小刚）、华蓝道馆（小霞）、枯叶道馆（马志士）等 6 位馆主现已重返原野巡逻。',
-      '击败对应道馆馆主即可点亮「灰色、蓝色、橙色、彩虹、深红、绿色」关都徽章，永久强化指定属性宝可梦。',
-      '大木研究所已同步更新训练师等级认证：从「见习训练师」一路晋升至「冠军训练师」，可自由切换生效光环。',
-    ],
-  },
-  {
-    id: 'ann_rail_repaired',
-    layout: 'photo_title',
-    tag: '交通简讯',
-    date: '关都历 11-24',
-    title: '通往天空冰川与红莲火山的山区铁路全线复通',
-    body: '前几日因野生快龙与卡比兽在阶梯峡谷激战，导致前往岩石沙漠、天空冰川及红莲火山的铁路桥与海滨步道受损。经宝可梦救援队连夜抢修，五大生态区现已全线恢复通行！',
-    photo: '/sprites/news/news-rail-repaired.png',
-    photoCaption: '首班复通快车驶过新修峡谷石桥，远处可见天空冰川与红莲火山',
-    photos: [
-      {
-        src: '/sprites/news/news-rail-repaired.png',
-        caption: '首班复通快车驶过新修峡谷石桥，远处可见天空冰川与红莲火山',
-      },
-      {
-        src: '/sprites/news/news-rail-viaduct.png',
-        caption: '午后青碧峡谷高架桥，快龙与皮卡丘伴随复通快车一路巡航护航',
-      },
-    ],
-    reporter: '交通频道随行记者 · 健太',
-    details: [
-      '青翠森林、岩石沙漠（仙人掌峡谷）、风暴海岸（热带椰林）、天空冰川（冰晶雪松）与红莲火山（熔岩黑曜石）全部开放。',
-      '沿途发现大量稀有野生与飞行系宝可梦在山坡草地间栖息、翱翔，击晕稀有与异色精灵后请把握时机投球收服。',
-      '旅途补给站已全面接入掌机系统，随时可查看操作指南或向联盟意见箱反馈路况。',
-    ],
-  },
-  {
-    id: 'ann_mega_lab',
-    layout: 'archive_right_thumb',
-    tag: '研究档案',
-    date: '关都历 11-23',
-    title: '大木研究所突破：「超进化共鸣」与稀有异色外观正式开放',
-    body: '当训练家与伙伴亲密度达 Lv.5 时可在战斗齐射中觉醒超进化/超极巨化形态，研究所同步扩充至 16 项永久特训与全新像素主角头像！',
-    photo: '/sprites/news/news-mega-lab.png',
-    photoCaption: '研究所实拍：悬浮的虹色进化钥石正释放共鸣星辉波动',
-    photos: [
-      {
-        src: '/sprites/news/news-mega-lab.png',
-        caption: '研究所实拍：悬浮的虹色进化钥石正释放共鸣星辉波动',
-      },
-      {
-        src: '/sprites/news/news-lab-shiny.png',
-        caption: '实验台近景：大木博士正在记录异色宝可梦与虹色棱晶的能量波形',
-      },
-    ],
-    reporter: '真新镇特约科技记者 · 莎莉娜',
-    details: [
-      '研究所新增「携带上限、气势披带复活、焦点会心、磐石护甲、收服大师、冒险补给包」等共 16 项特训。',
-      '精灵详情页新增「亲密·外观」档案，解锁 Lv.2–Lv.10 全套亲密度被动奖励。',
-      '友好商店全新上架「官方异色 ★」「岩浆裂纹」「苍蓝圣炎」「花见·樱之灵」「太阳法老」及六大华夏限定外观！',
-    ],
-  },
-];
+export {
+  DEFAULT_ANNOUNCEMENTS,
+  NEWS_EDITIONS,
+  type NewsCardLayout,
+  type NewsEdition,
+  type NewsPhotoItem,
+  type ServerAnnouncement,
+};
 
 /* =========================================================================
    1. RESEARCH LAB OVERLAY (Universal Permanent Upgrades + Switchable Heroes!)
@@ -924,7 +730,7 @@ export const HubInfoModal: React.FC<InfoModalProps> = ({ kind, closing, onClose 
         <div className="surv-upgrade-head shop-head-row">
           <span>
             {kind === 'news'
-              ? '官方公告与版本更新（支持服务器接入）'
+              ? '全球宝可梦中心新闻 · 版本日报'
               : kind === 'guide'
                 ? 'POKé POCKET 3D 冒险操作指南'
                 : '问题反馈与建议提交'}
@@ -936,14 +742,14 @@ export const HubInfoModal: React.FC<InfoModalProps> = ({ kind, closing, onClose 
 
         {kind === 'news' && (
           <div className="info-modal-body scroll-y">
-            {DEFAULT_ANNOUNCEMENTS.map((a) => (
-              <article key={a.id} className="news-card">
+            {NEWS_EDITIONS.map((ed) => (
+              <article key={ed.id} className="news-card">
                 <div className="news-card-head">
-                  <span className="news-tag">{a.tag}</span>
-                  <strong>{a.title}</strong>
-                  <em>{a.date}</em>
+                  <span className="news-tag">{ed.version}</span>
+                  <strong>{ed.title}</strong>
+                  <em>第 {ed.issueNo} 期 · {ed.shortDate}</em>
                 </div>
-                <p>{a.body}</p>
+                <p>{ed.subtitle}</p>
               </article>
             ))}
           </div>

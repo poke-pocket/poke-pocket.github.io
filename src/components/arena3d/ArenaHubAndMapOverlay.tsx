@@ -463,7 +463,7 @@ export const ArenaHubAndMapOverlay: React.FC<{ ctx: Record<string, any> }> = ({ 
                         type="button"
                         className="pkb-news-ticker"
                         onClick={() => onOpenPokemonManager('news', false)}
-                        title="点击在掌机中查看《关都日报》"
+                        title="点击在掌机中查看《宝可梦中心日报》"
                       >
                         <PixelItemImg src="/sprites/items/poke-radar.png" size={16} />
                         <span className="pkb-news-pill">
