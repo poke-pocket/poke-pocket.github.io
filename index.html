@@ -15,6 +15,20 @@
     <style>
       html, body { margin: 0; padding: 0; background: #14121d; overflow: hidden; image-rendering: pixelated; }
       #pokeball-boot-curtain {
+        --pb-main: #e03131;
+        --pb-hi: #ff6b6b;
+        --pb-hi2: #ff5252;
+        --pb-low: #b02525;
+        --pb-deep: #7d1515;
+        --pb-glint: #ffc9c9;
+        --pb-glint2: #ffa8a8;
+        --pb-glint3: #ff8787;
+        --pb-accent: #e03131;
+        --pb-accent-hi: #ff8787;
+        --pb-accent-lo: #a61e1e;
+        --pb-ring-fill: #ffd43b;
+        --pb-ring-hi: #fff3bf;
+        --pb-ring-lo: #e67700;
         position: fixed;
         inset: 0;
         z-index: 99999;
@@ -22,6 +36,54 @@
         overflow: hidden;
         font-family: "Press Start 2P", "PingFang SC", "Microsoft YaHei", monospace;
         image-rendering: pixelated;
+      }
+      #pokeball-boot-curtain.is-tier-greatball {
+        --pb-main: #1c7ed6;
+        --pb-hi: #4dabf7;
+        --pb-hi2: #339af0;
+        --pb-low: #1864ab;
+        --pb-deep: #0c4a8a;
+        --pb-glint: #d0ebff;
+        --pb-glint2: #a5d8ff;
+        --pb-glint3: #74c0fc;
+        --pb-accent: #1c7ed6;
+        --pb-accent-hi: #74c0fc;
+        --pb-accent-lo: #1864ab;
+        --pb-ring-fill: #339af0;
+        --pb-ring-hi: #a5d8ff;
+        --pb-ring-lo: #1864ab;
+      }
+      #pokeball-boot-curtain.is-tier-ultraball {
+        --pb-main: #262938;
+        --pb-hi: #42465c;
+        --pb-hi2: #34384c;
+        --pb-low: #191b26;
+        --pb-deep: #0f1018;
+        --pb-glint: #fff3bf;
+        --pb-glint2: #ffe066;
+        --pb-glint3: #ffd43b;
+        --pb-accent: #f08c00;
+        --pb-accent-hi: #ffe066;
+        --pb-accent-lo: #b35900;
+        --pb-ring-fill: #ffd43b;
+        --pb-ring-hi: #fff3bf;
+        --pb-ring-lo: #d97706;
+      }
+      #pokeball-boot-curtain.is-tier-masterball {
+        --pb-main: #7048e8;
+        --pb-hi: #9775fa;
+        --pb-hi2: #845ef7;
+        --pb-low: #5f3dc4;
+        --pb-deep: #3b2287;
+        --pb-glint: #f3d9fa;
+        --pb-glint2: #e599f7;
+        --pb-glint3: #da77f2;
+        --pb-accent: #7048e8;
+        --pb-accent-hi: #b197fc;
+        --pb-accent-lo: #4c2ca8;
+        --pb-ring-fill: #e64980;
+        --pb-ring-hi: #ff87ab;
+        --pb-ring-lo: #a61e4d;
       }
       #pokeball-boot-curtain.is-opening { pointer-events: none; }
       #pokeball-boot-curtain .pb-boot-top,
@@ -36,7 +98,7 @@
       /* Pure axis-aligned 6x6px 2-stage Bayer pixel dithering (ZERO smooth gradients or diagonal anti-aliasing!) */
       #pokeball-boot-curtain .pb-boot-top {
         top: 0;
-        background-color: #e03131;
+        background-color: var(--pb-main);
         border-bottom: 12px solid #14121d;
         box-sizing: border-box;
       }
@@ -48,10 +110,10 @@
         top: 0;
         height: 54px;
         background-image:
-          linear-gradient(#ff6b6b, #ff6b6b),
-          repeating-conic-gradient(transparent 0% 25%, #ff5252 0% 50%),
-          repeating-conic-gradient(transparent 0% 25%, #ff5252 0% 50%),
-          conic-gradient(at 6px 6px, transparent 270deg, #ff5252 270deg);
+          linear-gradient(var(--pb-hi), var(--pb-hi)),
+          repeating-conic-gradient(transparent 0% 25%, var(--pb-hi2) 0% 50%),
+          repeating-conic-gradient(transparent 0% 25%, var(--pb-hi2) 0% 50%),
+          conic-gradient(at 6px 6px, transparent 270deg, var(--pb-hi2) 270deg);
         background-size: 100% 18px, 12px 12px, 12px 12px, 12px 12px;
         background-position: 0 0, 0 18px, 0 30px, 0 42px;
         background-repeat: no-repeat, repeat-x, repeat-x, repeat-x;
@@ -64,11 +126,11 @@
         bottom: 0;
         height: 54px;
         background-image:
-          conic-gradient(at 6px 6px, transparent 270deg, #b02525 270deg),
-          repeating-conic-gradient(#b02525 0% 25%, transparent 0% 50%),
-          repeating-conic-gradient(#b02525 0% 25%, transparent 0% 50%),
-          linear-gradient(#b02525, #b02525),
-          linear-gradient(#7d1515, #7d1515);
+          conic-gradient(at 6px 6px, transparent 270deg, var(--pb-low) 270deg),
+          repeating-conic-gradient(var(--pb-low) 0% 25%, transparent 0% 50%),
+          repeating-conic-gradient(var(--pb-low) 0% 25%, transparent 0% 50%),
+          linear-gradient(var(--pb-low), var(--pb-low)),
+          linear-gradient(var(--pb-deep), var(--pb-deep));
         background-size: 12px 12px, 12px 12px, 12px 12px, 100% 12px, 100% 6px;
         background-position: 0 0, 0 12px, 0 24px, 0 36px, 0 48px;
         background-repeat: repeat-x, repeat-x, repeat-x, no-repeat, no-repeat;
@@ -80,13 +142,23 @@
         transform: translateX(-50%);
         width: min(300px, 60vw);
         height: 12px;
-        background: #ffc9c9;
+        background: var(--pb-glint);
         box-shadow:
-          -12px 6px 0 #ffa8a8,
-          12px 6px 0 #ffa8a8,
-          -24px 6px 0 #ff8787,
-          24px 6px 0 #ff8787;
+          -12px 6px 0 var(--pb-glint2),
+          12px 6px 0 var(--pb-glint2),
+          -24px 6px 0 var(--pb-glint3),
+          24px 6px 0 var(--pb-glint3);
         z-index: 2;
+      }
+      #pokeball-boot-curtain .pb-boot-motif {
+        position: absolute;
+        left: 50%;
+        bottom: 46px;
+        transform: translateX(-50%);
+        width: min(520px, 88vw);
+        height: auto;
+        z-index: 2;
+        pointer-events: none;
       }
       #pokeball-boot-curtain .pb-boot-socket {
         position: absolute;
@@ -146,11 +218,11 @@
         filter: drop-shadow(0 6px 0 #ced4da);
       }
       #pokeball-boot-curtain .pb-boot-core-base {
-        fill: #ff4d4d;
-        animation: pbBootPxCore 0.55s steps(2, end) infinite;
+        fill: var(--pb-accent);
+        animation: pbBootPxCore 0.72s steps(2, jump-none) infinite;
       }
       #pokeball-boot-curtain .pb-boot-core-shade {
-        fill: #c92a2a;
+        fill: var(--pb-accent-lo);
       }
       #pokeball-boot-curtain.is-ready .pb-boot-core-base {
         animation: none;
@@ -159,61 +231,105 @@
       #pokeball-boot-curtain.is-ready .pb-boot-core-shade {
         fill: #2b8a3e;
       }
-      #pokeball-boot-curtain .pb-boot-hud {
+      #pokeball-boot-curtain .pb-boot-center {
         position: absolute;
         left: 50%;
-        top: 82px;
+        top: 88px;
         transform: translateX(-50%);
         z-index: 5;
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 8px;
-        padding: 10px 16px;
-        background: #14121d;
-        border: 4px solid #14121d;
-        outline: 2px solid #ffe066;
-        outline-offset: -6px;
-        box-shadow: 6px 6px 0 #adb5bd;
-        color: #fff9db;
-        white-space: nowrap;
+        gap: 10px;
+        width: min(480px, 88vw);
+        color: #14121d;
+        text-align: center;
+        font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
       }
-      #pokeball-boot-curtain .pb-boot-row {
+      #pokeball-boot-curtain .pb-boot-status {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        color: #14121d;
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.4px;
+        line-height: 1.45;
+      }
+      #pokeball-boot-curtain .pb-boot-status img,
+      #pokeball-boot-curtain .pb-boot-lore-icons img {
+        width: 22px;
+        height: 22px;
+        image-rendering: pixelated;
+        flex-shrink: 0;
+      }
+      #pokeball-boot-curtain .pb-boot-badges {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+      }
+      #pokeball-boot-curtain .pb-boot-rank {
+        font-size: 11px;
+        font-weight: 700;
+        color: #495057;
+        letter-spacing: 0.4px;
+      }
+      #pokeball-boot-curtain .pb-boot-badge-row {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 8px;
-        font-size: 12px;
-        font-weight: 900;
       }
-      #pokeball-boot-curtain .pb-boot-tag {
-        padding: 2px 5px;
-        background: #e03131;
-        color: #ffffff;
-        font-size: 9px;
-        letter-spacing: 1px;
+      #pokeball-boot-curtain .pb-boot-badge-row img {
+        width: 22px;
+        height: 22px;
+        image-rendering: pixelated;
+        filter: drop-shadow(0 2px 0 rgba(20, 18, 29, 0.22));
       }
-      #pokeball-boot-curtain .pb-boot-bars {
-        display: flex;
+      #pokeball-boot-curtain .pb-boot-corner {
+        position: absolute;
+        right: 28px;
+        bottom: 78px;
+        z-index: 5;
+        display: inline-flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        max-width: min(520px, 86vw);
+        color: #343a40;
+        font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        text-align: right;
+      }
+      #pokeball-boot-curtain .pb-boot-lore-icons {
+        display: inline-flex;
+        align-items: center;
         gap: 4px;
+        flex-shrink: 0;
       }
-      #pokeball-boot-curtain .pb-boot-bars i {
-        width: 14px;
-        height: 8px;
-        background: #2b283a;
-        display: block;
-        animation: pbBootSeg 0.8s steps(1, end) infinite;
+      #pokeball-boot-curtain .pb-boot-tip {
+        margin: 0;
+        font-size: 12px;
+        font-weight: 700;
+        color: #343a40;
+        line-height: 1.5;
       }
-      #pokeball-boot-curtain .pb-boot-bars i:nth-child(1) { animation-delay: 0s; }
-      #pokeball-boot-curtain .pb-boot-bars i:nth-child(2) { animation-delay: 0.1s; }
-      #pokeball-boot-curtain .pb-boot-bars i:nth-child(3) { animation-delay: 0.2s; }
-      #pokeball-boot-curtain .pb-boot-bars i:nth-child(4) { animation-delay: 0.3s; }
-      #pokeball-boot-curtain .pb-boot-bars i:nth-child(5) { animation-delay: 0.4s; }
-      #pokeball-boot-curtain .pb-boot-bars i:nth-child(6) { animation-delay: 0.5s; }
-      #pokeball-boot-curtain .pb-boot-bars i:nth-child(7) { animation-delay: 0.6s; }
-      #pokeball-boot-curtain .pb-boot-bars i:nth-child(8) { animation-delay: 0.7s; }
-      #pokeball-boot-curtain.is-ready .pb-boot-bars i {
-        animation: none;
-        background: #51cf66;
+      @media (max-width: 640px) {
+        #pokeball-boot-curtain .pb-boot-center {
+          top: 72px;
+        }
+        #pokeball-boot-curtain .pb-boot-status {
+          font-size: 12.5px;
+        }
+        #pokeball-boot-curtain .pb-boot-corner {
+          right: 16px;
+          bottom: 70px;
+          max-width: calc(100vw - 32px);
+        }
+        #pokeball-boot-curtain .pb-boot-tip {
+          font-size: 11px;
+        }
       }
       #pokeball-boot-curtain.is-opening .pb-boot-top {
         transform: translate3d(0, -116%, 0);
@@ -222,13 +338,8 @@
         transform: translate3d(0, calc(100% + 90px), 0);
       }
       @keyframes pbBootPxCore {
-        0% { fill: #ff4d4d; }
-        50% { fill: #ffd43b; }
-        100% { fill: #ff4d4d; }
-      }
-      @keyframes pbBootSeg {
-        0%, 49% { background: #ffd43b; }
-        50%, 100% { background: #2b283a; }
+        0% { fill: var(--pb-accent); }
+        100% { fill: var(--pb-accent-hi); }
       }
     </style>
   </head>
@@ -236,12 +347,13 @@
     <div id="pokeball-boot-curtain" aria-label="正在加载游戏">
       <div class="pb-boot-top">
         <div class="pb-boot-sheen"></div>
+        <div id="pb-boot-motif-host"></div>
         <svg class="pb-boot-socket" viewBox="0 0 24 12" shape-rendering="crispEdges">
-          <rect x="6" y="0" width="12" height="1" fill="#9e1f1f" />
-          <rect x="4" y="1" width="2" height="1" fill="#9e1f1f" />
-          <rect x="18" y="1" width="2" height="1" fill="#9e1f1f" />
-          <rect x="2" y="2" width="2" height="2" fill="#9e1f1f" />
-          <rect x="20" y="2" width="2" height="2" fill="#9e1f1f" />
+          <rect x="6" y="0" width="12" height="1" fill="var(--pb-low)" />
+          <rect x="4" y="1" width="2" height="1" fill="var(--pb-low)" />
+          <rect x="18" y="1" width="2" height="1" fill="var(--pb-low)" />
+          <rect x="2" y="2" width="2" height="2" fill="var(--pb-low)" />
+          <rect x="20" y="2" width="2" height="2" fill="var(--pb-low)" />
           <rect x="7" y="1" width="10" height="1" fill="#14121d" />
           <rect x="5" y="2" width="14" height="1" fill="#14121d" />
           <rect x="3" y="3" width="18" height="2" fill="#14121d" />
@@ -270,6 +382,7 @@
           <rect x="13" y="19" width="5" height="1" fill="#adb5bd" />
           <rect x="18" y="15" width="2" height="3" fill="#adb5bd" />
           <rect x="20" y="11" width="1" height="5" fill="#adb5bd" />
+          <g id="pb-boot-ring-layer"></g>
           <rect x="9" y="6" width="6" height="12" fill="#14121d" />
           <rect x="7" y="7" width="10" height="10" fill="#14121d" />
           <rect x="6" y="9" width="12" height="6" fill="#14121d" />
@@ -283,23 +396,202 @@
           <rect x="11" y="8" width="1" height="1" fill="#fff5f5" />
           <rect x="9" y="10" width="1" height="1" fill="#fff5f5" />
         </svg>
-        <div class="pb-boot-hud">
-          <div class="pb-boot-row">
-            <span class="pb-boot-tag">LOADING</span>
-            <span>正在构筑像素世界…</span>
+        <div class="pb-boot-center">
+          <div class="pb-boot-status">
+            <img id="pb-boot-status-ico" src="/sprites/items/poke-ball.png" alt="" draggable="false" />
+            <span id="pb-boot-title">正在系好鞋带，检查腰间的精灵球…</span>
           </div>
-          <div class="pb-boot-bars">
-            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
-          </div>
+          <div id="pb-boot-badges" class="pb-boot-badges" style="display:none"></div>
+        </div>
+        <div class="pb-boot-corner">
+          <div id="pb-boot-lore-icons" class="pb-boot-lore-icons" aria-hidden="true"></div>
+          <p id="pb-boot-tip" class="pb-boot-tip">下雨天水系伙伴格外有干劲，雷雨时电系招式的威力也会更强。</p>
         </div>
       </div>
     </div>
     <div id="root"></div>
     <script>
-      window.setTimeout(function () {
-        var el = document.getElementById('pokeball-boot-curtain');
-        if (el) { el.classList.add('is-opening'); window.setTimeout(function () { el.remove(); }, 600); }
-      }, 6500);
+      (function () {
+        var curtain = document.getElementById('pokeball-boot-curtain');
+        var tierBallIcon = '/sprites/items/poke-ball.png';
+
+        // Build clockwise pixel-ring progress rects inside the clasp's white border
+        var ringHost = document.getElementById('pb-boot-ring-layer');
+        var ringNodes = [];
+        if (ringHost) {
+          var ns = 'http://www.w3.org/2000/svg';
+          var isW = function (x, y) {
+            return (x >= 8 && x <= 15 && y >= 3 && y <= 20) ||
+              (x >= 6 && x <= 17 && y >= 4 && y <= 19) ||
+              (x >= 4 && x <= 19 && y >= 6 && y <= 17) ||
+              (x >= 3 && x <= 20 && y >= 8 && y <= 15);
+          };
+          var isIn = function (x, y) {
+            return (x >= 9 && x <= 14 && y >= 6 && y <= 17) ||
+              (x >= 7 && x <= 16 && y >= 7 && y <= 16) ||
+              (x >= 6 && x <= 17 && y >= 9 && y <= 14);
+          };
+          var isHi = function (x, y) {
+            return (y === 3 && x >= 8 && x <= 15) ||
+              (y === 4 && x >= 6 && x <= 10) ||
+              (x >= 4 && x <= 5 && y >= 6 && y <= 8) ||
+              (x === 3 && y >= 8 && y <= 12);
+          };
+          var isLo = function (x, y) {
+            return (y === 20 && x >= 8 && x <= 15) ||
+              (y === 19 && x >= 13 && x <= 17) ||
+              (x >= 18 && x <= 19 && y >= 15 && y <= 17) ||
+              (x === 20 && y >= 11 && y <= 15);
+          };
+          for (var y = 3; y <= 20; y++) {
+            for (var x = 3; x <= 20; x++) {
+              if (!isW(x, y) || isIn(x, y)) continue;
+              var frac = ((Math.atan2(x + 0.5 - 12, -(y + 0.5 - 12)) / (Math.PI * 2)) + 1) % 1;
+              var shade = isHi(x, y) ? 'hi' : isLo(x, y) ? 'lo' : 'base';
+              var rect = document.createElementNS(ns, 'rect');
+              rect.setAttribute('x', String(x));
+              rect.setAttribute('y', String(y));
+              rect.setAttribute('width', '1');
+              rect.setAttribute('height', '1');
+              rect.setAttribute('fill', 'transparent');
+              ringHost.appendChild(rect);
+              ringNodes.push({ el: rect, frac: frac, shade: shade });
+            }
+          }
+        }
+
+        var curPct = 14;
+        var paintRing = function (pct) {
+          curPct = Math.max(curPct, Math.min(100, pct));
+          var done = curPct >= 100;
+          var thr = curPct / 100;
+          for (var i = 0; i < ringNodes.length; i++) {
+            var nd = ringNodes[i];
+            if (done || nd.frac <= thr) {
+              if (done) {
+                nd.el.setAttribute('fill', nd.shade === 'hi' ? '#b2f2bb' : nd.shade === 'lo' ? '#2b8a3e' : '#51cf66');
+              } else {
+                nd.el.setAttribute('fill', nd.shade === 'hi' ? 'var(--pb-ring-hi)' : nd.shade === 'lo' ? 'var(--pb-ring-lo)' : 'var(--pb-ring-fill)');
+              }
+            }
+          }
+        };
+        window.__pbSetBootProgress = paintRing;
+        paintRing(16);
+
+        var nudgeTimer = window.setInterval(function () {
+          if (!document.getElementById('pokeball-boot-curtain') || curPct >= 92) {
+            window.clearInterval(nudgeTimer);
+            return;
+          }
+          paintRing(curPct + 4);
+        }, 120);
+
+        try {
+          var rawTheme = window.localStorage.getItem('poke_pocket_boot_shutter_v1');
+          if (rawTheme && curtain) {
+            var th = JSON.parse(rawTheme);
+            if (th && th.tier && th.tier !== 'pokeball') {
+              curtain.classList.add('is-tier-' + th.tier);
+              var tierIconMap = {
+                greatball: '/sprites/items/great-ball.png',
+                ultraball: '/sprites/items/ultra-ball.png',
+                masterball: '/sprites/items/master-ball.png'
+              };
+              if (tierIconMap[th.tier]) tierBallIcon = tierIconMap[th.tier];
+              var host = document.getElementById('pb-boot-motif-host');
+              if (host) {
+                if (th.tier === 'greatball') {
+                  host.innerHTML = '<svg class="pb-boot-motif" viewBox="0 0 80 28" shape-rendering="crispEdges"><rect x="6" y="4" width="12" height="5" fill="#14121d"/><rect x="10" y="9" width="12" height="5" fill="#14121d"/><rect x="14" y="14" width="12" height="5" fill="#14121d"/><rect x="7" y="5" width="10" height="3" fill="#e03131"/><rect x="11" y="10" width="10" height="3" fill="#e03131"/><rect x="15" y="15" width="10" height="3" fill="#e03131"/><rect x="62" y="4" width="12" height="5" fill="#14121d"/><rect x="58" y="9" width="12" height="5" fill="#14121d"/><rect x="54" y="14" width="12" height="5" fill="#14121d"/><rect x="63" y="5" width="10" height="3" fill="#e03131"/><rect x="59" y="10" width="10" height="3" fill="#e03131"/><rect x="55" y="15" width="10" height="3" fill="#e03131"/></svg>';
+                } else if (th.tier === 'ultraball') {
+                  host.innerHTML = '<svg class="pb-boot-motif" viewBox="0 0 80 28" shape-rendering="crispEdges"><rect x="17" y="0" width="9" height="28" fill="#14121d"/><rect x="54" y="0" width="9" height="28" fill="#14121d"/><rect x="24" y="1" width="32" height="8" fill="#14121d"/><rect x="18" y="0" width="7" height="28" fill="#ffd43b"/><rect x="55" y="0" width="7" height="28" fill="#ffd43b"/><rect x="25" y="2" width="30" height="6" fill="#ffd43b"/><rect x="19" y="0" width="2" height="28" fill="#fff3bf"/><rect x="56" y="0" width="2" height="28" fill="#fff3bf"/><rect x="25" y="2" width="30" height="2" fill="#fff3bf"/></svg>';
+                } else if (th.tier === 'masterball') {
+                  host.innerHTML = '<svg class="pb-boot-motif" viewBox="0 0 80 28" shape-rendering="crispEdges"><rect x="6" y="5" width="14" height="12" fill="#14121d"/><rect x="8" y="3" width="10" height="16" fill="#14121d"/><rect x="7" y="6" width="12" height="10" fill="#e64980"/><rect x="9" y="4" width="8" height="14" fill="#e64980"/><rect x="9" y="5" width="5" height="2" fill="#ff87ab"/><rect x="60" y="5" width="14" height="12" fill="#14121d"/><rect x="62" y="3" width="10" height="16" fill="#14121d"/><rect x="61" y="6" width="12" height="10" fill="#e64980"/><rect x="63" y="4" width="8" height="14" fill="#e64980"/><rect x="64" y="5" width="5" height="2" fill="#ff87ab"/><rect x="34" y="5" width="2" height="10" fill="#ffffff"/><rect x="44" y="5" width="2" height="10" fill="#ffffff"/><rect x="36" y="7" width="2" height="2" fill="#ffffff"/><rect x="42" y="7" width="2" height="2" fill="#ffffff"/><rect x="38" y="9" width="4" height="2" fill="#ffffff"/></svg>';
+                }
+              }
+            }
+            var bBox = document.getElementById('pb-boot-badges');
+            if (bBox && th && ((th.badgeIcons && th.badgeIcons.length > 0) || (th.tier && th.tier !== 'pokeball'))) {
+              bBox.style.display = 'flex';
+              if (th.badgeIcons && th.badgeIcons.length > 0) {
+                var row = document.createElement('div');
+                row.className = 'pb-boot-badge-row';
+                for (var bi = 0; bi < Math.min(6, th.badgeIcons.length); bi++) {
+                  var img = document.createElement('img');
+                  img.src = th.badgeIcons[bi].icon;
+                  img.alt = th.badgeIcons[bi].name || '';
+                  row.appendChild(img);
+                }
+                bBox.appendChild(row);
+              }
+              var rankSpan = document.createElement('span');
+              rankSpan.className = 'pb-boot-rank';
+              rankSpan.textContent = (th.rankName || '见习训练师') + (th.badgeCount > 0 ? ' · ' + th.badgeCount + ' 枚徽章' : (th.maxLevel ? ' · Lv.' + th.maxLevel : ''));
+              bBox.appendChild(rankSpan);
+            }
+          }
+        } catch (e) {}
+
+        var scenes = [
+          {
+            status: '正在系好鞋带，检查腰间的精灵球…',
+            statusIcon: tierBallIcon,
+            lore: '城市友好商店备有各类树果与专用精灵球，出门前别忘了备足补给。',
+            loreIcons: ['/sprites/items/berry-pouch.png', '/sprites/items/sitrus-berry.png']
+          },
+          {
+            status: '正在轻轻唤醒精灵球里的伙伴…',
+            statusIcon: tierBallIcon,
+            lore: '下雨天水系伙伴格外有干劲，雷雨时电系招式的威力也会更强。',
+            loreIcons: ['/sprites/items/mystic-water.png', '/sprites/items/light-ball.png']
+          },
+          {
+            status: '背上旅行背包，准备推门出发…',
+            statusIcon: '/sprites/items/town-map.png',
+            lore: '晴空万里时，火系与草系宝可梦的招式威力都会得到明显增幅。',
+            loreIcons: ['/sprites/items/charcoal.png', '/sprites/items/miracle-seed.png']
+          },
+          {
+            status: '微风正好，伙伴已经迫不及待了…',
+            statusIcon: tierBallIcon,
+            lore: '遇到晕倒的稀有宝可梦时，长按投球键就能立刻换上高级球或大师球。',
+            loreIcons: ['/sprites/items/ultra-ball.png', '/sprites/items/master-ball.png']
+          },
+          {
+            status: '正在整理树果袋与伤药补给…',
+            statusIcon: '/sprites/items/super-potion.png',
+            lore: '夜幕降临后使用黑暗球，能更轻松收服野外击晕的稀有宝可梦。',
+            loreIcons: ['/sprites/items/dusk-ball.png', '/sprites/items/kings-rock.png']
+          }
+        ];
+        var pick = scenes[Math.floor(Math.random() * scenes.length)];
+        var tEl = document.getElementById('pb-boot-title');
+        var sIco = document.getElementById('pb-boot-status-ico');
+        var tipEl = document.getElementById('pb-boot-tip');
+        var lIcons = document.getElementById('pb-boot-lore-icons');
+        if (tEl) tEl.textContent = pick.status;
+        if (sIco) sIco.src = pick.statusIcon;
+        if (tipEl) tipEl.textContent = pick.lore;
+        if (lIcons) {
+          for (var li = 0; li < pick.loreIcons.length; li++) {
+            var liImg = document.createElement('img');
+            liImg.src = pick.loreIcons[li];
+            liImg.alt = '';
+            lIcons.appendChild(liImg);
+          }
+        }
+        window.setTimeout(function () {
+          var el = document.getElementById('pokeball-boot-curtain');
+          if (el) {
+            paintRing(100);
+            el.classList.add('is-ready');
+            window.setTimeout(function () {
+              el.classList.add('is-opening');
+              window.setTimeout(function () { el.remove(); }, 560);
+            }, 140);
+          }
+        }, 6500);
+      })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

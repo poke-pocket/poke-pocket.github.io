@@ -29,11 +29,18 @@ export function syncUrbanTerrainUniforms3D(material:THREE.ShaderMaterial,regions
  }
 }
 
-/** Keeps CPU flora/spawn biome queries and GPU terrain shader uniforms synced with Real-Earth vs Rogue mode & live snow weather */
+/** Keeps CPU flora/spawn biome queries and GPU terrain shader uniforms synced with Real-Earth vs Rogue mode & live weather surface effects */
 export function syncTerrainGeoUniforms3D(
   terrainMat: THREE.ShaderMaterial | null | undefined,
   isRealEarthMode: boolean,
   snowWeatherFactor = 0,
+  weatherSurface?: {
+    wetness?: number;
+    lightScale?: number;
+    hailSpecks?: number;
+    heatDry?: number;
+    timeSec?: number;
+  },
 ): void {
   realEarthBiomeModeActive = isRealEarthMode;
   liveSnowWeatherWeight = Math.max(0, Math.min(1, snowWeatherFactor));
@@ -55,6 +62,21 @@ export function syncTerrainGeoUniforms3D(
       isRealEarthMode && Boolean(origin) ? 1.0 : 0.0,
       liveSnowWeatherWeight,
     );
+  }
+  if (weatherSurface && terrainMat.uniforms.uWeatherGround?.value instanceof THREE.Vector4) {
+    const cur = terrainMat.uniforms.uWeatherGround.value;
+    cur.set(
+      liveSnowWeatherWeight,
+      weatherSurface.wetness ?? cur.y,
+      weatherSurface.lightScale ?? cur.z,
+      weatherSurface.hailSpecks ?? cur.w,
+    );
+  }
+  if (weatherSurface?.heatDry !== undefined && terrainMat.uniforms.uHeatDry) {
+    terrainMat.uniforms.uHeatDry.value = Math.max(0, Math.min(1, weatherSurface.heatDry));
+  }
+  if (weatherSurface?.timeSec !== undefined && terrainMat.uniforms.uTime) {
+    terrainMat.uniforms.uTime.value = weatherSurface.timeSec;
   }
 }
 
@@ -213,6 +235,9 @@ export function createSculptedTerrainMaterial(
       uBaseClimate: { value: new THREE.Vector2(baseT, baseM) },
       uGeoOrigin: { value: buildInitialGeoOriginVec4() },
       uRealEarthParams: { value: new THREE.Vector2(hasGeo ? 1.0 : 0.0, liveSnowWeatherWeight) },
+      uWeatherGround: { value: new THREE.Vector4(liveSnowWeatherWeight, 0.0, 1.0, 0.0) },
+      uHeatDry: { value: 0.0 },
+      uTime: { value: 0.0 },
       uFogNear: { value: 56.0 },
       uFogFar: { value: 3800.0 },
       uSectorSize: { value: sectorSize },
@@ -242,6 +267,9 @@ export function createSculptedTerrainMaterial(
       uniform vec2 uBaseClimate;
       uniform vec4 uGeoOrigin;
       uniform vec2 uRealEarthParams;
+      uniform vec4 uWeatherGround;
+      uniform float uHeatDry;
+      uniform float uTime;
       uniform float uFogNear;
       uniform float uFogFar;
       uniform float uSectorSize;
@@ -329,8 +357,7 @@ export function createSculptedTerrainMaterial(
 
           float altSnow = smoothstep(snowLineM - 160.0, snowLineM + 320.0, realElevM);
           float polarSnow = smoothstep(56.0, 64.0, absLat);
-          float weatherSnow = uRealEarthParams.y * smoothstep(0.05, 0.85, vWorldPos.y);
-          wSnow = clamp(max(max(altSnow, polarSnow), weatherSnow), 0.0, 1.0);
+          wSnow = clamp(max(altSnow, polarSnow), 0.0, 1.0);
 
           // 2. Real Active Volcanic Craters ONLY (Sakurajima, Mt. Aso, Kilauea, Etna — zero lava in cities/plains!)
           float dVolc = min(
@@ -517,12 +544,86 @@ export function createSculptedTerrainMaterial(
 
         albedo *= (1.0 + bayer2 * detailFade);
 
-        // Bright HD-2D sunlit shading with warm sunlight / cool-slate hillshade contrast + cel micro-steps!
+        // === LIVE WEATHER GROUND EFFECTS (Snow Drifts + Snowflake Sparkles, Rain Wetness & Puddles, Hail Pellets, Heat Dryness!) ===
+        float wWeatherSnow = uWeatherGround.x;
+        float wWet = uWeatherGround.y;
+        float wLight = clamp(uWeatherGround.z, 0.36, 1.15);
+        float wHail = uWeatherGround.w;
+        float dryLandMask = smoothstep(-0.22, 0.06, vWorldPos.y);
+
+        // A. Hot sun-baked meadow warmth (>= 31°C)
+        if (uHeatDry > 0.01 && wWeatherSnow < 0.1) {
+          vec3 dryTint = albedo * vec3(1.10, 1.01, 0.78);
+          albedo = mix(albedo, dryTint, uHeatDry * 0.42 * dryLandMask * (1.0 - cliffMask * 0.5));
+        }
+
+        // B. Rain & Storm: rain-soaked darkened ground + organic reflective puddles with animated raindrop ripples!
+        if (wWet > 0.01) {
+          albedo *= mix(1.0, 0.72, wWet * (0.7 + 0.3 * dryLandMask));
+          float puddleNoise =
+            0.5 +
+            0.28 * sin(vWorldPos.x * 0.22 + sin(vWorldPos.z * 0.17) * 1.4) +
+            0.22 * cos(vWorldPos.z * 0.25 - cos(vWorldPos.x * 0.19) * 1.2);
+          float flatEnough = smoothstep(0.90, 0.985, n.y) * dryLandMask * (1.0 - wWeatherSnow * 0.85);
+          float puddleThresh = mix(0.84, 0.62, wWet);
+          float puddleMask = smoothstep(puddleThresh, puddleThresh + 0.06, puddleNoise) * flatEnough * detailFade;
+          if (puddleMask > 0.01) {
+            // Pixel-snapped water ripple rings dancing inside puddles!
+            vec2 pCell = floor(vWorldPos.xz * 0.65);
+            vec2 pRnd = groundHash22(pCell);
+            vec2 pLocal = fract(vWorldPos.xz * 0.65) - pRnd;
+            float rDist = length(pLocal);
+            float rPhase = fract(uTime * 1.35 + pRnd.x * 7.0);
+            float ring = smoothstep(0.06, 0.0, abs(rDist - rPhase * 0.42)) * (1.0 - rPhase);
+            vec3 skyRefl = mix(uFogColor * 0.92, vec3(0.74, 0.86, 0.96), 0.32);
+            vec3 puddleCol = mix(albedo * 0.62, skyRefl, 0.68) + vec3(0.24, 0.30, 0.36) * ring * wWet;
+            albedo = mix(albedo, puddleCol, puddleMask * (0.55 + 0.35 * wWet));
+          }
+        }
+
+        // C. Hail: scattered crisp bright icy hailstones sitting on the ground!
+        if (wHail > 0.01) {
+          vec2 hailPx = floor(vWorldPos.xz * 4.5);
+          vec2 hRnd = groundHash22(hailPx);
+          float hailDot = step(0.975 - wHail * 0.055, hRnd.x) * dryLandMask * smoothstep(0.70, 0.92, n.y) * detailFade;
+          albedo = mix(albedo, vec3(0.90, 0.97, 1.0), hailDot * 0.92);
+        }
+
+        // D. Snow & Sub-Zero Frost: organic pixel-dithered snow drifts across meadows, paths & cliff tops + snow crystal sparkles!
+        if (wWeatherSnow > 0.01) {
+          float driftMacro =
+            0.5 +
+            0.28 * sin(vWorldPos.x * 0.09 + sin(vWorldPos.z * 0.07) * 1.3) +
+            0.22 * cos(vWorldPos.z * 0.11 - cos(vWorldPos.x * 0.08) * 1.1);
+          float pxDither = mod(pxWorld.x + pxWorld.y, 2.0) * 0.10 - 0.05;
+          // At light snow (~0.45): patchy drifts with grass peeking through; at heavy snow (~1.0): full lush snow blanket!
+          float flatSnowMask = smoothstep(
+            1.02 - wWeatherSnow * 1.12,
+            1.14 - wWeatherSnow * 1.02,
+            driftMacro + pxDither * detailFade + (1.0 - roadMask * 0.22) * 0.14
+          );
+          // Cliffs get light snow frosting on ledges/strata tops rather than turning completely flat white
+          float ledgeSnowMask = smoothstep(0.42, 0.82, n.y) * wWeatherSnow;
+          float totalWeatherSnow = clamp(mix(flatSnowMask, ledgeSnowMask, cliffMask) * dryLandMask, 0.0, 1.0);
+
+          // Crisp anime/GBA snow shading: pure snow white crests + cool icy-blue snow hollows + pixel snowflake glints
+          vec3 driftHi = vec3(0.96, 0.99, 1.00);
+          vec3 driftLo = vec3(0.80, 0.90, 0.98);
+          vec3 weatherSnowCol = mix(driftLo, driftHi, smoothstep(0.28, 0.78, driftMacro + bayer2 * 2.2));
+          // Twinkling 1px snowflake crystals on snowy ground
+          vec2 spkRnd = groundHash22(floor(vWorldPos.xz * 3.8));
+          float spkTwinkle = step(0.985 - wWeatherSnow * 0.012, spkRnd.x) * (0.55 + 0.45 * sin(uTime * 3.2 + spkRnd.y * 19.0)) * detailFade;
+          weatherSnowCol += vec3(0.12, 0.14, 0.16) * spkTwinkle;
+
+          albedo = mix(albedo, weatherSnowCol, totalWeatherSnow);
+        }
+
+        // Bright HD-2D sunlit shading modulated smoothly by live weather/overcast light scale!
         float ndl = max(dot(n, uSunDir), 0.0);
         float qNdl = mix(ndl, floor(ndl * 6.0 + 0.5) / 6.0, 0.35);
         float elevLift = mix(0.88, 1.12, clamp((vWorldPos.y + 4.0) / 16.0, 0.0, 1.0));
-        vec3 sunTint = mix(vec3(0.91, 0.96, 1.06), vec3(1.05, 1.02, 0.94), qNdl);
-        vec3 lit = albedo * (0.74 + 0.38 * qNdl) * elevLift * sunTint;
+        vec3 sunTint = mix(vec3(0.89, 0.95, 1.06), vec3(1.05, 1.02, 0.94), qNdl * clamp(wLight, 0.4, 1.0));
+        vec3 lit = albedo * (0.74 + 0.38 * qNdl * wLight) * mix(0.62, 1.0, wLight) * elevLift * sunTint;
         lit += vec3(0.32, 0.09, 0.01) * lavaCrack * wVolcano;
 
         // Dreamy Height-Layered Atmospheric Mist Veil:
@@ -617,6 +718,10 @@ export function createHorizonBackdropMesh(biome: BiomeId): THREE.Group {
   const skyMat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
+      uCloudScroll: { value: 0 },
+      uCloudCover: { value: 0.18 },
+      uCloudDarkness: { value: 0.0 },
+      uWindStretch: { value: 0.0 },
       uZenith: { value: new THREE.Color(skyZenith) },
       uMid: { value: new THREE.Color(skyMid) },
       uHorizon: { value: new THREE.Color(skyHorizon) },
@@ -633,6 +738,10 @@ export function createHorizonBackdropMesh(biome: BiomeId): THREE.Group {
     `,
     fragmentShader: /* glsl */ `
       uniform float uTime;
+      uniform float uCloudScroll;
+      uniform float uCloudCover;
+      uniform float uCloudDarkness;
+      uniform float uWindStretch;
       uniform vec3 uZenith;
       uniform vec3 uMid;
       uniform vec3 uHorizon;
@@ -678,37 +787,65 @@ export function createHorizonBackdropMesh(biome: BiomeId): THREE.Group {
 
         vec3 sunDirSky = normalize(vec3(0.54, 0.62, 0.44));
         float sunDot = dot(d, sunDirSky);
-        if (sunDot > 0.85) {
-          float halo = smoothstep(0.85, 0.992, sunDot) * smoothstep(0.02, 0.14, elev);
+        float sunVis = 1.0 - smoothstep(0.45, 0.88, clamp(uCloudCover, 0.0, 1.0));
+        if (sunDot > 0.85 && sunVis > 0.01) {
+          float halo = smoothstep(0.85, 0.992, sunDot) * smoothstep(0.02, 0.14, elev) * sunVis;
           col = mix(col, vec3(1.0, 0.96, 0.82), halo * 0.48);
           if (sunDot > 0.9965 && elev > 0.06) {
-            col = vec3(1.0, 0.99, 0.90);
+            col = mix(col, vec3(1.0, 0.99, 0.90), sunVis);
           }
         }
 
-        // Real planar overhead projection: CRISP sharp-edged cel-shaded anime cumulus clouds drifting linearly West -> East!
-        if (d.y > 0.075) {
-          float projScale = 1.0 / (d.y + 0.16);
+        // Real planar overhead 2-layer projection: horizon-to-zenith crisp cel-shaded pixel clouds!
+        // Covers low horizon camera views (d.y > 0.015) all the way overhead with zero zenith gap!
+        if (d.y > 0.015) {
+          float cover = clamp(uCloudCover, 0.0, 1.0);
+          float dark = clamp(uCloudDarkness, 0.0, 1.0);
+          float stretch = clamp(uWindStretch, 0.0, 1.0);
+          float projScale = 1.0 / (d.y + 0.24);
           vec2 skyPlane = d.xz * projScale;
-          vec2 wind = vec2(uTime * 0.042, uTime * 0.014);
+          // Gently elongate clouds along the wind vector during strong wind / storms
+          skyPlane.x *= mix(1.0, 0.58, stretch);
+          skyPlane.y *= mix(1.0, 1.28, stretch);
+
+          float driftClock = uCloudScroll > 0.001 ? uCloudScroll : uTime;
+          vec2 wind = vec2(driftClock * 0.044, driftClock * 0.015);
           // Fine crisp pixel-snapped cloud grid (no blurry soft edges!)
-          vec2 qPlane = floor((skyPlane * 0.52 + wind) * 58.0) / 58.0;
+          vec2 qPlane = floor((skyPlane * 0.56 + wind) * 56.0) / 56.0;
 
           float baseDens = cloudFbm(qPlane);
-          float detailDens = cloudFbm(qPlane * 2.1 + vec2(uTime * 0.008, -uTime * 0.005));
-          float dens = baseDens * 0.74 + detailDens * 0.26;
+          float detailDens = cloudFbm(qPlane * 2.15 + vec2(driftClock * 0.010, -driftClock * 0.006));
+          float dens = baseDens * 0.72 + detailDens * 0.28;
 
-          float horizonFade = smoothstep(0.085, 0.20, d.y) * smoothstep(0.96, 0.50, d.y);
-          float cutoff = 0.565 + (1.0 - horizonFade) * 0.24;
+          // Smooth horizon entrance so clouds reach cleanly into the mist without leaving an empty blue horizon gap
+          float lowFade = smoothstep(0.018, mix(0.14, 0.06, cover), d.y);
+          float baseCut = mix(0.68, 0.14, cover);
+          float cutoff = baseCut + (1.0 - lowFade) * mix(0.20, 0.03, cover);
 
-          // Razor-sharp crisp cel-shaded anime cloud silhouette!
+          // Layer 1: Primary Cel-Shaded Cumulus / Overcast Canopy
           if (dens > cutoff) {
             float sunSample = cloudFbm(qPlane + vec2(-0.065, -0.055));
-            float lit = clamp(0.52 + (dens - sunSample) * 4.6 + (d.y - 0.12) * 0.55, 0.0, 1.0);
-            // Clean 3-tone hard-stepped anime cumulus volume (pure white top, soft cream mid, cool sky-blue base)
-            vec3 cMid = mix(uCloudShade, uCloudLit, 0.62);
-            vec3 cCol = lit > 0.62 ? uCloudLit : lit > 0.42 ? cMid : uCloudShade;
-            col = mix(col, cCol, horizonFade);
+            float lit = clamp(0.54 + (dens - sunSample) * 4.5 + (d.y - 0.10) * 0.45 - dark * 0.26, 0.0, 1.0);
+            vec3 cMid = mix(uCloudShade, uCloudLit, 0.58);
+            vec3 cCol = lit > 0.62 ? uCloudLit : lit > 0.38 ? cMid : uCloudShade;
+            float cloudAlpha = lowFade * mix(0.92, 1.0, cover);
+            col = mix(col, cCol, cloudAlpha);
+          }
+
+          // Layer 2: Brooding Lower Storm / Dark-Cloud Billows (activated for 阴天/乌云密布/暴雨/雷雨!)
+          if (dark > 0.25) {
+            vec2 windLow = vec2(driftClock * 0.068, driftClock * 0.022);
+            vec2 qLow = floor((skyPlane * 0.84 + windLow + vec2(3.7, -2.1)) * 46.0) / 46.0;
+            float stormDens = cloudFbm(qLow) * 0.7 + cloudFbm(qLow * 2.0 + vec2(-driftClock * 0.012, 0.0)) * 0.3;
+            float stormCut = mix(0.68, 0.36, clamp((dark - 0.25) / 0.70, 0.0, 1.0));
+            if (stormDens > stormCut) {
+              float belly = smoothstep(stormCut, stormCut + 0.18, stormDens);
+              vec3 darkBelly = uCloudShade * mix(0.84, 0.54, dark);
+              vec3 darkRim = mix(uCloudShade, uCloudLit, 0.35) * mix(0.92, 0.72, dark);
+              vec3 stormCol = belly > 0.45 ? darkBelly : darkRim;
+              float stormAlpha = lowFade * clamp((dark - 0.22) * 1.18, 0.0, 0.92);
+              col = mix(col, stormCol, stormAlpha);
+            }
           }
         }
 

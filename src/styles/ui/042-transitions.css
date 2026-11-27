@@ -48,12 +48,77 @@
 
 /* Iconic 16-Bit Pixel-Art Red-and-White Poké Ball Clasp Loading Shutter (Bayer Dither + crispEdges Pixel Staircase + Segmented Pixel Bar!) */
 .pb-shutter-overlay {
+  --pb-main: #e03131;
+  --pb-hi: #ff6b6b;
+  --pb-hi2: #ff5252;
+  --pb-low: #b02525;
+  --pb-deep: #7d1515;
+  --pb-glint: #ffc9c9;
+  --pb-glint2: #ffa8a8;
+  --pb-glint3: #ff8787;
+  --pb-accent: #e03131;
+  --pb-accent-hi: #ff8787;
+  --pb-accent-lo: #a61e1e;
+  --pb-ring-fill: #ffd43b;
+  --pb-ring-hi: #fff3bf;
+  --pb-ring-lo: #e67700;
   position: fixed;
   inset: 0;
   z-index: 9999;
   pointer-events: auto;
   overflow: hidden;
   image-rendering: pixelated;
+}
+
+.pb-shutter-overlay.is-tier-greatball {
+  --pb-main: #1c7ed6;
+  --pb-hi: #4dabf7;
+  --pb-hi2: #339af0;
+  --pb-low: #1864ab;
+  --pb-deep: #0c4a8a;
+  --pb-glint: #d0ebff;
+  --pb-glint2: #a5d8ff;
+  --pb-glint3: #74c0fc;
+  --pb-accent: #1c7ed6;
+  --pb-accent-hi: #74c0fc;
+  --pb-accent-lo: #1864ab;
+  --pb-ring-fill: #339af0;
+  --pb-ring-hi: #a5d8ff;
+  --pb-ring-lo: #1864ab;
+}
+
+.pb-shutter-overlay.is-tier-ultraball {
+  --pb-main: #262938;
+  --pb-hi: #42465c;
+  --pb-hi2: #34384c;
+  --pb-low: #191b26;
+  --pb-deep: #0f1018;
+  --pb-glint: #fff3bf;
+  --pb-glint2: #ffe066;
+  --pb-glint3: #ffd43b;
+  --pb-accent: #f08c00;
+  --pb-accent-hi: #ffe066;
+  --pb-accent-lo: #b35900;
+  --pb-ring-fill: #ffd43b;
+  --pb-ring-hi: #fff3bf;
+  --pb-ring-lo: #d97706;
+}
+
+.pb-shutter-overlay.is-tier-masterball {
+  --pb-main: #7048e8;
+  --pb-hi: #9775fa;
+  --pb-hi2: #845ef7;
+  --pb-low: #5f3dc4;
+  --pb-deep: #3b2287;
+  --pb-glint: #f3d9fa;
+  --pb-glint2: #e599f7;
+  --pb-glint3: #da77f2;
+  --pb-accent: #7048e8;
+  --pb-accent-hi: #b197fc;
+  --pb-accent-lo: #4c2ca8;
+  --pb-ring-fill: #e64980;
+  --pb-ring-hi: #ff87ab;
+  --pb-ring-lo: #a61e4d;
 }
 
 .pb-shutter-overlay.is-opening {
@@ -70,10 +135,10 @@
   image-rendering: pixelated;
 }
 
-/* Upper Red Shell: flat retro crimson + stepped highlight + 2-stage 6x6px axis-aligned Bayer pixel dither + hard pixel seam */
+/* Upper Tiered Shell: flat retro color + stepped highlight + 2-stage 6x6px axis-aligned Bayer pixel dither + hard pixel seam */
 .pb-shutter-half.is-top {
   top: 0;
-  background-color: #e03131;
+  background-color: var(--pb-main);
   border-bottom: 12px solid #14121d;
 }
 
@@ -84,10 +149,10 @@
   top: 0;
   height: 54px;
   background-image:
-    linear-gradient(#ff6b6b, #ff6b6b),
-    repeating-conic-gradient(transparent 0% 25%, #ff5252 0% 50%),
-    repeating-conic-gradient(transparent 0% 25%, #ff5252 0% 50%),
-    conic-gradient(at 6px 6px, transparent 270deg, #ff5252 270deg);
+    linear-gradient(var(--pb-hi), var(--pb-hi)),
+    repeating-conic-gradient(transparent 0% 25%, var(--pb-hi2) 0% 50%),
+    repeating-conic-gradient(transparent 0% 25%, var(--pb-hi2) 0% 50%),
+    conic-gradient(at 6px 6px, transparent 270deg, var(--pb-hi2) 270deg);
   background-size: 100% 18px, 12px 12px, 12px 12px, 12px 12px;
   background-position: 0 0, 0 18px, 0 30px, 0 42px;
   background-repeat: no-repeat, repeat-x, repeat-x, repeat-x;
@@ -100,12 +165,12 @@
   transform: translateX(-50%);
   width: min(300px, 60vw);
   height: 12px;
-  background: #ffc9c9;
+  background: var(--pb-glint);
   box-shadow:
-    -12px 6px 0 #ffa8a8,
-    12px 6px 0 #ffa8a8,
-    -24px 6px 0 #ff8787,
-    24px 6px 0 #ff8787;
+    -12px 6px 0 var(--pb-glint2),
+    12px 6px 0 var(--pb-glint2),
+    -24px 6px 0 var(--pb-glint3),
+    24px 6px 0 var(--pb-glint3);
   z-index: 2;
 }
 
@@ -116,10 +181,10 @@
   bottom: 0;
   height: 54px;
   background-image:
-    conic-gradient(at 6px 6px, transparent 270deg, #b02525 270deg),
-    repeating-conic-gradient(#b02525 0% 25%, transparent 0% 50%),
-    repeating-conic-gradient(#b02525 0% 25%, transparent 0% 50%),
-    linear-gradient(#b02525, #b02525);
+    conic-gradient(at 6px 6px, transparent 270deg, var(--pb-low) 270deg),
+    repeating-conic-gradient(var(--pb-low) 0% 25%, transparent 0% 50%),
+    repeating-conic-gradient(var(--pb-low) 0% 25%, transparent 0% 50%),
+    linear-gradient(var(--pb-low), var(--pb-low));
   background-size: 12px 12px, 12px 12px, 12px 12px, 100% 18px;
   background-position: 0 0, 0 12px, 0 24px, 0 36px;
   background-repeat: repeat-x, repeat-x, repeat-x, no-repeat;
@@ -131,8 +196,19 @@
   right: 0;
   bottom: 0;
   height: 6px;
-  background: #7d1515;
+  background: var(--pb-deep);
   z-index: 2;
+}
+
+.pb-tier-motif-svg {
+  position: absolute;
+  left: 50%;
+  bottom: 46px;
+  transform: translateX(-50%);
+  width: min(520px, 88vw);
+  height: auto;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .pb-pixel-socket-svg {
@@ -202,12 +278,12 @@
 }
 
 .pb-core-base {
-  fill: #ff4d4d;
-  animation: pbPixelCoreBlink 0.55s steps(2, end) infinite;
+  fill: var(--pb-accent);
+  animation: pbPixelCoreBlink 0.72s steps(2, jump-none) infinite;
 }
 
 .pb-core-shade {
-  fill: #c92a2a;
+  fill: var(--pb-accent-lo);
 }
 
 .pb-shutter-overlay.is-opening .pb-core-base {
@@ -219,74 +295,94 @@
   fill: #2b8a3e;
 }
 
-/* Chunky GBA/DS Pixel Loading Console Box + 8-Block Stepped Pixel Charge Bar */
-.pb-shutter-hud-box {
+/* Part 1 (Below Center Orb): Current Loading Action + Unlocked Badges Directly on Pearl-White */
+.pb-shutter-center-info {
   position: absolute;
   left: 50%;
-  top: 82px;
+  top: 88px;
   transform: translateX(-50%);
   z-index: 5;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: #14121d;
-  border: 4px solid #14121d;
-  outline: 2px solid #ffe066;
-  outline-offset: -6px;
-  box-shadow: 6px 6px 0 #adb5bd;
-  white-space: nowrap;
+  gap: 10px;
+  width: min(480px, 88vw);
+  text-align: center;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
-.pb-shutter-title-row {
-  display: flex;
+.pb-shutter-status-row {
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-}
-
-.pb-px-tag {
-  padding: 2px 5px;
-  background: #e03131;
-  color: #ffffff;
-  font-family: var(--font-pixel);
-  font-size: 9px;
-  letter-spacing: 0.8px;
 }
 
 .pb-shutter-text {
-  color: #fff9db;
-  font-family: var(--font-pixel), "PingFang SC", "Microsoft YaHei", monospace;
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.8px;
+  color: #14121d;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  line-height: 1.45;
 }
 
-.pb-px-bar {
+.pb-shutter-badges-row {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.pb-shutter-rank-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #495057;
+  letter-spacing: 0.4px;
+}
+
+.pb-shutter-badge-icons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.pb-shutter-badge-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 2px 0 rgba(20, 18, 29, 0.22));
+}
+
+/* Part 2 (Bottom-Right Above 60px Shadow Band): Immersive Travel Tip + Matching Pixel Icons */
+.pb-shutter-corner-lore {
+  position: absolute;
+  right: 28px;
+  bottom: 78px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: min(520px, 86vw);
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  text-align: right;
+}
+
+.pb-lore-icons {
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
-.pb-px-bar i {
-  width: 14px;
-  height: 8px;
-  background: #2b283a;
-  display: block;
-  animation: pbPixelBarStep 0.8s steps(1, end) infinite;
-}
-
-.pb-px-bar i:nth-child(1) { animation-delay: 0s; }
-.pb-px-bar i:nth-child(2) { animation-delay: 0.1s; }
-.pb-px-bar i:nth-child(3) { animation-delay: 0.2s; }
-.pb-px-bar i:nth-child(4) { animation-delay: 0.3s; }
-.pb-px-bar i:nth-child(5) { animation-delay: 0.4s; }
-.pb-px-bar i:nth-child(6) { animation-delay: 0.5s; }
-.pb-px-bar i:nth-child(7) { animation-delay: 0.6s; }
-.pb-px-bar i:nth-child(8) { animation-delay: 0.7s; }
-
-.pb-shutter-overlay.is-opening .pb-px-bar i {
-  animation: none;
-  background: #51cf66;
+.pb-shutter-tip {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #343a40;
+  line-height: 1.5;
 }
 
 .pb-shutter-overlay.is-closing .pb-shutter-half.is-top {
@@ -335,14 +431,8 @@
 }
 
 @keyframes pbPixelCoreBlink {
-  0% { fill: #ff4d4d; }
-  50% { fill: #ffd43b; }
-  100% { fill: #ff4d4d; }
-}
-
-@keyframes pbPixelBarStep {
-  0%, 49% { background: #ffd43b; }
-  50%, 100% { background: #2b283a; }
+  0% { fill: var(--pb-accent); }
+  100% { fill: var(--pb-accent-hi); }
 }
 
 @media (max-width: 640px) {
@@ -355,16 +445,19 @@
     width: 108px;
     height: 108px;
   }
-  .pb-shutter-hud-box {
-    top: 66px;
-    padding: 6px 11px;
+  .pb-shutter-center-info {
+    top: 72px;
+  }
+  .pb-shutter-corner-lore {
+    right: 16px;
+    bottom: 70px;
+    max-width: calc(100vw - 32px);
   }
   .pb-shutter-text {
-    font-size: 11px;
+    font-size: 12.5px;
   }
-  .pb-px-bar i {
-    width: 11px;
-    height: 7px;
+  .pb-shutter-tip {
+    font-size: 11px;
   }
 }
 

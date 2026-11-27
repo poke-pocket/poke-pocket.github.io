@@ -10,7 +10,7 @@ import { PixelIcon, PixelItemImg, PixelPetSprite } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, mode, onDepositPetsBatch, onFeedSquad, onGoBack, onHealParty, onNavigateMode, onReleasePetsBatch, onReleaseStoredPetsBatch, onSwitchPet, onUpdateMeta, onWithdrawPetsBatch, openedFromBattle, partyBatchMode, partyBoxTab, partyGradeFilter, partySearch, partySortBy, pet, save, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setDetailReturnMode, setGachaPhase, setMarketTab, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setSelectedPartyPetId, setSquadPickerSlot, squadPickerSlot } = ctx;
+  const { batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, mode, onDepositPetsBatch, onFeedSquad, onGoBack, onHealParty, onNavigateMode, onReleasePetsBatch, onReleaseStoredPetsBatch, onSwitchPet, onUpdateMeta, onWithdrawPetsBatch, openedFromBattle, partyBatchMode, partyBoxTab, partyGradeFilter, partySearch, partySortBy, pet, save, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setDetailReturnMode, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setSelectedPartyPetId, setSquadPickerSlot, squadPickerSlot } = ctx;
   return (
     <>
         {/* CURRENT ACTIVE SQUAD MANAGER (支持多编队增删、全部移出、空槽位 '+' 卡片进入第二页球盒选人!) */}
@@ -711,18 +711,6 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                     }}
                   >
                     {partyBatchMode ? '完成管理' : '批量管理'}
-                  </button>
-                  <button
-                    type="button"
-                    className="lcd-subtab inline-icon-btn"
-                    onClick={() => {
-                      setMarketTab('gacha');
-                      setGachaPhase('idle');
-                      onNavigateMode('market');
-                    }}
-                  >
-                    <PixelItemImg src="/sprites/items/poke-ball.png" size={13} />
-                    <span>+ 抽盲盒</span>
                   </button>
                   <button
                     type="button"

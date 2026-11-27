@@ -383,7 +383,7 @@ export function createSafeZone3DMesh(zone: SafeZone3D, plazaTex: THREE.CanvasTex
 
 /** Builds an upright Y-billboard HD-2D pixel-art tree with shared geometry/material & grounded shadow */
 export function createLushTreeSprite3D(
-  treeMat: THREE.MeshBasicMaterial,
+  treeMat: THREE.Material,
   variantIdx: number,
   flipX: boolean,
 ): { group: THREE.Group; billboard: THREE.Mesh } {

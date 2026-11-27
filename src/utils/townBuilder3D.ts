@@ -6,6 +6,7 @@ import {
 } from '../data/survivorsTactics';
 import { getBiomeTextures, getNpcWalkSpriteFrames } from '../data/worldTextures3D';
 import { getActiveGeoTerrainOrigin } from '../data/geoTerrain3D';
+import { createWeatherFloraMaterial3D } from '../world3d/weatherFloraMaterial3D';
 import {
   buildCleanUrbanApartment3D,
   buildModernCbdOfficeTower3D,
@@ -145,12 +146,7 @@ export function buildProceduralTown3D(
   ) => {
     const geo = new THREE.PlaneGeometry(w, h);
     geo.translate(0, h * 0.5, 0);
-    const mat = new THREE.MeshBasicMaterial({
-      map: texMap,
-      transparent: true,
-      alphaTest: 0.2,
-      side: THREE.DoubleSide,
-    });
+    const mat = createWeatherFloraMaterial3D(texMap, 0.2);
     const m = new THREE.Mesh(geo, mat);
     m.rotation.order = 'YXZ';
     m.position.set(x, y, z);

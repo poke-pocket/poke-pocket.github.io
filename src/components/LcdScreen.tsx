@@ -954,9 +954,6 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
                   <button type="button" className="lcd-subtab" onClick={() => onNavigateMode('party')}>
                     精灵球盒详情
                   </button>
-                  <button type="button" className="lcd-subtab" onClick={() => onNavigateMode('market')}>
-                    盲盒商店
-                  </button>
                 </div>
               </div>
             )}
@@ -1428,19 +1425,14 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
 
               <div className="gba-dex-coin">
                 <div className="hud-top-actions">
-                  <button
-                    type="button"
-                    className="hud-coin-btn"
-                    onClick={() => {
-                      setGachaPhase('idle');
-                      onNavigateMode('market');
-                    }}
-                    title="点击快速前往商店与盲盒"
-                    aria-label="前往商店"
+                  <div
+                    className="hud-coin-btn is-static"
+                    title="当前宝可币 · 前往城市友好商店即可购买树果与道具"
+                    aria-label={`当前宝可币 ${save.coins}`}
                   >
                     <PixelItemImg src="/sprites/items/amulet-coin.png" size={28} />
                     <strong>{save.coins}</strong>
-                  </button>
+                  </div>
                   <button
                     type="button"
                     className="lcd-sq-btn hud-bag-btn"

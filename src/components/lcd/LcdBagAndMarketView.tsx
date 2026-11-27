@@ -35,18 +35,6 @@ export const LcdBagAndMarketView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =>
               <div className="lcd-head-actions">
                 <button
                   type="button"
-                  className="lcd-subtab inline-icon-btn"
-                  onClick={() => {
-                    setMarketTab('gacha');
-                    setGachaPhase('idle');
-                    onNavigateMode('market');
-                  }}
-                >
-                  <PixelItemImg src="/sprites/items/amulet-coin.png" size={14} />
-                  <span>去市场</span>
-                </button>
-                <button
-                  type="button"
                   className="lcd-mini-close"
                   onClick={() => onGoBack()}
                 >

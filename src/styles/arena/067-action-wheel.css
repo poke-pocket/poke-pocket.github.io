@@ -26,6 +26,80 @@
   transition: transform 0.1s ease, filter 0.12s ease, box-shadow 0.1s ease;
 }
 
+/* Stepped Pixel-Art Circular Medallion Action Buttons (matches top-left Poké Ball stepped pixel ring!) */
+.moba-btn.is-pixel-circle {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0;
+  filter: drop-shadow(4px 4px 0 rgba(9, 8, 15, 0.92));
+}
+
+.moba-btn.is-pixel-circle .moba-circle-bg {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.moba-btn.is-pixel-circle .moba-icon-fill {
+  position: relative;
+  z-index: 1;
+}
+
+.moba-btn.is-pixel-circle .moba-badge,
+.moba-btn.is-pixel-circle .moba-ball-switch-hint {
+  z-index: 2;
+}
+
+.moba-btn.is-pixel-circle:hover:not(:disabled) {
+  transform: translate(-1px, -2px) scale(1.045);
+  filter: drop-shadow(5px 5px 0 rgba(9, 8, 15, 0.95)) brightness(1.06);
+}
+
+.moba-btn.is-pixel-circle:active:not(:disabled) {
+  transform: translate(2px, 2px) scale(0.96);
+  filter: drop-shadow(1px 1px 0 rgba(9, 8, 15, 0.95));
+}
+
+.moba-btn.is-pixel-circle.is-pulse {
+  outline: none !important;
+  animation: mobaCirclePulse 0.9s infinite alternate ease-in-out;
+}
+
+.moba-btn.is-pixel-circle.is-boost.is-active {
+  outline: none !important;
+  filter: drop-shadow(0 0 6px rgba(255, 224, 102, 0.95)) drop-shadow(4px 4px 0 rgba(9, 8, 15, 0.94));
+}
+
+.moba-btn.is-pixel-circle.is-cd,
+.moba-btn.is-pixel-circle:disabled {
+  opacity: 0.64;
+  filter: grayscale(0.45) drop-shadow(3px 3px 0 rgba(9, 8, 15, 0.85));
+}
+
+@keyframes mobaCirclePulse {
+  from {
+    filter: drop-shadow(0 0 3px rgba(255, 224, 102, 0.8)) drop-shadow(4px 4px 0 rgba(9, 8, 15, 0.94));
+  }
+  to {
+    filter: drop-shadow(0 0 10px rgba(255, 224, 102, 1)) drop-shadow(4px 4px 0 rgba(9, 8, 15, 0.94));
+  }
+}
+
+.hud-coin-btn.is-static {
+  cursor: default;
+  pointer-events: auto;
+}
+
+.hud-coin-btn.is-static:hover,
+.hud-coin-btn.is-static:active {
+  transform: none;
+  filter: none;
+}
+
 .moba-btn .moba-icon-fill {
   display: inline-flex;
   align-items: center;

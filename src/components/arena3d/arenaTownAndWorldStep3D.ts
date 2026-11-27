@@ -52,7 +52,6 @@ const SOLO_AMBIENT_MUSINGS: { emote: 'music' | 'heart' | 'sparkle' | 'happy'; te
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
   const {
-    WEATHER_PARTICLE_COUNT,
     activeTownIdRef,
     applyLiveSolarAtmosphere,
     autoNavTargetsRef,
@@ -69,7 +68,6 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
     heroFrames,
     interactOptionIdxRef,
     lastEnteredInteriorIdRef,
-    liveWeatherRef,
     mLen,
     metaBonusesRef,
     metaRef,
@@ -98,64 +96,12 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
     triggerInteractRef,
     updateWorldAround,
     vfxAtlas,
-    weatherGeo,
-    weatherMat,
-    weatherPoints,
     windClock,
     worldBubblesRef,
     worldInteractNodes,
   } = rawCtx as ArenaSharedCtx;
 
-  const curWeatherKind = liveWeatherRef.current.kind;
-  const isPrecip =
-    curWeatherKind === 'rain' ||
-    curWeatherKind === 'storm' ||
-    curWeatherKind === 'hail' ||
-    curWeatherKind === 'snow';
-  weatherPoints.visible = isPrecip;
-  if (isPrecip) {
-    weatherMat.color.setHex(
-      curWeatherKind === 'snow'
-        ? 0xffffff
-        : curWeatherKind === 'hail'
-          ? 0xe7f5ff
-          : curWeatherKind === 'storm'
-            ? 0x748ffc
-            : 0xa5d8ff,
-    );
-    weatherMat.size =
-      curWeatherKind === 'hail' ? 0.44 : curWeatherKind === 'snow' ? 0.36 : 0.28;
-    const posAttr = weatherGeo.getAttribute('position') as THREE.BufferAttribute;
-    const fallSpeed =
-      curWeatherKind === 'snow'
-        ? 3.2
-        : curWeatherKind === 'hail'
-          ? 28
-          : curWeatherKind === 'storm'
-            ? 24
-            : 18;
-    const driftX =
-      curWeatherKind === 'snow'
-        ? Math.sin(windClock * 1.4) * 1.6
-        : curWeatherKind === 'hail'
-          ? 3.2
-          : curWeatherKind === 'storm'
-            ? 4.5
-            : 1.8;
-    for (let i = 0; i < WEATHER_PARTICLE_COUNT; i++) {
-      let px = posAttr.getX(i) + driftX * dt;
-      let py = posAttr.getY(i) - fallSpeed * dt;
-      let pz = posAttr.getZ(i);
-      if (py < 0.2) {
-        py = 16 + Math.random() * 6;
-        px = (Math.random() - 0.5) * 44;
-        pz = (Math.random() - 0.5) * 44;
-      }
-      posAttr.setXYZ(i, px, py, pz);
-    }
-    posAttr.needsUpdate = true;
-    weatherPoints.position.set(sim.px, sim.py, sim.pz);
-  }
+  void windClock;
 
   // Stream & re-center the 288m heightfield terrain & water sheets dynamically around the player so ground NEVER ends past ±144m!
   updateWorldAround(sim.px, sim.pz);

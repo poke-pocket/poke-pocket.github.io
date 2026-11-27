@@ -14,6 +14,7 @@ import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGe
 import { getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { clearWorldCheckpoint, loadWorldCheckpoint, saveWorldCheckpoint, setActiveCareSessionFlag, wasActiveCareSessionOpen } from '../utils/worldCheckpoint';
 import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D';
+import { createWeatherVisuals3D } from '../world3d/weatherVisuals3D';
 import { DEFAULT_WORLD_TOUR_STATE, WORLD_CITIES, getDefaultHomeByLanguage, type WorldCityDef } from '../data/worldTour';
 import { type WorldLaunchPayload } from './WorldMapOverlay';
 import { DEFAULT_GAME_PREFS, DEFAULT_TRAINER_PROFILE, type CameraFollowMode, type GamePrefs, type PetRecord, type PetSkinId, type RoomThemeId, type SpeciesId, type TrainerProfile } from '../types/pet';
@@ -21,7 +22,7 @@ import { getDevGrants, isDevModeEnabled, isDevVirtualPetId } from '../utils/devM
 import { HERO_ROSTER, LAB_UPGRADES, computeMetaCombatBonuses, countClaimableBounties, ensureFreshMetaProgress, getHeroDef, getLabUpgradeCost, getSkinDef, rerollBountySlot, type HeroId, type LabUpgradeId, type MetaProgressState } from '../data/metaProgression';
 import { type AppLang } from '../data/i18n';
 import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
-import { PokeballShutterOverlay, dismissInitialBootPokeballCurtain, type PokeballShutterState } from './PokeballShutterOverlay';
+import { PokeballShutterOverlay, dismissInitialBootPokeballCurtain, setBootCurtainProgress, type PokeballShutterState } from './PokeballShutterOverlay';
 import { type LiveMapSnapshot, type ScenicMountainSpot } from './WorldMapHud';
 import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { BGM_TRACK_LABELS, sound, type BgmTrackId } from '../utils/sound';
@@ -29,7 +30,8 @@ import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
 import { buildInterTownRoadNetwork3D, buildProceduralTown3D, resolveTownWallCollisions, setGlobalNightLampGlow3D, type ProceduralTownInstance } from '../utils/townBuilder3D';
 import { createRenderedTerrainSampler, setRenderedTerrainSampler } from '../world3d/renderedTerrain3D';
 import { setRoadTerrainGrid } from '../world3d/roadKitSurface';
-import { buildFallbackWeather, buildWeatherInfo, fetchLiveWeatherAt, type LiveWeatherInfo, type WeatherKind } from '../utils/weatherSystem';
+import { createWeatherFloraMaterial3D, syncGlobalFloraWeather3D } from '../world3d/weatherFloraMaterial3D';
+import { buildFallbackWeather, buildWeatherInfo, fetchLiveWeatherAt, getWeatherAtmosphereProfile, type LiveWeatherInfo, type WeatherIntensity, type WeatherKind } from '../utils/weatherSystem';
 import { BILLBOARD_PITCH_TILT, MAX_CAM_PITCH, MAX_FOLLOWERS, SHARED_ENTITY_SHADOW_MAT, UNIT_SHADOW_GEO, UPRIGHT_QUAD_GEO, createSafeZone3DMesh, type ActiveCapture3D, type ActiveFollower, type ArenaScreenPhase, type Enemy3D, type FloatingTag2D, type FollowerReportRow, type LevelChoice, type Loot3D, type MonsterQuality, type Projectile3D, type RunResultSummary, type Survivors3DArenaProps, type Vfx3D } from './arena3d/arenaTypesAndProps';
 import { setupHubWildlifeDiorama3D } from './arena3d/arenaWildlifeDiorama3D';
 import { createArenaCombatActions3D } from './arena3d/arenaCombatActions3D';
@@ -1626,10 +1628,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     if (prefDiff && prefDiff !== difficultyId) setDifficultyId(prefDiff);
   }, [save.prefs?.worldDifficulty, difficultyId]);
 
-  // Live Real-Time Weather Sync (uses GPS Home / active World Tour city via Open-Meteo, or manual World Settings override!)
+  // Live Real-Time Weather & Independent Temperature Sync (Open-Meteo or manual Debug/World overrides!)
   useEffect(() => {
     let cancelled = false;
     const override = save.prefs?.worldWeatherMode;
+    const manualIntensity: WeatherIntensity = save.prefs?.worldWeatherIntensity ?? 'moderate';
+    const tempMode = save.prefs?.worldTempMode ?? 'auto';
+    const manualTempC = save.prefs?.worldTempC ?? 22;
+
     if (override && override !== 'auto') {
       const tempByKind: Record<WeatherKind, number> = {
         clear: 25,
@@ -1640,13 +1646,20 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         snow: -2,
         windy: 18,
       };
+      const windByIntensity: Record<WeatherIntensity, number> = {
+        light: override === 'windy' ? 28 : 8,
+        moderate: override === 'windy' ? 40 : 14,
+        heavy: override === 'windy' ? 56 : 24,
+      };
+      const finalTemp = tempMode === 'manual' ? manualTempC : tempByKind[override];
       setLiveWeather(
         buildWeatherInfo(
           override,
-          tempByKind[override],
-          override === 'windy' ? 34 : 12,
+          finalTemp,
+          windByIntensity[manualIntensity],
           'fallback',
           '世界设置指定',
+          override === 'clear' ? 'moderate' : manualIntensity,
         ),
       );
       return;
@@ -1658,28 +1671,46 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const lng = curCity ? curCity.lng : (tour.homeCoords?.lng ?? defHome.lng);
     const label = curCity ? curCity.name : (tour.homeCoords?.label ?? defHome.label);
     fetchLiveWeatherAt(lat, lng, label).then((info) => {
-      if (!cancelled) setLiveWeather(info);
+      if (cancelled) return;
+      if (tempMode === 'manual') {
+        setLiveWeather(
+          buildWeatherInfo(
+            info.kind,
+            manualTempC,
+            info.windKmh,
+            info.source,
+            info.locationLabel,
+            info.intensity,
+          ),
+        );
+      } else {
+        setLiveWeather(info);
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [
     save.prefs?.worldWeatherMode,
+    save.prefs?.worldWeatherIntensity,
+    save.prefs?.worldTempMode,
+    save.prefs?.worldTempC,
     meta.worldTour?.currentCityId,
     meta.worldTour?.homeCoords?.lat,
     meta.worldTour?.homeCoords?.lng,
     lang,
   ]);
 
-  // Procedural Non-Looping Weather Ambience Sync (Raindrops, Hailstones, Thunderstorms, Wind, Snow, Day/Night)
+  // Procedural Non-Looping Weather Ambience Sync (Raindrops, Hailstones, Thunderstorms, Wind, Snow, Intensity, Day/Night)
   const activeInteriorAudioRef = useRef(false);
   useEffect(() => {
     const isNightNow = solarInfo.phase === 'night' || solarInfo.phase === 'dusk';
     sound.setWeatherAmbience(liveWeather.kind, {
       indoor: phase === 'hub' ? false : activeInteriorAudioRef.current,
       isNight: isNightNow,
+      intensity: liveWeather.intensity,
     });
-  }, [liveWeather.kind, solarInfo.phase, phase]);
+  }, [liveWeather.kind, liveWeather.intensity, solarInfo.phase, phase]);
 
   useEffect(() => {
     return () => {
@@ -1862,10 +1893,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const terrainPosAttr = terrainGeo.attributes.position as THREE.BufferAttribute;
     const unregisterRoadTerrainGrid=setRoadTerrainGrid({originX:terrainPosAttr.getX(0),originZ:terrainPosAttr.getZ(0),stepX:terrainPosAttr.getX(1)-terrainPosAttr.getX(0),stepZ:terrainPosAttr.getZ(TERRAIN_SEGS+1)-terrainPosAttr.getZ(0)});
     const terrainMat = createSculptedTerrainMaterial(selectedBiome, tex, WORLD_SECTOR_SIZE);
+    const initAtm = getWeatherAtmosphereProfile(
+      liveWeatherRef.current.kind,
+      liveWeatherRef.current.intensity,
+      liveWeatherRef.current.tempC,
+    );
     syncTerrainGeoUniforms3D(
       terrainMat,
       adventureStyleRef.current !== 'vampire_rogue',
-      liveWeatherRef.current.kind === 'snow' ? 0.88 : 0,
+      initAtm.snowCover,
+      {
+        wetness: initAtm.wetness,
+        lightScale: initAtm.groundLightScale,
+        hailSpecks: initAtm.hailSpecks,
+        heatDry: initAtm.heatDry,
+        timeSec: 0,
+      },
     );
     const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
     terrainMesh.receiveShadow = true;
@@ -1898,24 +1941,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     scene.add(farWaterPlaneMesh);
 
     const floatingLilyPads = new Set<{ mesh: THREE.Mesh; baseY: number; phase: number }>();
-    const lilyMat = new THREE.MeshBasicMaterial({
-      map: tex.lilyPad,
-      transparent: true,
-      alphaTest: 0.15,
-      side: THREE.DoubleSide,
-    });
-    const lotusMat = new THREE.MeshBasicMaterial({
-      map: tex.lilyLotus,
-      transparent: true,
-      alphaTest: 0.15,
-      side: THREE.DoubleSide,
-    });
-    const cattailMat = new THREE.MeshBasicMaterial({
-      map: tex.cattail,
-      transparent: true,
-      alphaTest: 0.15,
-      side: THREE.DoubleSide,
-    });
+    const lilyMat = createWeatherFloraMaterial3D(tex.lilyPad, 0.15);
+    const lotusMat = createWeatherFloraMaterial3D(tex.lilyLotus, 0.15);
+    const cattailMat = createWeatherFloraMaterial3D(tex.cattail, 0.15);
     const lilyGeo = new THREE.PlaneGeometry(1, 1);
     lilyGeo.rotateX(-Math.PI / 2);
 
@@ -2244,26 +2272,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       showBanner(`🧭 已出发前往「${label}」· 距目标 ${formatNavMeterDist(initDistM)}（按 WASD 可随时接管）`, 2400);
     };
 
-    // 2C. Live 3D Weather Particle System (Rain Streaks / Falling Snowflakes synced to real GPS/city weather!)
-    const WEATHER_PARTICLE_COUNT = 180;
-    const weatherPositions = new Float32Array(WEATHER_PARTICLE_COUNT * 3);
-    for (let i = 0; i < WEATHER_PARTICLE_COUNT; i++) {
-      weatherPositions[i * 3] = (Math.random() - 0.5) * 44;
-      weatherPositions[i * 3 + 1] = Math.random() * 20;
-      weatherPositions[i * 3 + 2] = (Math.random() - 0.5) * 44;
-    }
-    const weatherGeo = new THREE.BufferGeometry();
-    weatherGeo.setAttribute('position', new THREE.BufferAttribute(weatherPositions, 3));
-    const weatherMat = new THREE.PointsMaterial({
-      color: 0xa5d8ff,
-      size: 0.34,
-      transparent: true,
-      opacity: 0.78,
-      depthWrite: false,
-    });
-    const weatherPoints = new THREE.Points(weatherGeo, weatherMat);
-    weatherPoints.visible = false;
-    scene.add(weatherPoints);
+    // 2C. Rich HD-2D 3D Weather Visuals (680 Slanted Rain Streaks, Ground Splashes, Snow, Bouncing Hail & Forked Storm Lightning!)
+    const weatherVisuals3D = createWeatherVisuals3D(scene);
     let windClock = 0;
     const { syncFloraBillboards, worldInteractNodes, placedFloraCells, updateWorldAround, refreshUrbanFlora } = createArenaFloraStreamer3D({ chunkState, cattailMat, farTerrainGeo, farTerrainMesh, farWaterPlaneMesh, floatingLilyPads, floraGroup, isInsideAnyTownPlaza, lilyGeo, lilyMat, lotusMat, midTerrainGeo, midTerrainMesh, prefsRef, selectedBiome, terrainGeo, terrainMesh, terrainPosAttr, tex, waterPlaneMesh });
     // 4. 3D Roadside Safe Zones (Boxy placeholder buildings temporarily removed pending custom pixel-art redesign!)
@@ -3074,6 +3084,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const tmpFogSrgb = { r: 0.78, g: 0.91, b: 0.98 };
     const tmpCloudLit = new THREE.Color();
     const tmpCloudShade = new THREE.Color();
+    const tmpOvercastCol = new THREE.Color();
+    const tmpTempTintCol = new THREE.Color();
+    const tmpFloraLightCol = new THREE.Color(1, 1, 1);
+    let smoothSnowCover = initAtm.snowCover;
+    let smoothWetness = initAtm.wetness;
+    let smoothHailSpecks = initAtm.hailSpecks;
+    let smoothHeatDry = initAtm.heatDry;
+    let smoothGroundLight = initAtm.groundLightScale;
+    let smoothWindSway = initAtm.windSwayMult;
 
     const applyLiveSolarAtmosphere = (
       lat: number,
@@ -3096,31 +3115,39 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         setSolarInfo(solar);
       }
 
-      const wKind = liveWeatherRef.current.kind;
-      const weatherDim =
-        wKind === 'storm'
-          ? 0.62
-          : wKind === 'hail'
-            ? 0.72
-            : wKind === 'rain'
-              ? 0.76
-              : wKind === 'cloudy'
-                ? 0.88
-                : 1.0;
-      const wantSunInt = solar.sunIntensity * weatherDim;
-      const wantHemiInt = solar.hemiIntensity * (wKind === 'snow' ? 1.1 : 1.0);
+      const wNow = liveWeatherRef.current;
+      const atm = getWeatherAtmosphereProfile(wNow.kind, wNow.intensity, wNow.tempC);
+      const wantSunInt = solar.sunIntensity * atm.sunDim;
+      const wantHemiInt = solar.hemiIntensity * atm.hemiMult;
       const kLerp = Math.min(1, dtSec * 3.2);
 
       sun.intensity += (wantSunInt - sun.intensity) * kLerp;
       hemi.intensity += (wantHemiInt - hemi.intensity) * kLerp;
-      sun.color.lerp(tmpSkyCol.setHex(solar.sunHex), kLerp);
+      tmpSkyCol.setHex(solar.sunHex);
+      if (atm.tempTintStrength > 0.005) {
+        tmpSkyCol.lerp(tmpTempTintCol.setHex(atm.tempTintHex), atm.tempTintStrength * 0.7);
+      }
+      sun.color.lerp(tmpSkyCol, kLerp);
       hemi.color.lerp(tmpSkyCol.setHex(solar.hemiSkyHex), kLerp);
       hemi.groundColor.lerp(tmpSkyCol.setHex(solar.hemiGroundHex), kLerp);
 
       tmpSkyCol.setHex(solar.skyHex);
       tmpHorCol.setHex(solar.horizonHex);
-      tmpMidCol.copy(tmpHorCol).lerp(tmpSkyCol, 0.52);
       tmpFogCol.setHex(solar.fogHex);
+
+      if (atm.overcastTintStrength > 0.005) {
+        const overcastNightScale = 0.28 + solar.daylightFactor * 0.72;
+        tmpOvercastCol.setHex(atm.overcastTintHex).multiplyScalar(overcastNightScale);
+        tmpSkyCol.lerp(tmpOvercastCol, atm.overcastTintStrength);
+        tmpHorCol.lerp(tmpOvercastCol, atm.overcastTintStrength * 0.88);
+        tmpFogCol.lerp(tmpOvercastCol, atm.overcastTintStrength * 0.80);
+      }
+      if (atm.tempTintStrength > 0.005) {
+        tmpTempTintCol.setHex(atm.tempTintHex);
+        tmpHorCol.lerp(tmpTempTintCol, atm.tempTintStrength * (0.45 + solar.daylightFactor * 0.55));
+        tmpFogCol.lerp(tmpTempTintCol, atm.tempTintStrength * 0.55);
+      }
+      tmpMidCol.copy(tmpHorCol).lerp(tmpSkyCol, 0.52);
 
       if (scene.background instanceof THREE.Color) {
         scene.background.lerp(tmpSkyCol, kLerp);
@@ -3136,15 +3163,87 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           waterMat.uniforms.uFogColor.value.setRGB(tmpFogSrgb.r, tmpFogSrgb.g, tmpFogSrgb.b);
         }
       }
+
+      const surfLerp = Math.min(1, dtSec * 2.6);
+      smoothSnowCover += (atm.snowCover - smoothSnowCover) * surfLerp;
+      smoothWetness += (atm.wetness - smoothWetness) * surfLerp;
+      smoothHailSpecks += (atm.hailSpecks - smoothHailSpecks) * surfLerp;
+      smoothHeatDry += (atm.heatDry - smoothHeatDry) * surfLerp;
+      const targetGroundLight = atm.groundLightScale * (0.48 + solar.daylightFactor * 0.52);
+      smoothGroundLight += (targetGroundLight - smoothGroundLight) * surfLerp;
+      smoothWindSway += (atm.windSwayMult - smoothWindSway) * surfLerp;
+
+      const timeSec = nowMs * 0.001;
+      syncTerrainGeoUniforms3D(
+        terrainMat,
+        adventureStyleRef.current !== 'vampire_rogue',
+        smoothSnowCover,
+        {
+          wetness: smoothWetness,
+          lightScale: smoothGroundLight,
+          hailSpecks: smoothHailSpecks,
+          heatDry: smoothHeatDry,
+          timeSec,
+        },
+      );
+
+      // Sync ALL 3D Pixel Plants (wild trees, bushes, flowers, grass, cattails, lily pads & city trees!)
+      const floraBright = 0.56 + 0.44 * Math.min(1.12, smoothGroundLight);
+      tmpFloraLightCol.setRGB(floraBright, floraBright, floraBright);
+      if (atm.overcastTintStrength > 0.05) {
+        tmpFloraLightCol.lerp(
+          tmpOvercastCol.setHex(0xc8d8ee).multiplyScalar(floraBright),
+          atm.overcastTintStrength * 0.28,
+        );
+      }
+      if (atm.tempTintStrength > 0.05) {
+        tmpFloraLightCol.lerp(
+          tmpTempTintCol.setHex(atm.tempTintHex).multiplyScalar(floraBright),
+          atm.tempTintStrength * 0.32,
+        );
+      }
+      syncGlobalFloraWeather3D({
+        snowCover: smoothSnowCover,
+        wetness: smoothWetness,
+        heatDry: smoothHeatDry,
+        windSwayMult: smoothWindSway,
+        lightTint: tmpFloraLightCol,
+        fogColor: scene.fog instanceof THREE.Fog ? scene.fog.color : tmpFogCol,
+        timeSec,
+      });
+
       const skyU = horizonBackdrop.userData?.skyUniforms;
       if (skyU) {
         skyU.uZenith?.value?.lerp?.(tmpSkyCol, kLerp);
         skyU.uMid?.value?.lerp?.(tmpMidCol, kLerp);
         skyU.uHorizon?.value?.lerp?.(tmpHorCol, kLerp);
         skyU.uFogColor?.value?.lerp?.(tmpFogCol, kLerp);
+        if (skyU.uCloudCover) {
+          skyU.uCloudCover.value += (atm.cloudCover - skyU.uCloudCover.value) * kLerp;
+        }
+        if (skyU.uCloudDarkness) {
+          skyU.uCloudDarkness.value += (atm.cloudDarkness - skyU.uCloudDarkness.value) * kLerp;
+        }
+        if (skyU.uWindStretch) {
+          skyU.uWindStretch.value += (atm.windStretch - skyU.uWindStretch.value) * kLerp;
+        }
+        if (skyU.uCloudScroll) {
+          skyU.uCloudScroll.value += dtSec * atm.cloudSpeed;
+        }
         const df = solar.daylightFactor;
-        tmpCloudLit.setRGB(0.28 + df * 0.72, 0.32 + df * 0.67, 0.46 + df * 0.54);
-        tmpCloudShade.setRGB(0.16 + df * 0.58, 0.21 + df * 0.61, 0.34 + df * 0.58);
+        const dark = atm.cloudDarkness;
+        const litScale = 1.0 - dark * 0.62;
+        const shadeScale = 1.0 - dark * 0.72;
+        tmpCloudLit.setRGB(
+          (0.28 + df * 0.72) * litScale,
+          (0.32 + df * 0.67) * litScale,
+          (0.46 + df * 0.54) * (litScale + dark * 0.08),
+        );
+        tmpCloudShade.setRGB(
+          (0.16 + df * 0.58) * shadeScale,
+          (0.21 + df * 0.61) * shadeScale,
+          (0.34 + df * 0.58) * (shadeScale + dark * 0.08),
+        );
         skyU.uCloudLit?.value?.lerp?.(tmpCloudLit, kLerp);
         skyU.uCloudShade?.value?.lerp?.(tmpCloudShade, kLerp);
       }
@@ -3168,11 +3267,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
 
     // Pre-compile shaders once up front behind the Poké Ball curtain so Frame 1 never stutters on shader link!
+    setBootCurtainProgress(80);
     try {
       renderer.compile(scene, camera);
     } catch {
       // ignore shader precompile warning
     }
+    setBootCurtainProgress(94);
     let scenePaintedFrames = 0;
     const mark3DFramePainted = () => {
       scenePaintedFrames += 1;
@@ -3196,6 +3297,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
         // Scenic Elevated Panoramic 3D Diorama Overlook during Hub & Map Select (Living Hero, Camera-Facing Squad, Meadow & Flying Wild Pokémon!)
         if (phase !== 'playing') {
+          weatherVisuals3D.update({
+            dt,
+            kind: liveWeatherRef.current.kind,
+            intensity: liveWeatherRef.current.intensity,
+            centerX: sim.px,
+            centerY: sim.py,
+            centerZ: sim.pz,
+            camFwdX: -Math.sin(camOrbitRef.current.yaw),
+            camFwdZ: -Math.cos(camOrbitRef.current.yaw),
+            isIndoor: false,
+            reduceFlashes: Boolean(prefsRef.current.reduceFlashes),
+            sun,
+            hemi,
+            scene,
+            onLightningStrike: (isNear) => sound.triggerStormThunder(isNear),
+          });
           renderHubDioramaFrame3D({ applyLiveSolarAtmosphere, camera, dt, emoteKinds, externalPausedRef, geoHighwayStreamer, heroEmoteSprite, heroFrames, horizonBackdrop, metaRef, now, petEmoteSprite, phase, playerShadow, playerSprite, playerSpriteMat, previewSprites, renderer, scene, sim, syncFloraBillboards, updateWorldAround, waterMat, worldMapOpenRef });
           mark3DFramePainted();
           rafId = window.requestAnimationFrame(animate);
@@ -3222,7 +3339,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         syncTerrainGeoUniforms3D(
           terrainMat,
           adventureStyleRef.current !== 'vampire_rogue',
-          liveWeatherRef.current.kind === 'snow' ? 0.88 : 0,
+          smoothSnowCover,
         );
         syncUrbanAt(sim.px,sim.pz);
 
@@ -3585,7 +3702,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               }
             }
           }
-          const { closestTownPoint, activeTownNow, activeInteriorNow, closestNode, inTownPeaceZone } = stepArenaTownAndWorldNodes3D({ WEATHER_PARTICLE_COUNT, activeTownIdRef, activeZone, applyLiveSolarAtmosphere, autoNavTargetsRef, bbTiltX, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, damageEnemy3D, dt, executeInteractActionRef, groundY, heroFrames, interactOptionIdxRef, lastEnteredInteriorIdRef, liveWeatherRef, mLen, metaBonusesRef, metaRef, now, npcSocialTimerRef, onHealParty, onUpdateMeta, persistState, playerShadow, playerSprite, playerSpriteMat, prefsRef, proceduralTowns, safeZoneMeshes, setActiveBusStopModal, setAskQuickNavOpen, setInRunTownShopOpen, setWorldMapOpen, showBanner, sim, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, startStreetDuelRef, sun, surfingNow, syncSafeZones3D, teleportIntraCityBusRef, triggerInteractRef, updateWorldAround, vfxAtlas, weatherGeo, weatherMat, weatherPoints, windClock, worldBubblesRef, worldInteractNodes });
+          const { closestTownPoint, activeTownNow, activeInteriorNow, closestNode, inTownPeaceZone } = stepArenaTownAndWorldNodes3D({ activeTownIdRef, activeZone, applyLiveSolarAtmosphere, autoNavTargetsRef, bbTiltX, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, damageEnemy3D, dt, executeInteractActionRef, groundY, heroFrames, interactOptionIdxRef, lastEnteredInteriorIdRef, liveWeatherRef, mLen, metaBonusesRef, metaRef, now, npcSocialTimerRef, onHealParty, onUpdateMeta, persistState, playerShadow, playerSprite, playerSpriteMat, prefsRef, proceduralTowns, safeZoneMeshes, setActiveBusStopModal, setAskQuickNavOpen, setInRunTownShopOpen, setWorldMapOpen, showBanner, sim, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, startStreetDuelRef, sun, surfingNow, syncSafeZones3D, teleportIntraCityBusRef, triggerInteractRef, updateWorldAround, vfxAtlas, windClock, worldBubblesRef, worldInteractNodes });
           if (activeInteriorNow && rideModeRef.current !== 'walk') {
             rideModeRef.current = 'walk';
             setRideMode('walk');
@@ -3634,6 +3751,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               sound.setWeatherAmbience(liveWeatherRef.current.kind, {
                 indoor: isIndoorNow,
                 isNight: solarInfoRef.current.lampGlow > 0.45,
+                intensity: liveWeatherRef.current.intensity,
               });
             }
           }
@@ -3679,6 +3797,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         } else if (sim.activeCaptures.length > 0 && !externalPausedRef.current && !endedRef.current) {
           stepArenaCaptureCinema3D({ addFollowerToRun, buildResultSummary, camera, captureFinishRef, damageEnemy3D, diffMeta, dt, endedRef, gameMode, horizonBackdrop, maxFollowersRef, now, onCaptureBoss, onShowCaptureInHandheld, pausedRef, pet, regionMeta, save, scene, setCaptureCutscene, setResultSummary, sim, spawnGlowFlash, spawnGroundDecalWave, spawnPixelParticles, syncFloraBillboards, vfxAtlas, waterMat });
         }
+        weatherVisuals3D.update({
+          dt,
+          kind: liveWeatherRef.current.kind,
+          intensity: liveWeatherRef.current.intensity,
+          centerX: sim.px,
+          centerY: sim.py,
+          centerZ: sim.pz,
+          camFwdX: -Math.sin(camOrbitRef.current.yaw),
+          camFwdZ: -Math.cos(camOrbitRef.current.yaw),
+          isIndoor: activeInteriorAudioRef.current,
+          reduceFlashes: Boolean(prefsRef.current.reduceFlashes),
+          sun,
+          hemi,
+          scene,
+          onLightningStrike: (isNear) => sound.triggerStormThunder(isNear),
+        });
         renderer.render(scene, camera);
         mark3DFramePainted();
       }
@@ -3688,6 +3822,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     rafId = window.requestAnimationFrame(animate);
     return () => {
       unsubGeoDem();
+      weatherVisuals3D.dispose();
       geoHighwayStreamer?.dispose();
       setWalkableBuildingFloorZones3D([]);
       unregisterRenderedTerrain();
@@ -3800,7 +3935,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const pickedRegion = explicitBiome
       ? MAP_REGIONS.find((r) => r.id === explicitBiome) ?? MAP_REGIONS[0]
       : MAP_REGIONS[Math.floor(Math.random() * MAP_REGIONS.length)];
-    runWithPokeballShutter(`正在开启「${pickedRegion.name}」秘境…`, () => {
+    runWithPokeballShutter(`拨开齐腰深的草丛，深入「${pickedRegion.name}」…`, () => {
       setAdventureStyle('vampire_rogue');
       adventureStyleRef.current = 'vampire_rogue';
       setActiveGeoTerrainOrigin(null);
@@ -3825,8 +3960,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     sound.play('confirm');
     setWorldMapOpen(false);
     const shutterTitle = payload.isGymChallenge
-      ? `正在前往「${payload.gymName}」…`
-      : `正在进入「${payload.cityName}」…`;
+      ? `馆主已在场内等候，步入「${payload.gymName}」…`
+      : `列车缓缓进站，即将抵达「${payload.cityName}」…`;
     runWithPokeballShutter(shutterTitle, () => {
       if (resetCheckpointToCity || payload.isGymChallenge) {
         clearWorldCheckpoint();
@@ -4269,7 +4404,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       )}
 
       {/* Iconic Red-and-White Poké Ball Clasp Shutter Loading Transition! */}
-      <PokeballShutterOverlay state={pokeballShutter} />
+      <PokeballShutterOverlay state={pokeballShutter} save={save} />
     </div>
   );
 };

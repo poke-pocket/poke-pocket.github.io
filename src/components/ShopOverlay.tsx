@@ -3,6 +3,7 @@ import {
   ACCESSORY_CATALOG,
   FOOD_CATALOG,
   GACHA_BOXES,
+  POKEBALL_CATCH_STATS,
   ROOM_CATALOG,
   SPECIES_CATALOG,
   getGrowthStage,
@@ -38,6 +39,8 @@ interface ShopOverlayProps {
   save: GameSave;
   pet: PetRecord;
   closing: boolean;
+  initialTab?: ShopMainTab;
+  cityName?: string;
   onClose: () => void;
   onBuyFood: (foodId: FoodId) => void;
   onBuyAccessory: (id: AccessoryId) => void;
@@ -54,7 +57,7 @@ interface ShopOverlayProps {
   ) => boolean;
 }
 
-type ShopMainTab = 'skins' | 'gacha' | 'berries' | 'items';
+type ShopMainTab = 'berries' | 'items' | 'pokeballs' | 'skins' | 'gacha';
 type SkinFilterTab = 'featured' | 'mythic' | 'vanguard' | 'huaxia' | 'celestial' | 'by_species';
 
 function getSkinSpriteSrc(skin: PokemonSkinDef): string {
@@ -70,6 +73,8 @@ export const ShopOverlay: React.FC<ShopOverlayProps> = ({
   save,
   pet,
   closing,
+  initialTab = 'berries',
+  cityName,
   onClose,
   onBuyFood,
   onBuyAccessory,
@@ -78,7 +83,7 @@ export const ShopOverlay: React.FC<ShopOverlayProps> = ({
   onPullGachaTen,
   onUpdatePetConfig,
 }) => {
-  const [mainTab, setMainTab] = useState<ShopMainTab>('skins');
+  const [mainTab, setMainTab] = useState<ShopMainTab>(initialTab);
   const [skinTab, setSkinTab] = useState<SkinFilterTab>('featured');
   const [selectedSpeciesFilter, setSelectedSpeciesFilter] = useState<SpeciesId | 'all'>('all');
   const [inspectSkin, setInspectSkin] = useState<PokemonSkinDef | null>(null);
@@ -234,7 +239,7 @@ export const ShopOverlay: React.FC<ShopOverlayProps> = ({
           </button>
           <div className="meta-ribbon is-gold">
             <PixelItemImg src="/sprites/items/amulet-coin.png" size={18} />
-            <h2>宝可梦精品商店 · 外观 · 盲盒 · 补给</h2>
+            <h2>{cityName ? `${cityName} · 友好商店` : '城市友好商店 · 物资补给'}</h2>
           </div>
           <div className="meta-head-right">
             <div className="stardust-pill is-coin-pill" title="当前可用宝可币">
@@ -247,6 +252,42 @@ export const ShopOverlay: React.FC<ShopOverlayProps> = ({
 
         <div className="meta-split-shell">
           <nav className="meta-side-rail" aria-label="商店分类">
+            <button
+              type="button"
+              className={`meta-rail-tab ${mainTab === 'berries' ? 'active' : ''}`}
+              title="树果与糖果补给"
+              onClick={() => {
+                sound.play('cursor');
+                setMainTab('berries');
+              }}
+            >
+              <PixelItemImg src="/sprites/items/sitrus-berry.png" size={30} />
+              <em>树果</em>
+            </button>
+            <button
+              type="button"
+              className={`meta-rail-tab ${mainTab === 'items' ? 'active' : ''}`}
+              title="携带道具"
+              onClick={() => {
+                sound.play('cursor');
+                setMainTab('items');
+              }}
+            >
+              <PixelItemImg src="/sprites/items/kings-rock.png" size={30} />
+              <em>道具</em>
+            </button>
+            <button
+              type="button"
+              className={`meta-rail-tab ${mainTab === 'pokeballs' ? 'active' : ''}`}
+              title="精灵球补给"
+              onClick={() => {
+                sound.play('cursor');
+                setMainTab('pokeballs');
+              }}
+            >
+              <PixelItemImg src="/sprites/items/ultra-ball.png" size={30} />
+              <em>精灵球</em>
+            </button>
             <button
               type="button"
               className={`meta-rail-tab ${mainTab === 'skins' ? 'active' : ''}`}
@@ -270,30 +311,6 @@ export const ShopOverlay: React.FC<ShopOverlayProps> = ({
             >
               <PixelItemImg src="/sprites/items/master-ball.png" size={30} />
               <em>盲盒</em>
-            </button>
-            <button
-              type="button"
-              className={`meta-rail-tab ${mainTab === 'berries' ? 'active' : ''}`}
-              title="树果与糖果补给"
-              onClick={() => {
-                sound.play('cursor');
-                setMainTab('berries');
-              }}
-            >
-              <PixelItemImg src="/sprites/items/sitrus-berry.png" size={30} />
-              <em>树果</em>
-            </button>
-            <button
-              type="button"
-              className={`meta-rail-tab ${mainTab === 'items' ? 'active' : ''}`}
-              title="携带道具与球舱"
-              onClick={() => {
-                sound.play('cursor');
-                setMainTab('items');
-              }}
-            >
-              <PixelItemImg src="/sprites/items/kings-rock.png" size={30} />
-              <em>道具</em>
             </button>
           </nav>
 
@@ -656,7 +673,7 @@ export const ShopOverlay: React.FC<ShopOverlayProps> = ({
               </div>
             )}
 
-            {/* ===================== 4. HELD ACCESSORIES & POKEBALL ROOMS ===================== */}
+            {/* ===================== 4. HELD ACCESSORIES ===================== */}
             {mainTab === 'items' && (
               <div className="shop-section">
                 <div className="shop-section-head">
@@ -693,16 +710,22 @@ export const ShopOverlay: React.FC<ShopOverlayProps> = ({
                     );
                   })}
                 </div>
+              </div>
+            )}
 
-                <div className="shop-section-head" style={{ marginTop: 18 }}>
+            {/* ===================== 5. POKEBALLS SUPPLY ===================== */}
+            {mainTab === 'pokeballs' && (
+              <div className="shop-section">
+                <div className="shop-section-head">
                   <div>
-                    <h4>主题精灵球舱</h4>
-                    <small>更换伙伴的专属居住球舱，带来独立属性与视觉主题</small>
+                    <h4>精灵球专柜</h4>
+                    <small>购买后可在 3D 冒险中长按投球键快速切换投掷，不同球种拥有专属捕获倍率</small>
                   </div>
                 </div>
                 <div className="shop-item-grid">
                   {ROOM_CATALOG.filter((r) => r.id !== 'pokeball_room').map((rm) => {
                     const avail = getBallAvailability(save, rm.id);
+                    const catchStat = POKEBALL_CATCH_STATS[rm.id];
                     return (
                       <div key={rm.id} className="shop-item-card">
                         <div className="shop-item-icon">
@@ -710,8 +733,8 @@ export const ShopOverlay: React.FC<ShopOverlayProps> = ({
                           <em className="shop-item-qty">余 {avail.available}/{avail.total}</em>
                         </div>
                         <div className="shop-item-meta">
-                          <strong>{rm.name}</strong>
-                          <small>{rm.description}</small>
+                          <strong>{rm.shortName}</strong>
+                          <small>{catchStat ? catchStat.desc : rm.description}</small>
                         </div>
                         <button
                           type="button"
@@ -719,7 +742,7 @@ export const ShopOverlay: React.FC<ShopOverlayProps> = ({
                           disabled={save.coins < rm.price}
                           onClick={() => {
                             onBuyPokeball(rm.id);
-                            showToast(`已购入「${rm.shortName}」`);
+                            showToast(`已购入「${rm.shortName}」×1`);
                           }}
                         >
                           {rm.price} 币
