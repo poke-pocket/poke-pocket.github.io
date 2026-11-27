@@ -20106,21 +20106,13 @@ body,
 }
 
 .debug-cc-ico {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #f1ece0;
-  border: 1.5px solid #161420;
-}
-
-.debug-cc-tile.is-active .debug-cc-ico {
-  background: #d3f9d8;
-}
-
-.debug-cc-tile.is-action .debug-cc-ico {
-  background: #ffec99;
+  background: transparent;
+  border: none;
 }
 
 .debug-cc-name {

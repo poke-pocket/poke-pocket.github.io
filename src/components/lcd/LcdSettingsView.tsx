@@ -874,7 +874,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title={`临时解锁全 ${POKEDEX_ORDER.length} 种精灵用于编队与体验，关闭即回退`}
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/poke-ball.png" size={22} />
+                          <PixelItemImg src="/sprites/items/poke-ball.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">全精灵</strong>
                         <button
@@ -895,7 +895,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="条件状态：开启即视为全图鉴解锁，关闭后恢复真实图鉴（保留期间正常捕获的精灵）"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/town-map.png" size={22} />
+                          <PixelItemImg src="/sprites/items/town-map.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">全图鉴</strong>
                         <button
@@ -917,7 +917,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="临时满级解锁全部研究所强化、主角与专属觉醒技能，关闭即还原真实进度"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/life-orb.png" size={22} />
+                          <PixelItemImg src="/sprites/items/life-orb.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">全强化</strong>
                         <button
@@ -938,7 +938,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="临时解锁全部道馆与荣誉徽章及对应训练师头衔，关闭即还原真实进度"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/kings-rock.png" size={22} />
+                          <PixelItemImg src="/sprites/items/kings-rock.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">全徽章</strong>
                         <button
@@ -959,7 +959,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="开启后在地图选点下方及导航列表中显示「传送」按钮，点击直接瞬移抵达"
                       >
                         <div className="debug-cc-ico">
-                          <PixelIcon name="bolt" size={18} />
+                          <PixelIcon name="bolt" size={24} />
                         </div>
                         <strong className="debug-cc-name">地图传送</strong>
                         <button
@@ -980,7 +980,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="开启后所有树果与携带道具无限使用不消耗，关闭即还原真实库存"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/berry-pouch.png" size={22} />
+                          <PixelItemImg src="/sprites/items/berry-pouch.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">无限道具</strong>
                         <button
@@ -1001,7 +1001,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="开启后解锁全部 9 种精灵球（含大师球）且无限使用，关闭即还原"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/ultra-ball.png" size={22} />
+                          <PixelItemImg src="/sprites/items/ultra-ball.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">无限精灵球</strong>
                         <button
@@ -1022,7 +1022,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="开启后星沙无限使用不消耗，关闭即还原真实星沙数量"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/bright-powder.png" size={22} />
+                          <PixelItemImg src="/sprites/items/bright-powder.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">无限星沙</strong>
                         <button
@@ -1043,7 +1043,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="开启后金币无限使用不消耗，关闭即还原真实金币数量"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/amulet-coin.png" size={22} />
+                          <PixelItemImg src="/sprites/items/amulet-coin.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">无限金币</strong>
                         <button
@@ -1064,7 +1064,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="在 3D 画面左下角实时监控帧率"
                       >
                         <div className="debug-cc-ico">
-                          <PixelIcon name="chart" size={18} />
+                          <PixelIcon name="chart" size={24} />
                         </div>
                         <strong className="debug-cc-name">FPS 浮窗</strong>
                         <button
@@ -1084,7 +1084,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="点击将全部树果与携带道具补满至至少 99 个"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/oran-berry.png" size={22} />
+                          <PixelItemImg src="/sprites/items/oran-berry.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">获取道具</strong>
                         <button
@@ -1101,7 +1101,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="点击将全部 9 种精灵球（含大师球）补满至至少 99 个"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/master-ball.png" size={22} />
+                          <PixelItemImg src="/sprites/items/master-ball.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">获取精灵球</strong>
                         <button
@@ -1118,7 +1118,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="点击将星沙数量补满至至少 99999"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/bright-powder.png" size={22} />
+                          <PixelItemImg src="/sprites/items/bright-powder.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">获取星沙</strong>
                         <button
@@ -1135,7 +1135,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         title="点击将宝可币数量补满至至少 99999"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/amulet-coin.png" size={22} />
+                          <PixelItemImg src="/sprites/items/amulet-coin.png" size={30} />
                         </div>
                         <strong className="debug-cc-name">获取金币</strong>
                         <button
