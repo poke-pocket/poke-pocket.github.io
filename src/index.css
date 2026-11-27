@@ -221,7 +221,11 @@ button:disabled {
   align-items: center;
   gap: 5px;
   align-self: start;
-  padding-top: 38px;
+  padding: 38px 0 0 0;
+  background: transparent;
+  border: none;
+  cursor: default;
+  outline: none;
 }
 
 .led-dot {
@@ -233,6 +237,62 @@ button:disabled {
     0 0 8px rgba(255, 45, 58, 0.9),
     0 0 2px rgba(0, 0, 0, 0.8);
   animation: ledPulse 2.2s infinite;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.led-dot.is-dev-on {
+  background: radial-gradient(circle at 35% 35%, #b2f2bb, #40c057 65%, #186a2a 100%);
+  box-shadow:
+    0 0 10px rgba(81, 207, 102, 0.95),
+    0 0 2px rgba(0, 0, 0, 0.85);
+}
+
+.handheld-shell.is-dev-vibrate {
+  animation: consoleDevVibrate 0.44s steps(4, end);
+}
+
+@keyframes consoleDevVibrate {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  18% { transform: translate(-5px, 2px) rotate(-0.8deg); }
+  36% { transform: translate(5px, -2px) rotate(0.8deg); }
+  54% { transform: translate(-4px, -1px) rotate(-0.5deg); }
+  72% { transform: translate(4px, 2px) rotate(0.5deg); }
+  88% { transform: translate(-2px, 0) rotate(-0.2deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+.dev-mode-bezel-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 900;
+  color: #b2f2bb;
+  background: #12161c;
+  border: 2px solid #40c057;
+  box-shadow: 2px 2px 0 #09080f;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.lcd-subtab.is-debug-tab {
+  border-color: #2f9e44;
+  color: #186a2a;
+  background: #ebfbee;
+}
+
+.lcd-subtab.is-debug-tab.active {
+  background: #40c057;
+  color: #0e1c11;
+  border-color: #12101a;
+}
+
+.settings-card.is-debug-banner {
+  background: #ebfbee;
+  border-color: #2f9e44;
 }
 
 .battery-txt {
@@ -5605,7 +5665,8 @@ button:disabled {
   transform: translate(1px, 1px) scale(0.97);
 }
 
-.surv-top-btn.is-lg .top-hud-bare-icon {
+.surv-top-btn.is-lg .top-hud-bare-icon,
+.surv-top-btn.is-lg .top-hud-bare-svg {
   width: 92% !important;
   height: 92% !important;
 }
@@ -11632,12 +11693,23 @@ button.gba-status-box.is-clickable-card {
   gap: 0;
 }
 
+.surv-hero-card.is-clickable {
+  cursor: pointer;
+  transition: transform 0.1s steps(2, end), border-color 0.12s ease, background 0.12s ease;
+}
+
+.surv-hero-card.is-clickable:hover {
+  border-color: #ffe066;
+  background: linear-gradient(180deg, rgba(36, 40, 64, 0.96), rgba(20, 22, 38, 0.96));
+}
+
 .surv-hero-sub-badges {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 3px;
   margin-top: 0;
+  cursor: pointer;
 }
 
 .hero-badge-slot {
@@ -11650,6 +11722,16 @@ button.gba-status-box.is-clickable-card {
   border: 1.5px solid #2b2e44;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
+  transition: transform 0.1s steps(2, end), border-color 0.12s ease, opacity 0.12s ease;
+}
+
+.surv-hero-sub-badges:hover .hero-badge-slot {
+  border-color: #ffe066;
+  opacity: 0.95;
+}
+
+.hero-badge-slot:hover {
+  transform: translateY(-1px) scale(1.08);
 }
 
 .hero-badge-slot.is-earned {
@@ -12194,14 +12276,14 @@ button.gba-status-box.is-clickable-card {
 }
 
 /* =========================================================================
-   BOTTOM-RIGHT MOBA RADIAL ACTION WHEEL (1 Primary Big Button + 3 Arc Satellites + Aux Jump!)
+   BOTTOM-RIGHT MOBA RADIAL ACTION WHEEL (1.4x Enlarged Tight-Fill Pixel Buttons!)
    ========================================================================= */
 .surv-moba-wheel {
   position: absolute;
-  right: 16px;
-  bottom: 16px;
-  width: 262px;
-  height: 196px;
+  right: 20px;
+  bottom: 20px;
+  width: 368px;
+  height: 274px;
   z-index: 16;
   pointer-events: none;
 }
@@ -12213,12 +12295,19 @@ button.gba-status-box.is-clickable-card {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  padding: 0;
-  border: 2.5px solid #12101a;
-  box-shadow: 4px 4px 0 rgba(9, 8, 15, 0.94), inset 0 2px 0 rgba(255, 255, 255, 0.42);
+  padding: 2px;
+  border: 3px solid #12101a;
+  box-shadow: 5px 5px 0 rgba(9, 8, 15, 0.94), inset 0 2px 0 rgba(255, 255, 255, 0.42);
   cursor: pointer;
   pointer-events: auto;
   transition: transform 0.1s ease, filter 0.12s ease, box-shadow 0.1s ease;
+}
+
+.moba-btn .moba-icon-fill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(1.5px 1.5px 0 rgba(18, 16, 26, 0.45));
 }
 
 .moba-btn:hover:not(:disabled) {
@@ -12239,26 +12328,26 @@ button.gba-status-box.is-clickable-card {
 }
 
 .moba-btn span {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
   line-height: 1;
   color: #161420;
   letter-spacing: 0.02em;
 }
 
-/* Primary Main Button (Bottom-Right Corner, 80x80) */
+/* Primary Main Button (Bottom-Right Corner, 112x112 = 1.4x) */
 .moba-btn.is-primary {
   right: 0;
   bottom: 0;
-  width: 80px;
-  height: 80px;
-  border-width: 3px;
+  width: 112px;
+  height: 112px;
+  border-width: 3.5px;
   background: linear-gradient(180deg, #fff3bf, #ffd43b);
-  box-shadow: 5px 5px 0 rgba(9, 8, 15, 0.96), inset 0 3px 0 rgba(255, 255, 255, 0.55);
+  box-shadow: 6px 6px 0 rgba(9, 8, 15, 0.96), inset 0 3px 0 rgba(255, 255, 255, 0.55);
 }
 
 .moba-btn.is-primary span {
-  font-size: 12px;
+  font-size: 13px;
   margin-top: 1px;
 }
 
@@ -12269,32 +12358,32 @@ button.gba-status-box.is-clickable-card {
 
 @keyframes mobaPulse {
   from {
-    box-shadow: 5px 5px 0 rgba(9, 8, 15, 0.96), 0 0 0 0 rgba(255, 224, 102, 0.75);
+    box-shadow: 6px 6px 0 rgba(9, 8, 15, 0.96), 0 0 0 0 rgba(255, 224, 102, 0.75);
   }
   to {
-    box-shadow: 5px 5px 0 rgba(9, 8, 15, 0.96), 0 0 0 8px rgba(255, 224, 102, 0.15);
+    box-shadow: 6px 6px 0 rgba(9, 8, 15, 0.96), 0 0 0 8px rgba(255, 224, 102, 0.15);
   }
 }
 
-/* 3 Quarter-Circle Arc Satellites (58x58) around Primary Center (right:40, bottom:40) at R = 104px */
+/* 3 Quarter-Circle Arc Satellites (82x82 = 1.4x) around Primary Center (right:56, bottom:56) */
 .moba-btn.is-sat {
-  width: 58px;
-  height: 58px;
+  width: 82px;
+  height: 82px;
 }
 
 .moba-btn.is-sat-0 {
-  right: 112px;
-  bottom: 10px;
+  right: 156px;
+  bottom: 14px;
 }
 
 .moba-btn.is-sat-45 {
-  right: 84px;
-  bottom: 84px;
+  right: 118px;
+  bottom: 118px;
 }
 
 .moba-btn.is-sat-90 {
-  right: 10px;
-  bottom: 112px;
+  right: 14px;
+  bottom: 156px;
 }
 
 .moba-btn.is-heal {
@@ -12313,12 +12402,12 @@ button.gba-status-box.is-clickable-card {
   background: linear-gradient(180deg, #d0ebff, #4dabf7);
 }
 
-/* Enlarged Auxiliary Jump Button tucked left of the arc (58x58 matching satellites!) */
+/* Enlarged Auxiliary Salvo Button tucked left of the arc (82x82 = 1.4x matching satellites!) */
 .moba-btn.is-aux-jump {
-  right: 186px;
-  bottom: 10px;
-  width: 58px;
-  height: 58px;
+  right: 260px;
+  bottom: 14px;
+  width: 82px;
+  height: 82px;
   background: linear-gradient(180deg, #fffdf4, #e9e0c6);
 }
 
@@ -15383,6 +15472,7 @@ body,
     display: block;
   }
 
+  .pkb-weather-pill,
   .pkb-coin-standalone {
     height: 38px !important;
     padding: 0 8px !important;
@@ -15877,7 +15967,7 @@ body,
   .surv-moba-wheel {
     right: max(8px, env(safe-area-inset-right));
     bottom: max(10px, env(safe-area-inset-bottom));
-    transform: scale(0.75);
+    transform: scale(0.56);
     transform-origin: right bottom;
   }
 
@@ -16257,7 +16347,7 @@ body,
   }
 
   .surv-moba-wheel {
-    transform: scale(0.68);
+    transform: scale(0.5);
   }
 }
 
@@ -16308,7 +16398,7 @@ body,
   }
 
   .surv-moba-wheel {
-    transform: scale(0.64);
+    transform: scale(0.46);
   }
 
   .vpad-360 {
@@ -16365,6 +16455,7 @@ body,
     gap: 6px;
   }
 
+  .pkb-weather-pill,
   .pkb-profile-pill,
   .pkb-coin-standalone,
   .pkb-icon-btn {
@@ -16805,7 +16896,7 @@ body,
   .surv-moba-wheel {
     right: max(12px, env(safe-area-inset-right));
     bottom: 8px;
-    transform: scale(0.7);
+    transform: scale(0.52);
     transform-origin: right bottom;
   }
 
@@ -17318,6 +17409,7 @@ body,
     display: none !important;
   }
 
+  .pkb-weather-pill,
   .pkb-coin-standalone,
   .pkb-icon-btn {
     height: 36px !important;
@@ -19273,21 +19365,31 @@ body,
   margin-top: 6px;
 }
 
-/* Live Weather Pills (Hub, Battle HUD & World Map) */
+/* Live Weather Pills (Hub Topbar aligned 1:1 with Profile, Coin & Settings Pills!) */
 .pkb-weather-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  border: 2px solid #1c7ed6;
-  background: rgba(255, 253, 246, 0.94);
-  color: #181a24;
+  gap: 6px;
+  height: 44px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 2.5px solid #161420;
+  background: rgba(22, 26, 40, 0.92);
+  color: #fffdf5;
   font-family: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
-  box-shadow: 2px 2px 0 #181a24;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.16),
+    4px 4px 0 #161420;
   cursor: pointer;
   white-space: nowrap;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.pkb-weather-pill:hover {
+  transform: translateY(-1px);
+  background: rgba(34, 40, 60, 0.96);
 }
 .top-weather-chip {
   display: inline-flex;

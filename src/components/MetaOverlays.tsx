@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   GYM_BADGE_CATALOG,
   HERO_ROSTER,
@@ -235,24 +235,39 @@ export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
 interface LabOverlayProps {
   meta: MetaProgressState;
   closing: boolean;
+  initialTab?: 'universal' | 'heroes' | 'badges';
   onClose: () => void;
   onBuyLabUpgrade: (id: LabUpgradeId) => void;
   onUnlockOrSelectHero: (heroId: HeroId) => void;
   onUpgradeHeroSkill: (heroId: HeroId, skillId: string) => void;
   onSelectTrainerTag?: (tagId: TrainerTagId) => void;
+  onOpenTrainerCard?: () => void;
+  onOpenAchievements?: () => void;
+  achievementsLabel?: string;
 }
 
 export const LabOverlay: React.FC<LabOverlayProps> = ({
   meta,
   closing,
+  initialTab = 'universal',
   onClose,
   onBuyLabUpgrade,
   onUnlockOrSelectHero,
   onUpgradeHeroSkill,
   onSelectTrainerTag,
+  onOpenTrainerCard,
+  onOpenAchievements,
+  achievementsLabel,
 }) => {
-  const [tab, setTab] = useState<'universal' | 'heroes' | 'badges'>('universal');
+  const [tab, setTab] = useState<'universal' | 'heroes' | 'badges'>(initialTab);
   const [selectedHeroId, setSelectedHeroId] = useState<HeroId>(meta.activeHero);
+
+  useEffect(() => {
+    setTab(initialTab);
+    if (initialTab === 'heroes') {
+      setSelectedHeroId(meta.activeHero);
+    }
+  }, [initialTab, meta.activeHero]);
   const unlockedTags = getUnlockedTrainerTags(meta);
   const activeTagDef = getActiveTrainerTagDef(meta);
   const earnedBadges = meta.unlockedBadges ?? [];
@@ -469,6 +484,19 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
                       <span>{inspectedHero.unlockCost} 解锁主角</span>
                     </button>
                   )}
+                  {onOpenTrainerCard && (
+                    <button
+                      type="button"
+                      className="hero-deploy-btn"
+                      style={{ marginTop: 6 }}
+                      onClick={() => {
+                        sound.play('confirm');
+                        onOpenTrainerCard();
+                      }}
+                    >
+                      编辑训练家名片
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -534,7 +562,22 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
           <div className="meta-body scroll-y">
             <div className="meta-section-label">
               <strong>训练师身份标签（当前：{activeTagDef.name}）</strong>
-              <span>切换已解锁标签，为指定属性与地区宝可梦提供战力光环</span>
+              <div className="inline-icon-row" style={{ gap: 8 }}>
+                <span>切换已解锁标签，为指定属性与地区宝可梦提供战力光环</span>
+                {onOpenAchievements && (
+                  <button
+                    type="button"
+                    className="lcd-subtab inline-icon-btn"
+                    onClick={() => {
+                      sound.play('confirm');
+                      onOpenAchievements();
+                    }}
+                  >
+                    <PixelIcon name="trophy" size={11} />
+                    <span>全部成就{achievementsLabel ? ` (${achievementsLabel})` : ''}</span>
+                  </button>
+                )}
+              </div>
             </div>
             <div className="lab-tags-grid">
               {TRAINER_TAG_CATALOG.map((tag) => {

@@ -295,7 +295,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmReleaseId, setConfirmReleaseId] = useState<string | null>(null);
   const [petActionMenuOpen, setPetActionMenuOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'world' | 'audio' | 'hud' | 'perf' | 'style' | 'keys'>('world');
+  const [settingsTab, setSettingsTab] = useState<'audio' | 'hud' | 'perf' | 'style' | 'keys' | 'world' | 'debug'>('audio');
   const [keysSubTab, setKeysSubTab] = useState<'keyboard' | 'gamepad'>('keyboard');
   const [connectedGamepadName, setConnectedGamepadName] = useState<string | null>(() => {
     if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
@@ -1053,6 +1053,15 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
               <button
                 type="button"
                 className="lcd-menu-tile"
+                onClick={() => onNavigateMode('squad')}
+              >
+                <PixelItemImg src="/sprites/items/ultra-ball.png" size={30} />
+                <strong>队伍管理</strong>
+                <small>调整出战阵容</small>
+              </button>
+              <button
+                type="button"
+                className="lcd-menu-tile"
                 onClick={() => onNavigateMode('pokedex')}
               >
                 <PixelItemImg src="/sprites/items/town-map.png" size={30} />
@@ -1079,27 +1088,12 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
               </button>
               <button
                 type="button"
-                disabled={!pet.isSick && pet.health >= 100}
-                className="lcd-menu-tile"
-                onClick={onHealPet}
-                title={
-                  pet.isSick || pet.health < 100
-                    ? `为 ${pet.name} 使用伤药回复全部 HP`
-                    : `${pet.name} 当前 HP 满格`
-                }
-              >
-                <PixelItemImg src="/sprites/items/potion.png" size={30} />
-                <strong>精灵治疗</strong>
-                <small>{pet.isSick ? '需治疗!' : pet.health < 100 ? `HP ${pet.health}%` : 'HP满格'}</small>
-              </button>
-              <button
-                type="button"
                 className="lcd-menu-tile"
                 onClick={() => onNavigateMode('settings')}
               >
                 <PixelItemImg src="/sprites/items/exp-share.png" size={30} />
                 <strong>系统设置</strong>
-                <small>音量 / 外观 / 按键</small>
+                <small>音频 / 画面 / 世界</small>
               </button>
             </div>
 

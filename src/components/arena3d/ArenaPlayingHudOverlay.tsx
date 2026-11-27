@@ -206,7 +206,7 @@ function formatHudEta(sec: number): string {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, prefs, regionMeta, removeBattleFollower, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, openHeroOrBadgeOverlay, pet, prefs, regionMeta, removeBattleFollower, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
   const isBgmOn = Boolean(save.bgmEnabled && !save.muted && save.bgmVolume > 0 && (prefs.masterVolume ?? 80) > 0);
   const locationLabel =
     adventureStyle === 'vampire_rogue'
@@ -308,7 +308,19 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   W: '#fffdf5',
                 };
                 return (
-                  <div className="surv-hero-card">
+                  <div
+                    className="surv-hero-card is-clickable"
+                    role="button"
+                    tabIndex={0}
+                    title={`点击查看「${activeHeroDef.name}」角色详情与专属觉醒技`}
+                    onClick={() => openHeroOrBadgeOverlay?.('heroes')}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openHeroOrBadgeOverlay?.('heroes');
+                      }
+                    }}
+                  >
                     <div className="surv-hero-avatar">
                       <img
                         src={activeHeroDef.avatarSprite}
@@ -340,11 +352,27 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                       <div className="surv-hero-xp-track" title={`经验 ${hud.xp}/${hud.xpNeed}`}>
                         <div className="surv-hero-xp-fill" style={{ width: `${xpPct}%` }} />
                       </div>
-                      <div className="surv-hero-sub-badges">
+                      <div
+                        className="surv-hero-sub-badges"
+                        role="button"
+                        tabIndex={0}
+                        title="点击查看训练师头衔与关都道馆徽章成就"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openHeroOrBadgeOverlay?.('badges');
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            openHeroOrBadgeOverlay?.('badges');
+                          }
+                        }}
+                      >
                         <span
                           className="hero-badge-slot is-trainer-emblem is-earned"
                           style={{ borderColor: activeTag.color }}
-                          title={`训练师头衔：${activeTag.name}\n加成：${activeTag.perkText}`}
+                          title={`训练师头衔：${activeTag.name}\n加成：${activeTag.perkText}\n点击查看头衔与徽章成就`}
                         >
                           <PixelGrid
                             grid={TRAINER_EMBLEM_GRID}
@@ -363,8 +391,8 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                               style={isEarned ? { borderColor: badge.color } : undefined}
                               title={
                                 isEarned
-                                  ? `已获得：${badge.name}（${badge.gymName} · ${badge.leaderName}）\n加成：${badge.perkText}`
-                                  : `未获得：${badge.name}（${badge.gymName}）\n获取条件：${badge.unlockHint}`
+                                  ? `已获得：${badge.name}（${badge.gymName} · ${badge.leaderName}）\n加成：${badge.perkText}\n点击查看徽章成就`
+                                  : `未获得：${badge.name}（${badge.gymName}）\n获取条件：${badge.unlockHint}\n点击查看徽章成就`
                               }
                             >
                               <PixelGrid
@@ -781,15 +809,9 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   className="surv-top-btn is-lg is-tactics"
                   onClick={() => onOpenPokemonManager('tactics', true)}
                   aria-label="战术终端"
-                  title="战术终端"
+                  title="战术终端（调整阵型、目标策略与随从技能）"
                 >
-                  <TrimmedSpriteImg
-                    src="/sprites/items/vs-seeker.png"
-                    alt="战术终端"
-                    size={70}
-                    fillRatio={0.9}
-                    className="top-hud-bare-icon"
-                  />
+                  <PixelIcon name="tactics_command" size={64} className="top-hud-bare-svg" />
                 </button>
                 <button
                   type="button"
@@ -1007,10 +1029,10 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
             </div>
           )}
 
-          {/* Bottom-Right MOBA-Style Radial Action Wheel (Large Icon-Only Buttons, Zero Text Clutter!) */}
+          {/* Bottom-Right MOBA-Style Radial Action Wheel (1.4x Large Tight-Fill Pixel Buttons!) */}
           {!externalPaused && !levelChoices && !shopOpen && !resultModal && !captureOffer && (
             <div className="surv-moba-wheel">
-              {/* Outer Left Satellite (58x58): Full-MP Team Salvo */}
+              {/* Outer Left Satellite (82x82): Full-MP Team Salvo */}
               <button
                 type="button"
                 className={`moba-btn is-aux-jump is-salvo ${hud.actionCds.salvo > 0 ? 'is-cd' : ''}`}
@@ -1019,7 +1041,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 aria-label="齐射"
                 title="齐射：全队瞬间满蓝，同步释放招牌绝招！"
               >
-                <PixelItemImg src="/sprites/items/vs-seeker.png" size={32} />
+                <PixelIcon name="salvo_barrage" size={66} className="moba-icon-fill" />
                 {hud.actionCds.salvo > 0 && (
                   <em className="moba-badge">{Math.ceil(hud.actionCds.salvo)}s</em>
                 )}
@@ -1034,7 +1056,13 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 aria-label="投球"
                 title="投球：向附近倒地/残血/异色野生宝可梦投掷精灵球收服！"
               >
-                <PixelItemImg src="/sprites/items/poke-ball.png" size={32} />
+                <TrimmedSpriteImg
+                  src="/sprites/items/poke-ball.png"
+                  alt="投球"
+                  size={70}
+                  fillRatio={0.92}
+                  className="moba-icon-fill"
+                />
                 {hud.actionCds.ball > 0 && (
                   <em className="moba-badge">{Math.ceil(hud.actionCds.ball)}s</em>
                 )}
@@ -1052,7 +1080,13 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 aria-label="伤药"
                 title="伤药：使用好伤药立即回复全队 45% 生命值"
               >
-                <PixelItemImg src="/sprites/items/super-potion.png" size={32} />
+                <TrimmedSpriteImg
+                  src="/sprites/items/super-potion.png"
+                  alt="伤药"
+                  size={70}
+                  fillRatio={0.92}
+                  className="moba-icon-fill"
+                />
                 <em className="moba-badge">
                   {hud.actionCds.heal > 0 ? `${Math.ceil(hud.actionCds.heal)}s` : `×${hud.healCharges}`}
                 </em>
@@ -1067,7 +1101,13 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 aria-label="强化"
                 title="强化：激活 8 秒力量强化（全队攻击 +55%、充能加速）"
               >
-                <PixelItemImg src="/sprites/items/rare-candy.png" size={32} />
+                <TrimmedSpriteImg
+                  src="/sprites/items/rare-candy.png"
+                  alt="强化"
+                  size={70}
+                  fillRatio={0.92}
+                  className="moba-icon-fill"
+                />
                 {(hud.boostLeft > 0 || hud.actionCds.boost > 0) && (
                   <em className="moba-badge">
                     {hud.boostLeft > 0 ? `${Math.ceil(hud.boostLeft)}s` : `${Math.ceil(hud.actionCds.boost)}s`}
@@ -1075,7 +1115,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 )}
               </button>
 
-              {/* Primary Corner Main Button (80x80): 3D Jump */}
+              {/* Primary Corner Main Button (112x112): 3D Jump */}
               <button
                 type="button"
                 className="moba-btn is-primary is-jump-main"
@@ -1085,7 +1125,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 aria-label="跳跃"
                 title="跳跃：3D 跳跃翻越台阶或躲避弹幕"
               >
-                <PixelIcon name="arrow_up" size={38} />
+                <PixelIcon name="jump_leap" size={92} className="moba-icon-fill" />
               </button>
             </div>
           )}

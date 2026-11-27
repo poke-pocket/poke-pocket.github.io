@@ -1,14 +1,23 @@
 import type { LcdSharedCtx } from './lcdViewTypes';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SHELL_THEMES } from '../../data/catalog';
 import { DEFAULT_GAME_PREFS, type EnemyDisplayMode, type GamePrefs, type GraphicsQualityMode, type KeyBindings, ShellThemeId } from '../../types/pet';
 import { DEFAULT_KEY_BINDINGS } from '../../utils/petEngine';
+import { useDevMode } from '../../utils/devMode';
 import { sound } from '../../utils/sound';
 import { PixelIcon } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
   const { connectedGamepadName, isFullscreen, keysSubTab, mode, onCloseHandheldTo3D, onNavigateMode, onToggleFullscreen, onUpdateSettings, openedEntryMode, openedFromBattle, rebindingAction, save, setKeysSubTab, setRebindingAction, setSettingsTab, settingsTab } = ctx;
+  const [devMode, setDevMode] = useDevMode();
+
+  useEffect(() => {
+    if (!devMode && settingsTab === 'debug') {
+      setSettingsTab('audio');
+    }
+  }, [devMode, settingsTab, setSettingsTab]);
+
   return (
     <>
         {mode === 'settings' && (() => {
@@ -22,17 +31,6 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
             <div className="lcd-submenu">
               <div className="lcd-submenu-head">
                 <div className="lcd-subtabs is-settings-tabs">
-                  <button
-                    type="button"
-                    className={`lcd-subtab inline-icon-btn ${settingsTab === 'world' ? 'active' : ''}`}
-                    onClick={() => {
-                      setRebindingAction(null);
-                      setSettingsTab('world');
-                    }}
-                  >
-                    <PixelIcon name="house" size={11} />
-                    <span>世界</span>
-                  </button>
                   <button
                     type="button"
                     className={`lcd-subtab inline-icon-btn ${settingsTab === 'audio' ? 'active' : ''}`}
@@ -85,6 +83,30 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                     <PixelIcon name="gamepad" size={11} />
                     <span>按键</span>
                   </button>
+                  <button
+                    type="button"
+                    className={`lcd-subtab inline-icon-btn ${settingsTab === 'world' ? 'active' : ''}`}
+                    onClick={() => {
+                      setRebindingAction(null);
+                      setSettingsTab('world');
+                    }}
+                  >
+                    <PixelIcon name="house" size={11} />
+                    <span>世界</span>
+                  </button>
+                  {devMode && (
+                    <button
+                      type="button"
+                      className={`lcd-subtab inline-icon-btn is-debug-tab ${settingsTab === 'debug' ? 'active' : ''}`}
+                      onClick={() => {
+                        setRebindingAction(null);
+                        setSettingsTab('debug');
+                      }}
+                    >
+                      <PixelIcon name="bulb" size={11} />
+                      <span>调试</span>
+                    </button>
+                  )}
                 </div>
                 <button
                   type="button"
@@ -243,37 +265,6 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
 
                 {settingsTab === 'hud' && (
                   <div className="settings-grid-2">
-                    <div className="settings-card is-span-2">
-                      <div className="settings-card-head is-stacked">
-                        <div>
-                          <strong>3D 镜头视角模式</strong>
-                          <small className="audio-track-hint">进屋或经过高架桥底时会自动平滑缩放推进，绝不穿墙</small>
-                        </div>
-                        <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
-                          {(
-                            [
-                              ['hd2d', 'HD-2D俯视'],
-                              ['chase', '自动追尾'],
-                              ['free', '自由环绕'],
-                              ['overhead', '高空鸟瞰'],
-                            ] as const
-                          ).map(([cId, cLbl]) => (
-                            <button
-                              key={cId}
-                              type="button"
-                              className={`lcd-subtab ${(prefs.cameraFollowMode ?? 'hd2d') === cId ? 'active' : ''}`}
-                              onClick={() => {
-                                sound.play('cursor');
-                                setPref({ cameraFollowMode: cId });
-                              }}
-                            >
-                              {cLbl}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
                     <div className="settings-card">
                       <div className="settings-card-head">
                         <strong>界面大小</strong>
@@ -415,6 +406,37 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
 
                 {settingsTab === 'perf' && (
                   <div className="settings-grid-2">
+                    <div className="settings-card is-span-2">
+                      <div className="settings-card-head is-stacked">
+                        <div>
+                          <strong>3D 镜头视角模式</strong>
+                          <small className="audio-track-hint">户外四档视角任选，进入室内或高架桥下时自动平滑缩放推进</small>
+                        </div>
+                        <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                          {(
+                            [
+                              ['hd2d', 'HD-2D俯视'],
+                              ['chase', '自动追尾'],
+                              ['free', '自由环绕'],
+                              ['overhead', '高空鸟瞰'],
+                            ] as const
+                          ).map(([cId, cLbl]) => (
+                            <button
+                              key={cId}
+                              type="button"
+                              className={`lcd-subtab ${(prefs.cameraFollowMode ?? 'hd2d') === cId ? 'active' : ''}`}
+                              onClick={() => {
+                                sound.play('cursor');
+                                setPref({ cameraFollowMode: cId });
+                              }}
+                            >
+                              {cLbl}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
                     {onToggleFullscreen && (
                       <div className="settings-card">
                         <div className="settings-card-head">
@@ -678,30 +700,66 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                   <div className="settings-card">
                     <div className="settings-card-head is-stacked">
                       <div>
-                        <strong>3D 镜头视角模式</strong>
-                        <small>户外四档视角任选，进入室内或高架桥下时自动平滑缩放推进</small>
+                        <strong>世界难度</strong>
+                        <small>实时调整野外遭遇宝可梦的挑战强度</small>
                       </div>
-                      <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                      <div className="inline-icon-row">
                         {(
                           [
-                            ['hd2d', 'HD-2D俯视'],
-                            ['chase', '自动追尾'],
-                            ['free', '自由环绕'],
-                            ['overhead', '高空鸟瞰'],
+                            ['normal', '普通', 'sprout'],
+                            ['hard', '困难', 'sword'],
+                            ['nightmare', '噩梦', 'fire'],
                           ] as const
-                        ).map(([cId, cLbl]) => (
+                        ).map(([id, lbl, iconName]) => (
                           <button
-                            key={cId}
+                            key={id}
                             type="button"
-                            className={`lcd-subtab ${(prefs.cameraFollowMode ?? 'hd2d') === cId ? 'active' : ''}`}
+                            className={`lcd-subtab inline-icon-btn ${(prefs.worldDifficulty ?? 'normal') === id ? 'active' : ''}`}
                             onClick={() => {
                               sound.play('cursor');
-                              setPref({ cameraFollowMode: cId });
+                              setPref({ worldDifficulty: id });
                             }}
                           >
-                            {cLbl}
+                            <PixelIcon name={iconName} size={11} />
+                            <span>{lbl}</span>
                           </button>
                         ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {settingsTab === 'debug' && devMode && (
+                <div className="settings-stack scroll-y">
+                  <div className="settings-card is-debug-banner">
+                    <div className="settings-card-head">
+                      <div>
+                        <strong>开发者调试模式已开启</strong>
+                        <small>用于调试验证昼夜光影、实时天气与性能指标（仅开发/调试态可见）</small>
+                      </div>
+                      <div className="inline-icon-row">
+                        <button
+                          type="button"
+                          className="lcd-subtab"
+                          onClick={() => {
+                            sound.play('cursor');
+                            setPref({ worldTimeMode: 'auto', worldWeatherMode: 'auto' });
+                          }}
+                        >
+                          恢复实时
+                        </button>
+                        <button
+                          type="button"
+                          className="lcd-mini-close"
+                          onClick={() => {
+                            sound.play('cancel');
+                            setDevMode(false);
+                            setSettingsTab('audio');
+                          }}
+                        >
+                          退出调试
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -710,57 +768,28 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                     <div className="settings-card-head is-stacked">
                       <div>
                         <strong>昼夜与日出日落时间</strong>
-                        <small>默认根据当前经纬度实时计算天文日出日落与昼夜光影，也可手动预览</small>
+                        <small>默认按当前经纬度实时计算天文日出日落与光影，调试模式下可手动锁定预览</small>
                       </div>
                       <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
                         {(
                           [
-                            ['auto', '🌍 经纬度实时日出日落'],
-                            ['day', '☀️ 白天'],
-                            ['dusk', '🌇 黄昏'],
-                            ['night', '🌙 夜晚'],
+                            ['auto', '经纬度实时日出日落', 'clock'],
+                            ['day', '白天', 'sun'],
+                            ['dusk', '黄昏', 'sunset'],
+                            ['night', '夜晚', 'moon'],
                           ] as const
-                        ).map(([tId, tLbl]) => (
+                        ).map(([tId, tLbl, tIcon]) => (
                           <button
                             key={tId}
                             type="button"
-                            className={`lcd-subtab ${(prefs.worldTimeMode ?? 'auto') === tId ? 'active' : ''}`}
+                            className={`lcd-subtab inline-icon-btn ${(prefs.worldTimeMode ?? 'auto') === tId ? 'active' : ''}`}
                             onClick={() => {
                               sound.play('cursor');
                               setPref({ worldTimeMode: tId });
                             }}
                           >
-                            {tLbl}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="settings-card">
-                    <div className="settings-card-head is-stacked">
-                      <div>
-                        <strong>世界难度</strong>
-                        <small>类似《我的世界》实时调整野外敌人强度与收益倍率</small>
-                      </div>
-                      <div className="inline-icon-row">
-                        {(
-                          [
-                            ['normal', '普通 · ×1'],
-                            ['hard', '困难 · ×1.75'],
-                            ['nightmare', '噩梦 · ×2.5'],
-                          ] as const
-                        ).map(([id, lbl]) => (
-                          <button
-                            key={id}
-                            type="button"
-                            className={`lcd-subtab ${(prefs.worldDifficulty ?? 'normal') === id ? 'active' : ''}`}
-                            onClick={() => {
-                              sound.play('cursor');
-                              setPref({ worldDifficulty: id });
-                            }}
-                          >
-                            {lbl}
+                            <PixelIcon name={tIcon} size={11} />
+                            <span>{tLbl}</span>
                           </button>
                         ))}
                       </div>
@@ -771,30 +800,31 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                     <div className="settings-card-head is-stacked">
                       <div>
                         <strong>世界天气与属性加成</strong>
-                        <small>默认按 GPS/巡礼城市同步实时气象，也可手动切换体验各类天气加成</small>
+                        <small>默认按当前定位城市同步实时气象，调试模式下可手动切换验证天气与加成效果</small>
                       </div>
                       <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
                         {(
                           [
-                            ['auto', '自动实时'],
-                            ['clear', '☀️ 晴朗'],
-                            ['cloudy', '☁️ 阴天'],
-                            ['rain', '🌧️ 下雨'],
-                            ['storm', '⛈️ 雷雨'],
-                            ['snow', '❄️ 下雪'],
-                            ['windy', '💨 强风'],
+                            ['auto', '自动实时', 'sparkle'],
+                            ['clear', '晴朗', 'weather_clear'],
+                            ['cloudy', '阴天', 'weather_cloudy'],
+                            ['rain', '下雨', 'weather_rain'],
+                            ['storm', '雷雨', 'weather_storm'],
+                            ['snow', '下雪', 'weather_snow'],
+                            ['windy', '强风', 'weather_windy'],
                           ] as const
-                        ).map(([wId, wLbl]) => (
+                        ).map(([wId, wLbl, wIcon]) => (
                           <button
                             key={wId}
                             type="button"
-                            className={`lcd-subtab ${(prefs.worldWeatherMode ?? 'auto') === wId ? 'active' : ''}`}
+                            className={`lcd-subtab inline-icon-btn ${(prefs.worldWeatherMode ?? 'auto') === wId ? 'active' : ''}`}
                             onClick={() => {
                               sound.play('cursor');
                               setPref({ worldWeatherMode: wId });
                             }}
                           >
-                            {wLbl}
+                            <PixelIcon name={wIcon} size={11} />
+                            <span>{wLbl}</span>
                           </button>
                         ))}
                       </div>
@@ -804,18 +834,15 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                   <div className="settings-card">
                     <div className="settings-card-head">
                       <div>
-                        <strong>城镇和平与随从收纳</strong>
-                        <small>进入村庄/城镇自动收起多余随从仅留领队同行，并全面停火</small>
+                        <strong>显示 FPS 性能浮窗</strong>
+                        <small>在 3D 画面左下角实时监控帧率</small>
                       </div>
                       <button
                         type="button"
-                        className={`px-switch ${(prefs.townPeaceMode ?? true) ? 'on' : ''}`}
-                        onClick={() => {
-                          sound.play('cursor');
-                          setPref({ townPeaceMode: !(prefs.townPeaceMode ?? true) });
-                        }}
+                        className={`px-switch ${prefs.showFps ? 'is-on' : ''}`}
+                        onClick={() => setPref({ showFps: !prefs.showFps })}
                       >
-                        <span className="px-switch-knob" />
+                        {prefs.showFps ? '开' : '关'}
                       </button>
                     </div>
                   </div>

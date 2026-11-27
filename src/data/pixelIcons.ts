@@ -57,7 +57,10 @@ export type PixelIconName =
   | 'weather_windy'
   | 'music_note'
   | 'sunrise'
-  | 'sunset';
+  | 'sunset'
+  | 'tactics_command'
+  | 'salvo_barrage'
+  | 'jump_leap';
 
 export interface PixelIconDef {
   grid: string[];
@@ -969,6 +972,94 @@ export const PIXEL_ICONS: Record<PixelIconName, PixelIconDef> = {
       '....YYYY....',
       '.....YY.....',
       '............',
+    ],
+  },
+  tactics_command: {
+    palette: {
+      K: '#12101a',
+      Y: '#ffd43b',
+      W: '#fff9db',
+      O: '#e67700',
+      B: '#228be6',
+      L: '#74c0fc',
+      D: '#1864ab',
+      R: '#ff6b6b',
+      G: '#69db7c',
+    },
+    grid: [
+      '.KK..........KK.',
+      'KWWK..KKKK..KWWK',
+      '.KYYKKYYYYKKYYK.',
+      '..KYYWLLLLWYYK..',
+      '..KYLLBBBBLLYK..',
+      '..KYLBBRRBBDYK..',
+      '..KYLBBRRBBDYK..',
+      '..KYLBBWWBBDYK..',
+      '..KYBGGWWGGDYK..',
+      '..KYBGGDDGGDYK..',
+      '...KYBDDDDDYK...',
+      '...KOYBBBBYOK...',
+      '..KYYKOOOOKYYK..',
+      '.KYYK..KK..KYYK.',
+      'KOYK........KOYK',
+      '.KK..........KK.',
+    ],
+  },
+  salvo_barrage: {
+    palette: {
+      K: '#12101a',
+      W: '#ffffff',
+      Y: '#ffe066',
+      O: '#ff6b35',
+      C: '#66d9e8',
+      B: '#1971c2',
+    },
+    grid: [
+      '.........KKKKKK.',
+      '........KYYYYWWK',
+      '....KKKKKYYWWWWK',
+      '...KCCWWKYYWWYYK',
+      '..KCCWWKKYWWYYK.',
+      '.KBBCCK.KYWYYK..',
+      '.KBBBK.KYWYYK.KK',
+      '..KKK.KYWYYKKWWK',
+      '.....KYWYYKKYWWK',
+      '....KYWYYKKYYWWK',
+      '...KOWYYKKCCWWK.',
+      '..KOOWYKKBBCCK..',
+      '.KKOOWK.KBBBK...',
+      'KOOOKK...KKK....',
+      'KOK.............',
+      '.K..............',
+    ],
+  },
+  jump_leap: {
+    palette: {
+      K: '#12101a',
+      R: '#e03131',
+      H: '#ff8787',
+      W: '#ffffff',
+      Y: '#ffd43b',
+      C: '#4dabf7',
+      S: '#ced4da',
+    },
+    grid: [
+      '.......KK.......',
+      '......KCCK......',
+      '.KK..KCWWCK.KK..',
+      'KWWK..KKKK.KRRK.',
+      'KWWYK.....KRRHRK',
+      '.KWWYKK..KRHHWWK',
+      '.KWWYYKKKRRRHWWK',
+      '..KKYYKKRRRRRRK.',
+      '...KKKRRRRRRRKK.',
+      '...KRRRRRRRRRRK.',
+      '...KWWWWWWWWWWK.',
+      '...KSSSSSSSSSSK.',
+      '....KKKKKKKKKK..',
+      '..KK........KK..',
+      '.KCCK.KKKK.KCCK.',
+      '..KK..KCCK..KK..',
     ],
   },
 };

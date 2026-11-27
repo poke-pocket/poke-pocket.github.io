@@ -37,14 +37,15 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         return;
       }
 
-      if (phase === 'hub') {
-        if (hubModal !== 'none') {
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            closeHubModal();
-          }
-          return;
+      if (hubModal !== 'none') {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeHubModal();
         }
+        return;
+      }
+
+      if (phase === 'hub') {
         if (profileOpen) {
           if (e.key === 'Escape') {
             e.preventDefault();
