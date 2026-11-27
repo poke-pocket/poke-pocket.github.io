@@ -9,6 +9,7 @@ import {
   getDailyResetCountdown,
   getHeroEvolutionStage,
   getLabUpgradeCost,
+  getLabUpgradeEffectSummary,
   getShowcaseBadgeIds,
   getUnlockedTrainerTags,
   getWeeklyResetCountdown,
@@ -114,7 +115,7 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
           <div className="meta-head-right">
             <div className="stardust-pill" title="星星沙子 · 通过 3D 讨伐、首领与委托获取">
               <PixelItemImg src="/sprites/items/bright-powder.png" size={18} />
-              <strong>{meta.stardust}</strong>
+              <strong>{meta.stardust.toLocaleString()}</strong>
               <small>星沙</small>
             </div>
           </div>
@@ -175,6 +176,7 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
                 const maxed = lv >= u.maxLevel;
                 const cost = getLabUpgradeCost(u, lv);
                 const canBuy = !maxed && meta.stardust >= cost;
+                const curEffect = getLabUpgradeEffectSummary(u.id, lv);
                 return (
                   <div key={u.id} className={`lab-card ${maxed ? 'is-maxed' : ''}`}>
                     <div className="lab-card-stripe" style={{ backgroundColor: u.accent }}>
@@ -186,6 +188,9 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
                       <PixelItemImg src={u.icon} size={32} />
                     </div>
                     <strong>{u.name}</strong>
+                    <span className={`lab-cur-effect ${lv > 0 ? 'is-active' : 'is-zero'}`}>
+                      当前：{curEffect}
+                    </span>
                     <small>{u.perLevelLabel}</small>
                     <p>{u.desc}</p>
                     <div className="lab-pip-bar">
@@ -208,7 +213,7 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
                       ) : (
                         <>
                           <PixelItemImg src="/sprites/items/bright-powder.png" size={14} />
-                          <span>{cost}</span>
+                          <span>{cost.toLocaleString()}</span>
                         </>
                       )}
                     </button>
@@ -730,7 +735,7 @@ export const HubInfoModal: React.FC<InfoModalProps> = ({ kind, closing, onClose 
         <div className="surv-upgrade-head shop-head-row">
           <span>
             {kind === 'news'
-              ? '全球宝可梦中心新闻 · 版本日报'
+              ? '全球宝可梦中心新闻 · 历期日报'
               : kind === 'guide'
                 ? 'POKé POCKET 3D 冒险操作指南'
                 : '问题反馈与建议提交'}
@@ -745,9 +750,9 @@ export const HubInfoModal: React.FC<InfoModalProps> = ({ kind, closing, onClose 
             {NEWS_EDITIONS.map((ed) => (
               <article key={ed.id} className="news-card">
                 <div className="news-card-head">
-                  <span className="news-tag">{ed.version}</span>
+                  <span className="news-tag">第 {ed.issueNo} 期</span>
                   <strong>{ed.title}</strong>
-                  <em>第 {ed.issueNo} 期 · {ed.shortDate}</em>
+                  <em>{ed.shortDate}</em>
                 </div>
                 <p>{ed.subtitle}</p>
               </article>

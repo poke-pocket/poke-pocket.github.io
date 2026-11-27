@@ -107,16 +107,41 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
   } = rawCtx as ArenaSharedCtx;
 
   const curWeatherKind = liveWeatherRef.current.kind;
-  const isPrecip = curWeatherKind === 'rain' || curWeatherKind === 'storm' || curWeatherKind === 'snow';
+  const isPrecip =
+    curWeatherKind === 'rain' ||
+    curWeatherKind === 'storm' ||
+    curWeatherKind === 'hail' ||
+    curWeatherKind === 'snow';
   weatherPoints.visible = isPrecip;
   if (isPrecip) {
     weatherMat.color.setHex(
-      curWeatherKind === 'snow' ? 0xffffff : curWeatherKind === 'storm' ? 0x748ffc : 0xa5d8ff,
+      curWeatherKind === 'snow'
+        ? 0xffffff
+        : curWeatherKind === 'hail'
+          ? 0xe7f5ff
+          : curWeatherKind === 'storm'
+            ? 0x748ffc
+            : 0xa5d8ff,
     );
-    weatherMat.size = curWeatherKind === 'snow' ? 0.36 : 0.28;
+    weatherMat.size =
+      curWeatherKind === 'hail' ? 0.44 : curWeatherKind === 'snow' ? 0.36 : 0.28;
     const posAttr = weatherGeo.getAttribute('position') as THREE.BufferAttribute;
-    const fallSpeed = curWeatherKind === 'snow' ? 3.2 : curWeatherKind === 'storm' ? 24 : 18;
-    const driftX = curWeatherKind === 'snow' ? Math.sin(windClock * 1.4) * 1.6 : curWeatherKind === 'storm' ? 4.5 : 1.8;
+    const fallSpeed =
+      curWeatherKind === 'snow'
+        ? 3.2
+        : curWeatherKind === 'hail'
+          ? 28
+          : curWeatherKind === 'storm'
+            ? 24
+            : 18;
+    const driftX =
+      curWeatherKind === 'snow'
+        ? Math.sin(windClock * 1.4) * 1.6
+        : curWeatherKind === 'hail'
+          ? 3.2
+          : curWeatherKind === 'storm'
+            ? 4.5
+            : 1.8;
     for (let i = 0; i < WEATHER_PARTICLE_COUNT; i++) {
       let px = posAttr.getX(i) + driftX * dt;
       let py = posAttr.getY(i) - fallSpeed * dt;

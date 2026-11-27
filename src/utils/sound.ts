@@ -1,3 +1,6 @@
+import { WeatherAmbienceEngine } from './weatherAmbience';
+import type { WeatherKind } from './weatherSystem';
+
 export type SfxKind =
   | 'cursor'
   | 'confirm'
@@ -582,6 +585,7 @@ class RetroSoundEngine {
   private cryBufferCache = new Map<string, AudioBuffer>();
   private cryToneMode: 'warm' | 'cute' | 'raw' = 'warm';
   private unlockListenersBound = false;
+  private weatherAmbience = new WeatherAmbienceEngine();
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -591,6 +595,7 @@ class RetroSoundEngine {
           this.activeCry.pause();
         }
         this.syncBgmBusGain();
+        this.weatherAmbience.setAudioConfig({ pageHidden: this.pageHidden });
       });
     }
     this.bindGestureUnlockListeners();
@@ -683,16 +688,37 @@ class RetroSoundEngine {
   setMasterVolume(vol: number) {
     this.masterVolume = Math.max(0, Math.min(100, Math.round(vol)));
     this.syncBgmBusGain();
+    this.weatherAmbience.setAudioConfig({ masterVolume: this.masterVolume });
   }
 
   setMuteOnBlur(enabled: boolean) {
     this.muteOnBlur = enabled;
     this.syncBgmBusGain();
+    this.weatherAmbience.setAudioConfig({ muteOnBlur: this.muteOnBlur });
   }
 
   setMuted(muted: boolean) {
     this.muted = muted;
     this.syncBgmBusGain();
+    this.weatherAmbience.setAudioConfig({ muted: this.muted });
+  }
+
+  setAmbient(enabled: boolean, volume: number) {
+    this.weatherAmbience.setAudioConfig({
+      enabled,
+      volume: Math.max(0, Math.min(100, Math.round(volume))),
+    });
+    if (this.ctx && this.ctx.state === 'running') {
+      this.weatherAmbience.attachContext(this.ctx);
+    }
+  }
+
+  setWeatherAmbience(
+    kind: WeatherKind | null,
+    opts?: { indoor?: boolean; isNight?: boolean },
+  ) {
+    const ctx = this.ctx && this.ctx.state === 'running' ? this.ctx : null;
+    this.weatherAmbience.setWeather(kind, opts, ctx);
   }
 
   setSfxVolume(vol: number) {
@@ -1291,12 +1317,20 @@ class RetroSoundEngine {
     }
   }
 
-  /** Unlock WebAudio on user gesture so BGM begins immediately if enabled */
+  /** Unlock WebAudio on user gesture so BGM & procedural weather ambience begin immediately if enabled */
   unlock() {
     const ctx = this.getCtx(true);
     if (ctx) {
       this.ensureBgmBus(ctx);
       this.syncBgmBusGain();
+      if (ctx.state === 'running') {
+        this.weatherAmbience.attachContext(ctx);
+      } else {
+        void ctx
+          .resume()
+          .then(() => this.weatherAmbience.attachContext(ctx))
+          .catch(() => {});
+      }
     }
     if (this.bgmEnabled && this.bgmVolume > 0) {
       this.startBgmLoop();

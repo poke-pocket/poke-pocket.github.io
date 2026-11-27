@@ -1,6 +1,6 @@
 import type { PokemonElement } from '../types/pet';
 
-export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'windy';
+export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm' | 'hail' | 'snow' | 'windy';
 
 export interface LiveWeatherInfo {
   kind: WeatherKind;
@@ -69,6 +69,14 @@ const WEATHER_META: Record<
     skyTintHex: 0x3b3e66,
     fogTintHex: 0x4c4f7a,
   },
+  hail: {
+    label: '冰雹',
+    emoji: '🧊',
+    buffText: '水/冰系攻 +24% 暴击 +10% · 防御韧性提升',
+    accentColor: '#0c8599',
+    skyTintHex: 0x6c8ead,
+    fogTintHex: 0x9eb8cf,
+  },
   snow: {
     label: '下雪',
     emoji: '❄️',
@@ -129,6 +137,15 @@ export function getWeatherCombatBonus(
       }
       return { atkMult: 1.0, cdMult: 1.0, critAdd: 0, speedMult: 1.0, badgeText: null };
 
+    case 'hail':
+      if (element === 'water') {
+        return { atkMult: 1.24, cdMult: 0.9, critAdd: 0.1, speedMult: 1.02, badgeText: '🧊 冰雹激寒 UP' };
+      }
+      if (element === 'dragon' || element === 'ghost') {
+        return { atkMult: 1.14, cdMult: 0.94, critAdd: 0.06, speedMult: 1.0, badgeText: '🧊 冰雹破甲 UP' };
+      }
+      return { atkMult: 1.0, cdMult: 1.0, critAdd: 0.04, speedMult: 0.98, badgeText: null };
+
     case 'snow':
       if (element === 'water') {
         return { atkMult: 1.2, cdMult: 0.9, critAdd: 0.06, speedMult: 1.04, badgeText: '❄ 雪天冰水 UP' };
@@ -159,8 +176,9 @@ export function getWeatherCombatBonus(
 }
 
 export function mapWmoCodeToWeather(code: number, windKmh: number): WeatherKind {
+  if (code === 96 || code === 99 || code === 77) return 'hail';
   if (code >= 95) return 'storm';
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+  if ((code >= 71 && code <= 76) || code === 85 || code === 86) return 'snow';
   if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
   if (windKmh >= 28) return 'windy';
   if (code === 2 || code === 3 || code === 45 || code === 48) return 'cloudy';
@@ -214,6 +232,7 @@ export function buildFallbackWeather(
 
 const WEATHER_CACHE = new Map<string, LiveWeatherInfo>();
 const CACHE_TTL_MS = 15 * 60 * 1000;
+const FALLBACK_RETRY_TTL_MS = 60 * 1000;
 
 /**
  * Fetches real-time weather from Open-Meteo (free, keyless, HTTPS, CORS-enabled).
@@ -226,7 +245,8 @@ export async function fetchLiveWeatherAt(
 ): Promise<LiveWeatherInfo> {
   const key = `${lat.toFixed(1)},${lng.toFixed(1)}`;
   const cached = WEATHER_CACHE.get(key);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+  const ttl = cached?.source === 'fallback' ? FALLBACK_RETRY_TTL_MS : CACHE_TTL_MS;
+  if (cached && Date.now() - cached.fetchedAt < ttl) {
     return locationLabel && cached.locationLabel !== locationLabel
       ? { ...cached, locationLabel }
       : cached;

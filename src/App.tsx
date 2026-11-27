@@ -177,6 +177,7 @@ export function App() {
     sound.setMuteOnBlur(save.prefs?.muteOnBlur ?? true);
     sound.setSfxVolume(save.sfxVolume);
     sound.setBgm(save.bgmEnabled, save.bgmVolume);
+    sound.setAmbient(save.prefs?.ambientEnabled ?? true, save.prefs?.ambientVolume ?? 68);
     sound.setMuted(save.muted);
     sound.setCry(save.cryEnabled ?? true, save.cryVolume ?? 80);
     sound.setCombatSfx(save.combatSfxEnabled ?? true);
@@ -1162,6 +1163,7 @@ export function App() {
       sound.setMuteOnBlur(nextPrefs?.muteOnBlur ?? true);
       sound.setSfxVolume(next.sfxVolume);
       sound.setBgm(next.bgmEnabled, next.bgmVolume);
+      sound.setAmbient(nextPrefs?.ambientEnabled ?? true, nextPrefs?.ambientVolume ?? 68);
       sound.setMuted(next.muted);
       sound.setCry(next.cryEnabled ?? true, next.cryVolume ?? 80);
       sound.setCombatSfx(next.combatSfxEnabled ?? true);

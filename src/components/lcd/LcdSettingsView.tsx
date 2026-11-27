@@ -199,6 +199,34 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
 
                     <div className="settings-card">
                       <div className="settings-card-head">
+                        <strong>环境音效</strong>
+                        <div className="inline-icon-row">
+                          <button
+                            type="button"
+                            className={`px-switch ${(prefs.ambientEnabled ?? true) ? 'is-on' : ''}`}
+                            onClick={() => setPref({ ambientEnabled: !(prefs.ambientEnabled ?? true) })}
+                          >
+                            {(prefs.ambientEnabled ?? true) ? '开' : '关'}
+                          </button>
+                          <em className="vol-pill">{prefs.ambientVolume ?? 68}%</em>
+                        </div>
+                      </div>
+                      <input
+                        type="range"
+                        className="pkb-range is-blue"
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={prefs.ambientVolume ?? 68}
+                        style={{ '--val': `${prefs.ambientVolume ?? 68}%` } as React.CSSProperties}
+                        onChange={(e) =>
+                          setPref({ ambientEnabled: true, ambientVolume: Number(e.target.value) })
+                        }
+                      />
+                    </div>
+
+                    <div className="settings-card">
+                      <div className="settings-card-head">
                         <strong>宝可梦叫声</strong>
                         <div className="inline-icon-row">
                           <button
@@ -806,6 +834,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                             ['cloudy', '阴天', 'weather_cloudy'],
                             ['rain', '下雨', 'weather_rain'],
                             ['storm', '雷雨', 'weather_storm'],
+                            ['hail', '冰雹', 'weather_hail'],
                             ['snow', '下雪', 'weather_snow'],
                             ['windy', '强风', 'weather_windy'],
                           ] as const

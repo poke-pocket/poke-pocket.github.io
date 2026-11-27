@@ -53,6 +53,7 @@ export type PixelIconName =
   | 'weather_cloudy'
   | 'weather_rain'
   | 'weather_storm'
+  | 'weather_hail'
   | 'weather_snow'
   | 'weather_windy'
   | 'music_note'
@@ -887,6 +888,23 @@ export const PIXEL_ICONS: Record<PixelIconName, PixelIconDef> = {
       '.....YYYK...',
       '....YYK.....',
       '...YK.......',
+    ],
+  },
+  weather_hail: {
+    palette: { K: '#1e293b', G: '#adb5bd', W: '#ffffff', I: '#a5f3fc', B: '#38bdf8' },
+    grid: [
+      '....GGGG....',
+      '..GGGGGGGG..',
+      '.GWWWWGGGGK.',
+      '.GGGGGGGGGK.',
+      '..KKKKKKKK..',
+      '............',
+      '..WI....WI..',
+      '..IB....IB..',
+      '.....WI.....',
+      '.WI..IB..WI.',
+      '.IB......IB.',
+      '............',
     ],
   },
   weather_snow: {
