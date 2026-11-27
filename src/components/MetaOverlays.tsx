@@ -115,7 +115,7 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
           <div className="meta-head-right">
             <div className="stardust-pill" title="星星沙子 · 通过 3D 讨伐、首领与委托获取">
               <PixelItemImg src="/sprites/items/bright-powder.png" size={18} />
-              <strong>{meta.stardust}</strong>
+              <strong>{meta.stardust.toLocaleString()}</strong>
               <small>星沙</small>
             </div>
           </div>
@@ -213,7 +213,7 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
                       ) : (
                         <>
                           <PixelItemImg src="/sprites/items/bright-powder.png" size={14} />
-                          <span>{cost}</span>
+                          <span>{cost.toLocaleString()}</span>
                         </>
                       )}
                     </button>

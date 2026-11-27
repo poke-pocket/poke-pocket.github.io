@@ -28,6 +28,8 @@ export interface LabUpgradeDef {
   maxLevel: number;
   baseCost: number;
   costStep: number;
+  /** Per-level stardust cost curve (length === maxLevel), differentiated by combat power impact */
+  costCurve: number[];
   icon: string;
   accent: string;
 }
@@ -39,8 +41,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '强化主角与全队随从的基础伤害输出。',
     perLevelLabel: '每级伤害 +5%',
     maxLevel: 10,
-    baseCost: 60,
-    costStep: 45,
+    baseCost: 100,
+    costStep: 180,
+    costCurve: [100, 280, 720, 1800, 4200, 9500, 20000, 42000, 75000, 120000],
     icon: '/sprites/items/life-orb.png',
     accent: '#e03131',
   },
@@ -50,8 +53,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '提升主角出战时的最大生命值上限。',
     perLevelLabel: '每级最大 HP +14',
     maxLevel: 10,
-    baseCost: 60,
-    costStep: 45,
+    baseCost: 80,
+    costStep: 140,
+    costCurve: [80, 220, 580, 1400, 3400, 7800, 17000, 35000, 62000, 100000],
     icon: '/sprites/items/sitrus-berry.png',
     accent: '#2f9e44',
   },
@@ -61,8 +65,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '提升 3D 野外探索与走位躲弹幕的移动速度。',
     perLevelLabel: '每级移速 +2.5%',
     maxLevel: 10,
-    baseCost: 70,
-    costStep: 50,
+    baseCost: 90,
+    costStep: 150,
+    costCurve: [90, 240, 620, 1500, 3500, 8000, 16500, 32000, 56000, 90000],
     icon: '/sprites/items/choice-scarf.png',
     accent: '#22b8cf',
   },
@@ -73,7 +78,8 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     perLevelLabel: '每级经验 +6%',
     maxLevel: 10,
     baseCost: 70,
-    costStep: 55,
+    costStep: 110,
+    costCurve: [70, 180, 450, 1100, 2600, 5800, 12000, 24000, 44000, 70000],
     icon: '/sprites/items/lucky-egg.png',
     accent: '#7950f2',
   },
@@ -84,7 +90,8 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     perLevelLabel: '每级金币 +10%',
     maxLevel: 10,
     baseCost: 65,
-    costStep: 50,
+    costStep: 95,
+    costCurve: [65, 160, 400, 950, 2200, 5000, 10500, 21000, 38000, 60000],
     icon: '/sprites/items/amulet-coin.png',
     accent: '#f59f00',
   },
@@ -94,8 +101,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '提升星星沙子结算倍率与幸运暴击触发率。',
     perLevelLabel: '每级星沙 +8% / 幸运 +1.5%',
     maxLevel: 10,
-    baseCost: 85,
-    costStep: 65,
+    baseCost: 120,
+    costStep: 200,
+    costCurve: [120, 320, 800, 1900, 4500, 10000, 21000, 40000, 68000, 100000],
     icon: '/sprites/items/kings-rock.png',
     accent: '#ae3ec9',
   },
@@ -105,8 +113,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '大幅扩张经验水晶与金币的自动吸附半径。',
     perLevelLabel: '每级拾取范围 +0.7',
     maxLevel: 10,
-    baseCost: 55,
-    costStep: 42,
+    baseCost: 50,
+    costStep: 70,
+    costCurve: [50, 120, 280, 650, 1500, 3400, 7200, 14000, 24000, 38000],
     icon: '/sprites/items/magnet.png',
     accent: '#1971c2',
   },
@@ -116,8 +125,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '战斗中每秒持续回复主角生命值。',
     perLevelLabel: '每级再生 +0.5 HP/秒',
     maxLevel: 10,
-    baseCost: 75,
-    costStep: 55,
+    baseCost: 120,
+    costStep: 200,
+    costCurve: [120, 320, 820, 2000, 4800, 11000, 23000, 46000, 78000, 110000],
     icon: '/sprites/items/leftovers.png',
     accent: '#40c057',
   },
@@ -127,8 +137,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '缩短全队宝可梦招式冷却，火力更密集。',
     perLevelLabel: '每级攻速 +3%',
     maxLevel: 10,
-    baseCost: 100,
-    costStep: 75,
+    baseCost: 150,
+    costStep: 250,
+    costCurve: [150, 400, 1000, 2400, 5800, 13000, 28000, 56000, 105000, 180000],
     icon: '/sprites/items/quick-claw.png',
     accent: '#fd7e14',
   },
@@ -138,8 +149,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '每次升级选卡时增加免费的选项刷新次数。',
     perLevelLabel: '每级刷新次数 +1',
     maxLevel: 8,
-    baseCost: 90,
-    costStep: 70,
+    baseCost: 80,
+    costStep: 140,
+    costCurve: [80, 220, 560, 1400, 3400, 8000, 18000, 40000],
     icon: '/sprites/items/vs-seeker.png',
     accent: '#3b5bdb',
   },
@@ -149,8 +161,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '扩充 3D 野外探索时最多可同时上阵跟随的宝可梦数量。',
     perLevelLabel: '每级携带上限 +1',
     maxLevel: 4,
-    baseCost: 180,
-    costStep: 150,
+    baseCost: 800,
+    costStep: 5200,
+    costCurve: [800, 6000, 35000, 200000],
     icon: '/sprites/items/ultra-ball.png',
     accent: '#e03131',
   },
@@ -160,8 +173,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '主角体力归零时自动原地满血爆发震退敌群并获得短暂无敌。',
     perLevelLabel: '每级复活次数 +1',
     maxLevel: 5,
-    baseCost: 180,
-    costStep: 160,
+    baseCost: 600,
+    costStep: 2900,
+    costCurve: [600, 3500, 16000, 65000, 220000],
     icon: '/sprites/items/focus-sash.png',
     accent: '#f08c00',
   },
@@ -171,8 +185,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '提升主角与全队随从所有招式触发要害暴击的概率。',
     perLevelLabel: '每级暴击率 +3.5%',
     maxLevel: 8,
-    baseCost: 85,
-    costStep: 60,
+    baseCost: 180,
+    costStep: 370,
+    costCurve: [180, 550, 1500, 4200, 11000, 28000, 68000, 150000],
     icon: '/sprites/items/scope-lens.png',
     accent: '#d6336c',
   },
@@ -182,8 +197,9 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '强化训练师防具韧性，按百分比减免野怪碰撞与首领弹幕伤害。',
     perLevelLabel: '每级受伤减免 -4%',
     maxLevel: 8,
-    baseCost: 80,
-    costStep: 60,
+    baseCost: 160,
+    costStep: 340,
+    costCurve: [160, 500, 1400, 3800, 10000, 26000, 64000, 140000],
     icon: '/sprites/items/focus-band.png',
     accent: '#495057',
   },
@@ -194,7 +210,8 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     perLevelLabel: '每级收服率 +4% / 留存 +20%',
     maxLevel: 8,
     baseCost: 90,
-    costStep: 65,
+    costStep: 150,
+    costCurve: [90, 240, 620, 1500, 3600, 8500, 19000, 42000],
     icon: '/sprites/items/master-ball.png',
     accent: '#7048e8',
   },
@@ -204,18 +221,22 @@ export const LAB_UPGRADES: LabUpgradeDef[] = [
     desc: '每次出发探险时额外携带伤药补给次数，续航更持久。',
     perLevelLabel: '每级初始伤药 +1',
     maxLevel: 10,
-    baseCost: 65,
-    costStep: 50,
+    baseCost: 80,
+    costStep: 120,
+    costCurve: [80, 200, 500, 1200, 2800, 6400, 13500, 27000, 48000, 75000],
     icon: '/sprites/items/super-potion.png',
     accent: '#12b886',
   },
 ];
 
 export function getLabUpgradeCost(def: LabUpgradeDef, currentLv: number): number {
-  const linear = def.baseCost + currentLv * def.costStep;
-  const quad = Math.round(def.costStep * 0.42 * currentLv * currentLv);
-  const tierMult = currentLv >= 7 ? 1.35 : currentLv >= 4 ? 1.15 : 1;
-  return Math.round(((linear + quad) * tierMult) / 5) * 5;
+  const idx = Math.max(0, Math.floor(currentLv));
+  if (idx < def.costCurve.length) {
+    return def.costCurve[idx];
+  }
+  const last = def.costCurve[def.costCurve.length - 1] ?? def.baseCost;
+  const extra = idx - Math.max(0, def.costCurve.length - 1);
+  return Math.round((last * Math.pow(1.6, extra)) / 100) * 100;
 }
 
 export function getLabUpgradeEffectSummary(id: LabUpgradeId, lv: number): string {
