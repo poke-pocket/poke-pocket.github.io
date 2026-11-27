@@ -360,6 +360,8 @@ export interface GamePrefs {
   showDamageNumbers: boolean;
   showComboCounter: boolean;
   // Audio
+  ambientEnabled?: boolean;
+  ambientVolume?: number; // 0..100
   cryToneMode?: 'warm' | 'cute' | 'raw';
   letsGoVoices?: boolean;
   pikachuCryVariant?: 'soft_voice' | 'letsgo' | 'classic_gba' | 'pichu_cute' | 'original_raw';
@@ -378,7 +380,7 @@ export interface GamePrefs {
   // Minecraft-style World Settings (Difficulty, Mode, Weather Override, Peaceful Towns)
   worldDifficulty?: 'normal' | 'hard' | 'nightmare';
   worldGameMode?: 'story' | 'endless';
-  worldWeatherMode?: 'auto' | 'clear' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'windy';
+  worldWeatherMode?: 'auto' | 'clear' | 'cloudy' | 'rain' | 'storm' | 'hail' | 'snow' | 'windy';
   worldTimeMode?: 'auto' | 'day' | 'dusk' | 'night';
   townPeaceMode?: boolean;
   cameraFollowMode?: CameraFollowMode;
@@ -387,6 +389,8 @@ export interface GamePrefs {
 export const DEFAULT_GAME_PREFS: GamePrefs = {
   language: 'zh',
   masterVolume: 80,
+  ambientEnabled: true,
+  ambientVolume: 68,
   muteOnBlur: true,
   cryToneMode: 'warm',
   letsGoVoices: true,

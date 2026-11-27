@@ -1633,6 +1633,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         cloudy: 19,
         rain: 17,
         storm: 16,
+        hail: 2,
         snow: -2,
         windy: 18,
       };
@@ -1666,6 +1667,22 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     meta.worldTour?.homeCoords?.lng,
     lang,
   ]);
+
+  // Procedural Non-Looping Weather Ambience Sync (Raindrops, Hailstones, Thunderstorms, Wind, Snow, Day/Night)
+  const activeInteriorAudioRef = useRef(false);
+  useEffect(() => {
+    const isNightNow = solarInfo.phase === 'night' || solarInfo.phase === 'dusk';
+    sound.setWeatherAmbience(liveWeather.kind, {
+      indoor: phase === 'hub' ? false : activeInteriorAudioRef.current,
+      isNight: isNightNow,
+    });
+  }, [liveWeather.kind, solarInfo.phase, phase]);
+
+  useEffect(() => {
+    return () => {
+      sound.setWeatherAmbience(null);
+    };
+  }, []);
 
   // Mobile Back / Swipe-Back coordination with App.tsx
   const arenaHasCloseableLayer =
@@ -3058,7 +3075,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
       const wKind = liveWeatherRef.current.kind;
       const weatherDim =
-        wKind === 'storm' ? 0.62 : wKind === 'rain' ? 0.76 : wKind === 'cloudy' ? 0.88 : 1.0;
+        wKind === 'storm'
+          ? 0.62
+          : wKind === 'hail'
+            ? 0.72
+            : wKind === 'rain'
+              ? 0.76
+              : wKind === 'cloudy'
+                ? 0.88
+                : 1.0;
       const wantSunInt = solar.sunIntensity * weatherDim;
       const wantHemiInt = solar.hemiIntensity * (wKind === 'snow' ? 1.1 : 1.0);
       const kLerp = Math.min(1, dtSec * 3.2);
@@ -3573,6 +3598,14 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               activeBgmTrackRef.current = desiredBgm;
               sound.setTrack(desiredBgm);
               setActiveBgmTrack(desiredBgm);
+            }
+            const isIndoorNow = Boolean(activeInteriorNow);
+            if (isIndoorNow !== activeInteriorAudioRef.current) {
+              activeInteriorAudioRef.current = isIndoorNow;
+              sound.setWeatherAmbience(liveWeatherRef.current.kind, {
+                indoor: isIndoorNow,
+                isNight: solarInfoRef.current.lampGlow > 0.45,
+              });
             }
           }
           stepArenaCombatSimulation3D({ activeTownNow, activeZone, addFollowerToRun, adventureStyleRef, bbTiltX, buildLevelChoices, buildResultSummary, camFwdX, camFwdZ, camRightX, camRightZ, camYawNow, camera, damageEnemy3D, diffMeta, difficultyId, dt, endedRef, fireSkill, gameMode, groundY, inTownPeaceZone, isInsideAnyTownPlaza, liveOverlandCityRef, liveWeatherRef, mLen, maxFollowersRef, metaBonusesRef, metaRef, nearbyZones, onCaptureBoss, onHealParty, pausedRef, pet, pickTargetForFollower, prefsRef, regionMeta, scene, selectedBiome, setCaptureCutscene, setLevelChoices, setResultSummary, shakeRef, showBanner, sim, spawnEnemy3D, spawnGlowFlash, spawnGroundDecalWave, spawnPixelParticles, spawnSkillProjectile3D, spawnSpriteBurst, tacticsRef, vfxAtlas });
