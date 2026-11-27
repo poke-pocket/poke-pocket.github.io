@@ -280,7 +280,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                             <span className="party-ball-avatar-wrap">
                               <span className="party-ball-well">
                                 <TrimmedSpriteImg
-                                  src={f.sprite}
+                                  src={f.staticSprite ?? f.sprite}
                                   alt={f.name}
                                   size={32}
                                   fillRatio={0.88}

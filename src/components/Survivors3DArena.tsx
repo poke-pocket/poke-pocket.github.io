@@ -703,6 +703,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       name: string;
       level: number;
       sprite: string;
+      staticSprite: string;
       skills: SurvivorSkillId[];
     }[]
   >([]);
@@ -1298,6 +1299,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         name: f.name,
         level: f.level,
         sprite: SPECIES_CATALOG[f.species].stageSprites[f.stage].animated,
+        staticSprite: SPECIES_CATALOG[f.species].stageSprites[f.stage].static,
         skills: [...f.skills],
       })),
     );
