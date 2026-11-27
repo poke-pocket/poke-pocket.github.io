@@ -6,10 +6,44 @@ import { GYM_BADGE_CATALOG, getActiveTrainerTagDef } from '../../data/metaProgre
 import { ShopOverlay } from '../ShopOverlay';
 import { WorldMapHud } from '../WorldMapHud';
 import { sound } from '../../utils/sound';
-import { PixelIcon, PixelItemImg } from '../PixelSprite';
+import { PixelGrid, PixelIcon, PixelItemImg } from '../PixelSprite';
 import type { PixelIconName } from '../../data/pixelIcons';
 import { TrimmedSpriteImg } from '../TrimmedSpriteImg';
 import { ArenaTownSocialAndBusOverlay } from './ArenaTownSocialAndBusOverlay';
+
+const POKEBALL_RING_PALETTE: Record<string, string> = {
+  K: '#12101a',
+  R: '#e03131',
+  H: '#ff8787',
+  D: '#b02020',
+  W: '#fffdf5',
+  S: '#ced4da',
+};
+
+const POKEBALL_RING_GRID: string[] = [
+  '.......KKKKKKKK.......',
+  '.....KKHHHHHHHHKK.....',
+  '...KKHHHRRRRRRRDDKK...',
+  '..KHHRRKKKKKKKKRRDDK..',
+  '..KHRKK........KKRDK..',
+  '.KHRK............KRDK.',
+  '.KRK..............KDK.',
+  'KRK................KDK',
+  'KRK................KDK',
+  'KRK................KDK',
+  'KKKK..............KKKK',
+  'KKKK..............KKKK',
+  'KWK................KSK',
+  'KWK................KSK',
+  'KWK................KSK',
+  '.KWK..............KSK.',
+  '.KWWK............KSSK.',
+  '..KWWKK........KKSSK..',
+  '..KWWWWKKKKKKKKSSSSK..',
+  '...KKWWWWWWWWSSSSKK...',
+  '.....KKWWWWSSSSKK.....',
+  '.......KKKKKKKK.......',
+];
 
 function formatHudDistance(distM: number): string {
   if (!Number.isFinite(distM) || distM <= 0) return '0 m';
@@ -182,6 +216,274 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   </div>
                 );
               })()}
+
+              {/* Party Dock directly beneath Hero Card: Default = Compact Poké Ball Avatar Row; Expanded = Full Party Cards */}
+              {!resultModal && followersView.length > 0 && (
+                <div className={`surv-party-dock ${mobilePartyOpen ? 'is-expanded' : 'is-compact'}`}>
+                  {!mobilePartyOpen ? (
+                    <div className="surv-party-compact-row">
+                      {followersView.map((f, fIdx) => {
+                        const vitals = hud.followerVitals[f.id] ?? {
+                          hp: Math.round((95 + f.level * 28) * (hpPct / 100)),
+                          maxHp: 95 + f.level * 28,
+                          mp: 100,
+                          maxMp: 100,
+                        };
+                        const fHpPct = Math.max(
+                          0,
+                          Math.min(100, Math.round((vitals.hp / Math.max(1, vitals.maxHp)) * 100)),
+                        );
+                        const fMpPct = Math.max(
+                          0,
+                          Math.min(100, Math.round((vitals.mp / Math.max(1, vitals.maxMp)) * 100)),
+                        );
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            draggable
+                            onDragStart={(e) => {
+                              dragFollowerIdxRef.current = fIdx;
+                              e.dataTransfer.effectAllowed = 'move';
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = 'move';
+                              if (dragOverFollowerIdx !== fIdx) setDragOverFollowerIdx(fIdx);
+                            }}
+                            onDragLeave={() => {
+                              if (dragOverFollowerIdx === fIdx) setDragOverFollowerIdx(null);
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              const from = dragFollowerIdxRef.current;
+                              dragFollowerIdxRef.current = null;
+                              setDragOverFollowerIdx(null);
+                              if (from !== null && from !== fIdx) {
+                                reorderBattleFollowers(from, fIdx);
+                              }
+                            }}
+                            onDragEnd={() => {
+                              dragFollowerIdxRef.current = null;
+                              setDragOverFollowerIdx(null);
+                            }}
+                            className={`party-ball-slot ${dragOverFollowerIdx === fIdx ? 'is-drag-over' : ''}`}
+                            title={`${f.name} Lv.${f.level} · HP ${vitals.hp}/${vitals.maxHp}（点击查看详情与技能）`}
+                            onClick={() => {
+                              if (f.sourcePetId) {
+                                onOpenPokemonManager('party_detail', true, f.sourcePetId);
+                              } else {
+                                onOpenPokemonManager('tactics', true);
+                              }
+                            }}
+                          >
+                            <span className="party-ball-avatar-wrap">
+                              <span className="party-ball-well">
+                                <TrimmedSpriteImg
+                                  src={f.sprite}
+                                  alt={f.name}
+                                  size={32}
+                                  fillRatio={0.88}
+                                />
+                              </span>
+                              <PixelGrid
+                                grid={POKEBALL_RING_GRID}
+                                palette={POKEBALL_RING_PALETTE}
+                                size={46}
+                                className="party-ball-ring-svg"
+                              />
+                            </span>
+                            <span className="party-ball-bars">
+                              <span className="party-ball-bar-track is-hp">
+                                <span
+                                  className="party-ball-bar-fill"
+                                  style={{
+                                    width: `${fHpPct}%`,
+                                    backgroundColor:
+                                      fHpPct > 40 ? '#48d167' : fHpPct > 20 ? '#fcc419' : '#ff5c5c',
+                                  }}
+                                />
+                              </span>
+                              <span className="party-ball-bar-track is-mp">
+                                <span
+                                  className={`party-ball-bar-fill is-mp ${fMpPct >= 96 ? 'is-ready' : ''}`}
+                                  style={{ width: `${fMpPct}%` }}
+                                />
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        className="party-compact-expand-btn"
+                        aria-label="向下展开队伍详情列表"
+                        title="展开完整队伍列表"
+                        onClick={() => {
+                          sound.play('confirm');
+                          setMobilePartyOpen(true);
+                        }}
+                      >
+                        <span>▼</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="surv-party-expanded-panel">
+                      <button
+                        type="button"
+                        className="party-collapse-top-btn"
+                        aria-label="收起队伍列表"
+                        title="收起为精灵球精简视图"
+                        onClick={() => {
+                          sound.play('cancel');
+                          setMobilePartyOpen(false);
+                        }}
+                      >
+                        <span>▲</span>
+                        <strong>收起队伍</strong>
+                      </button>
+                      <div className="surv-party-cards-wrap">
+                        {followersView.map((f, fIdx) => {
+                          const vitals = hud.followerVitals[f.id] ?? {
+                            hp: Math.round((95 + f.level * 28) * (hpPct / 100)),
+                            maxHp: 95 + f.level * 28,
+                            mp: 100,
+                            maxMp: 100,
+                          };
+                          const fHpPct = Math.max(
+                            0,
+                            Math.min(100, Math.round((vitals.hp / Math.max(1, vitals.maxHp)) * 100)),
+                          );
+                          const fMpPct = Math.max(
+                            0,
+                            Math.min(100, Math.round((vitals.mp / Math.max(1, vitals.maxMp)) * 100)),
+                          );
+                          const uniqueSkills = Array.from(new Set(f.skills)).slice(0, 4);
+                          const accentCol = SURVIVOR_SKILLS[f.skills[0]]?.color ?? '#ffe066';
+                          return (
+                            <div
+                              key={f.id}
+                              draggable
+                              onDragStart={(e) => {
+                                dragFollowerIdxRef.current = fIdx;
+                                e.dataTransfer.effectAllowed = 'move';
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = 'move';
+                                if (dragOverFollowerIdx !== fIdx) setDragOverFollowerIdx(fIdx);
+                              }}
+                              onDragLeave={() => {
+                                if (dragOverFollowerIdx === fIdx) setDragOverFollowerIdx(null);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const from = dragFollowerIdxRef.current;
+                                dragFollowerIdxRef.current = null;
+                                setDragOverFollowerIdx(null);
+                                if (from !== null && from !== fIdx) {
+                                  reorderBattleFollowers(from, fIdx);
+                                }
+                              }}
+                              onDragEnd={() => {
+                                dragFollowerIdxRef.current = null;
+                                setDragOverFollowerIdx(null);
+                              }}
+                              className={`surv-party-card ${dragOverFollowerIdx === fIdx ? 'is-drag-over' : ''}`}
+                              style={{ '--unit-accent': accentCol } as React.CSSProperties}
+                              title={`${f.name} Lv.${f.level} · HP ${vitals.hp}/${vitals.maxHp} · 右侧可调序或移出队伍`}
+                              onClick={() => {
+                                if (f.sourcePetId) {
+                                  onOpenPokemonManager('party_detail', true, f.sourcePetId);
+                                } else {
+                                  onOpenPokemonManager('tactics', true);
+                                }
+                              }}
+                            >
+                              <div className="party-portrait">
+                                <TrimmedSpriteImg
+                                  src={f.sprite}
+                                  alt={f.name}
+                                  size={38}
+                                  fillRatio={0.86}
+                                />
+                                <em className="party-lv-tag">Lv.{f.level}</em>
+                              </div>
+                              <div className="party-info">
+                                <div className="party-head-line">
+                                  <strong>{f.name}</strong>
+                                  <div className="party-skill-icons">
+                                    {uniqueSkills.map((sid) => {
+                                      const sk = SURVIVOR_SKILLS[sid];
+                                      return (
+                                        <span key={sid} className="party-sk-dot" title={sk.name}>
+                                          <PixelItemImg src={sk.sprite} size={12} />
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                                <div className="party-bar-track is-hp">
+                                  <div
+                                    className="party-bar-fill is-hp"
+                                    style={{
+                                      width: `${fHpPct}%`,
+                                      backgroundColor:
+                                        fHpPct > 40 ? '#48d167' : fHpPct > 20 ? '#fcc419' : '#ff5c5c',
+                                    }}
+                                  />
+                                </div>
+                                <div className="party-bar-track is-mp">
+                                  <div
+                                    className={`party-bar-fill is-mp ${fMpPct >= 96 ? 'is-ready' : ''}`}
+                                    style={{ width: `${fMpPct}%` }}
+                                  />
+                                </div>
+                              </div>
+                              {followersView.length > 1 && (
+                                <div className="party-side-actions" onClick={(e) => e.stopPropagation()}>
+                                  <div className="party-reorder-col">
+                                    <button
+                                      type="button"
+                                      className="party-reorder-btn"
+                                      disabled={fIdx === 0}
+                                      aria-label="上移出战顺序"
+                                      title="上移顺序"
+                                      onClick={() => reorderBattleFollowers(fIdx, fIdx - 1)}
+                                    >
+                                      ▲
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="party-reorder-btn"
+                                      disabled={fIdx === followersView.length - 1}
+                                      aria-label="下移出战顺序"
+                                      title="下移顺序"
+                                      onClick={() => reorderBattleFollowers(fIdx, fIdx + 1)}
+                                    >
+                                      ▼
+                                    </button>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="party-remove-btn"
+                                    aria-label={`将 ${f.name} 移出队伍`}
+                                    title={`将「${f.name}」移出当前队伍`}
+                                    onClick={() => removeBattleFollower(f.id)}
+                                  >
+                                    <span>移出</span>
+                                    <span>队伍</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Top-Center: Left = Location & Pixel Weather (Map); Center = Now Playing BGM; Right = Time & Day/Night Almanac */}
@@ -367,155 +669,6 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               )}
             </div>
           </div>
-
-          {/* Left-Edge RPG Party Status List (Collapsible toggle pill on mobile so 3D viewport stays wide open!) */}
-          {!resultModal && (
-            <div
-              className={`surv-party-list is-centered ${mobilePartyOpen ? 'is-mobile-open' : 'is-mobile-collapsed'}`}
-              title="拖拽或点击右侧箭头调整顺序，也可直接移出队伍；点击卡片查看详情"
-            >
-              <button
-                type="button"
-                className="surv-party-mobile-toggle"
-                onClick={() => setMobilePartyOpen((v) => !v)}
-              >
-                <PixelItemImg src="/sprites/items/poke-ball.png" size={14} />
-                <span>队伍 {followersView.length}</span>
-                <em>{mobilePartyOpen ? '▲' : '▼'}</em>
-              </button>
-              <div className="surv-party-cards-wrap">
-              {followersView.map((f, fIdx) => {
-                const vitals = hud.followerVitals[f.id] ?? {
-                  hp: Math.round((95 + f.level * 28) * (hpPct / 100)),
-                  maxHp: 95 + f.level * 28,
-                  mp: 100,
-                  maxMp: 100,
-                };
-                const fHpPct = Math.max(0, Math.min(100, Math.round((vitals.hp / Math.max(1, vitals.maxHp)) * 100)));
-                const fMpPct = Math.max(0, Math.min(100, Math.round((vitals.mp / Math.max(1, vitals.maxMp)) * 100)));
-                const uniqueSkills = Array.from(new Set(f.skills)).slice(0, 4);
-                const accentCol = SURVIVOR_SKILLS[f.skills[0]]?.color ?? '#ffe066';
-                return (
-                  <div
-                    key={f.id}
-                    draggable
-                    onDragStart={(e) => {
-                      dragFollowerIdxRef.current = fIdx;
-                      e.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                      if (dragOverFollowerIdx !== fIdx) setDragOverFollowerIdx(fIdx);
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverFollowerIdx === fIdx) setDragOverFollowerIdx(null);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const from = dragFollowerIdxRef.current;
-                      dragFollowerIdxRef.current = null;
-                      setDragOverFollowerIdx(null);
-                      if (from !== null && from !== fIdx) {
-                        reorderBattleFollowers(from, fIdx);
-                      }
-                    }}
-                    onDragEnd={() => {
-                      dragFollowerIdxRef.current = null;
-                      setDragOverFollowerIdx(null);
-                    }}
-                    className={`surv-party-card ${dragOverFollowerIdx === fIdx ? 'is-drag-over' : ''}`}
-                    style={{ '--unit-accent': accentCol } as React.CSSProperties}
-                    title={`${f.name} Lv.${f.level} · HP ${vitals.hp}/${vitals.maxHp} · 右侧可调序或移出队伍`}
-                    onClick={() => {
-                      if (f.sourcePetId) {
-                        onOpenPokemonManager('party_detail', true, f.sourcePetId);
-                      } else {
-                        onOpenPokemonManager('tactics', true);
-                      }
-                    }}
-                  >
-                    <div className="party-portrait">
-                      <TrimmedSpriteImg
-                        src={f.sprite}
-                        alt={f.name}
-                        size={38}
-                        fillRatio={0.86}
-                      />
-                      <em className="party-lv-tag">Lv.{f.level}</em>
-                    </div>
-                    <div className="party-info">
-                      <div className="party-head-line">
-                        <strong>{f.name}</strong>
-                        <div className="party-skill-icons">
-                          {uniqueSkills.map((sid) => {
-                            const sk = SURVIVOR_SKILLS[sid];
-                            return (
-                              <span key={sid} className="party-sk-dot" title={sk.name}>
-                                <PixelItemImg src={sk.sprite} size={12} />
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div className="party-bar-track is-hp">
-                        <div
-                          className="party-bar-fill is-hp"
-                          style={{
-                            width: `${fHpPct}%`,
-                            backgroundColor: fHpPct > 40 ? '#48d167' : fHpPct > 20 ? '#fcc419' : '#ff5c5c',
-                          }}
-                        />
-                      </div>
-                      <div className="party-bar-track is-mp">
-                        <div
-                          className={`party-bar-fill is-mp ${fMpPct >= 96 ? 'is-ready' : ''}`}
-                          style={{ width: `${fMpPct}%` }}
-                        />
-                      </div>
-                    </div>
-                    {followersView.length > 1 && (
-                      <div className="party-side-actions" onClick={(e) => e.stopPropagation()}>
-                        <div className="party-reorder-col">
-                          <button
-                            type="button"
-                            className="party-reorder-btn"
-                            disabled={fIdx === 0}
-                            aria-label="上移出战顺序"
-                            title="上移顺序"
-                            onClick={() => reorderBattleFollowers(fIdx, fIdx - 1)}
-                          >
-                            ▲
-                          </button>
-                          <button
-                            type="button"
-                            className="party-reorder-btn"
-                            disabled={fIdx === followersView.length - 1}
-                            aria-label="下移出战顺序"
-                            title="下移顺序"
-                            onClick={() => reorderBattleFollowers(fIdx, fIdx + 1)}
-                          >
-                            ▼
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          className="party-remove-btn"
-                          aria-label={`将 ${f.name} 移出队伍`}
-                          title={`将「${f.name}」移出当前队伍`}
-                          onClick={() => removeBattleFollower(f.id)}
-                        >
-                          <span>移出</span>
-                          <span>队伍</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              </div>
-            </div>
-          )}
 
           {/* Boss HP Bar (Respects Boss Bar Opacity + Remaining HP vs Percentage Preference!) */}
           {hud.bossAliveName && (
