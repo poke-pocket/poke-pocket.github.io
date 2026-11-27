@@ -6,6 +6,13 @@ import {
   ROOM_CATALOG,
   SPECIES_CATALOG,
 } from '../data/catalog';
+import {
+  GYM_BADGE_CATALOG,
+  HERO_ROSTER,
+  LAB_UPGRADES,
+  ensureFreshMetaProgress,
+  type LabUpgradeId,
+} from '../data/metaProgression';
 import type {
   AccessoryId,
   FoodId,
@@ -19,12 +26,18 @@ const DEV_MODE_STORAGE_KEY = 'poke_pocket_dev_mode';
 const DEV_GRANTS_STORAGE_KEY = 'poke_pocket_dev_grants';
 export const DEV_VIRTUAL_PET_PREFIX = 'devpet_';
 export const DEV_GRANT_FILL_COUNT = 99;
+export const DEV_GRANT_CURRENCY_LEVEL = 99999;
+export const DEV_INFINITE_CURRENCY_DISPLAY = 999999;
 
 export interface DevGrantsState {
   allPets: boolean;
   allPokedex: boolean;
   allItems: boolean;
   allPokeballs: boolean;
+  allLabUpgrades: boolean;
+  allBadges: boolean;
+  infiniteStardust: boolean;
+  infiniteCoins: boolean;
   mapTeleport: boolean;
 }
 
@@ -33,6 +46,10 @@ const DEFAULT_DEV_GRANTS: DevGrantsState = {
   allPokedex: false,
   allItems: false,
   allPokeballs: false,
+  allLabUpgrades: false,
+  allBadges: false,
+  infiniteStardust: false,
+  infiniteCoins: false,
   mapTeleport: false,
 };
 
@@ -86,6 +103,10 @@ function loadInitialDevGrants(): DevGrantsState {
       allPokedex: Boolean(parsed.allPokedex),
       allItems: Boolean(parsed.allItems),
       allPokeballs: Boolean(parsed.allPokeballs),
+      allLabUpgrades: Boolean(parsed.allLabUpgrades),
+      allBadges: Boolean(parsed.allBadges),
+      infiniteStardust: Boolean(parsed.infiniteStardust),
+      infiniteCoins: Boolean(parsed.infiniteCoins),
       mapTeleport: Boolean(parsed.mapTeleport),
     };
   } catch {
@@ -283,7 +304,16 @@ export function applyDevGrantsOverlay(
   grants: DevGrantsState,
 ): GameSave {
   if (!devEnabled) return realSave;
-  if (!grants.allPets && !grants.allPokedex && !grants.allItems && !grants.allPokeballs) {
+  if (
+    !grants.allPets &&
+    !grants.allPokedex &&
+    !grants.allItems &&
+    !grants.allPokeballs &&
+    !grants.allLabUpgrades &&
+    !grants.allBadges &&
+    !grants.infiniteStardust &&
+    !grants.infiniteCoins
+  ) {
     return realSave;
   }
 
@@ -295,6 +325,8 @@ export function applyDevGrantsOverlay(
   let accessoryStock = realSave.accessoryStock;
   let unlockedRooms = realSave.unlockedRooms;
   let ballStock = realSave.ballStock;
+  let coins = realSave.coins;
+  let meta = realSave.meta;
 
   if (grants.allPets) {
     const ownedSpecies = new Set<SpeciesId>(realSave.pets.map((p) => p.species));
@@ -350,8 +382,55 @@ export function applyDevGrantsOverlay(
     unlockedRooms = Array.from(new Set([...realSave.unlockedRooms, ...allRoomIds]));
   }
 
+  if (grants.infiniteCoins) {
+    coins = Math.max(coins, DEV_INFINITE_CURRENCY_DISPLAY);
+  }
+
+  if (grants.allLabUpgrades || grants.allBadges || grants.infiniteStardust) {
+    const curMeta = ensureFreshMetaProgress(realSave.meta);
+    let nextLabLevels = curMeta.labLevels;
+    let nextUnlockedHeroes = curMeta.unlockedHeroes;
+    let nextHeroSkills = curMeta.heroSkillLevels;
+    let nextBadges = curMeta.unlockedBadges ?? [];
+    let nextStardust = curMeta.stardust;
+
+    if (grants.allLabUpgrades) {
+      const maxedLab: Partial<Record<LabUpgradeId, number>> = { ...curMeta.labLevels };
+      for (const u of LAB_UPGRADES) {
+        maxedLab[u.id] = Math.max(maxedLab[u.id] ?? 0, u.maxLevel);
+      }
+      nextLabLevels = maxedLab;
+      nextUnlockedHeroes = HERO_ROSTER.map((h) => h.id);
+      const maxedSkills: Record<string, number> = { ...curMeta.heroSkillLevels };
+      for (const h of HERO_ROSTER) {
+        for (const sk of h.skills) {
+          maxedSkills[sk.id] = Math.max(maxedSkills[sk.id] ?? 0, sk.maxLevel);
+        }
+      }
+      nextHeroSkills = maxedSkills;
+    }
+
+    if (grants.allBadges) {
+      nextBadges = Array.from(new Set([...nextBadges, ...GYM_BADGE_CATALOG.map((b) => b.id)]));
+    }
+
+    if (grants.infiniteStardust) {
+      nextStardust = Math.max(nextStardust, DEV_INFINITE_CURRENCY_DISPLAY);
+    }
+
+    meta = {
+      ...curMeta,
+      stardust: nextStardust,
+      labLevels: nextLabLevels,
+      unlockedHeroes: nextUnlockedHeroes,
+      heroSkillLevels: nextHeroSkills,
+      unlockedBadges: nextBadges,
+    };
+  }
+
   return {
     ...realSave,
+    coins,
     pets,
     activePetId,
     discoveredSpecies,
@@ -360,6 +439,7 @@ export function applyDevGrantsOverlay(
     accessoryStock,
     unlockedRooms,
     ballStock,
+    meta,
   };
 }
 
@@ -426,6 +506,18 @@ export function sanitizeRealSaveAfterDevRollback(
           ...pr,
           petIds: pr.petIds.filter((id) => !isDevVirtualPetId(id)),
         })),
+      };
+    }
+  }
+
+  const allowLab = devEnabled && activeGrants.allLabUpgrades;
+  if (!allowLab && nextMeta) {
+    const unlockedH = nextMeta.unlockedHeroes ?? ['red'];
+    if (nextMeta.activeHero && !unlockedH.includes(nextMeta.activeHero)) {
+      changed = true;
+      nextMeta = {
+        ...nextMeta,
+        activeHero: unlockedH[0] ?? 'red',
       };
     }
   }

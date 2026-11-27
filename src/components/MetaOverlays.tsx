@@ -176,7 +176,7 @@ export const DEFAULT_ANNOUNCEMENTS: ServerAnnouncement[] = [
     details: [
       '尼比道馆（小刚）、华蓝道馆（小霞）、枯叶道馆（马志士）等 6 位馆主现已重返原野巡逻。',
       '击败对应道馆馆主即可点亮「灰色、蓝色、橙色、彩虹、深红、绿色」关都徽章，永久强化指定属性宝可梦。',
-      '大木研究所已同步更新训练师身份认证：从「基础训练师」一路晋升至「关都冠军」，可自由切换生效光环。',
+      '大木研究所已同步更新训练师等级认证：从「见习训练师」一路晋升至「冠军训练师」，可自由切换生效光环。',
     ],
   },
   {
@@ -564,9 +564,9 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
         ) : (
           <div className="meta-body scroll-y">
             <div className="meta-section-label">
-              <strong>训练师身份标签（当前：{activeTagDef.name}）</strong>
+              <strong>训练师等级体系（当前：{activeTagDef.name}）</strong>
               <div className="inline-icon-row" style={{ gap: 8 }}>
-                <span>切换已解锁标签，为指定属性与地区宝可梦提供战力光环</span>
+                <span>切换已解锁的训练师等级，为出战宝可梦提供战力光环</span>
                 {onOpenAchievements && (
                   <button
                     type="button"

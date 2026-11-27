@@ -11,7 +11,9 @@ import {
 import { Survivors3DArena } from './components/Survivors3DArena';
 import { ACCESSORY_CATALOG, ACHIEVEMENTS, FOOD_CATALOG, ROOM_CATALOG, SPECIES_CATALOG, getPokemonCryId } from './data/catalog';
 import {
+  DEV_GRANT_CURRENCY_LEVEL,
   DEV_GRANT_FILL_COUNT,
+  DEV_INFINITE_CURRENCY_DISPLAY,
   applyDevGrantsOverlay,
   isDevVirtualPetId,
   patchDevVirtualPet,
@@ -160,7 +162,7 @@ export function App() {
   // Sanitize real save cleanly whenever debug grants or debug mode are toggled OFF
   useEffect(() => {
     setSave((prev) => sanitizeRealSaveAfterDevRollback(prev, devGrants, devMode));
-  }, [devMode, devGrants.allPets, devGrants.allItems, devGrants.allPokeballs]);
+  }, [devMode, devGrants.allPets, devGrants.allItems, devGrants.allPokeballs, devGrants.allLabUpgrades]);
 
   const effectiveSave = useMemo(
     () => applyDevGrantsOverlay(save, devMode, devGrants),
@@ -589,6 +591,28 @@ export function App() {
     });
   }, []);
 
+  const handleDevGrantStardust99999 = useCallback(() => {
+    sound.play('levelup');
+    setSave((prev) => {
+      const curMeta = ensureFreshMetaProgress(prev.meta);
+      return {
+        ...prev,
+        meta: {
+          ...curMeta,
+          stardust: Math.max(curMeta.stardust, DEV_GRANT_CURRENCY_LEVEL),
+        },
+      };
+    });
+  }, []);
+
+  const handleDevGrantCoins99999 = useCallback(() => {
+    sound.play('coin');
+    setSave((prev) => ({
+      ...prev,
+      coins: Math.max(prev.coins, DEV_GRANT_CURRENCY_LEVEL),
+    }));
+  }, []);
+
   const handleOpenPokemonManager = useCallback(
     (subMode: LcdMode = 'home', fromBattle = false, focusPetId?: string) => {
       if (managerCloseTimerRef.current !== null) {
@@ -645,17 +669,19 @@ export function App() {
 
   const handleUpdateMeta = useCallback(
     (updater: (prevMeta: MetaProgressState) => MetaProgressState, coinDelta = 0) => {
+      const freeCoins = devMode && devGrants.infiniteCoins;
       setSave((prev) => {
         const curMeta = ensureFreshMetaProgress(prev.meta);
         const nextMeta = updater(curMeta);
+        const appliedDelta = freeCoins && coinDelta < 0 ? 0 : coinDelta;
         return syncAchievements({
           ...prev,
-          coins: Math.max(0, prev.coins + coinDelta),
+          coins: Math.max(0, prev.coins + appliedDelta),
           meta: nextMeta,
         });
       });
     },
-    [],
+    [devMode, devGrants.infiniteCoins],
   );
 
   const handleUpdatePetConfig = useCallback(
@@ -685,9 +711,10 @@ export function App() {
         return true;
       }
       let ok = false;
+      const freeCoins = devMode && devGrants.infiniteCoins;
       setSave((prev) => {
         const cost = (patch.enhanceCost ?? 0) + (patch.skinCost ?? 0);
-        if (cost > 0 && prev.coins < cost) return prev;
+        if (!freeCoins && cost > 0 && prev.coins < cost) return prev;
         ok = true;
         const nextPets = prev.pets.map((p) => {
           if (p.id !== petId) return p;
@@ -711,7 +738,7 @@ export function App() {
         };
         return {
           ...prev,
-          coins: Math.max(0, prev.coins - cost),
+          coins: freeCoins ? prev.coins : Math.max(0, prev.coins - cost),
           pets: nextPets,
           meta: patch.enhanceDelta ? incrementBounties(metaUpdated, { gacha_or_care: 1 }) : metaUpdated,
         };
@@ -720,7 +747,7 @@ export function App() {
       else sound.play('error');
       return ok;
     },
-    [effectiveSave.pets],
+    [effectiveSave.pets, devMode, devGrants.infiniteCoins],
   );
 
   const handleFinishSurvivors = useCallback(
@@ -784,6 +811,7 @@ export function App() {
   const handleSpendCoinsInRun = useCallback(
     (cost: number): boolean => {
       if (cost <= 0) return true;
+      if (devMode && devGrants.infiniteCoins) return true;
       if (save.coins < cost) return false;
       setSave((prev) => ({
         ...prev,
@@ -791,7 +819,7 @@ export function App() {
       }));
       return true;
     },
-    [save.coins],
+    [save.coins, devMode, devGrants.infiniteCoins],
   );
 
   const handleCaptureBoss = useCallback(
@@ -858,18 +886,24 @@ export function App() {
 
   const handleBuyFood = useCallback(
     (foodId: FoodId) => {
-      const outcome = buyFood(save, foodId, 1);
+      const freeCoins = devMode && devGrants.infiniteCoins;
+      const src = freeCoins ? { ...save, coins: Math.max(save.coins, DEV_INFINITE_CURRENCY_DISPLAY) } : save;
+      const outcome = buyFood(src, foodId, 1);
+      if (outcome.ok && freeCoins) outcome.save = { ...outcome.save, coins: save.coins };
       applyOutcome(outcome, 'coin', true);
     },
-    [save, applyOutcome],
+    [save, devMode, devGrants.infiniteCoins, applyOutcome],
   );
 
   const handleBuyAccessory = useCallback(
     (accId: AccessoryId) => {
-      const outcome = buyAccessory(save, accId);
+      const freeCoins = devMode && devGrants.infiniteCoins;
+      const src = freeCoins ? { ...save, coins: Math.max(save.coins, DEV_INFINITE_CURRENCY_DISPLAY) } : save;
+      const outcome = buyAccessory(src, accId);
+      if (outcome.ok && freeCoins) outcome.save = { ...outcome.save, coins: save.coins };
       applyOutcome(outcome, 'coin', true);
     },
-    [save, applyOutcome],
+    [save, devMode, devGrants.infiniteCoins, applyOutcome],
   );
 
   const handleEquipAccessory = useCallback(
@@ -888,10 +922,13 @@ export function App() {
 
   const handleBuyPokeball = useCallback(
     (roomId: RoomThemeId) => {
-      const outcome = buyPokeball(save, roomId);
+      const freeCoins = devMode && devGrants.infiniteCoins;
+      const src = freeCoins ? { ...save, coins: Math.max(save.coins, DEV_INFINITE_CURRENCY_DISPLAY) } : save;
+      const outcome = buyPokeball(src, roomId);
+      if (outcome.ok && freeCoins) outcome.save = { ...outcome.save, coins: save.coins };
       applyOutcome(outcome, 'coin', true);
     },
-    [save, applyOutcome],
+    [save, devMode, devGrants.infiniteCoins, applyOutcome],
   );
 
   const handleAssignPetRoom = useCallback(
@@ -910,30 +947,34 @@ export function App() {
 
   const handlePullGacha = useCallback(
     (boxId: GachaBoxId) => {
-      const res = pullGachaBox(save, boxId);
+      const freeCoins = devMode && devGrants.infiniteCoins;
+      const src = freeCoins ? { ...save, coins: Math.max(save.coins, DEV_INFINITE_CURRENCY_DISPLAY) } : save;
+      const res = pullGachaBox(src, boxId);
       if (!res.ok) {
         sound.play('error');
         return res;
       }
       sound.play('hatch');
-      setSave(res.save);
+      setSave(freeCoins ? { ...res.save, coins: save.coins } : res.save);
       return res;
     },
-    [save],
+    [save, devMode, devGrants.infiniteCoins],
   );
 
   const handlePullGachaTen = useCallback(
     (boxId: GachaBoxId) => {
-      const res = pullGachaTen(save, boxId);
+      const freeCoins = devMode && devGrants.infiniteCoins;
+      const src = freeCoins ? { ...save, coins: Math.max(save.coins, DEV_INFINITE_CURRENCY_DISPLAY) } : save;
+      const res = pullGachaTen(src, boxId);
       if (!res.ok) {
         sound.play('error');
         return res;
       }
       sound.play('hatch');
-      setSave(res.save);
+      setSave(freeCoins ? { ...res.save, coins: save.coins } : res.save);
       return res;
     },
-    [save],
+    [save, devMode, devGrants.infiniteCoins],
   );
 
   const handleReleasePet = useCallback(
@@ -1562,6 +1603,8 @@ export function App() {
               onQuickCarePet={handleQuickCarePet}
               onDevGrantItems99={handleDevGrantItems99}
               onDevGrantPokeballs99={handleDevGrantPokeballs99}
+              onDevGrantStardust99999={handleDevGrantStardust99999}
+              onDevGrantCoins99999={handleDevGrantCoins99999}
               onReleaseBallToRoom={handleReleaseBallToRoom}
               onStartBattle={handleStartBattle}
               onFinishBattle={handleFinishBattle}

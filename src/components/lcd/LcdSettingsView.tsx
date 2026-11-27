@@ -9,7 +9,7 @@ import { PixelIcon, PixelItemImg } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { connectedGamepadName, isFullscreen, keysSubTab, mode, onDevGrantItems99, onDevGrantPokeballs99, onGoBack, onToggleFullscreen, onUpdateSettings, rebindingAction, save, setKeysSubTab, setRebindingAction, setSettingsTab, settingsTab } = ctx;
+  const { connectedGamepadName, isFullscreen, keysSubTab, mode, onDevGrantCoins99999, onDevGrantItems99, onDevGrantPokeballs99, onDevGrantStardust99999, onGoBack, onToggleFullscreen, onUpdateSettings, rebindingAction, save, setKeysSubTab, setRebindingAction, setSettingsTab, settingsTab } = ctx;
   const [devMode, setDevMode] = useDevMode();
   const [devGrants] = useDevGrants();
 
@@ -844,6 +844,10 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                               allPokedex: true,
                               allItems: true,
                               allPokeballs: true,
+                              allLabUpgrades: true,
+                              allBadges: true,
+                              infiniteStardust: true,
+                              infiniteCoins: true,
                               mapTeleport: true,
                             });
                           }}
@@ -863,14 +867,14 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                       </div>
                     </div>
 
-                    <div className="debug-cc-grid">
-                      {/* Switch 1: All Pets */}
+                    {/* 5x2 Quick Toggle Switches Grid (Mobile Control Center Style) */}
+                    <div className="debug-cc-grid is-5">
                       <div
                         className={`debug-cc-tile ${devGrants.allPets ? 'is-active' : ''}`}
                         title={`临时解锁全 ${POKEDEX_ORDER.length} 种精灵用于编队与体验，关闭即回退`}
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/poke-ball.png" size={24} />
+                          <PixelItemImg src="/sprites/items/poke-ball.png" size={22} />
                         </div>
                         <strong className="debug-cc-name">全精灵</strong>
                         <button
@@ -886,13 +890,12 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         </button>
                       </div>
 
-                      {/* Switch 2: All Pokédex */}
                       <div
                         className={`debug-cc-tile ${devGrants.allPokedex || devGrants.allPets ? 'is-active' : ''}`}
                         title="条件状态：开启即视为全图鉴解锁，关闭后恢复真实图鉴（保留期间正常捕获的精灵）"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/town-map.png" size={24} />
+                          <PixelItemImg src="/sprites/items/town-map.png" size={22} />
                         </div>
                         <strong className="debug-cc-name">全图鉴</strong>
                         <button
@@ -909,57 +912,54 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         </button>
                       </div>
 
-                      {/* Switch 3: Infinite Items */}
                       <div
-                        className={`debug-cc-tile ${devGrants.allItems ? 'is-active' : ''}`}
-                        title="开启后所有树果与携带道具无限使用不消耗，关闭即还原真实库存"
+                        className={`debug-cc-tile ${devGrants.allLabUpgrades ? 'is-active' : ''}`}
+                        title="临时满级解锁全部研究所强化、主角与专属觉醒技能，关闭即还原真实进度"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/berry-pouch.png" size={24} />
+                          <PixelItemImg src="/sprites/items/life-orb.png" size={22} />
                         </div>
-                        <strong className="debug-cc-name">无限道具</strong>
+                        <strong className="debug-cc-name">全强化</strong>
                         <button
                           type="button"
-                          className={`px-switch debug-cc-sw ${devGrants.allItems ? 'is-on' : ''}`}
+                          className={`px-switch debug-cc-sw ${devGrants.allLabUpgrades ? 'is-on' : ''}`}
                           onClick={() => {
-                            const next = !devGrants.allItems;
-                            sound.play(next ? 'confirm' : 'cancel');
-                            setDevGrants({ allItems: next });
+                            const next = !devGrants.allLabUpgrades;
+                            sound.play(next ? 'levelup' : 'cancel');
+                            setDevGrants({ allLabUpgrades: next });
                           }}
                         >
-                          {devGrants.allItems ? '开' : '关'}
+                          {devGrants.allLabUpgrades ? '开' : '关'}
                         </button>
                       </div>
 
-                      {/* Switch 4: Infinite Poké Balls */}
                       <div
-                        className={`debug-cc-tile ${devGrants.allPokeballs ? 'is-active' : ''}`}
-                        title="开启后解锁全部 9 种精灵球（含大师球）且无限使用，关闭即还原"
+                        className={`debug-cc-tile ${devGrants.allBadges ? 'is-active' : ''}`}
+                        title="临时解锁全部道馆与荣誉徽章及对应训练师头衔，关闭即还原真实进度"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/ultra-ball.png" size={24} />
+                          <PixelItemImg src="/sprites/items/kings-rock.png" size={22} />
                         </div>
-                        <strong className="debug-cc-name">无限精灵球</strong>
+                        <strong className="debug-cc-name">全徽章</strong>
                         <button
                           type="button"
-                          className={`px-switch debug-cc-sw ${devGrants.allPokeballs ? 'is-on' : ''}`}
+                          className={`px-switch debug-cc-sw ${devGrants.allBadges ? 'is-on' : ''}`}
                           onClick={() => {
-                            const next = !devGrants.allPokeballs;
-                            sound.play(next ? 'confirm' : 'cancel');
-                            setDevGrants({ allPokeballs: next });
+                            const next = !devGrants.allBadges;
+                            sound.play(next ? 'levelup' : 'cancel');
+                            setDevGrants({ allBadges: next });
                           }}
                         >
-                          {devGrants.allPokeballs ? '开' : '关'}
+                          {devGrants.allBadges ? '开' : '关'}
                         </button>
                       </div>
 
-                      {/* Switch 5: Map Instant Teleport */}
                       <div
                         className={`debug-cc-tile ${devGrants.mapTeleport ? 'is-active' : ''}`}
                         title="开启后在地图选点下方及导航列表中显示「传送」按钮，点击直接瞬移抵达"
                       >
                         <div className="debug-cc-ico">
-                          <PixelIcon name="bolt" size={20} />
+                          <PixelIcon name="bolt" size={18} />
                         </div>
                         <strong className="debug-cc-name">地图传送</strong>
                         <button
@@ -975,13 +975,96 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         </button>
                       </div>
 
-                      {/* Switch 6: FPS Overlay */}
+                      <div
+                        className={`debug-cc-tile ${devGrants.allItems ? 'is-active' : ''}`}
+                        title="开启后所有树果与携带道具无限使用不消耗，关闭即还原真实库存"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/berry-pouch.png" size={22} />
+                        </div>
+                        <strong className="debug-cc-name">无限道具</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.allItems ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allItems;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ allItems: next });
+                          }}
+                        >
+                          {devGrants.allItems ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.allPokeballs ? 'is-active' : ''}`}
+                        title="开启后解锁全部 9 种精灵球（含大师球）且无限使用，关闭即还原"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/ultra-ball.png" size={22} />
+                        </div>
+                        <strong className="debug-cc-name">无限精灵球</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.allPokeballs ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allPokeballs;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ allPokeballs: next });
+                          }}
+                        >
+                          {devGrants.allPokeballs ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.infiniteStardust ? 'is-active' : ''}`}
+                        title="开启后星沙无限使用不消耗，关闭即还原真实星沙数量"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/bright-powder.png" size={22} />
+                        </div>
+                        <strong className="debug-cc-name">无限星沙</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.infiniteStardust ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.infiniteStardust;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ infiniteStardust: next });
+                          }}
+                        >
+                          {devGrants.infiniteStardust ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div
+                        className={`debug-cc-tile ${devGrants.infiniteCoins ? 'is-active' : ''}`}
+                        title="开启后金币无限使用不消耗，关闭即还原真实金币数量"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/amulet-coin.png" size={22} />
+                        </div>
+                        <strong className="debug-cc-name">无限金币</strong>
+                        <button
+                          type="button"
+                          className={`px-switch debug-cc-sw ${devGrants.infiniteCoins ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.infiniteCoins;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ infiniteCoins: next });
+                          }}
+                        >
+                          {devGrants.infiniteCoins ? '开' : '关'}
+                        </button>
+                      </div>
+
                       <div
                         className={`debug-cc-tile ${prefs.showFps ? 'is-active' : ''}`}
                         title="在 3D 画面左下角实时监控帧率"
                       >
                         <div className="debug-cc-ico">
-                          <PixelIcon name="chart" size={20} />
+                          <PixelIcon name="chart" size={18} />
                         </div>
                         <strong className="debug-cc-name">FPS 浮窗</strong>
                         <button
@@ -992,14 +1075,16 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                           {prefs.showFps ? '开' : '关'}
                         </button>
                       </div>
+                    </div>
 
-                      {/* Action Button 7: One-Click Get All Items x99 */}
+                    {/* 4x1 One-Click Resource Fill Buttons */}
+                    <div className="debug-cc-grid is-4-actions">
                       <div
                         className="debug-cc-tile is-action"
-                        title="点击将全部树果与携带道具数量补满至至少 99 个（已有 >99 不受影响）"
+                        title="点击将全部树果与携带道具补满至至少 99 个"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/oran-berry.png" size={24} />
+                          <PixelItemImg src="/sprites/items/oran-berry.png" size={22} />
                         </div>
                         <strong className="debug-cc-name">获取道具</strong>
                         <button
@@ -1011,13 +1096,12 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                         </button>
                       </div>
 
-                      {/* Action Button 8: One-Click Get All Poké Balls x99 */}
                       <div
                         className="debug-cc-tile is-action"
-                        title="点击将全部 9 种精灵球（含大师球）数量补满至至少 99 个（已有 >99 不受影响）"
+                        title="点击将全部 9 种精灵球（含大师球）补满至至少 99 个"
                       >
                         <div className="debug-cc-ico">
-                          <PixelItemImg src="/sprites/items/master-ball.png" size={24} />
+                          <PixelItemImg src="/sprites/items/master-ball.png" size={22} />
                         </div>
                         <strong className="debug-cc-name">获取精灵球</strong>
                         <button
@@ -1026,6 +1110,40 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                           onClick={() => onDevGrantPokeballs99?.()}
                         >
                           ×99 获取
+                        </button>
+                      </div>
+
+                      <div
+                        className="debug-cc-tile is-action"
+                        title="点击将星沙数量补满至至少 99999"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/bright-powder.png" size={22} />
+                        </div>
+                        <strong className="debug-cc-name">获取星沙</strong>
+                        <button
+                          type="button"
+                          className="debug-cc-btn"
+                          onClick={() => onDevGrantStardust99999?.()}
+                        >
+                          99999
+                        </button>
+                      </div>
+
+                      <div
+                        className="debug-cc-tile is-action"
+                        title="点击将宝可币数量补满至至少 99999"
+                      >
+                        <div className="debug-cc-ico">
+                          <PixelItemImg src="/sprites/items/amulet-coin.png" size={22} />
+                        </div>
+                        <strong className="debug-cc-name">获取金币</strong>
+                        <button
+                          type="button"
+                          className="debug-cc-btn"
+                          onClick={() => onDevGrantCoins99999?.()}
+                        >
+                          99999
                         </button>
                       </div>
                     </div>

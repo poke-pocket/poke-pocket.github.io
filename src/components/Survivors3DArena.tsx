@@ -16,7 +16,7 @@ import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D'
 import { DEFAULT_WORLD_TOUR_STATE, WORLD_CITIES, getDefaultHomeByLanguage, type WorldCityDef } from '../data/worldTour';
 import { type WorldLaunchPayload } from './WorldMapOverlay';
 import { DEFAULT_GAME_PREFS, DEFAULT_TRAINER_PROFILE, type CameraFollowMode, type GamePrefs, type PetRecord, type PetSkinId, type RoomThemeId, type SpeciesId, type TrainerProfile } from '../types/pet';
-import { isDevVirtualPetId } from '../utils/devMode';
+import { getDevGrants, isDevModeEnabled, isDevVirtualPetId } from '../utils/devMode';
 import { HERO_ROSTER, LAB_UPGRADES, computeMetaCombatBonuses, countClaimableBounties, ensureFreshMetaProgress, getHeroDef, getLabUpgradeCost, getSkinDef, rerollBountySlot, type HeroId, type LabUpgradeId, type MetaProgressState } from '../data/metaProgression';
 import { type AppLang } from '../data/i18n';
 import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
@@ -166,14 +166,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const curLv = meta.labLevels[id] ?? 0;
     if (curLv >= def.maxLevel) return;
     const cost = getLabUpgradeCost(def, curLv);
-    if (meta.stardust < cost) {
+    const freeStardust = isDevModeEnabled() && getDevGrants().infiniteStardust;
+    if (!freeStardust && meta.stardust < cost) {
       sound.play('error');
       return;
     }
     sound.play('levelup');
     onUpdateMeta?.((prev) => ({
       ...prev,
-      stardust: Math.max(0, prev.stardust - cost),
+      stardust: freeStardust ? prev.stardust : Math.max(0, prev.stardust - cost),
       labLevels: { ...prev.labLevels, [id]: curLv + 1 },
     }));
   };
@@ -186,14 +187,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       onUpdateMeta?.((prev) => ({ ...prev, activeHero: heroId }));
       return;
     }
-    if (meta.stardust < def.unlockCost) {
+    const freeStardust = isDevModeEnabled() && getDevGrants().infiniteStardust;
+    if (!freeStardust && meta.stardust < def.unlockCost) {
       sound.play('error');
       return;
     }
     sound.play('hatch');
     onUpdateMeta?.((prev) => ({
       ...prev,
-      stardust: Math.max(0, prev.stardust - def.unlockCost),
+      stardust: freeStardust ? prev.stardust : Math.max(0, prev.stardust - def.unlockCost),
       unlockedHeroes: [...prev.unlockedHeroes, heroId],
       activeHero: heroId,
     }));
@@ -206,14 +208,15 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const curLv = meta.heroSkillLevels[skillId] ?? 0;
     if (curLv >= sk.maxLevel) return;
     const cost = sk.baseCost + curLv * sk.costStep;
-    if (meta.stardust < cost) {
+    const freeStardust = isDevModeEnabled() && getDevGrants().infiniteStardust;
+    if (!freeStardust && meta.stardust < cost) {
       sound.play('error');
       return;
     }
     sound.play(curLv + 1 >= sk.maxLevel ? 'hatch' : 'levelup');
     onUpdateMeta?.((prev) => ({
       ...prev,
-      stardust: Math.max(0, prev.stardust - cost),
+      stardust: freeStardust ? prev.stardust : Math.max(0, prev.stardust - cost),
       heroSkillLevels: { ...prev.heroSkillLevels, [skillId]: curLv + 1 },
     }));
   };

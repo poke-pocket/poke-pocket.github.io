@@ -465,7 +465,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                         className="surv-hero-sub-badges"
                         role="button"
                         tabIndex={0}
-                        title="点击查看训练师头衔与关都道馆徽章成就"
+                        title="点击查看训练师等级与道馆徽章成就"
                         onClick={(e) => {
                           e.stopPropagation();
                           openHeroOrBadgeOverlay?.('badges');
