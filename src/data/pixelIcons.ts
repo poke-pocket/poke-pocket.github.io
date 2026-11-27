@@ -47,7 +47,17 @@ export type PixelIconName =
   | 'sword'
   | 'clock'
   | 'replay'
-  | 'arrow_left';
+  | 'arrow_left'
+  | 'weather_clear'
+  | 'weather_night_clear'
+  | 'weather_cloudy'
+  | 'weather_rain'
+  | 'weather_storm'
+  | 'weather_snow'
+  | 'weather_windy'
+  | 'music_note'
+  | 'sunrise'
+  | 'sunset';
 
 export interface PixelIconDef {
   grid: string[];
@@ -789,6 +799,176 @@ export const PIXEL_ICONS: Record<PixelIconName, PixelIconDef> = {
       '..KGGGGGK.',
       '...KKKKK..',
       '..........',
+    ],
+  },
+  weather_clear: {
+    palette: { K: '#5c3c00', Y: '#ffd43b', W: '#fff9db', O: '#ff922b' },
+    grid: [
+      '.....OO.....',
+      '..O..KK..O..',
+      '...KKYYKK...',
+      '.O.KYWWYK.O.',
+      '..KKYWWYKK..',
+      'O.KYYYYYYK.O',
+      'O.KYYYYYYK.O',
+      '..KKYYYYKK..',
+      '.O.KYYYYK.O.',
+      '...KKKKKK...',
+      '..O..KK..O..',
+      '.....OO.....',
+    ],
+  },
+  weather_night_clear: {
+    palette: { K: '#1b1f3b', Y: '#ffe066', W: '#fff9db' },
+    grid: [
+      '......KKKK..',
+      '.Y...KYYYK..',
+      'YYY.KYYWK...',
+      '.Y..KYYK....',
+      '....KYYK....',
+      '....KYYK..W.',
+      '....KYYYK...',
+      '.....KYYYK..',
+      '....KYYYYYK.',
+      '...KYYYYYYK.',
+      '....KKKKKK..',
+      '............',
+    ],
+  },
+  weather_cloudy: {
+    palette: { K: '#1e2230', W: '#ffffff', G: '#ced4da' },
+    grid: [
+      '............',
+      '....KKKK....',
+      '...KWWWWK...',
+      '..KWWWWWWK..',
+      '.KKWWWWWWKK.',
+      'KWWWWWWWWWWK',
+      'KWWGGGGGGGGK',
+      'KGGGGGGGGGGK',
+      '.KKKKKKKKKK.',
+      '............',
+      '............',
+      '............',
+    ],
+  },
+  weather_rain: {
+    palette: { K: '#1b2234', W: '#e9ecef', G: '#adb5bd', B: '#74c0fc' },
+    grid: [
+      '....KKKK....',
+      '...KWWWWK...',
+      '..KWWGGGGK..',
+      '.KKGGGGGGKK.',
+      'KGGGGGGGGGGK',
+      '.KKKKKKKKKK.',
+      '............',
+      '..BB..BB..BB',
+      '.BB..BB..BB.',
+      '............',
+      '..BB..BB....',
+      '.BB..BB.....',
+    ],
+  },
+  weather_storm: {
+    palette: { K: '#141624', G: '#868e96', D: '#495057', Y: '#ffe066' },
+    grid: [
+      '....KKKK....',
+      '...KGGGGK...',
+      '..KGGDDDDK..',
+      '.KKDDDDDDKK.',
+      'KDDDDDDDDDDK',
+      '.KKKKKKKKKK.',
+      '.....YYK....',
+      '....YYYK....',
+      '...YYYYYY...',
+      '.....YYYK...',
+      '....YYK.....',
+      '...YK.......',
+    ],
+  },
+  weather_snow: {
+    palette: { W: '#ffffff', B: '#a5d8ff' },
+    grid: [
+      '.....WW.....',
+      '.W...BB...W.',
+      '..W.WWWW.W..',
+      '...WBBBBW...',
+      '..WWBWWBWW..',
+      'WBBBBWWBBBBW',
+      'WBBBBWWBBBBW',
+      '..WWBWWBWW..',
+      '...WBBBBW...',
+      '..W.WWWW.W..',
+      '.W...BB...W.',
+      '.....WW.....',
+    ],
+  },
+  weather_windy: {
+    palette: { K: '#12382f', W: '#ffffff', C: '#96f2d7' },
+    grid: [
+      '.......KKK..',
+      '......KWWWK.',
+      'KKKKKKK..KWK',
+      'WWWWWWWWWKWK',
+      '.........KK.',
+      'KKKKKKKKKK..',
+      'CCCCCCCCCCK.',
+      '.........KWK',
+      '..KKKKK..KWK',
+      '.KCCCCCKKWK.',
+      '........KK..',
+      '............',
+    ],
+  },
+  music_note: {
+    palette: { K: '#161420', Y: '#ffe066', W: '#fff9db' },
+    grid: [
+      '....KKKKKKKK',
+      '...KYYYYYYYK',
+      '...KYWWWWYYK',
+      '...KYYKKKKYK',
+      '...KYYK..KYK',
+      '...KYYK..KYK',
+      '.KKKYYK.KKYK',
+      'KYYYYYK.KYYK',
+      'KYWWYYK.KYWK',
+      'KYYYYYK.KYYK',
+      '.KKKKK...KKK',
+      '............',
+    ],
+  },
+  sunrise: {
+    palette: { K: '#2b1d0e', Y: '#ffe066', W: '#fff9db', O: '#ff922b' },
+    grid: [
+      '.....YY.....',
+      '....YYYY....',
+      '.....YY.....',
+      '.O..KKKK..O.',
+      '...KYYYYK...',
+      '..KYWWWWYK..',
+      '.OKYYYYYYKO.',
+      'KKKKKKKKKKKK',
+      'OOOOOOOOOOOO',
+      '..YYYYYYYY..',
+      '....YYYY....',
+      '............',
+    ],
+  },
+  sunset: {
+    palette: { K: '#241326', Y: '#ffd43b', O: '#ff6b6b', P: '#9c36b5' },
+    grid: [
+      '............',
+      '.P...OO...P.',
+      '...KKKKKK...',
+      '..KOOOOOOK..',
+      '.KOOYYYYOOK.',
+      '.KOOOOOOOOK.',
+      'KKKKKKKKKKKK',
+      'PPPPPPPPPPPP',
+      '..OOOOOOOO..',
+      '....YYYY....',
+      '.....YY.....',
+      '............',
     ],
   },
 };

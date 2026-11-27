@@ -7,6 +7,7 @@ import { ShopOverlay } from '../ShopOverlay';
 import { WorldMapHud } from '../WorldMapHud';
 import { sound } from '../../utils/sound';
 import { PixelIcon, PixelItemImg } from '../PixelSprite';
+import type { PixelIconName } from '../../data/pixelIcons';
 import { TrimmedSpriteImg } from '../TrimmedSpriteImg';
 import { ArenaTownSocialAndBusOverlay } from './ArenaTownSocialAndBusOverlay';
 
@@ -35,7 +36,43 @@ function formatHudEta(sec: number): string {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onUpdatePetConfig, pet, prefs, regionMeta, removeBattleFollower, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, pet, prefs, regionMeta, removeBattleFollower, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const isBgmOn = Boolean(save.bgmEnabled && !save.muted && save.bgmVolume > 0 && (prefs.masterVolume ?? 80) > 0);
+  const locationLabel =
+    adventureStyle === 'vampire_rogue'
+      ? regionMeta.name
+      : liveOverlandCity?.name ??
+        activeWorldRun?.cityName ??
+        WORLD_TOWNS_3D.find(
+          (t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6,
+        )?.name ??
+        '野外探索';
+  const weatherPixelIcon: PixelIconName =
+    liveWeather.kind === 'cloudy'
+      ? 'weather_cloudy'
+      : liveWeather.kind === 'rain'
+        ? 'weather_rain'
+        : liveWeather.kind === 'storm'
+          ? 'weather_storm'
+          : liveWeather.kind === 'snow'
+            ? 'weather_snow'
+            : liveWeather.kind === 'windy'
+              ? 'weather_windy'
+              : solarInfo.phase === 'night'
+                ? 'weather_night_clear'
+                : 'weather_clear';
+  const weatherChipBg =
+    liveWeather.kind === 'clear' && solarInfo.phase === 'night'
+      ? '#364fc7'
+      : liveWeather.accentColor;
+  const phasePixelIcon: PixelIconName =
+    solarInfo.phase === 'night'
+      ? 'moon'
+      : solarInfo.phase === 'dawn'
+        ? 'sunrise'
+        : solarInfo.phase === 'dusk'
+          ? 'sunset'
+          : 'sun';
   return (
     <>
           {/* 2D Projected Floating Damage & Enemy Trainer Nameplates */}
@@ -147,7 +184,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               })()}
             </div>
 
-            {/* Top-Center: Left/Center = Open Map; Right = Dedicated Day/Night Time & Ecological Spawn Almanac + Integrated Live Auto-Navigation Distance Strip! */}
+            {/* Top-Center: Left = Location & Pixel Weather (Map); Center = Now Playing BGM; Right = Time & Day/Night Almanac */}
             <div className="hud-col-center">
               <div className="surv-top-status-deck">
                 <div className="surv-top-status-main">
@@ -159,41 +196,45 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                       if (adventureStyle === 'vampire_rogue') toggleWorldMap();
                       else setWorldMapOpen(true);
                     }}
-                    title="点击打开地图（关闭后直接返回当前游戏）"
+                    title={`当前位置：${locationLabel}（点击打开世界地图）`}
                   >
-                    <strong>{adventureStyle === 'vampire_rogue' ? '随机秘境' : '真实地球'}</strong>
+                    <strong>{locationLabel}</strong>
                     <div className="top-deck-sub">
                       <span
                         className="top-weather-chip"
-                        style={{ backgroundColor: liveWeather.accentColor }}
-                        title={`${liveWeather.summary} · ${liveWeather.buffText}\n点击打开地图`}
+                        style={{ backgroundColor: weatherChipBg }}
+                        title={`${liveWeather.label} ${liveWeather.tempC}°C · ${liveWeather.buffText}\n点击打开地图`}
                       >
-                        {liveWeather.emoji} {liveWeather.label} {liveWeather.tempC}°C
+                        <PixelIcon name={weatherPixelIcon} size={12} />
+                        <span>{liveWeather.label} {liveWeather.tempC}°C</span>
                       </span>
                       <span className={`top-diff-tag is-${difficultyId}`}>{diffMeta.label}</span>
                     </div>
                   </div>
                   <div
-                    className="top-deck-center"
+                    className={`top-deck-center is-bgm-deck ${isBgmOn ? 'is-playing' : 'is-muted'}`}
                     style={{ borderRight: '2px solid #2b2d44', cursor: 'pointer' }}
-                    onClick={() => {
-                      sound.play('confirm');
-                      toggleWorldMap();
-                    }}
-                    title="点击打开当前城市地图与自动寻路"
+                    onClick={() => onToggleBgm?.()}
+                    title={
+                      isBgmOn
+                        ? `正在播放：${bgmTrackLabel}（点击静音背景音乐）`
+                        : '背景音乐已静音（点击开启背景音乐）'
+                    }
                   >
-                    <PixelItemImg src="/sprites/items/poke-ball.png" size={18} />
-                    <strong>{adventureStyle === 'vampire_rogue' ? minStr : solarInfo.localTimeStr}</strong>
-                    <small>
-                      {adventureStyle === 'vampire_rogue'
-                        ? regionMeta.name
-                        : liveOverlandCity?.name ??
-                          activeWorldRun?.cityName ??
-                          WORLD_TOWNS_3D.find(
-                            (t) => Math.hypot(mapSnapshot.px - t.x, mapSnapshot.pz - t.z) < t.plazaRadius + 6,
-                          )?.name ??
-                          '野外探索'}
-                    </small>
+                    <div className="top-bgm-head">
+                      <PixelIcon name={isBgmOn ? 'music_note' : 'sound_off'} size={12} />
+                      <span>{isBgmOn ? '正在播放' : '音乐已静音'}</span>
+                      {isBgmOn && (
+                        <span className="top-bgm-eq" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                      )}
+                    </div>
+                    <strong className="top-bgm-title">
+                      {isBgmOn ? bgmTrackLabel : '点击开启音乐'}
+                    </strong>
                   </div>
                   <div
                     className="top-deck-wing is-right"
@@ -204,11 +245,24 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                     }}
                     title="点击查看昼夜星象与各时段出没宝可梦生态图鉴"
                   >
-                    <span className="top-trainer-tag" style={{ borderColor: '#ffe066', color: '#ffe066' }}>
-                      {solarInfo.phaseEmoji} {solarInfo.phaseLabel}
-                    </span>
+                    <div className="top-time-phase-row">
+                      <strong className="top-live-clock">
+                        {adventureStyle === 'vampire_rogue' ? minStr : solarInfo.localTimeStr}
+                      </strong>
+                      <span
+                        className="top-trainer-tag is-phase-pill"
+                        style={{ borderColor: '#ffe066', color: '#ffe066' }}
+                      >
+                        <PixelIcon name={phasePixelIcon} size={11} />
+                        <span>{solarInfo.phaseLabel}</span>
+                      </span>
+                    </div>
                     <div className="top-badge-mini">
-                      <span>🌅{solarInfo.sunriseStr} · 🌇{solarInfo.sunsetStr}</span>
+                      <PixelIcon name="sunrise" size={11} />
+                      <span>{solarInfo.sunriseStr}</span>
+                      <span style={{ opacity: 0.55 }}>·</span>
+                      <PixelIcon name="sunset" size={11} />
+                      <span>{solarInfo.sunsetStr}</span>
                     </div>
                   </div>
                 </div>
@@ -253,7 +307,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
               </div>
             </div>
 
-            {/* Top-Right: Large Icon-Only Action Buttons (Tactics, Handheld Care, Main Menu/Settings) */}
+            {/* Top-Right: Large Bare Pixel-Art Icon Action Buttons (No Box Background!) */}
             <div className="hud-col-right">
               <div className="surv-right-stats">
                 <button
@@ -263,7 +317,13 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   aria-label="战术终端"
                   title="战术终端"
                 >
-                  <PixelItemImg src="/sprites/items/vs-seeker.png" size={40} />
+                  <TrimmedSpriteImg
+                    src="/sprites/items/vs-seeker.png"
+                    alt="战术终端"
+                    size={70}
+                    fillRatio={0.9}
+                    className="top-hud-bare-icon"
+                  />
                 </button>
                 <button
                   type="button"
@@ -272,7 +332,13 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   aria-label="掌机球舱"
                   title="掌机球舱与球盒管理"
                 >
-                  <PixelItemImg src={activeRoom.ballSprite} size={40} />
+                  <TrimmedSpriteImg
+                    src={activeRoom.ballSprite}
+                    alt="掌机球舱"
+                    size={70}
+                    fillRatio={0.9}
+                    className="top-hud-bare-icon"
+                  />
                 </button>
                 <button
                   type="button"
@@ -281,7 +347,13 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   aria-label="训练家菜单与设置"
                   title="训练家菜单与系统设置（镜头视角可在设置中切换）"
                 >
-                  <PixelItemImg src="/sprites/items/poke-radar.png" size={40} />
+                  <TrimmedSpriteImg
+                    src="/sprites/items/poke-radar.png"
+                    alt="训练家菜单与设置"
+                    size={70}
+                    fillRatio={0.9}
+                    className="top-hud-bare-icon"
+                  />
                 </button>
               </div>
 

@@ -5566,7 +5566,10 @@ button:disabled {
   background: rgba(255, 255, 255, 0.28);
 }
 
-.surv-top-btn.is-lg {
+.surv-top-btn.is-lg,
+.surv-top-btn.is-lg.is-tactics,
+.surv-top-btn.is-lg.is-care-btn,
+.surv-top-btn.is-lg.is-gear-btn {
   width: var(--hud-top-card-h);
   height: var(--hud-top-card-h);
   padding: 0;
@@ -5576,18 +5579,30 @@ button:disabled {
   font-size: 12px;
   white-space: nowrap;
   flex-shrink: 0;
-  border: 2px solid #12101a;
-  box-shadow:
-    inset 1.5px 1.5px 0 rgba(255, 255, 255, 0.88),
-    3px 3px 0 rgba(9, 8, 15, 0.94);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
   border-radius: 0;
+  filter:
+    drop-shadow(2px 2px 0 rgba(12, 11, 20, 0.92))
+    drop-shadow(-1px -1px 0 rgba(12, 11, 20, 0.72));
+  transition: transform 0.1s steps(2, end), filter 0.12s ease;
 }
 
-.surv-top-btn.is-lg img {
-  width: 40px;
-  height: 40px;
-  object-fit: contain;
-  image-rendering: pixelated;
+.surv-top-btn.is-lg:hover {
+  transform: translateY(-2px) scale(1.06);
+  filter:
+    drop-shadow(3px 4px 0 rgba(12, 11, 20, 0.96))
+    drop-shadow(0 0 6px rgba(255, 224, 102, 0.45));
+}
+
+.surv-top-btn.is-lg:active {
+  transform: translate(1px, 1px) scale(0.97);
+}
+
+.surv-top-btn.is-lg .top-hud-bare-icon {
+  width: 92% !important;
+  height: 92% !important;
 }
 
 .surv-top-btn.is-gear-btn {
@@ -12312,29 +12327,98 @@ button.gba-status-box.is-clickable-card {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 6px 18px;
-  min-width: 134px;
+  padding: 6px 16px;
+  min-width: 158px;
+  max-width: 220px;
   background: rgba(12, 13, 22, 0.72);
-  gap: 3px;
+  gap: 5px;
 }
 
-.top-deck-center strong {
-  font-size: 17px;
+.top-deck-center.is-bgm-deck:hover {
+  background: rgba(24, 26, 42, 0.88);
+}
+
+.top-bgm-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
   font-weight: 900;
   color: #ffe066;
-  font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
 
-.top-deck-center small {
-  font-size: 10.5px;
-  font-weight: 800;
-  color: #ced4da;
-  line-height: 1.1;
+.top-deck-center.is-muted .top-bgm-head {
+  color: #868e96;
+}
+
+.top-bgm-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 10px;
+}
+
+.top-bgm-eq i {
+  display: block;
+  width: 2.5px;
+  height: 8px;
+  background: #69db7c;
+  animation: pixelEqBounce 0.65s steps(3, end) infinite alternate;
+}
+
+.top-bgm-eq i:nth-child(2) {
+  height: 10px;
+  background: #ffe066;
+  animation-delay: 0.18s;
+}
+
+.top-bgm-eq i:nth-child(3) {
+  height: 6px;
+  background: #74c0fc;
+  animation-delay: 0.34s;
+}
+
+@keyframes pixelEqBounce {
+  0% {
+    transform: scaleY(0.35);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+
+.top-deck-center strong.top-bgm-title {
+  font-size: 12px;
+  font-weight: 900;
+  color: #fffdf5;
+  line-height: 1.2;
+  max-width: 192px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-deck-center.is-muted strong.top-bgm-title {
+  color: #adb5bd;
 }
 
 .top-deck-wing.is-right {
   align-items: flex-end;
+}
+
+.top-time-phase-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.top-live-clock {
+  font-size: 14px;
+  font-weight: 900;
+  color: #fffdf5;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 
 .top-trainer-tag {
@@ -12344,6 +12428,12 @@ button.gba-status-box.is-clickable-card {
   background: rgba(12, 13, 22, 0.8);
   border: 1.5px solid #4dabf7;
   line-height: 1.2;
+}
+
+.top-trainer-tag.is-phase-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .top-badge-mini {
@@ -15339,16 +15429,11 @@ body,
   }
 
   .surv-top-btn.is-lg {
-    width: 48px;
+    width: 50px;
     height: 54px;
     padding: 0;
     font-size: 10px;
     gap: 3px;
-  }
-
-  .surv-top-btn.is-lg img {
-    width: 24px !important;
-    height: 24px !important;
   }
 
   .surv-top-status-deck {
@@ -15901,16 +15986,11 @@ body,
   }
 
   .surv-top-btn.is-lg {
-    width: 42px;
+    width: 44px;
     height: 50px;
     padding: 0;
     font-size: 9.5px;
     gap: 2px;
-  }
-
-  .surv-top-btn.is-lg img {
-    width: 22px !important;
-    height: 22px !important;
   }
 
   .surv-moba-wheel {
@@ -16331,11 +16411,6 @@ body,
     height: 48px;
     padding: 0;
     font-size: 10px;
-  }
-
-  .surv-top-btn.is-lg img {
-    width: 24px !important;
-    height: 24px !important;
   }
 
   .surv-minimap-box {
