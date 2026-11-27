@@ -13,6 +13,7 @@ import {
   getTerrainHeight3D,
   getWalkableSurfaceHeight3D,
   isNearAnyRoadOrRailForFlora3D,
+  urbanGroundWeight3D,
 } from '../../data/survivorsTactics';
 import { HIGHWAY_ROAD_WIDTH_3D, getNearestGeoHighwayProjection3D } from '../../utils/interCityHighwayGraph';
 import { BILLBOARD_PITCH_TILT, UPRIGHT_QUAD_GEO, createLushTreeSprite3D } from './arenaTypesAndProps';
@@ -150,6 +151,7 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
   const terrainNormAttr = terrainGeo.attributes.normal as THREE.BufferAttribute;
   const gridSide = Math.round(Math.sqrt(terrainPosAttr.count));
   const cellSpacing = gridSide > 1 ? Math.abs(terrainPosAttr.getX(1) - terrainPosAttr.getX(0)) : 2.5;
+  const zCellSpacing = gridSide > 1 ? Math.abs(terrainPosAttr.getZ(gridSide) - terrainPosAttr.getZ(0)) : cellSpacing;
   const twoSpacing = cellSpacing * 2;
 
   const updateLodRingHeightfield = (
@@ -211,9 +213,11 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
       midSnapX = 99999999;
       farSnapX = 99999999;
     }
-    // 1A. Ring 0: Fine 544m near terrain mesh (snaps every 16m)
-    const snapX = Math.round(cx / 16) * 16;
-    const snapZ = Math.round(cz / 16) * 16;
+    // Snap by whole terrain cells: overlapping meshes retain identical world
+    // vertices, so roads sampled from this grid cannot float after a snap.
+    const snapStepX=cellSpacing*3,snapStepZ=zCellSpacing*3;
+    const snapX = Math.round(cx / snapStepX) * snapStepX;
+    const snapZ = Math.round(cz / snapStepZ) * snapStepZ;
     if (snapX !== chunkState.x || snapZ !== chunkState.z) {
       chunkState.x = snapX;
       chunkState.z = snapZ;
@@ -432,6 +436,14 @@ export function createArenaFloraStreamer3D(rawCtx: Record<string, any>) {
           } else {
             existing.tier = wantTier;
           }
+          continue;
+        }
+
+        // Untended wilderness flora belongs outside paved city blocks; parks
+        // retain their own green surfaces and vegetation.
+        if(h/100<urbanGroundWeight3D(wx,wz)){
+          if(!existing)placedFloraCells.set(key,{gx,gz,tier:wantTier,objs:[],bbs:[],nodeIds:[]});
+          else existing.tier=wantTier;
           continue;
         }
 

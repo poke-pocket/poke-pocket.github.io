@@ -5,6 +5,7 @@ import {
   type WalkableStairAndFloorZone3D,
 } from '../data/survivorsTactics';
 import { getBiomeTextures, getNpcWalkSpriteFrames } from '../data/worldTextures3D';
+import { getActiveGeoTerrainOrigin } from '../data/geoTerrain3D';
 import {
   buildCleanUrbanApartment3D,
   buildModernCbdOfficeTower3D,
@@ -12,7 +13,6 @@ import {
 import {
   buildInterTownRoadNetwork3D,
   buildModernCityBridge3D,
-  buildStreetRibbonMesh,
   buildSuburbanHsrStation3D,
 } from '../world3d/interTownNetwork3D';
 import {
@@ -24,6 +24,16 @@ import {
   STREET_LAMP_POOL_MAT,
 } from '../world3d/townAssetLoader';
 import { getGroundTex } from '../world3d/townGroundTextures';
+import { createRoadKitJunctionStreamer, createRoadKitStreetlight, getRoadKitTexture, planRoadKitJunctions, roadLaneCount, type RoadKitCut } from '../world3d/roadModelStyle3D';
+import { buildRoadContinuity } from '../world3d/roadKitContinuity';
+import { buildRoadKitDrains } from '../world3d/roadKitDrains3D';
+import { createRoadKitNetworkStreamer } from '../world3d/roadKitNetwork3D';
+import { roadSidewalkOuterHalfWidth } from '../world3d/roadKitDimensions';
+import { createBuildingFoundationFloor } from '../world3d/buildingFoundationVisual3D';
+import { createRoadRiverMask } from '../world3d/roadWaterCrossing3D';
+import { CITY_BUS_LENGTH, createCityBusCollider } from '../world3d/roadKitBusDimensions';
+import { createPreviewBusShelter, mountPreviewCityBus } from '../world3d/roadKitBusStop3D';
+import { roadSurfaceY } from '../world3d/roadKitSurface';
 import {
   computeCameraWallClipT,
   isInsideBuildingInterior,
@@ -193,7 +203,7 @@ export function buildProceduralTown3D(
       for (let i = 0; i < nearStreets.length; i++) {
         const other = nearStreets[i];
         if (other === skipSeg) continue;
-        if (distToSeg2D(wx, wz, other.x1, other.z1, other.x2, other.z2) < other.width * 0.5 + 1.6) {
+        if (distToSeg2D(wx, wz, other.x1, other.z1, other.x2, other.z2) < roadSidewalkOuterHalfWidth(other.width) + 1.6) {
           return true;
         }
       }
@@ -202,6 +212,10 @@ export function buildProceduralTown3D(
   };
 
   // ==================== 1. STREETS, SLEEK MODERN BRIDGES & BOULEVARD GREENERY ====================
+  const roadJoins=buildRoadContinuity(layout.streets);
+  const roadJunctions=planRoadKitJunctions({streets:layout.streets,junctions:layout.junctions,centerX,centerZ,water:WATER_LEVEL_3D,ground:getGroundHeight});
+  const junctionCuts=new Map<TownStreetSeg,RoadKitCut[]>();
+  for(const p of roadJunctions)for(const seg of p.nearby){const cuts=junctionCuts.get(seg)??[];cuts.push({x:p.node.x,z:p.node.z,radius:p.radius,step:p.step});junctionCuts.set(seg,cuts)}
   for (let segIdx = 0; segIdx < layout.streets.length; segIdx++) {
     const seg = layout.streets[segIdx];
     if (seg.isBridge) {
@@ -212,7 +226,7 @@ export function buildProceduralTown3D(
         baseY,
         group,
         colliders,
-        deckRoadTex: tex.collector2Lane,
+        deckRoadTex: getRoadKitTexture(roadLaneCount(seg),seg.width),
         getGroundHeight,
       });
       continue;
@@ -220,17 +234,6 @@ export function buildProceduralTown3D(
 
     const segMidDist = Math.hypot((seg.x1 + seg.x2) * 0.5 - centerX, (seg.z1 + seg.z2) * 0.5 - centerZ);
     if (segMidDist > 4200) continue;
-
-    const roadTex =
-      seg.kind === 'arterial'
-        ? tex.boulevard4Lane
-        : seg.kind === 'street'
-          ? tex.collector2Lane
-          : tex.alleyCobble;
-    const microStagger = (segIdx % 11) * 0.003;
-    const liftY = (seg.kind === 'arterial' ? 0.098 : seg.kind === 'street' ? 0.072 : 0.045) + microStagger;
-    const polyOff = seg.kind === 'arterial' ? -3 : seg.kind === 'street' ? -2 : -1;
-    group.add(buildStreetRibbonMesh(seg, baseY, centerX, centerZ, roadTex, getGroundHeight, liftY, polyOff));
 
     if (segMidDist > 680) continue;
 
@@ -248,7 +251,7 @@ export function buildProceduralTown3D(
 
     if (seg.kind === 'arterial' && segLen >= 26) {
       // Keep asphalt lanes & center median 100% unobstructed — plant street trees ONLY along outer sidewalks at spacious 19m intervals!
-      const vergeOff = seg.width * 0.5 + 1.15;
+      const vergeOff = roadSidewalkOuterHalfWidth(seg.width) + 1.15;
       const sideSteps = Math.max(1, Math.floor((segLen - 12) / 19.0));
       for (let si = 0; si < sideSteps; si++) {
         const f = 0.14 + (sideSteps > 1 ? (si / (sideSteps - 1)) * 0.72 : 0.36);
@@ -270,7 +273,7 @@ export function buildProceduralTown3D(
     }
 
     if (seg.kind === 'street' && segLen >= 28) {
-      const vergeOff = seg.width * 0.5 + 0.95;
+      const vergeOff = roadSidewalkOuterHalfWidth(seg.width) + 0.95;
       const stepCount = Math.max(1, Math.floor((segLen - 12) / 21.0));
       for (let ti = 0; ti < stepCount; ti++) {
         const tFrac = 0.16 + (stepCount > 1 ? (ti / (stepCount - 1)) * 0.68 : 0.34);
@@ -292,136 +295,19 @@ export function buildProceduralTown3D(
     }
   }
 
-  // ==================== 1B. CIRCULAR ROAD INTERSECTION HUBS, CROSSWALKS & TRAFFIC SIGNALS ====================
-  const hubAsphaltMat = new THREE.MeshLambertMaterial({
-    color: 0x3b414c,
-    polygonOffset: true,
-    polygonOffsetFactor: -5,
-    polygonOffsetUnits: -5,
-  });
-  const hubCurbMat = new THREE.MeshLambertMaterial({
-    color: 0xaeb6c2,
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4,
-  });
-  const zebraStripeMat = new THREE.MeshLambertMaterial({
-    color: 0xf1f5f9,
-    emissive: 0x94a3b8,
-    emissiveIntensity: 0.18,
-    polygonOffset: true,
-    polygonOffsetFactor: -7,
-    polygonOffsetUnits: -7,
-  });
-
-  interface RoadArmInfo {
-    ux: number;
-    uz: number;
-    ang: number;
-    width: number;
-    isArterial: boolean;
-  }
-  const nodeMap = new Map<string, { x: number; z: number; arms: RoadArmInfo[] }>();
-  for (const seg of layout.streets) {
-    if (seg.isBridge) continue;
-    if (Math.hypot(seg.x1 - centerX, seg.z1 - centerZ) > 420 && Math.hypot(seg.x2 - centerX, seg.z2 - centerZ) > 420) {
-      continue;
-    }
-    const sLen = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
-    if (sLen < 2) continue;
-    const addArm = (nx: number, nz: number, ox: number, oz: number) => {
-      let target: { x: number; z: number; arms: RoadArmInfo[] } | undefined;
-      for (const nd of nodeMap.values()) {
-        if (Math.hypot(nd.x - nx, nd.z - nz) <= 7.0) {
-          target = nd;
-          break;
-        }
-      }
-      if (!target) {
-        target = { x: nx, z: nz, arms: [] };
-        nodeMap.set(`${Math.round(nx)},${Math.round(nz)}`, target);
-      }
-      const dArm = Math.max(0.01, Math.hypot(ox - target.x, oz - target.z));
-      const ux = (ox - target.x) / dArm;
-      const uz = (oz - target.z) / dArm;
-      if (!target.arms.some((a) => a.ux * ux + a.uz * uz > 0.94)) {
-        target.arms.push({ ux, uz, ang: Math.atan2(ux, uz), width: seg.width, isArterial: seg.kind === 'arterial' });
-      }
-    };
-    addArm(seg.x1, seg.z1, seg.x2, seg.z2);
-    addArm(seg.x2, seg.z2, seg.x1, seg.z1);
-  }
-
-  let ji = 0;
-  for (const nd of nodeMap.values()) {
-    if (nd.arms.length < 2 || getGroundHeight(nd.x, nd.z) < WATER_LEVEL_3D + 0.2) continue;
-    const maxW = Math.max(...nd.arms.map((a) => a.width));
-    const hubY = Math.max(WATER_LEVEL_3D + 0.25 - baseY, localGroundY(nd.x, nd.z) + 0.14);
-
-    const sidewalkHub = new THREE.Mesh(new THREE.CircleGeometry(maxW * 0.5 + 0.2, 22), hubCurbMat);
-    sidewalkHub.rotation.x = -Math.PI / 2;
-    sidewalkHub.position.set(nd.x - centerX, hubY - 0.015, nd.z - centerZ);
-    sidewalkHub.receiveShadow = true;
-    const roadHub = new THREE.Mesh(new THREE.CircleGeometry(maxW * 0.37, 22), hubAsphaltMat);
-    roadHub.rotation.x = -Math.PI / 2;
-    roadHub.position.set(nd.x - centerX, hubY + 0.01, nd.z - centerZ);
-    roadHub.receiveShadow = true;
-    group.add(sidewalkHub, roadHub);
-
-    if (nd.arms.length >= 3) {
-      nd.arms.sort((a, b) => a.ang - b.ang);
-      for (let ai = 0; ai < nd.arms.length; ai++) {
-        const arm = nd.arms[ai];
-        const prevArm = nd.arms[(ai - 1 + nd.arms.length) % nd.arms.length];
-        const nextArm = nd.arms[(ai + 1) % nd.arms.length];
-        const diffPrev = Math.acos(Math.max(-1, Math.min(1, arm.ux * prevArm.ux + arm.uz * prevArm.uz)));
-        const diffNext = Math.acos(Math.max(-1, Math.min(1, arm.ux * nextArm.ux + arm.uz * nextArm.uz)));
-        if (diffPrev < 0.87 || diffNext < 0.87) continue;
-
-        const cwDist = maxW * 0.42 + 2.8;
-        const cwx = nd.x + arm.ux * cwDist;
-        const cwz = nd.z + arm.uz * cwDist;
-        if (getGroundHeight(cwx, cwz) < WATER_LEVEL_3D + 0.25) continue;
-        const cwy = Math.max(hubY + 0.02, localGroundY(cwx, cwz) + 0.16);
-
-        const cwGroup = new THREE.Group();
-        cwGroup.position.set(cwx - centerX, cwy, cwz - centerZ);
-        cwGroup.rotation.y = arm.ang;
-
-        const carriagewayW = arm.width * 0.68;
-        const stripeCount = Math.max(4, Math.floor(carriagewayW / 1.55));
-        const spanW = carriagewayW * 0.88;
-        for (let si = 0; si < stripeCount; si++) {
-          const sx = -spanW * 0.5 + (stripeCount > 1 ? (si / (stripeCount - 1)) * spanW : 0);
-          const bar = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 2.55), zebraStripeMat);
-          bar.rotation.x = -Math.PI / 2;
-          bar.position.set(sx, 0, 0);
-          cwGroup.add(bar);
-        }
-        const stopLine = new THREE.Mesh(new THREE.PlaneGeometry(carriagewayW * 0.9, 0.36), zebraStripeMat);
-        stopLine.rotation.x = -Math.PI / 2;
-        stopLine.position.set(0, 0, 2.05);
-        cwGroup.add(stopLine);
-        group.add(cwGroup);
-
-        if (arm.isArterial && ai < 2) {
-          const rNx = -arm.uz;
-          const rNz = arm.ux;
-          const sigX = cwx + rNx * (arm.width * 0.44);
-          const sigZ = cwz + rNz * (arm.width * 0.44);
-          void mountVoxModel(group, '/models/vox/obj_trlight2.vox', {
-            x: sigX - centerX,
-            y: localGroundY(sigX, sigZ) + 0.14,
-            z: sigZ - centerZ,
-            rotY: Math.atan2(-rNx, -rNz),
-            targetHeight: 5.8,
-            emitMode: 'traffic',
-          });
-        }
-      }
-      ji += 1;
-    }
-  }
+  // Ground roads use one world-aligned network mask, following the preview's
+  // road/sidewalk union and rounding rules. Bridges keep their original decks.
+  const hubAsphaltMat = new THREE.MeshLambertMaterial({ color: 0x718891, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 });
+  const roadCity=(landmarkCityId??anchor.landmarkCityId??id).toLowerCase();
+  const coverStyle=roadCity.includes('shanghai')?'shanghai':roadCity.includes('shenzhen')?'shenzhen':'plain';
+  const riverMask=getActiveGeoTerrainOrigin()?createRoadRiverMask(layout.rivers):undefined;
+  const networkStreamer=createRoadKitNetworkStreamer({streets:layout.streets,centerX,centerZ,baseY,water:WATER_LEVEL_3D,ground:getGroundHeight,plans:roadJunctions,joins:roadJoins,manholeStyle:coverStyle,isWater:riverMask});
+  networkStreamer.update(centerX,centerZ);group.add(networkStreamer.group);
+  const junctionStreamer=createRoadKitJunctionStreamer({streets:layout.streets,junctions:layout.junctions,centerX,centerZ,baseY,water:WATER_LEVEL_3D,ground:getGroundHeight,plans:roadJunctions,paintOnly:true});
+  junctionStreamer.update(centerX,centerZ);group.add(junctionStreamer.group);
+  const makeDrains=(localBaseY:number)=>buildRoadKitDrains({streets:layout.streets,joins:roadJoins,cuts:junctionCuts,centerX,centerZ,baseY:localBaseY,water:WATER_LEVEL_3D,ground:getGroundHeight});
+  let drainGroup=makeDrains(baseY);group.add(drainGroup);
+  const releaseDrains=()=>{group.remove(drainGroup);drainGroup.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose()}})};
 
   // ==================== 1C. URBAN PARKS, STEPPED VOXEL FOUNTAINS, PONDS & .VOX BENCHES/TRASHCANS ====================
   const parkBorderMat = new THREE.MeshLambertMaterial({ map: tex.cobblePlaza });
@@ -602,6 +488,7 @@ export function buildProceduralTown3D(
         lot.kind === 'skyscraper' ||
         (lot.shape && lot.shape !== 'rect') ||
         (distCenter < 220 ? hHash % 10 < 6 : hHash % 10 < 4);
+      group.add(createBuildingFoundationFloor(lot,lx,ly,lz));
 
       const entPool = new THREE.Mesh(new THREE.PlaneGeometry(10.0, 8.0), BUILDING_ENTRANCE_POOL_MAT);
       entPool.rotation.x = -Math.PI / 2;
@@ -665,50 +552,31 @@ export function buildProceduralTown3D(
   });
 
   // ==================== 4. FULL-CITY 3D BUS STOP NETWORK (EVERY DESTINATION HAS A REAL 3D SHELTER & SIGN!) ====================
-  const busBayPadGeo = new THREE.PlaneGeometry(5.6, 12.4);
-  busBayPadGeo.rotateX(-Math.PI / 2);
-  const busBayPadMat = new THREE.MeshLambertMaterial({
-    color: 0xcbd5e1,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
-
   layout.busStops.forEach((bs, bsIdx) => {
     const bFwdX = Math.sin(bs.rotY);
     const bFwdZ = Math.cos(bs.rotY);
     const shelterY = localGroundY(bs.shelterX, bs.shelterZ) + 0.16;
 
-    // Paved Curbside Waiting Platform Pad under every Bus Shelter (`obj_busstop.vox`)
-    const bayPad = new THREE.Mesh(busBayPadGeo, busBayPadMat);
-    bayPad.position.set(bs.shelterX - centerX, shelterY - 0.04, bs.shelterZ - centerZ);
-    bayPad.rotation.y = bs.rotY;
-    bayPad.receiveShadow = true;
-    group.add(bayPad);
-
-    void mountVoxModel(group, '/models/vox/obj_busstop.vox', {
-      x: bs.shelterX - centerX,
-      y: shelterY,
-      z: bs.shelterZ - centerZ,
-      rotY: bs.rotY - Math.PI / 2,
-      targetSpan: 5.8,
-    });
+    const shelter=createPreviewBusShelter();
+    shelter.position.set(bs.shelterX-centerX,shelterY,bs.shelterZ-centerZ);
+    shelter.rotation.y=Math.atan2(bs.busX-bs.shelterX,bs.busZ-bs.shelterZ);
+    group.add(shelter);
     spawnVoxStreetPropCluster(
       group,
       'trashcan',
-      bs.shelterX - centerX + bFwdX * 3.6,
+      bs.shelterX - centerX + bFwdX * 6.3,
       shelterY,
-      bs.shelterZ - centerZ + bFwdZ * 3.6,
+      bs.shelterZ - centerZ + bFwdZ * 6.3,
       bs.rotY,
       seed + 3 + bsIdx,
     );
 
     if (bs.hasParkedBus) {
-      const busGroundY = localGroundY(bs.busX, bs.busZ) + 0.16;
+      const busGroundY = bs.id==='bus_hsr' ? localGroundY(bs.busX,bs.busZ)+.16 : roadSurfaceY(bs.busX,bs.busZ,getGroundHeight,WATER_LEVEL_3D)-baseY+.06;
       if (bs.id === 'bus_hsr') {
         // Paved forecourt shuttle-bus bay right outside the Suburban HSR Terminal!
         const forecourtRoad = new THREE.Mesh(
-          new THREE.PlaneGeometry(9.6, 18.5),
+          new THREE.PlaneGeometry(9.6, 27),
           hubAsphaltMat,
         );
         forecourtRoad.rotation.x = -Math.PI / 2;
@@ -717,15 +585,8 @@ export function buildProceduralTown3D(
         forecourtRoad.receiveShadow = true;
         group.add(forecourtRoad);
       }
-      void mountVoxModel(group, '/models/vox/veh_bus.vox', {
-        x: bs.busX - centerX,
-        y: busGroundY,
-        z: bs.busZ - centerZ,
-        rotY: bs.rotY,
-        targetSpan: 9.2,
-        emitMode: 'vehicle',
-      });
-      colliders.push(makeObbCollider(bs.busX, bs.busZ, 1.45, 4.5, bs.rotY, 3.2));
+      void mountPreviewCityBus(group,bs.busX-centerX,busGroundY,bs.busZ-centerZ,bs.rotY);
+      colliders.push(createCityBusCollider(bs.busX,bs.busZ,bs.rotY,baseY+busGroundY));
     }
   });
 
@@ -735,7 +596,7 @@ export function buildProceduralTown3D(
   for (let li = 0; li < layout.streetLamps.length; li++) {
     const lamp = layout.streetLamps[li];
     const lampBaseLocalY = localGroundY(lamp.x, lamp.z);
-    streetLampPositions.push({ x: lamp.x, y: baseY + lampBaseLocalY + 5.8, z: lamp.z });
+    streetLampPositions.push({ x: lamp.x, y: baseY + lampBaseLocalY + 8.0, z: lamp.z });
 
     const pool = new THREE.Mesh(lampPoolGeo, STREET_LAMP_POOL_MAT);
     pool.position.set(
@@ -745,25 +606,16 @@ export function buildProceduralTown3D(
     );
     group.add(pool);
 
-    // Authentic MagicaVoxel `.vox` Streetlamp (`obj_stlight2.vox` overhanging arm oriented over roadway!)
-    void mountVoxModel(group, '/models/vox/obj_stlight2.vox', {
-      x: lamp.x - centerX,
-      y: lampBaseLocalY + 0.12,
-      z: lamp.z - centerZ,
-      rotY: lamp.rotY - Math.PI / 2,
-      targetHeight: 6.1,
-      emitMode: 'lamp',
-      onMounted: (_m, sz) => {
-        const halo = new THREE.Sprite(STREET_LAMP_HALO_MAT);
-        halo.scale.set(4.0, 4.0, 1);
-        halo.position.set(
-          lamp.x - centerX + Math.sin(lamp.rotY) * 1.5,
-          lampBaseLocalY + sz.h * 0.92,
-          lamp.z - centerZ + Math.cos(lamp.rotY) * 1.5,
-        );
-        group.add(halo);
-      },
-    });
+    // Same shaped streetlight used by the road kit; the game still owns its
+    // placement, night-time pools and proximity-light bookkeeping.
+    const roadLamp = createRoadKitStreetlight(8);
+    roadLamp.position.set(lamp.x - centerX, lampBaseLocalY + .12, lamp.z - centerZ);
+    roadLamp.rotation.y = lamp.rotY;
+    group.add(roadLamp);
+    const halo = new THREE.Sprite(STREET_LAMP_HALO_MAT);
+    halo.scale.set(4, 4, 1);
+    halo.position.set(lamp.x-centerX+Math.sin(lamp.rotY)*2.1,lampBaseLocalY+8.05,lamp.z-centerZ+Math.cos(lamp.rotY)*2.1);
+    group.add(halo);
     // Pair every 4th streetlamp with a curbside MagicaVoxel trash can or fire hydrant!
     if (li % 4 === 1) {
       spawnVoxStreetPropCluster(
@@ -1148,6 +1000,7 @@ export function buildProceduralTown3D(
     centerX,
     centerZ,
     safeRadius: Math.max(layout.boundingRadius + 30, 340),
+    collisionRadius: Math.max(layout.boundingRadius+90,740,...layout.busStops.filter(b=>b.hasParkedBus).map(b=>Math.hypot(b.busX-centerX,b.busZ-centerZ)+CITY_BUS_LENGTH)),
     group,
     interactPoints,
     colliders,
@@ -1156,6 +1009,14 @@ export function buildProceduralTown3D(
     upperFloorZones,
     streetLampPositions,
     viaductSpans,
+    updateRoadKit: (x,z)=>{networkStreamer.update(x,z);junctionStreamer.update(x,z)},
+    refreshRoadKit: (localBaseY,x,z)=>{
+      networkStreamer.refreshTerrain(localBaseY);junctionStreamer.refreshTerrain(localBaseY);
+      releaseDrains();
+      drainGroup=makeDrains(localBaseY);group.add(drainGroup);
+      networkStreamer.update(x,z);junctionStreamer.update(x,z);
+    },
+    disposeRoadKit: ()=>{networkStreamer.refreshTerrain(group.position.y);junctionStreamer.refreshTerrain(group.position.y);releaseDrains();group.traverse(o=>{if(o instanceof THREE.Mesh&&o.name==='Building_foundation_floor')o.geometry.dispose()})},
     trainGroup,
     trainBaseX: trainGroup.position.x,
     animatedParts: {

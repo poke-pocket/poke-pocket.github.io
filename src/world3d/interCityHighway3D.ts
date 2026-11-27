@@ -5,8 +5,10 @@ import {
   getCompiledInterCityNetwork,
   type HighwayExitPortal,
 } from '../utils/interCityHighwayGraph';
-import { getGroundTex, makePixelTex } from './townGroundTextures';
-import { mountVoxModel } from './voxLoader3D';
+import { makePixelTex } from './townGroundTextures';
+import { applyRoadKitAsphalt, createRoadKitStreetlight, getRoadKitTexture, type RoadLaneCount } from './roadModelStyle3D';
+import { createRoadDeckWalkways, type RoadDeckStation } from './roadKitElevated3D';
+import { roadSidewalkOuterHalfWidth } from './roadKitDimensions';
 
 const SIGN_TEX_CACHE = new Map<string, THREE.CanvasTexture>();
 
@@ -83,27 +85,16 @@ function buildExpresswayGantrySign3D(portal: HighwayExitPortal, groundY: number)
 export function createInterCityHighwayStreamer3D(opts: {
   scene: THREE.Scene;
   getGroundHeight: (x: number, z: number) => number;
+  laneCount?: RoadLaneCount;
 }) {
   const { scene, getGroundHeight } = opts;
   const rootGroup = new THREE.Group();
   scene.add(rootGroup);
 
-  const tex = getGroundTex();
-  const roadMat = new THREE.MeshLambertMaterial({
-    map: tex.boulevard4Lane,
-    side: THREE.DoubleSide,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits: -2,
-  });
+  const roadMaterials = new Map<RoadLaneCount,THREE.MeshLambertMaterial>();
+  const roadMaterial=(lanes:RoadLaneCount)=>{let mat=roadMaterials.get(lanes);if(!mat){mat=new THREE.MeshLambertMaterial({map:getRoadKitTexture(lanes),side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});applyRoadKitAsphalt(mat);roadMaterials.set(lanes,mat)}return mat};
   const railStoneMat = new THREE.MeshLambertMaterial({ color: 0xe2e8f0 });
   const pierMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
-  const junctionPadMat = new THREE.MeshLambertMaterial({
-    color: 0x3b414c,
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4,
-  });
 
   let lastSnapX = 999999;
   let lastSnapZ = 999999;
@@ -116,6 +107,7 @@ export function createInterCityHighwayStreamer3D(opts: {
       if (ch instanceof THREE.Mesh && ch.geometry) {
         ch.geometry.dispose();
       }
+      if(ch.name==='RoadKit_deck_walkways')ch.traverse(o=>{if(o instanceof THREE.Mesh)o.geometry.dispose()});
     }
   };
 
@@ -139,11 +131,6 @@ export function createInterCityHighwayStreamer3D(opts: {
     for (const portal of net.exitPortals) {
       if (Math.hypot(portal.x - snapX, portal.z - snapZ) > streamR) continue;
       const py = Math.max(WATER_LEVEL_3D + 0.22, getGroundHeight(portal.x, portal.z) + 0.14);
-      const mergeDisc = new THREE.Mesh(new THREE.CircleGeometry(halfW * 0.92, 18), junctionPadMat);
-      mergeDisc.rotation.x = -Math.PI / 2;
-      mergeDisc.position.set(portal.x, py, portal.z);
-      mergeDisc.receiveShadow = true;
-      rootGroup.add(mergeDisc);
       rootGroup.add(buildExpresswayGantrySign3D(portal, py));
     }
 
@@ -171,9 +158,7 @@ export function createInterCityHighwayStreamer3D(opts: {
           const dirX = (seg.x2 - seg.x1) / dist;
           const dirZ = (seg.z2 - seg.z1) / dist;
           const yaw = Math.atan2(dirX, dirZ);
-          const perpX = -dirZ * halfW;
-          const perpZ = dirX * halfW;
-          const endPad = 1.1;
+          const endPad = 0;
           const sx1 = seg.x1 - dirX * endPad;
           const sz1 = seg.z1 - dirZ * endPad;
           const sx2 = seg.x2 + dirX * endPad;
@@ -185,15 +170,19 @@ export function createInterCityHighwayStreamer3D(opts: {
           const positions: number[] = [];
           const uvs: number[] = [];
           const indices: number[] = [];
+          const deckStations: RoadDeckStation[] = [];
 
           for (let s = 0; s <= steps; s++) {
             const t = s / steps;
             const wx = sx1 + (sx2 - sx1) * t;
             const wz = sz1 + (sz2 - sz1) * t;
-            const lx = wx - perpX;
-            const lz = wz - perpZ;
-            const rx = wx + perpX;
-            const rz = wz + perpZ;
+            const startWeight=Math.max(0,1-t*dist/4),endWeight=Math.max(0,1-(1-t)*dist/4);
+            const normalX=-dirZ+((seg.startMiter?.[0]??-dirZ)+dirZ)*startWeight+((seg.endMiter?.[0]??-dirZ)+dirZ)*endWeight;
+            const normalZ=dirX+((seg.startMiter?.[1]??dirX)-dirX)*startWeight+((seg.endMiter?.[1]??dirX)-dirX)*endWeight;
+            const lx = wx - normalX*halfW;
+            const lz = wz - normalZ*halfW;
+            const rx = wx + normalX*halfW;
+            const rz = wz + normalZ*halfW;
 
             const gC = getGroundHeight(wx, wz);
             const { deckY: edgeY, bridgeBlend } = getExactHighwayStationDeckY3D(
@@ -216,6 +205,7 @@ export function createInterCityHighwayStreamer3D(opts: {
             const bridgeY = crownY;
             const edgeLY = edgeY;
             const edgeRY = edgeY;
+            deckStations.push({x:wx,z:wz,y:crownY,leftY:edgeY,rightY:edgeY,halfWidth:halfW,nx:normalX,nz:normalZ,along:(seg.phaseStart??0)+t*paddedDist});
 
             positions.push(
               lx, edgeLY - 2.2, lz,
@@ -224,7 +214,7 @@ export function createInterCityHighwayStreamer3D(opts: {
               rx, edgeRY, rz,
               rx, edgeRY - 2.2, rz,
             );
-            const u = (t * paddedDist) / 16.5;
+            const u = ((seg.phaseStart??0)+t * paddedDist) / 16.5;
             uvs.push(u, 0, u, 0, u, 0.5, u, 1, u, 1);
 
             if (s < steps) {
@@ -240,8 +230,8 @@ export function createInterCityHighwayStreamer3D(opts: {
               const mx = wx + dirX * stepLen * 0.5;
               const mz = wz + dirZ * stepLen * 0.5;
               for (const side of [-1, 1]) {
-                const bx = mx + -dirZ * side * (halfW - 0.25);
-                const bz = mz + dirX * side * (halfW - 0.25);
+                const bx = mx + -dirZ * side * (roadSidewalkOuterHalfWidth(HIGHWAY_ROAD_WIDTH_3D) - 0.25);
+                const bz = mz + dirX * side * (roadSidewalkOuterHalfWidth(HIGHWAY_ROAD_WIDTH_3D) - 0.25);
                 const parapet = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.92, stepLen + 0.2), railStoneMat);
                 parapet.position.set(bx, bridgeY + 0.46, bz);
                 parapet.rotation.y = yaw;
@@ -262,23 +252,20 @@ export function createInterCityHighwayStreamer3D(opts: {
           geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
           geo.setIndex(indices);
           geo.computeVertexNormals();
-          const mesh = new THREE.Mesh(geo, roadMat);
+          const mesh = new THREE.Mesh(geo, roadMaterial(seg.laneCount??opts.laneCount??4));
           mesh.receiveShadow = true;
           rootGroup.add(mesh);
+          rootGroup.add(createRoadDeckWalkways(deckStations));
 
           // Occasional MagicaVoxel highway lamp along dry inter-city highway stretches!
           if (segIdx % 3 === 0 && getGroundHeight(midX, midZ) >= WATER_LEVEL_3D + 0.3) {
             const side = segIdx % 2 === 0 ? 1 : -1;
-            const lx = midX + -dirZ * side * (halfW + 1.1);
-            const lz = midZ + dirX * side * (halfW + 1.1);
-            void mountVoxModel(rootGroup, '/models/vox/obj_stlight2.vox', {
-              x: lx,
-              y: getGroundHeight(lx, lz) + 0.14,
-              z: lz,
-              rotY: Math.atan2(dirZ * side, -dirX * side) - Math.PI / 2,
-              targetHeight: 6.0,
-              emitMode: 'lamp',
-            });
+            const lx = midX + -dirZ * side * (HIGHWAY_ROAD_WIDTH_3D * .365);
+            const lz = midZ + dirX * side * (HIGHWAY_ROAD_WIDTH_3D * .365);
+            const lamp=createRoadKitStreetlight(8);
+            lamp.position.set(lx,getGroundHeight(lx,lz)+.14,lz);
+            lamp.rotation.y=Math.atan2(dirZ*side,-dirX*side);
+            rootGroup.add(lamp);
           }
         }
       }
@@ -287,6 +274,7 @@ export function createInterCityHighwayStreamer3D(opts: {
 
   const dispose = () => {
     clearChildren();
+    for(const mat of roadMaterials.values())mat.dispose();
     scene.remove(rootGroup);
   };
 

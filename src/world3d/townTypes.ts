@@ -168,6 +168,8 @@ export interface ProceduralTownInstance {
   centerX: number;
   centerZ: number;
   safeRadius: number;
+  /** Outer collision coverage may include remote transport hubs. */
+  collisionRadius?: number;
   group: THREE.Group;
   interactPoints: TownInteractPoint[];
   colliders: TownCollider[];
@@ -176,6 +178,9 @@ export interface ProceduralTownInstance {
   upperFloorZones: WalkableStairAndFloorZone3D[];
   streetLampPositions?: { x: number; y: number; z: number }[];
   viaductSpans?: ViaductOverheadSpan[];
+  updateRoadKit?: (worldX:number,worldZ:number)=>void;
+  refreshRoadKit?: (baseY:number,worldX:number,worldZ:number)=>void;
+  disposeRoadKit?: ()=>void;
   trainGroup?: THREE.Group;
   trainBaseX?: number;
   animatedParts?: {

@@ -217,6 +217,15 @@ function spawnGbaNpc(key: string, x: number, y: number, z: number, height = 2.48
  * - Rear (`-Z`) is a solid masonry wall with a default-closed proximity auto-opening rear service/back door (`后门`)!
  * - Topped with stepped MagicaVoxel roofs, voxel HVAC greebles & 3D Voxel Pokéball beacon!
  */
+export function getWalkInStoreyDimensions(kind:WalkInBuildingKind){
+  const stories:1|2=kind==='hotel'||kind==='house'||kind==='pokemon_center'?2:1;
+  // Use one shared storey size for the playable shops and houses. The
+  // number of storeys stays specific to the building's original design.
+  const heightScale=1.5;
+  const first=7.5;
+  return {stories,heightScale,first,second:stories===2?7.5:0,entryDoor:3.85,rearDoor:3.25};
+}
+
 export function buildUnifiedWalkInBuilding3D(opts: {
   kind: WalkInBuildingKind;
   interiorId: string;
@@ -256,10 +265,9 @@ export function buildUnifiedWalkInBuilding3D(opts: {
 
   const w = width * 0.94;
   const d = depth * 0.94;
-  const stories: 1 | 2 = kind === 'hotel' || kind === 'house' || kind === 'pokemon_center' ? 2 : 1;
+  const {stories,heightScale,first:H1,second:H2,entryDoor,rearDoor}=getWalkInStoreyDimensions(kind);
   const dualDoors = false;
-  const H1 = stories === 2 ? 4.6 : 5.0;
-  const H2 = stories === 2 ? 4.4 : 0;
+  // Storey heights drive both the shell and the walkable upper floor.
   const totalWallH = H1 + H2;
   const floor1Y = 0.16;
   const floor2Y = floor1Y + H1;
@@ -363,7 +371,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   // ==================== 2. STREET-FACING (+Z) STOREFRONT GLASS ONLY + SOLID SIDE/REAR VOXEL WALLS ====================
   const wallT = 0.85;
   const doorW = 6.2;
-  const doorH = 3.85;
+  const doorH = entryDoor;
   const lintelH = totalWallH - doorH;
   const segW = Math.max(2.0, (w - doorW) * 0.5);
   const segOffX = doorW * 0.5 + segW * 0.5;
@@ -395,7 +403,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
       const yBase = s === 1 ? floor1Y : floor2Y;
       const storyH = s === 1 ? H1 : H2;
       const curbH = 0.22;
-      const headY = s === 1 ? 3.85 : 3.65;
+      const headY = (s === 1 ? 3.85 : 3.65) * heightScale;
       const winH = headY - curbH;
       const spandrelH = storyH - headY;
       const winMidY = yBase + curbH + winH * 0.5;
@@ -503,7 +511,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
 
   // 2) NON-STREET BACK WALL (-Z): Solid Voxel-Pilaster Masonry Wall + Default-Closed Rear Service Door (`后门`)!
   const backDoorW = 3.4;
-  const backDoorH = 3.25;
+  const backDoorH = rearDoor;
   const backDoorCenterX = kind === 'restaurant' ? w * 0.26 : 0;
   {
     const bz = -d * 0.5;
@@ -669,8 +677,9 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     const stMinX = -w * 0.44;
     const stMaxX = stMinX + 4.4;
     const stCx = (stMinX + stMaxX) * 0.5;
-    const stBotZ = 5.6;
-    const stTopZ = -5.6;
+    const stairHalfLength = Math.min(d*.5-1.2, H1/4.6*5.6);
+    const stBotZ = stairHalfLength;
+    const stTopZ = -stairHalfLength;
     const openMinX = stMinX - 0.2;
     const openMaxX = stMaxX + 0.2;
     const openMinZ = stTopZ - 0.3;
@@ -729,7 +738,7 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     const railSideMat = new THREE.MeshLambertMaterial({
       color: kind === 'pokemon_center' ? 0xe87352 : 0x5c3d2e,
     });
-    const numSteps = 16;
+    const numSteps = Math.max(16,Math.ceil((floor2Y-floor1Y)/.3));
     const stepSpanZ = (stBotZ - stTopZ) / numSteps;
     const stepRiseY = (floor2Y - floor1Y) / numSteps;
     for (let s = 0; s < numSteps; s++) {

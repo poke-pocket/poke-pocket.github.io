@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {
   BRIDGE_DECK_Y_3D,
   computeCityBridgeDeckWorldY3D,
+  computeCityBridgeSurfaceWorldY3D,
   MOUNTAIN_TUNNEL_TRIGGER_Y,
   WATER_LEVEL_3D,
   WORLD_RAIL_SEGMENTS_3D,
@@ -11,9 +12,14 @@ import type { TownStreetSeg } from '../utils/townStreetGen';
 import {
   mountGlbModel,
   STREET_LAMP_HALO_MAT,
+  STREET_LAMP_POOL_MAT,
 } from './townAssetLoader';
-import { getGroundTex, makePixelTex } from './townGroundTextures';
+import { makePixelTex } from './townGroundTextures';
+import { applyRoadKitAsphalt, applyRoadKitJunctionCuts, createRoadKitStreetlight, getRoadKitPavingMaterial, getRoadKitTactileMaterial, getRoadKitTexture, type RoadKitCut } from './roadModelStyle3D';
+import type { RoadJoin } from './roadKitContinuity';
 import { makeObbCollider, type TownCollider } from './townTypes';
+import { createRoadDeckWalkways, type RoadDeckStation } from './roadKitElevated3D';
+import { roadSidewalkOuterHalfWidth } from './roadKitDimensions';
 import { mountVoxModel } from './voxLoader3D';
 
 /**
@@ -45,16 +51,18 @@ export function buildModernCityBridge3D(opts: {
   });
   const capRailMat = new THREE.MeshLambertMaterial({ color: 0x475569 });
   const pierMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
+  const lampPoolGeo = new THREE.PlaneGeometry(10.8,10.8);
+  lampPoolGeo.rotateX(-Math.PI/2);
 
   const bDirX = (seg.x2 - seg.x1) / Math.max(0.01, bLen);
   const bDirZ = (seg.z2 - seg.z1) / Math.max(0.01, bLen);
   const bNx = -bDirZ;
   const bNz = bDirX;
-  const halfW = seg.width * 0.5;
   const archSteps = Math.max(10, Math.ceil(bLen / 2.5));
   const deckPos: number[] = [];
   const deckUvs: number[] = [];
   const deckIdx: number[] = [];
+  const deckStations: RoadDeckStation[] = [];
   const girderPos: number[] = [];
   const girderIdx: number[] = [];
 
@@ -62,20 +70,28 @@ export function buildModernCityBridge3D(opts: {
     const t = s / archSteps;
     const wx = seg.x1 + (seg.x2 - seg.x1) * t;
     const wz = seg.z1 + (seg.z2 - seg.z1) * t;
-    const yLocal = computeCityBridgeDeckWorldY3D(seg, baseY, t, getGroundHeight) - baseY;
-    const lx = wx - bNx * halfW - centerX;
-    const lz = wz - bNz * halfW - centerZ;
-    const rx = wx + bNx * halfW - centerX;
-    const rz = wz + bNz * halfW - centerZ;
-    deckPos.push(lx, yLocal + 0.02, lz, rx, yLocal + 0.02, rz);
+    const halfW=THREE.MathUtils.lerp(seg.widthStart??seg.width,seg.widthEnd??seg.width,t)*.5;
+    const heightAt=(x:number,z:number)=>computeCityBridgeSurfaceWorldY3D(seg,baseY,t,x,z,getGroundHeight);
+    const yLocal = heightAt(wx,wz) - baseY;
+    deckStations.push({x:wx,z:wz,y:yLocal+baseY,halfWidth:halfW,along:wx*bDirX+wz*bDirZ,heightAt});
+    // The asphalt ends at the curb; the separate walkways own the sidewalk.
+    const roadHalfW=halfW*.6875;
+    const lx = wx - bNx * roadHalfW - centerX;
+    const lz = wz - bNz * roadHalfW - centerZ;
+    const rx = wx + bNx * roadHalfW - centerX;
+    const rz = wz + bNz * roadHalfW - centerZ;
+    deckPos.push(lx, heightAt(wx-bNx*roadHalfW,wz-bNz*roadHalfW)-baseY, lz, rx, heightAt(wx+bNx*roadHalfW,wz+bNz*roadHalfW)-baseY, rz);
     const u = (t * bLen) / 14;
-    deckUvs.push(u, 0, u, 1);
+    deckUvs.push(u, 20/128, u, 108/128);
 
-    const glx = wx - bNx * (halfW + 0.22) - centerX;
-    const glz = wz - bNz * (halfW + 0.22) - centerZ;
-    const grx = wx + bNx * (halfW + 0.22) - centerX;
-    const grz = wz + bNz * (halfW + 0.22) - centerZ;
-    girderPos.push(glx, yLocal - 0.5, glz, glx, yLocal, glz, grx, yLocal, grz, grx, yLocal - 0.5, grz);
+    const girderHalfW=roadSidewalkOuterHalfWidth(halfW*2)+.22;
+    const glx = wx - bNx * girderHalfW - centerX;
+    const glz = wz - bNz * girderHalfW - centerZ;
+    const grx = wx + bNx * girderHalfW - centerX;
+    const grz = wz + bNz * girderHalfW - centerZ;
+    const leftGirderY=heightAt(wx-bNx*girderHalfW,wz-bNz*girderHalfW)-baseY-.12;
+    const rightGirderY=heightAt(wx+bNx*girderHalfW,wz+bNz*girderHalfW)-baseY-.12;
+    girderPos.push(glx,leftGirderY-.8,glz,glx,leftGirderY,glz,grx,rightGirderY,grz,grx,rightGirderY-.8,grz);
 
     if (s < archSteps) {
       const d0 = s * 2;
@@ -83,7 +99,9 @@ export function buildModernCityBridge3D(opts: {
       const g0 = s * 4;
       const gn = (s + 1) * 4;
       girderIdx.push(g0, gn, g0 + 1, g0 + 1, gn, gn + 1);
-      girderIdx.push(g0 + 1, gn + 1, g0 + 2, g0 + 2, gn + 1, gn + 2);
+      // Close the underside only. A second coplanar top face causes
+      // depth fighting and triangular holes against the visible road deck.
+      girderIdx.push(g0, g0 + 3, gn, g0 + 3, gn + 3, gn);
       girderIdx.push(g0 + 2, gn + 2, g0 + 3, g0 + 3, gn + 2, gn + 3);
     }
   }
@@ -93,6 +111,7 @@ export function buildModernCityBridge3D(opts: {
   girderGeo.setIndex(girderIdx);
   girderGeo.computeVertexNormals();
   const girderMesh = new THREE.Mesh(girderGeo, girderMat);
+  girderMesh.name='RoadKit_bridge_girder';
   girderMesh.castShadow = true;
   girderMesh.receiveShadow = true;
   group.add(girderMesh);
@@ -106,25 +125,26 @@ export function buildModernCityBridge3D(opts: {
   deckGeo.setAttribute('uv', new THREE.Float32BufferAttribute(deckUvs, 2));
   deckGeo.setIndex(deckIdx);
   deckGeo.computeVertexNormals();
-  const deckMesh = new THREE.Mesh(
-    deckGeo,
-    new THREE.MeshLambertMaterial({
+  const deckMaterial = new THREE.MeshLambertMaterial({
       map: deckTex,
       side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -3,
       polygonOffsetUnits: -3,
-    }),
-  );
+    });
+  applyRoadKitAsphalt(deckMaterial);
+  const deckMesh = new THREE.Mesh(deckGeo,deckMaterial);
+  deckMesh.name='RoadKit_bridge_asphalt';
   deckMesh.receiveShadow = true;
   group.add(deckMesh);
+  group.add(createRoadDeckWalkways(deckStations,centerX,centerZ,baseY));
 
   // Inset parapets to central 64% of span (where arch has leveled out at peakDeckY) so onshore intersections stay 100% open
   const railSpan = Math.max(6, bLen * 0.64);
 
   for (const side of [-1, 1]) {
-    const rx = bMidX + bNx * side * (seg.width * 0.48);
-    const rz = bMidZ + bNz * side * (seg.width * 0.48);
+    const rx = bMidX + bNx * side * (roadSidewalkOuterHalfWidth(seg.width)-.25);
+    const rz = bMidZ + bNz * side * (roadSidewalkOuterHalfWidth(seg.width)-.25);
     colliders.push(makeObbCollider(centerX + rx, centerZ + rz, 0.45, railSpan * 0.5, bYaw, 2.4));
 
     // Low 1.05m sculpted stone/steel parapet wall + sleek dark handrail cap (completely open sky view!)
@@ -146,18 +166,28 @@ export function buildModernCityBridge3D(opts: {
       pier.rotation.y = bYaw;
       group.add(pier);
 
-      void mountVoxModel(group, '/models/vox/obj_stlight2.vox', {
-        x: px,
-        y: deckY + 0.95,
-        z: pz,
-        rotY: bYaw + (side > 0 ? Math.PI : 0),
-        targetHeight: 4.4,
-        emitMode: 'lamp',
-      });
+      const t=Math.max(0,Math.min(1,.5+railSpan*frac/Math.max(.01,bLen)));
+      const wx=seg.x1+(seg.x2-seg.x1)*t,wz=seg.z1+(seg.z2-seg.z1)*t;
+      const width=THREE.MathUtils.lerp(seg.widthStart??seg.width,seg.widthEnd??seg.width,t);
+      const curbOffset=width*.34375+.8;
+      const lampWorldX=wx+bNx*side*curbOffset,lampWorldZ=wz+bNz*side*curbOffset;
+      const lampX=lampWorldX-centerX,lampZ=lampWorldZ-centerZ;
+      const lampY=computeCityBridgeSurfaceWorldY3D(seg,baseY,t,lampWorldX,lampWorldZ,getGroundHeight)-baseY+.05;
+      const light=createRoadKitStreetlight(8);
+      const yaw=Math.atan2(-bNx*side,-bNz*side);
+      light.position.set(lampX,lampY,lampZ);
+      light.rotation.y=yaw;
+      group.add(light);
       const halo = new THREE.Sprite(STREET_LAMP_HALO_MAT);
+      halo.name='RoadKit_bridge_lamp_halo';
       halo.scale.set(3.2, 3.2, 1);
-      halo.position.set(px, deckY + 4.9, pz);
+      halo.position.set(lampX+Math.sin(yaw)*2.1,lampY+7.94,lampZ+Math.cos(yaw)*2.1);
       group.add(halo);
+      const pool=new THREE.Mesh(lampPoolGeo,STREET_LAMP_POOL_MAT);
+      pool.name='RoadKit_bridge_lamp_pool';
+      const poolX=lampWorldX+Math.sin(yaw)*1.4,poolZ=lampWorldZ+Math.cos(yaw)*1.4;
+      pool.position.set(poolX-centerX,computeCityBridgeSurfaceWorldY3D(seg,baseY,t,poolX,poolZ,getGroundHeight)-baseY+.06,poolZ-centerZ);
+      group.add(pool);
     }
   }
 }
@@ -289,6 +319,8 @@ export function buildStreetRibbonMesh(
   getGroundHeight: (x: number, z: number) => number,
   layerLiftY = 0.14,
   polyOffsetFactor = -1,
+  join?: RoadJoin,
+  cuts:RoadKitCut[] = [],
 ): THREE.Mesh {
   const dist = Math.hypot(seg.x2 - seg.x1, seg.z2 - seg.z1);
   const steps = Math.max(5, Math.ceil(dist / 2.6));
@@ -297,29 +329,29 @@ export function buildStreetRibbonMesh(
   const wStart = seg.widthStart ?? seg.width;
   const wEnd = seg.widthEnd ?? seg.width;
   const endPad = Math.min(0.85, Math.max(wStart, wEnd) * 0.035);
-  const sx1 = seg.x1 - dirX * endPad;
-  const sz1 = seg.z1 - dirZ * endPad;
-  const sx2 = seg.x2 + dirX * endPad;
-  const sz2 = seg.z2 + dirZ * endPad;
-  const paddedDist = dist + endPad * 2;
+  const startPad=join?.start?0:endPad,endPadding=join?.end?0:endPad;
+  const sx1 = seg.x1 - dirX * startPad;
+  const sz1 = seg.z1 - dirZ * startPad;
+  const sx2 = seg.x2 + dirX * endPadding;
+  const sz2 = seg.z2 + dirZ * endPadding;
+  const paddedDist = dist + startPad + endPadding;
 
   const positions: number[] = [];
   const uvs: number[] = [];
-  const indices: number[] = [];
+  const materialIndices: number[][] = [[],[],[],[]];
   const sampleFracs = [-1, -0.66, -0.33, 0, 0.33, 0.66, 1];
 
   for (let s = 0; s <= steps; s++) {
     const t = s / steps;
     const curHalfW = (wStart + (wEnd - wStart) * t) * 0.5;
-    const perpX = -dirZ * curHalfW;
-    const perpZ = dirX * curHalfW;
+    let nx=-dirZ,nz=dirX;
+    const startBlend=join?.start?Math.max(0,1-t*paddedDist/4):0,endBlend=join?.end?Math.max(0,1-(1-t)*paddedDist/4):0;
+    if(join?.start){nx+=(join.start.x+dirZ)*startBlend;nz+=(join.start.z-dirX)*startBlend}
+    if(join?.end){nx+=(join.end.x+dirZ)*endBlend;nz+=(join.end.z-dirX)*endBlend}
+    const perpX = nx * curHalfW;
+    const perpZ = nz * curHalfW;
     const wx = sx1 + (sx2 - sx1) * t;
     const wz = sz1 + (sz2 - sz1) * t;
-    const lx = wx - perpX;
-    const lz = wz - perpZ;
-    const rx = wx + perpX;
-    const rz = wz + perpZ;
-
     const rawCenter = getGroundHeight(wx, wz);
     // Civil-engineered longitudinal vertical-curve smoothing along the interior of the block while locking exact junction endpoints!
     const endPin = Math.min(1, Math.min(t, 1 - t) * 5.0);
@@ -340,39 +372,46 @@ export function buildStreetRibbonMesh(
     const edgeRY = Math.max(WATER_LEVEL_3D + 0.22, maxRightH + layerLiftY + 0.08) - baseY;
     const crownY = Math.max(edgeLY, edgeRY) + 0.035;
 
-    positions.push(
-      lx - originX, edgeLY - 2.4, lz - originZ,
-      lx - originX, edgeLY, lz - originZ,
-      wx - originX, crownY, wz - originZ,
-      rx - originX, edgeRY, rz - originZ,
-      rx - originX, edgeRY - 2.4, rz - originZ,
-    );
-    const u = (t * paddedDist) / (seg.kind === 'arterial' ? 16.5 : 10.5);
-    uvs.push(u, 0, u, 0, u, 0.5, u, 1, u, 1);
+    // Raised sidewalk and curb bands share the same terrain-adaptive ribbon.
+    // Their positions stay inside the original road width and therefore do
+    // not change the layout, collision rules or lane count.
+    const bands = [
+      [-1, edgeLY - 2.4, 0], [-1, edgeLY + .13, 0],
+      [-.89, edgeLY + .13, .055], [-.89, edgeLY + .145, .055],
+      [-.86, edgeLY + .145, .07], [-.86, edgeLY + .13, .07],
+      [-.69, edgeLY + .13, .155], [-.6875, edgeLY, .15625],
+      [0, crownY, .5], [.6875, edgeRY, .84375],
+      [.69, edgeRY + .13, .845],
+      [.86, edgeRY + .13, .93], [.86, edgeRY + .145, .93],
+      [.89, edgeRY + .145, .945], [.89, edgeRY + .13, .945],
+      [1, edgeRY + .13, 1],
+      [1, edgeRY - 2.4, 1],
+    ];
+    const u = ((join?.phaseStart??0)+(join?.phaseSign??1)*(t*paddedDist-startPad)) / (seg.kind === 'arterial' ? 16.5 : 10.5);
+    for (const [frac, y, v] of bands) { positions.push(wx + perpX * frac - originX, y, wz + perpZ * frac - originZ); uvs.push(u, v); }
     if (s < steps) {
-      const i0 = s * 5;
-      const n0 = (s + 1) * 5;
-      indices.push(i0, n0, i0 + 1, i0 + 1, n0, n0 + 1);
-      indices.push(i0 + 1, n0 + 1, i0 + 2, i0 + 2, n0 + 1, n0 + 2);
-      indices.push(i0 + 2, n0 + 2, i0 + 3, i0 + 3, n0 + 2, n0 + 3);
-      indices.push(i0 + 3, n0 + 3, i0 + 4, i0 + 4, n0 + 3, n0 + 4);
+      const i0 = s * bands.length, n0 = (s + 1) * bands.length;
+      for (let k = 0; k < bands.length - 1; k++) {const mat=seg.kind==='alley'?0:([0,1,5,10,14,15].includes(k)?1:[6,9].includes(k)?2:[2,3,4,11,12,13].includes(k)?3:0);materialIndices[mat].push(i0+k,n0+k,i0+k+1,i0+k+1,n0+k,n0+k+1)}
     }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geo.setIndex(indices);
+  const indices:number[]=[];for(let i=0;i<materialIndices.length;i++){const start=indices.length;indices.push(...materialIndices[i]);if(materialIndices[i].length)geo.addGroup(start,materialIndices[i].length,i)}geo.setIndex(indices);
   geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(
-    geo,
-    new THREE.MeshLambertMaterial({
+  const roadMaterial = new THREE.MeshLambertMaterial({
       map: tex,
       side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: polyOffsetFactor,
       polygonOffsetUnits: polyOffsetFactor,
-    }),
-  );
+    });
+  if(seg.kind!=='alley')applyRoadKitAsphalt(roadMaterial);
+  const curbMaterial = new THREE.MeshLambertMaterial({color:0x9caaa6,side:THREE.DoubleSide});
+  const pavementSource=getRoadKitPavingMaterial(),tactileSource=getRoadKitTactileMaterial();
+  const pavement=cuts.length?pavementSource.clone():pavementSource,tactile=cuts.length?tactileSource.clone():tactileSource;
+  if(cuts.length){pavement.onBeforeCompile=pavementSource.onBeforeCompile;pavement.customProgramCacheKey=pavementSource.customProgramCacheKey;for(const mat of [roadMaterial,pavement,curbMaterial,tactile])applyRoadKitJunctionCuts(mat,cuts)}
+  const mesh = new THREE.Mesh(geo,[roadMaterial,pavement,curbMaterial,tactile]);
   mesh.receiveShadow = true;
   return mesh;
 }
@@ -382,7 +421,6 @@ export function buildInterTownRoadNetwork3D(
   getGroundHeight: (x: number, z: number) => number,
   getRawHeight?: (x: number, z: number) => number,
 ): THREE.Group {
-  const tex = getGroundTex();
   const group = new THREE.Group();
   const roadW = 22.0;
 
@@ -405,6 +443,7 @@ export function buildInterTownRoadNetwork3D(
     const positions: number[] = [];
     const uvs: number[] = [];
     const indices: number[] = [];
+    const deckStations: RoadDeckStation[] = [];
     let prevWasTunnel = false;
 
     for (let s = 0; s <= steps; s++) {
@@ -425,6 +464,7 @@ export function buildInterTownRoadNetwork3D(
       const surfaceY = isBridge ? BRIDGE_DECK_Y_3D : Math.max(WATER_LEVEL_3D + 0.25, groundC + 0.11);
       const yL = isBridge ? surfaceY : Math.max(WATER_LEVEL_3D + 0.25, groundL + 0.11);
       const yR = isBridge ? surfaceY : Math.max(WATER_LEVEL_3D + 0.25, groundR + 0.11);
+      deckStations.push({x:cx,z:cz,y:(yL+yR)*.5,leftY:yL,rightY:yR,halfWidth:roadW*.5});
 
       positions.push(lx, yL - 1.5, lz, lx, yL, lz, rx, yR, rz, rx, yR - 1.5, rz);
       const u = (t * dist) / 10.5;
@@ -442,8 +482,8 @@ export function buildInterTownRoadNetwork3D(
         const mx = cx + dirX * stepLen * 0.5;
         const mz = cz + dirZ * stepLen * 0.5;
         for (const side of [-1, 1]) {
-          const rxOff = -dirZ * side * (roadW * 0.5 + 0.08);
-          const rzOff = dirX * side * (roadW * 0.5 + 0.08);
+          const rxOff = -dirZ * side * (roadSidewalkOuterHalfWidth(roadW) + 0.08);
+          const rzOff = dirX * side * (roadSidewalkOuterHalfWidth(roadW) + 0.08);
           const parapet = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.85, stepLen + 0.25), railStoneMat);
           parapet.position.set(mx + rxOff, BRIDGE_DECK_Y_3D + 0.42, mz + rzOff);
           parapet.rotation.y = headingYaw;
@@ -490,9 +530,11 @@ export function buildInterTownRoadNetwork3D(
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geo.setIndex(indices);
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex.collector2Lane, side: THREE.DoubleSide }));
+    const material=new THREE.MeshLambertMaterial({ map: getRoadKitTexture(2), side: THREE.DoubleSide });applyRoadKitAsphalt(material);
+    const mesh = new THREE.Mesh(geo, material);
     mesh.receiveShadow = true;
     group.add(mesh);
+    group.add(createRoadDeckWalkways(deckStations));
   }
 
   // Inter-City High-Speed Rail Corridors (connecting outer suburban HSR hubs, never downtown!)

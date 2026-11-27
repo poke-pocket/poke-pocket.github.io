@@ -6,6 +6,7 @@ export interface ShanghaiMasterEdge {
   x2: number;
   z2: number;
   width: number;
+  laneCount?: 2 | 4 | 6 | 8;
   kind: 'arterial' | 'street';
   isBridge?: boolean;
   bridgeStyle?: 'nanpu' | 'yangpu' | 'waibaidu';
@@ -106,6 +107,7 @@ export function buildShanghaiRealRoadNetwork(
     smoothPasses = 1,
     allowWaterTunnelOrBridge = false,
     bridgeStyleHint?: 'nanpu' | 'yangpu' | 'waibaidu',
+    laneCount?: ShanghaiMasterEdge['laneCount'],
   ) => {
     const localPts = latLngs.map(([lat, lng]) => shLatLngToLocal(lat, lng));
     const pts = smoothPasses > 0 ? smoothPolylineChaikin(localPts, closed, smoothPasses) : localPts;
@@ -160,6 +162,7 @@ export function buildShanghaiRealRoadNetwork(
               z2: bz2,
               width,
               kind,
+              laneCount,
               isBridge: true,
               bridgeStyle: bridgeStyleHint ?? (Math.hypot(bx2 - bx1, bz2 - bz1) < 85 ? 'waibaidu' : 'nanpu'),
             });
@@ -175,6 +178,7 @@ export function buildShanghaiRealRoadNetwork(
         z2: p2[1],
         width,
         kind,
+        laneCount,
       });
     }
   };
@@ -536,6 +540,7 @@ export function buildShanghaiRealRoadNetwork(
             z2: a.z1 + dz1 * curT,
             width: a.width,
             kind: a.kind,
+            laneCount: a.laneCount,
           });
           prevT = curT;
         }

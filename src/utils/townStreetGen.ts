@@ -10,6 +10,9 @@ import {
 import { WORLD_CITIES } from '../data/worldTour';
 import { buildShanghaiRealRoadNetwork } from '../data/shanghaiMasterplan';
 import { generateTensorCityRoads } from './tensorRoadGen';
+import type { FoundationSettings } from '../world3d/buildingFoundation3D';
+import { outerLaneCenterOffset, previewRoadRibbonWidth, roadSidewalkOuterHalfWidth } from '../world3d/roadKitDimensions';
+import { splitRoadAtWater } from '../world3d/roadWaterCrossing3D';
 
 export interface TownStreetSeg {
   x1: number;
@@ -20,6 +23,8 @@ export interface TownStreetSeg {
   /** Optional tapered start/end widths for smooth 8-lane -> 4-lane -> 2-lane transitions! */
   widthStart?: number;
   widthEnd?: number;
+  /** Total lanes in both directions. Absent values retain the legacy road-class default. */
+  laneCount?: 2 | 4 | 6 | 8;
   kind: 'arterial' | 'street' | 'alley' | 'rail';
   isBridge?: boolean;
   bridgeStyle?: 'nanpu' | 'yangpu' | 'waibaidu';
@@ -72,6 +77,8 @@ export interface TownBuildingLot {
   /** Block-adaptive architectural geometry: rectangular, panoramic cylinder rotunda, or Flatiron triangular wedge! */
   shape?: BuildingFootprintShape;
   houseVariant: number;
+  /** Optional override; otherwise slope and the size of high ground choose automatically. */
+  foundation?: FoundationSettings;
   walkable?: boolean;
   /** Front curb point right outside the doorway */
   doorX: number;
@@ -443,15 +450,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     kind: TownStreetSeg['kind'],
     isBridge = false,
     bridgeStyle?: 'nanpu' | 'yangpu' | 'waibaidu',
+    laneCount?: TownStreetSeg['laneCount'],
   ) => {
-    // Prevent non-bridge ground streets from collapsing down into carved river channels!
-    if (!isBridge) {
-      const mx = (x1 + x2) * 0.5 - cx;
-      const mz = (z1 + z2) * 0.5 - cz;
-      if (getShanghaiRiverSignedDist(mx, mz, cleanCityId) < 1.5) {
-        return;
-      }
-    }
     // Scale road widths to authentic wide urban proportions so cars, voxel city buses & sidewalks fit spaciously!
     const widthMult = isBridge
       ? 1.28
@@ -461,9 +461,11 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
           ? 1.42
           : 1.24;
     const minW = isBridge ? 22 : kind === 'arterial' ? 30.0 : kind === 'street' ? 21.5 : 13.0;
-    const w0 = Math.max(minW, Math.round(widthStart * widthMult * 10) / 10);
-    const w1 = Math.max(minW, Math.round(widthEnd * widthMult * 10) / 10);
-    streets.push({
+    const laneTotal = laneCount ?? (kind === 'arterial' ? 4 : 2);
+    const normalizeWidth = (width:number) => kind === 'alley' || kind === 'rail' ? width : previewRoadRibbonWidth(width,laneTotal);
+    const w0 = normalizeWidth(Math.max(minW, Math.round(widthStart * widthMult * 10) / 10));
+    const w1 = normalizeWidth(Math.max(minW, Math.round(widthEnd * widthMult * 10) / 10));
+    const segment:TownStreetSeg = {
       x1,
       z1,
       x2,
@@ -474,7 +476,9 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       kind,
       isBridge,
       bridgeStyle,
-    });
+      laneCount,
+    };
+    streets.push(...splitRoadAtWater(segment,(x,z)=>getShanghaiRiverSignedDist(x-cx,z-cz,cleanCityId)));
   };
 
   const parks: TownParkZone[] = [];
@@ -532,6 +536,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
         e.kind,
         Boolean(e.isBridge),
         e.bridgeStyle,
+        e.laneCount,
       );
     }
   } else {
@@ -557,6 +562,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
         e.kind,
         Boolean(e.isBridge),
         e.bridgeStyle,
+        e.laneCount,
       );
     }
     for (const jn of tensorGraph.junctions) {
@@ -576,7 +582,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     const halfDiag = Math.hypot(pw * 0.5, pd * 0.5);
     if (getShanghaiRiverSignedDist(wx - cx, wz - cz, cleanCityId) < halfDiag + 8) return false;
     for (const st of streets) {
-      if (distToSeg(wx, wz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.5 + halfDiag + 3.5) return false;
+      if (distToSeg(wx, wz, st.x1, st.z1, st.x2, st.z2) < roadSidewalkOuterHalfWidth(st.width) + halfDiag + 3.5) return false;
     }
     for (const pk of parks) {
       if (Math.hypot(wx - pk.x, wz - pk.z) < 64) return false;
@@ -765,7 +771,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const GEN_STREET_CELL = 64;
   const genStreetBuckets = new Map<string, TownStreetSeg[]>();
   for (const st of streets) {
-    const pad = st.width * 0.5 + 8.0;
+    const pad = roadSidewalkOuterHalfWidth(st.width) + 8.0;
     const gx0 = Math.floor((Math.min(st.x1, st.x2) - pad) / GEN_STREET_CELL);
     const gx1 = Math.floor((Math.max(st.x1, st.x2) + pad) / GEN_STREET_CELL);
     const gz0 = Math.floor((Math.min(st.z1, st.z2) - pad) / GEN_STREET_CELL);
@@ -788,7 +794,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     for (let i = 0; i < bucket.length; i++) {
       const st = bucket[i];
       if (st === skipSt) continue;
-      if (distToSeg(px, pz, st.x1, st.z1, st.x2, st.z2) < st.width * 0.5 + extraPad) return true;
+      if (distToSeg(px, pz, st.x1, st.z1, st.x2, st.z2) < roadSidewalkOuterHalfWidth(st.width) + extraPad) return true;
     }
     return false;
   };
@@ -1051,8 +1057,8 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       const lt = (li + 0.5) / lampCount;
       const lSides = st.kind === 'arterial' ? ([-1, 1] as const) : ([li % 2 === 0 ? 1 : -1] as const);
       for (const lSide of lSides) {
-        const lampX = st.x1 + dx * lt + nx * lSide * (st.width * 0.5 + 1.35);
-        const lampZ = st.z1 + dz * lt + nz * lSide * (st.width * 0.5 + 1.35);
+        const lampX = st.x1 + dx * lt + nx * lSide * (st.width * 0.365);
+        const lampZ = st.z1 + dz * lt + nz * lSide * (st.width * 0.365);
         const clearOfOtherStreets = !isNearAnyStreetFast(lampX, lampZ, 1.2, st);
         const clearOfJunctions = !junctions.some(
           (jn) => Math.hypot(lampX - jn.x, lampZ - jn.z) < Math.max(jn.width, jn.depth) * 0.54 + 2.0,
@@ -1081,11 +1087,11 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       const mx = st.x1 + dx * t;
       const mz = st.z1 + dz * t;
       for (const side of [-1, 1] as const) {
-        const setback = st.width * 0.5 + 22.0;
+        const setback = roadSidewalkOuterHalfWidth(st.width) + 22.0;
         const lx = mx + nx * side * setback;
         const lz = mz + nz * side * setback;
-        const doorX = mx + nx * side * (st.width * 0.5 + 3.0);
-        const doorZ = mz + nz * side * (st.width * 0.5 + 3.0);
+        const doorX = mx + nx * side * (roadSidewalkOuterHalfWidth(st.width) + 3.0);
+        const doorZ = mz + nz * side * (roadSidewalkOuterHalfWidth(st.width) + 3.0);
         const rotY = Math.atan2(-nx * side, -nz * side);
         candidates.push({
           mx,
@@ -1093,7 +1099,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
           nx,
           nz,
           side,
-          streetHalfW: st.width * 0.5,
+          streetHalfW: roadSidewalkOuterHalfWidth(st.width),
           x: lx,
           z: lz,
           rotY,
@@ -1226,6 +1232,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     targetZ: number,
     maxDistFromTarget: number,
     preferArterialOnly = false,
+    relaxed = false,
   ): {
     busX: number;
     busZ: number;
@@ -1269,16 +1276,19 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
         if (junctions.some((jn) => Math.hypot(jn.x - px, jn.z - pz) < 22)) continue;
 
         for (const side of [1, -1] as const) {
-          const shX = px + nx * side * (st.width * 0.5 + 1.8);
-          const shZ = pz + nz * side * (st.width * 0.5 + 1.8);
-          const candBusX = px + nx * side * Math.max(2.2, st.width * 0.5 - 2.6);
-          const candBusZ = pz + nz * side * Math.max(2.2, st.width * 0.5 - 2.6);
-          const dropX = px + nx * side * (st.width * 0.5 + 0.35);
-          const dropZ = pz + nz * side * (st.width * 0.5 + 0.35);
+          const localWidth=(st.widthStart??st.width)+((st.widthEnd??st.width)-(st.widthStart??st.width))*frac;
+          const roadEdge=localWidth*.34375;
+          const shX = px + nx * side * (roadEdge + 1.7);
+          const shZ = pz + nz * side * (roadEdge + 1.7);
+          const busOffset=outerLaneCenterOffset(localWidth,st.laneCount??(st.kind==='arterial'?4:2));
+          const candBusX = px + nx * side * busOffset;
+          const candBusZ = pz + nz * side * busOffset;
+          const dropX = px + nx * side * (roadEdge + 3.8);
+          const dropZ = pz + nz * side * (roadEdge + 3.8);
 
-          if (isNearAnyStreetFast(shX, shZ, 1.8, st)) continue;
+          if (!relaxed && isNearAnyStreetFast(shX, shZ, 1.8, st)) continue;
           if (busStops.some((bs) => Math.hypot(bs.shelterX - shX, bs.shelterZ - shZ) < 64)) continue;
-          if (parks.some((pk) => Math.abs(shX - pk.x) < pk.w * 0.5 + 1.6 && Math.abs(shZ - pk.z) < pk.d * 0.5 + 1.6)) {
+          if (!relaxed && parks.some((pk) => Math.abs(shX - pk.x) < pk.w * 0.5 + 1.6 && Math.abs(shZ - pk.z) < pk.d * 0.5 + 1.6)) {
             continue;
           }
 
@@ -1304,7 +1314,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
               break;
             }
           }
-          if (blockedByLot) continue;
+          if (blockedByLot && !relaxed) continue;
 
           const sameSideDot = (targetX - px) * (nx * side) + (targetZ - pz) * (nz * side);
           const nearPark = parks.some(
@@ -1315,7 +1325,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
             (sameSideDot >= 0 ? 22 : 0) +
             (st.kind === 'arterial' ? 14 : 0) +
             (nearPark ? 24 : 0) +
-            Math.min(24, minDoorDist);
+            Math.min(24, minDoorDist) - (blockedByLot ? 400 : 0);
 
           if (score > bestScore) {
             bestScore = score;
@@ -1341,7 +1351,9 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
   const hubTargetZ = primaryParkForBus?.z ?? cz + 18;
   const hubFound =
     tryFindCurbsideBusStopNear(hubTargetX, hubTargetZ, 185, true) ??
-    tryFindCurbsideBusStopNear(cx, cz, 220, false);
+    tryFindCurbsideBusStopNear(cx, cz, 220, false) ??
+    tryFindCurbsideBusStopNear(cx, cz, 600, false) ??
+    tryFindCurbsideBusStopNear(cx, cz, 1000, false, true);
   if (hubFound) {
     busX = hubFound.busX;
     busZ = hubFound.busZ;
@@ -1443,7 +1455,7 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
       stationZ - lx * sinSt + lz * cosSt,
     ];
     const [hsrShX, hsrShZ] = toStationWorld(-15.5, 13.2);
-    const [hsrBusX, hsrBusZ] = toStationWorld(-15.5, 17.6);
+    const [hsrBusX, hsrBusZ] = toStationWorld(-15.5, 18.9);
     const [hsrDropX, hsrDropZ] = toStationWorld(-15.5, 14.8);
     // `busOut` points from `hsrBus` toward `hsrSh` (`local -Z` -> `(-sinSt, -cosSt)` -> `rotY = stationRotY - Math.PI / 2`)
     const hsrBusRotY = stationRotY - Math.PI / 2;

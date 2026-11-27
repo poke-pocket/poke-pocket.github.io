@@ -3,8 +3,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { computeBattleStats } from '../data/battleMoves';
 import { ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getPokemonCryId, getPokemonWorldScale3D } from '../data/catalog';
-import { DEFAULT_TACTICAL_CONFIG, DIFFICULTIES, MAP_REGIONS, SURVIVOR_SKILLS, WATER_LEVEL_3D, WORLD_SECTOR_SIZE, WORLD_TOWNS_3D, clearTerrainHeightCache3D, getDefaultSkillsForElement, getRawNaturalTerrainHeight3D, getTerrainHeight3D, getUnlockedSkillSlotCount, getWalkableSurfaceHeight3D, isNearAnyRoadOrRailForFlora3D, registerActiveTownRoadLayouts3D, setWalkableBuildingFloorZones3D, type DifficultyId, type SafeZone3D, type SurvivorSkillId, type SurvivorsGameMode, type TacticalConfig } from '../data/survivorsTactics';
-import { BIOME_PALETTES, createHorizonBackdropMesh, createPixelWaterMaterial, createSculptedTerrainMaterial, getAnimatedGifTextures, getBiomeTextures, getHeroSpriteFrames, syncTerrainGeoUniforms3D, type AnimatedSpriteSheet3D, type BiomeId } from '../data/worldTextures3D';
+import { DEFAULT_TACTICAL_CONFIG, DIFFICULTIES, MAP_REGIONS, SURVIVOR_SKILLS, WATER_LEVEL_3D, WORLD_SECTOR_SIZE, WORLD_TOWNS_3D, clearTerrainHeightCache3D, getDefaultSkillsForElement, getRawNaturalTerrainHeight3D, getTerrainHeight3D, getUnlockedSkillSlotCount, getUrbanRegions3D, getWalkableSurfaceHeight3D, isNearAnyRoadOrRailForFlora3D, registerActiveTownRoadLayouts3D, setWalkableBuildingFloorZones3D, type DifficultyId, type SafeZone3D, type SurvivorSkillId, type SurvivorsGameMode, type TacticalConfig } from '../data/survivorsTactics';
+import { BIOME_PALETTES, createHorizonBackdropMesh, createPixelWaterMaterial, createSculptedTerrainMaterial, getAnimatedGifTextures, getBiomeTextures, getHeroSpriteFrames, syncTerrainGeoUniforms3D, syncUrbanTerrainUniforms3D, type AnimatedSpriteSheet3D, type BiomeId } from '../data/worldTextures3D';
 import { computeInstantKickoffWaypoints3D, createAutoWalkPathJob3D, findForwardSpliceIndex3D, type AutoNavBuildingPortalInfo, type AutoNavWaypoint, type IncrementalAutoPathJob3D } from '../utils/autoPathfinder3D';
 import { CAM_MODE_LIST, CAM_MODE_SPECS, createCameraRigSmoothState, updatePhysicalCameraRig3D } from '../utils/cameraRig3D';
 import { computeSolarDayNight, type SolarDayNightState } from '../utils/solarDayNight3D';
@@ -25,6 +25,8 @@ import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { BGM_TRACK_LABELS, sound, type BgmTrackId } from '../utils/sound';
 import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
 import { buildInterTownRoadNetwork3D, buildProceduralTown3D, resolveTownWallCollisions, setGlobalNightLampGlow3D, type ProceduralTownInstance } from '../utils/townBuilder3D';
+import { createRenderedTerrainSampler, setRenderedTerrainSampler } from '../world3d/renderedTerrain3D';
+import { setRoadTerrainGrid } from '../world3d/roadKitSurface';
 import { buildFallbackWeather, buildWeatherInfo, fetchLiveWeatherAt, type LiveWeatherInfo, type WeatherKind } from '../utils/weatherSystem';
 import { BILLBOARD_PITCH_TILT, MAX_CAM_PITCH, MAX_FOLLOWERS, SHARED_ENTITY_SHADOW_MAT, UNIT_SHADOW_GEO, UPRIGHT_QUAD_GEO, createSafeZone3DMesh, type ActiveCapture3D, type ActiveFollower, type ArenaScreenPhase, type Enemy3D, type FloatingTag2D, type FollowerReportRow, type LevelChoice, type Loot3D, type MonsterQuality, type Projectile3D, type RunResultSummary, type Survivors3DArenaProps, type Vfx3D } from './arena3d/arenaTypesAndProps';
 import { setupHubWildlifeDiorama3D } from './arena3d/arenaWildlifeDiorama3D';
@@ -1695,8 +1697,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       alpha: false,
       powerPreference: 'high-performance',
     });
-    const initW = Math.max(462, container.clientWidth || window.innerWidth);
-    const initH = Math.max(380, container.clientHeight || window.innerHeight);
+    const initW = Math.max(1, container.clientWidth || window.innerWidth);
+    const initH = Math.max(1, container.clientHeight || window.innerHeight);
     const maxDpr = prefsRef.current.powerSaver
       ? 1.0
       : prefsRef.current.graphicsQuality === 'low'
@@ -1720,13 +1722,17 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
 
     const onResize = () => {
       if (!container) return;
-      const w = Math.max(462, container.clientWidth || window.innerWidth);
-      const h = Math.max(380, container.clientHeight || window.innerHeight);
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      if(w<=0||h<=0)return;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxDpr));
       renderer.setSize(w, h, false);
     };
     window.addEventListener('resize', onResize);
+    const canvasResizeObserver=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(onResize);
+    canvasResizeObserver?.observe(container);
 
     // Rich HD-2D Sunlit 3D Lighting with Real-Time Directional Building & Bridge Shadows (Zero PointLight fragment overhead = locked 60fps!)
     const hemi = new THREE.HemisphereLight(pal.ambientHex, 0x3b7a42, 1.18);
@@ -1759,6 +1765,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const terrainGeo = new THREE.PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEGS, TERRAIN_SEGS);
     terrainGeo.rotateX(-Math.PI / 2);
     const terrainPosAttr = terrainGeo.attributes.position as THREE.BufferAttribute;
+    const unregisterRoadTerrainGrid=setRoadTerrainGrid({originX:terrainPosAttr.getX(0),originZ:terrainPosAttr.getZ(0),stepX:terrainPosAttr.getX(1)-terrainPosAttr.getX(0),stepZ:terrainPosAttr.getZ(TERRAIN_SEGS+1)-terrainPosAttr.getZ(0)});
     const terrainMat = createSculptedTerrainMaterial(selectedBiome, tex, WORLD_SECTOR_SIZE);
     syncTerrainGeoUniforms3D(
       terrainMat,
@@ -1879,6 +1886,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     const activeTownLayoutSpecs = [...townSpecs];
     // Register active city streets & rails BEFORE building 3D meshes so terrain roadbeds grade 100% flat!
     registerActiveTownRoadLayouts3D(activeTownLayoutSpecs);
+    let urbanSyncX=Infinity,urbanSyncZ=Infinity;
+    const syncUrbanAt=(x:number,z:number,force=false)=>{if(!force&&Math.hypot(x-urbanSyncX,z-urbanSyncZ)<128)return;urbanSyncX=x;urbanSyncZ=z;syncUrbanTerrainUniforms3D(terrainMat,getUrbanRegions3D(),x,z)};
+    syncUrbanAt(0,0,true);
     if (geoHighwayStreamer) {
       geoHighwayStreamer.updateAround(0, 0, true);
     }
@@ -2406,6 +2416,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     };
     syncFollowersView();
     updateWorldAround(startPx, startPz);
+    const unregisterRenderedTerrain=setRenderedTerrainSampler(createRenderedTerrainSampler(terrainPosAttr,terrainMesh));
     geoHighwayStreamer?.updateAround(startPx, startPz, true);
 
     // When real-Earth NASA/SRTM DEM elevation tiles finish streaming, rebuild coast-clipped coastal city AT MOST ONCE (and never tear down all flora meshes!)
@@ -2415,18 +2426,26 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       : true;
     let rebuiltCoastClippedTown = hadLocalDemAtBuild;
     const unsubGeoDem = subscribeGeoDemLoaded(() => {
-      if (
+      const needsCoastRebuild=Boolean(
         !rebuiltCoastClippedTown &&
         activeGeoNow &&
         hasLocalDemCoverage(activeGeoNow.originLat, activeGeoNow.originLng)
-      ) {
+      );
+      if(needsCoastRebuild){
         rebuiltCoastClippedTown = true;
         clearTownLayoutCache();
+      }
+      // Building platforms depend on local elevations, so re-evaluate their
+      // mode and height when DEM data changes before rebuilding any meshes.
+      const foundationsChanged=registerActiveTownRoadLayouts3D(activeTownLayoutSpecs);
+      syncUrbanAt(simRef.current?.px??0,simRef.current?.pz??0,true);
+      if(needsCoastRebuild||foundationsChanged){
         for (const oldT of proceduralTowns) {
+          oldT.disposeRoadKit?.();
           townsGroup.remove(oldT.group);
         }
         proceduralTowns.length = 0;
-        for (const spec of townSpecs) {
+        for (const spec of activeTownLayoutSpecs) {
           const rebuilt = buildProceduralTown3D(
             spec.id,
             spec.x,
@@ -2462,7 +2481,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         }
       } else {
         for (const town of proceduralTowns) {
-          town.group.position.y = getTerrainHeight3D(town.centerX, town.centerZ);
+          const newBaseY=getTerrainHeight3D(town.centerX, town.centerZ);
+          town.group.position.y = newBaseY;
+          town.refreshRoadKit?.(newBaseY,simRef.current?.px??0,simRef.current?.pz??0);
         }
       }
       // Re-seat existing flora Y heights in ~0.2ms instead of destroying & re-creating 2,200+ flora cells!
@@ -3057,6 +3078,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           adventureStyleRef.current !== 'vampire_rogue',
           liveWeatherRef.current.kind === 'snow' ? 0.88 : 0,
         );
+        syncUrbanAt(sim.px,sim.pz);
 
         if (!pausedRef.current && !externalPausedRef.current && !worldMapOpenRef.current && !inRunTownShopOpenRef.current && !endedRef.current) {
           sim.elapsed += dt;
@@ -3391,7 +3413,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                     plateauY: 1.65,
                     landmarkCityId: gc.city.id,
                   });
-                  registerActiveTownRoadLayouts3D(activeTownLayoutSpecs);
+                  const existingFoundationsChanged=registerActiveTownRoadLayouts3D(activeTownLayoutSpecs);
+                  syncUrbanAt(sim.px,sim.pz,true);
+                  if(existingFoundationsChanged){
+                    for(const town of proceduralTowns){town.disposeRoadKit?.();townsGroup.remove(town.group)}
+                    proceduralTowns.length=0;
+                    for(const spec of activeTownLayoutSpecs.slice(0,-1)){
+                      const rebuilt=buildProceduralTown3D(spec.id,spec.x,spec.z,spec.seed,(x,z)=>getTerrainHeight3D(x,z),spec.name,spec.plazaRadius,spec.landmarkCityId);
+                      proceduralTowns.push(rebuilt);townsGroup.add(rebuilt.group);
+                    }
+                  }else for(const town of proceduralTowns){const newBaseY=getTerrainHeight3D(town.centerX,town.centerZ);town.group.position.y=newBaseY;town.refreshRoadKit?.(newBaseY,sim.px,sim.pz)}
                   const neighborTown = buildProceduralTown3D(
                     neighborId,
                     gc.x,
@@ -3509,7 +3540,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       unsubGeoDem();
       geoHighwayStreamer?.dispose();
       setWalkableBuildingFloorZones3D([]);
+      unregisterRenderedTerrain();
+      unregisterRoadTerrainGrid();
       window.removeEventListener('resize', onResize);
+      canvasResizeObserver?.disconnect();
       window.cancelAnimationFrame(rafId);
       renderer.dispose();
     };
@@ -3983,7 +4017,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           if (phase === 'playing') e.preventDefault();
         }}
         onWheel={(e) => {
-          if (phase !== 'playing' || pausedRef.current) return;
+          // Trackpad pinch is a browser zoom gesture, not a camera wheel.
+          if (e.ctrlKey || e.metaKey || phase !== 'playing' || pausedRef.current) return;
           const nextZoom = Math.max(0.58, Math.min(1.48, camOrbitRef.current.zoom + e.deltaY * 0.00085));
           camOrbitRef.current.zoom = nextZoom;
         }}

@@ -55,6 +55,10 @@ export interface CompiledInterCityNetwork {
     z2: number;
     label: string;
     destHint: string;
+    phaseStart?: number;
+    startMiter?: [number,number];
+    endMiter?: [number,number];
+    laneCount?: 2 | 4 | 6 | 8;
   }[];
   gridBuckets: Map<string, number[]>;
 }
@@ -70,6 +74,17 @@ interface KnownUrbanNode {
 }
 
 let cachedNet: CompiledInterCityNetwork | null = null;
+
+/** Shared edge vector at a polyline joint, bounded at sharp bends. */
+export function highwayJointMiter(points:[number,number][],i:number):[number,number]{
+  const p=points[i],before=points[Math.max(0,i-1)],after=points[Math.min(points.length-1,i+1)];
+  let ax=p[0]-before[0],az=p[1]-before[1],bx=after[0]-p[0],bz=after[1]-p[1];
+  if(Math.hypot(ax,az)<.001){ax=bx;az=bz}if(Math.hypot(bx,bz)<.001){bx=ax;bz=az}
+  const al=Math.hypot(ax,az)||1,bl=Math.hypot(bx,bz)||1,nax=-az/al,naz=ax/al,nbx=-bz/bl,nbz=bx/bl;
+  const mx=nax+nbx,mz=naz+nbz,den=mx*nbx+mz*nbz;
+  if(den<.35)return [nbx,nbz];
+  const scale=Math.min(1/den,1.4/(Math.hypot(mx,mz)||1));return [mx*scale,mz*scale];
+}
 
 function findMatchingUrbanNode(
   wx: number,
@@ -284,11 +299,11 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
   const spatialSegs: CompiledInterCityNetwork['spatialSegs'] = [];
   const gridBuckets = new Map<string, number[]>();
 
-  const registerSpatialSeg = (x1: number, z1: number, x2: number, z2: number, label: string, destHint: string) => {
+  const registerSpatialSeg = (x1: number, z1: number, x2: number, z2: number, label: string, destHint: string,phaseStart:number,startMiter:[number,number],endMiter:[number,number]) => {
     // Index segments within ~240km of active origin for fast O(1) 3D highway streaming & roadbed grading
     if (Math.hypot((x1 + x2) * 0.5, (z1 + z2) * 0.5) > 240 * GEO_UNITS_PER_KM) return;
     const idx = spatialSegs.length;
-    spatialSegs.push({ x1, z1, x2, z2, label, destHint });
+    spatialSegs.push({ x1, z1, x2, z2, label, destHint,phaseStart,startMiter,endMiter });
     const minGx = Math.floor((Math.min(x1, x2) - 40) / GRID_CELL);
     const maxGx = Math.floor((Math.max(x1, x2) + 40) / GRID_CELL);
     const minGz = Math.floor((Math.min(z1, z2) - 40) / GRID_CELL);
@@ -413,6 +428,7 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
       });
 
       const destHint = `${toName} ${distKm}km`;
+      let roadPhase=0;
       for (let s = 0; s < legPts.length - 1; s++) {
         registerSpatialSeg(
           legPts[s][0],
@@ -421,7 +437,9 @@ export function getCompiledInterCityNetwork(originOverride?: GeoTerrainOrigin | 
           legPts[s + 1][1],
           cor.label,
           `${fromName} ↔ ${toName}`,
+          roadPhase,highwayJointMiter(legPts,s),highwayJointMiter(legPts,s+1),
         );
+        roadPhase+=Math.hypot(legPts[s+1][0]-legPts[s][0],legPts[s+1][1]-legPts[s][1]);
       }
 
       if (cityA && Math.hypot(startPortal.x, startPortal.z) < 220 * GEO_UNITS_PER_KM) {

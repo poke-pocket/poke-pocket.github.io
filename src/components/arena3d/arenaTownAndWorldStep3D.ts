@@ -11,6 +11,7 @@ import { getHeldHotelKeycard, setHeldHotelKeycard } from '../../world3d/townType
 import { sound } from '../../utils/sound';
 import { saveWorldCheckpoint } from '../../utils/worldCheckpoint';
 import { buildInteractActionsForTarget, pushWorldSpeechBubble, type LiveWorldBubble } from './ArenaTownSocialAndBusOverlay';
+import { entranceFacingRelative } from './arenaNpcFacing3D';
 
 const NPC_CHAT_GIFTED = new Set<string>();
 const NPC_CHAT_TURN_MAP = new Map<string, number>();
@@ -169,6 +170,7 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
   const nearPlayerWalkers: { walker: TownStrollingCitizen; wyWorld: number }[] = [];
 
   for (const town of proceduralTowns) {
+    town.updateRoadKit?.(sim.px,sim.pz);
     if (town.trainGroup && town.trainBaseX !== undefined) {
       town.trainGroup.position.x = town.trainBaseX + Math.sin(windClock * 0.28) * 6.5;
     }
@@ -240,7 +242,7 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
         }
         w.worldX = town.centerX + wxLocal;
         w.worldZ = town.centerZ + wzLocal;
-        const wyWorld = getWalkableSurfaceHeight3D(w.worldX, w.worldZ) + 0.06;
+        const wyWorld = getWalkableSurfaceHeight3D(w.worldX, w.worldZ, town.group.position.y+w.mesh.position.y) + 0.06;
         const wy = wyWorld - town.group.position.y;
 
         // Keep any active overhead speech bubble locked onto this walking NPC's live 3D head position!
@@ -301,7 +303,7 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
     }
 
     const distToTown = Math.hypot(sim.px - town.centerX, sim.pz - town.centerZ);
-    const collisionRadius = Math.max(town.safeRadius + 60, 740);
+    const collisionRadius = town.collisionRadius ?? Math.max(town.safeRadius + 60, 740);
     if (distToTown < town.safeRadius) {
       activeTownNow = town;
     }
@@ -351,10 +353,13 @@ export function stepArenaTownAndWorldNodes3D(rawCtx: Record<string, any>) {
                 true,
               );
             } else {
+              // The entrance is local +Z. Transform that direction to world
+              // space before selecting the camera-relative sprite frame.
+              const [relativeForward,relativeRight]=entranceFacingRelative(bInt.rotY,camFwdX,camFwdZ,camRightX,camRightZ);
               (npc.material as THREE.MeshBasicMaterial).map = sampleHumanWalkFrame(
                 npc.userData.walkFrames as Record<string, THREE.CanvasTexture>,
-                camFwdZ,
-                camRightZ,
+                relativeForward,
+                relativeRight,
                 windClock * 1.5,
                 false,
               );

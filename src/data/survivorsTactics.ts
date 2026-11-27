@@ -7,6 +7,11 @@ import {
 } from '../utils/interCityHighwayGraph';
 import { generateTownLayout, isOnShanghaiBridgeLocal, type TownStreetSeg } from '../utils/townStreetGen';
 import type { BiomeId } from './worldTextures3D';
+import { roadSurfaceY, ROAD_WALK_CLEARANCE } from '../world3d/roadKitSurface';
+import { renderedTerrainHeight } from '../world3d/renderedTerrain3D';
+import { roadSidewalkOuterHalfWidth } from '../world3d/roadKitDimensions';
+import { gradeFoundationHeight, planBuildingFoundation, type FoundationPlan } from '../world3d/buildingFoundation3D';
+import { buildUrbanRegion, urbanGroundWeight, type UrbanRegion } from '../world3d/urbanGround3D';
 
 export type SurvivorSkillId =
   | 'thunderbolt'
@@ -583,6 +588,7 @@ export function getRawNaturalTerrainHeight3D(wx: number, wz: number): number {
 interface IndexedTownStreetEntry {
   seg: TownStreetSeg;
   halfW: number;
+  walkHalfW: number;
   townCenterX: number;
   townCenterZ: number;
 }
@@ -597,6 +603,13 @@ interface IndexedRailEntry {
 const TOWN_STREET_GRID_CELL = 32;
 const activeStreetBuckets = new Map<string, IndexedTownStreetEntry[]>();
 const activeRailBuckets = new Map<string, IndexedRailEntry[]>();
+const activeFoundationBuckets = new Map<string, FoundationPlan[]>();
+const activeFoundationPlans = new Map<string, FoundationPlan>();
+const activeFoundationLotIds = new Set<string>();
+const activeUrbanRegions:UrbanRegion[]=[];
+export function getBuildingFoundationPlan3D(id:string):FoundationPlan|undefined{return activeFoundationPlans.get(id)}
+export function getUrbanRegions3D():readonly UrbanRegion[]{return activeUrbanRegions}
+export function urbanGroundWeight3D(x:number,z:number):number{return urbanGroundWeight(activeUrbanRegions,x,z)}
 
 export function registerActiveTownRoadLayouts3D(
   specs: {
@@ -609,9 +622,13 @@ export function registerActiveTownRoadLayouts3D(
     plateauY?: number;
     landmarkCityId?: string;
   }[],
-): void {
+): boolean {
+  const previousPlans=new Map(activeFoundationPlans);
+  const previousLotIds=new Set(activeFoundationLotIds);
   activeStreetBuckets.clear();
   activeRailBuckets.clear();
+  activeFoundationBuckets.clear();activeFoundationPlans.clear();activeFoundationLotIds.clear();activeUrbanRegions.length=0;
+  const allLots:ReturnType<typeof generateTownLayout>['lots']=[];
 
   for (const spec of specs) {
     const layout = generateTownLayout({
@@ -624,12 +641,17 @@ export function registerActiveTownRoadLayouts3D(
       plateauY: spec.plateauY ?? 1.65,
       landmarkCityId: spec.landmarkCityId,
     });
+    allLots.push(...layout.lots);
+    for(const lot of layout.lots)activeFoundationLotIds.add(lot.id);
+    if(spec.landmarkCityId||spec.id.startsWith('city_')||spec.id.startsWith('geo_city_'))activeUrbanRegions.push(buildUrbanRegion(layout,spec.plazaRadius));
 
     for (const seg of layout.streets) {
       const midDist = Math.hypot((seg.x1 + seg.x2) * 0.5 - spec.x, (seg.z1 + seg.z2) * 0.5 - spec.z);
-      if (!seg.isBridge && midDist > 2800) continue;
-      const halfW = Math.max(seg.width, seg.widthStart ?? seg.width, seg.widthEnd ?? seg.width) * 0.5;
-      const pad = halfW + 10.0;
+      if (!seg.isBridge && midDist > 4200) continue;
+      const maxWidth = Math.max(seg.width, seg.widthStart ?? seg.width, seg.widthEnd ?? seg.width);
+      const halfW = maxWidth * 0.5;
+      const walkHalfW = seg.kind==='alley' ? halfW : roadSidewalkOuterHalfWidth(maxWidth);
+      const pad = walkHalfW + 10.0;
       const gx0 = Math.floor((Math.min(seg.x1, seg.x2) - pad) / TOWN_STREET_GRID_CELL);
       const gx1 = Math.floor((Math.max(seg.x1, seg.x2) + pad) / TOWN_STREET_GRID_CELL);
       const gz0 = Math.floor((Math.min(seg.z1, seg.z2) - pad) / TOWN_STREET_GRID_CELL);
@@ -637,6 +659,7 @@ export function registerActiveTownRoadLayouts3D(
       const entry: IndexedTownStreetEntry = {
         seg,
         halfW,
+        walkHalfW,
         townCenterX: spec.x,
         townCenterZ: spec.z,
       };
@@ -673,7 +696,23 @@ export function registerActiveTownRoadLayouts3D(
     }
   }
 
+  // First sample unmodified, road-graded terrain for every footprint. Register
+  // all plans only afterward so neighboring buildings do not bias sampling.
   clearTerrainHeightCache3D();
+  const plans:FoundationPlan[]=[];
+  for(const lot of allLots){
+    if(getTerrainHeight3D(lot.x,lot.z)<WATER_LEVEL_3D+.2)continue;
+    const plan=planBuildingFoundation(lot,getTerrainHeight3D);plan.target=Math.max(WATER_LEVEL_3D+.2,plan.target);plans.push(plan);
+  }
+  for(const plan of plans){
+    activeFoundationPlans.set(plan.id,plan);
+    const pad=Math.hypot(plan.halfW,plan.halfD)+plan.padding+plan.transition;
+    for(let gx=Math.floor((plan.x-pad)/TOWN_STREET_GRID_CELL);gx<=Math.floor((plan.x+pad)/TOWN_STREET_GRID_CELL);gx++)for(let gz=Math.floor((plan.z-pad)/TOWN_STREET_GRID_CELL);gz<=Math.floor((plan.z+pad)/TOWN_STREET_GRID_CELL);gz++){
+      const key=`${gx},${gz}`,list=activeFoundationBuckets.get(key)??[];list.push(plan);activeFoundationBuckets.set(key,list);
+    }
+  }
+  clearTerrainHeightCache3D();
+  return [...previousPlans].some(([id,previous])=>{const plan=activeFoundationPlans.get(id);return !plan||previous.mode!==plan.mode||Math.abs(previous.target-plan.target)>.08})||plans.some(plan=>previousLotIds.has(plan.id)&&!previousPlans.has(plan.id));
 }
 
 function getNearestTownStreetHit3D(
@@ -699,7 +738,7 @@ function getNearestTownStreetHit3D(
     const qx = e.seg.x1 + vx * t;
     const qz = e.seg.z1 + vz * t;
     const dist = Math.hypot(wx - qx, wz - qz);
-    const clearance = dist - e.halfW;
+    const clearance = dist - e.walkHalfW;
     if (clearance < bestClearance) {
       bestClearance = clearance;
       best = { entry: e, dist, qx, qz, t };
@@ -755,17 +794,13 @@ export function clearTerrainHeightCache3D(): void {
 }
 subscribeGeoDemLoaded(clearTerrainHeightCache3D);
 
-export function getTerrainHeight3D(wx: number, wz: number): number {
-  const qxInt = Math.round(wx * 2);
-  const qzInt = Math.round(wz * 2);
-  const slot = (Math.imul(qxInt, 73856093) ^ Math.imul(qzInt, 19349663)) & TERRAIN_CACHE_MASK;
-  if (TERRAIN_CACHE_KX[slot] === qxInt && TERRAIN_CACHE_KZ[slot] === qzInt) {
-    return TERRAIN_CACHE_VAL[slot];
-  }
-
-  const sx = qxInt * 0.5;
-  const sz = qzInt * 0.5;
+/** Existing terrain and road grading, before any building foundation work. */
+export function getTerrainBeforeFoundation3D(wx:number,wz:number):number {
+  const sx = Math.round(wx*2)*.5;
+  const sz = Math.round(wz*2)*.5;
   let elev = getRawNaturalTerrainHeight3D(sx, sz);
+  // Roadbed grading must not fill a river beneath a bridge or a riverbank.
+  if (elev <= WATER_LEVEL_3D) return elev;
 
   if (getActiveGeoTerrainOrigin() === null) {
     const proj = getNearestRoadProjection3D(sx, sz);
@@ -802,6 +837,31 @@ export function getTerrainHeight3D(wx: number, wz: number): number {
         elev = elev * (1.0 - gradeBlend) + centerElev * gradeBlend;
       }
     }
+  }
+
+  return elev;
+}
+
+export function getTerrainHeight3D(wx: number, wz: number): number {
+  const qxInt = Math.round(wx * 2);
+  const qzInt = Math.round(wz * 2);
+  const slot = (Math.imul(qxInt, 73856093) ^ Math.imul(qzInt, 19349663)) & TERRAIN_CACHE_MASK;
+  if (TERRAIN_CACHE_KX[slot] === qxInt && TERRAIN_CACHE_KZ[slot] === qzInt) {
+    return TERRAIN_CACHE_VAL[slot];
+  }
+  const sx=qxInt*.5,sz=qzInt*.5;
+  let elev=getTerrainBeforeFoundation3D(sx,sz);
+  // Keep roads and shorelines authoritative, grade only dry ground around a
+  // building footprint, and ease the pad into the surrounding heightfield.
+  const foundations=activeFoundationBuckets.get(`${Math.floor(sx/TOWN_STREET_GRID_CELL)},${Math.floor(sz/TOWN_STREET_GRID_CELL)}`);
+  if(foundations?.length&&elev>WATER_LEVEL_3D+.12){
+    const street=getNearestTownStreetHit3D(sx,sz,false);
+    const clearance=street?street.dist-street.entry.walkHalfW:Infinity;
+    let roadWeight=street?smoothstep(0,1.2,clearance):1;
+    const highway=getActiveGeoTerrainOrigin()?getNearestGeoHighwayProjection3D(sx,sz):null;
+    const highwayClearance=highway?highway.dist-roadSidewalkOuterHalfWidth(HIGHWAY_ROAD_WIDTH_3D):getActiveGeoTerrainOrigin()?Infinity:getNearestRoadDist3D(sx,sz)-roadSidewalkOuterHalfWidth(22);
+    roadWeight=Math.min(roadWeight,smoothstep(0,1.2,highwayClearance))*smoothstep(WATER_LEVEL_3D+.12,WATER_LEVEL_3D+.5,elev);
+    elev=gradeFoundationHeight(elev,sx,sz,foundations,roadWeight);
   }
 
   TERRAIN_CACHE_KX[slot] = qxInt;
@@ -849,12 +909,21 @@ export function computeCityBridgeDeckWorldY3D(
   tClamped: number,
   getGround: (x: number, z: number) => number = getTerrainHeight3D,
 ): number {
-  const end1Y = Math.max(WATER_LEVEL_3D + 0.24, getGround(seg.x1, seg.z1) + 0.15);
-  const end2Y = Math.max(WATER_LEVEL_3D + 0.24, getGround(seg.x2, seg.z2) + 0.15);
+  const end1Y = roadSurfaceY(seg.x1,seg.z1,getGround,WATER_LEVEL_3D);
+  const end2Y = roadSurfaceY(seg.x2,seg.z2,getGround,WATER_LEVEL_3D);
   const linearEndY = end1Y + (end2Y - end1Y) * tClamped;
   const peakDeckY = Math.max(WATER_LEVEL_3D + 0.95, baseY + 0.24, Math.max(end1Y, end2Y) + 0.28);
   const arch = smoothstep(0.0, 0.22, tClamped) * smoothstep(0.0, 0.22, 1.0 - tClamped);
   return linearEndY + (peakDeckY - linearEndY) * arch;
+}
+
+/** Match the full road cross-section at both bridge ends, then ease to the deck. */
+export function computeCityBridgeSurfaceWorldY3D(seg:TownStreetSeg,baseY:number,t:number,x:number,z:number,getGround:(x:number,z:number)=>number=getTerrainHeight3D):number {
+  const along=Math.max(0,Math.min(1,t));
+  const blend=smoothstep(0,.22,along)*smoothstep(0,.22,1-along);
+  const approach=roadSurfaceY(x,z,getGround,WATER_LEVEL_3D);
+  const deck=computeCityBridgeDeckWorldY3D(seg,baseY,along,getGround);
+  return approach+(deck-approach)*blend;
 }
 
 export interface WalkableStairAndFloorZone3D {
@@ -931,40 +1000,45 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number, currentPy?: n
 
   const ground = getTerrainHeight3D(wx, wz);
   const activeGeo = getActiveGeoTerrainOrigin();
+  const visibleGround = renderedTerrainHeight(wx,wz);
+  const visibleOutdoorFloor=(floor:number)=>Math.max(floor,visibleGround===undefined?-Infinity:visibleGround+ROAD_WALK_CLEARANCE);
+  // City sidewalks and road tiles share their exact vertex interpolation with
+  // the generated road mesh, in both geographic and ordinary game modes.
+  const townHit = getNearestTownStreetHit3D(wx, wz, true);
+  if (townHit && townHit.dist <= townHit.entry.walkHalfW + 1.5) {
+    if (townHit.entry.seg.isBridge) {
+      const baseY = getTerrainHeight3D(townHit.entry.townCenterX, townHit.entry.townCenterZ);
+      const deck = computeCityBridgeSurfaceWorldY3D(townHit.entry.seg, baseY, townHit.t,wx,wz,getTerrainHeight3D) + .07;
+      // A ground-level character beneath an overpass must remain underneath.
+      if (deck <= ground + 1) return visibleOutdoorFloor(deck);
+      if (currentPy === undefined || currentPy >= deck - 1) return deck;
+      const below = getNearestTownStreetHit3D(wx, wz, false);
+      if(below&&below.dist<=below.entry.walkHalfW+1.5)return visibleOutdoorFloor(roadSurfaceY(wx,wz,getTerrainHeight3D,WATER_LEVEL_3D)+ROAD_WALK_CLEARANCE);
+    } else {
+      return visibleOutdoorFloor(roadSurfaceY(wx, wz, getTerrainHeight3D, WATER_LEVEL_3D) + ROAD_WALK_CLEARANCE);
+    }
+  }
   if (!activeGeo) {
     const roadDist = getNearestRoadDist3D(wx, wz);
-    if (roadDist < 12.2 && ground < BRIDGE_DECK_Y_3D) {
+    const roadWalkHalfW = roadSidewalkOuterHalfWidth(22) + .75;
+    if (roadDist < roadWalkHalfW && ground < BRIDGE_DECK_Y_3D) {
       if (ground <= WATER_LEVEL_3D + 0.25) {
         return BRIDGE_DECK_Y_3D + 0.06;
       }
       const rampT = 1.0 - smoothstep(WATER_LEVEL_3D + 0.25, BRIDGE_DECK_Y_3D, ground);
       return ground * (1 - rampT) + (BRIDGE_DECK_Y_3D + 0.06) * rampT;
     }
-    if (roadDist < 12.2) {
+    if (roadDist < roadWalkHalfW) {
       return ground + 0.10;
     }
     for (let i = 0; i < WORLD_TOWNS_3D.length; i++) {
       const t = WORLD_TOWNS_3D[i];
       if (Math.hypot(wx - t.x, wz - t.z) < t.plazaRadius) {
-        return ground + 0.14;
+        return visibleOutdoorFloor(ground + 0.14);
       }
     }
   } else {
     // Active Real-Earth Cities + Walkable Inter-City Highway Network (1:1 unified surface height!):
-    const stHit = getNearestTownStreetHit3D(wx, wz, true);
-    if (stHit && stHit.dist <= stHit.entry.halfW + 0.75) {
-      if (stHit.entry.seg.isBridge) {
-        const baseY = getTerrainHeight3D(stHit.entry.townCenterX, stHit.entry.townCenterZ);
-        return computeCityBridgeDeckWorldY3D(stHit.entry.seg, baseY, stHit.t, getTerrainHeight3D) + 0.03;
-      }
-      const segKind = stHit.entry.seg.kind;
-      const liftY = segKind === 'arterial' ? 0.098 : segKind === 'street' ? 0.072 : 0.045;
-      const centerG = getTerrainHeight3D(stHit.qx, stHit.qz);
-      const latFrac = Math.min(1, stHit.dist / Math.max(0.5, stHit.entry.halfW));
-      const streetDeckY = Math.max(WATER_LEVEL_3D + 0.24, centerG + liftY + 0.08 + 0.035 * (1 - latFrac));
-      return Math.max(ground + 0.16, streetDeckY);
-    }
-
     const geoCityId = activeGeo.startCityId ?? 'shanghai';
     if (isOnShanghaiBridgeLocal(wx, wz, geoCityId)) {
       return Math.max(ground + 0.16, 1.92);
@@ -972,7 +1046,7 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number, currentPy?: n
 
     const hwyHalfW = HIGHWAY_ROAD_WIDTH_3D * 0.5;
     const hwyProj = getNearestGeoHighwayProjection3D(wx, wz);
-    if (hwyProj && hwyProj.dist <= hwyHalfW + 0.85) {
+    if (hwyProj && hwyProj.dist <= roadSidewalkOuterHalfWidth(HIGHWAY_ROAD_WIDTH_3D) + 0.85) {
       const latFrac = Math.min(1, hwyProj.dist / hwyHalfW);
       const { deckY } = getExactHighwayStationDeckY3D(
         hwyProj.qx,
@@ -987,10 +1061,10 @@ export function getWalkableSurfaceHeight3D(wx: number, wz: number, currentPy?: n
 
     // Dry paved city plazas & parks sit flush at ground + 0.16 across dry landmass!
     if (Math.hypot(wx, wz) < 860 && ground >= WATER_LEVEL_3D) {
-      return ground + 0.16;
+      return visibleOutdoorFloor(ground + 0.16);
     }
   }
-  return ground;
+  return ground>=WATER_LEVEL_3D?visibleOutdoorFloor(ground):ground;
 }
 
 /** Deterministically discover distinct organic lake centers from the live procedural heightfield! */

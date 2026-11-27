@@ -5,6 +5,7 @@ import {
   worldYToRealMeters3D,
 } from '../geoTerrain3D';
 import { BIOME_PALETTES, type BiomeId, type BiomeTextureSet } from './biomePalettesAndWater';
+import { nearestUrbanRegions, type UrbanRegion } from '../../world3d/urbanGround3D';
 
 export const BIOME_ORDER_LIST: BiomeId[] = [
   'verdant_forest',
@@ -16,6 +17,17 @@ export const BIOME_ORDER_LIST: BiomeId[] = [
 
 let realEarthBiomeModeActive = true;
 let liveSnowWeatherWeight = 0.0;
+
+/** Keep the closest city footprints and their parks in the terrain shader. */
+export function syncUrbanTerrainUniforms3D(material:THREE.ShaderMaterial,regions:readonly UrbanRegion[],x:number,z:number):void{
+ const cities=nearestUrbanRegions([...regions],x,z),zones=material.uniforms.uUrbanZones.value as THREE.Vector4[],parks=material.uniforms.uUrbanParks.value as THREE.Vector4[];
+ for(const v of zones)v.set(0,0,0,0);for(const v of parks)v.set(0,0,0,0);
+ let parkIndex=0;
+ for(let i=0;i<cities.length&&i<zones.length;i++){
+  const c=cities[i];zones[i].set(c.x,c.z,c.innerRadius,c.outerRadius);
+  for(const p of c.parks){if(parkIndex>=parks.length)break;parks[parkIndex++].set(p.x,p.z,p.halfW,p.halfD)}
+ }
+}
 
 /** Keeps CPU flora/spawn biome queries and GPU terrain shader uniforms synced with Real-Earth vs Rogue mode & live snow weather */
 export function syncTerrainGeoUniforms3D(
@@ -205,6 +217,8 @@ export function createSculptedTerrainMaterial(
       uFogFar: { value: 3800.0 },
       uSectorSize: { value: sectorSize },
       uSunDir: { value: new THREE.Vector3(0.54, 0.78, 0.44).normalize() },
+      uUrbanZones: { value: Array.from({length:8},()=>new THREE.Vector4()) },
+      uUrbanParks: { value: Array.from({length:16},()=>new THREE.Vector4()) },
     },
     vertexShader: /* glsl */ `
       varying vec3 vWorldPos;
@@ -232,6 +246,8 @@ export function createSculptedTerrainMaterial(
       uniform float uFogFar;
       uniform float uSectorSize;
       uniform vec3 uSunDir;
+      uniform vec4 uUrbanZones[8];
+      uniform vec4 uUrbanParks[16];
 
       varying vec3 vWorldPos;
       varying vec3 vWorldNormal;
@@ -437,6 +453,26 @@ export function createSculptedTerrainMaterial(
         float dTrail = min(abs(vWorldPos.x - trailX), abs(vWorldPos.z - trailZ));
         float roadMask = (1.0 - smoothstep(1.5, 2.7, dTrail)) * smoothstep(2.0, 0.2, abs(vWorldPos.y));
         vec3 flatCol = mix(grassCol, roadCol, roadMask * 0.82);
+
+        // Built-up areas use fine pixel concrete and gradually return to the
+        // natural biome beyond the city; designated parks remain vegetation.
+        float urban=0.0;
+        for(int i=0;i<8;i++){
+          vec4 zone=uUrbanZones[i];
+          if(zone.w>zone.z+1.0) urban=max(urban,1.0-smoothstep(zone.z,zone.w,length(vWorldPos.xz-zone.xy)));
+        }
+        if(urban>0.001){
+          for(int i=0;i<16;i++){
+            vec4 park=uUrbanParks[i];
+            if(park.z>0.0&&park.w>0.0){vec2 edge=abs(vWorldPos.xz-park.xy)-park.zw;float outside=max(edge.x,edge.y);urban*=smoothstep(0.0,5.0,outside);}
+          }
+          float fine=groundHash22(floor(vWorldPos.xz/.08)).x;
+          float colorVariation=groundHash22(floor(vWorldPos.xz/.28)).y;
+          float aggregate=step(.975,groundHash22(floor(vWorldPos.xz/.12)+19.3).x);
+          vec3 concrete=vec3(.43,.46,.45)*(0.95+fine*.045+colorVariation*.045-aggregate*.055);
+          urban*=smoothstep(.04,.23,vWorldPos.y);
+          flatCol=mix(flatCol,concrete,urban);
+        }
 
         // Crisp cliff reveal on stepped risers + biome-tinted top overhang rim!
         float cliffMask = 1.0 - smoothstep(0.68, 0.88, n.y);

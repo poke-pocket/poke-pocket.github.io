@@ -24,6 +24,7 @@ export interface TensorRoadEdge {
   x2: number;
   z2: number;
   width: number;
+  laneCount?: 2 | 4 | 6 | 8;
   kind: 'arterial' | 'street' | 'alley';
   isBridge?: boolean;
   bridgeStyle?: 'nanpu' | 'yangpu' | 'waibaidu';
@@ -658,6 +659,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
             z2: origZ2,
             width: tgt.width,
             kind: tgt.kind,
+            laneCount: tgt.laneCount,
             streamId: tgt.streamId,
           });
         }
@@ -669,6 +671,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
             z2: sz,
             width: br.width,
             kind: 'arterial',
+            laneCount: br.laneCount,
             streamId: br.streamId,
           });
         } else if (Math.hypot(br.x1 - ex, br.z1 - ez) < 1) {
@@ -778,7 +781,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
                 const oz2 = e.z2;
                 e.x2 = ix;
                 e.z2 = iz;
-                edges.push({ x1: ix, z1: iz, x2: ox2, z2: oz2, width: e.width, kind: e.kind, streamId: e.streamId });
+                edges.push({ x1: ix, z1: iz, x2: ox2, z2: oz2, width: e.width, kind: e.kind, laneCount:e.laneCount, streamId: e.streamId });
                 return true;
               };
               const sa = splitEdgeAt(a);
@@ -824,7 +827,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
                 const oz2 = b.z2;
                 b.x2 = px;
                 b.z2 = pz;
-                edges.push({ x1: px, z1: pz, x2: ox2, z2: oz2, width: b.width, kind: b.kind, streamId: b.streamId });
+                edges.push({ x1: px, z1: pz, x2: ox2, z2: oz2, width: b.width, kind: b.kind, laneCount:b.laneCount, streamId: b.streamId });
                 splitAny = true;
                 break;
               }
@@ -947,7 +950,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
           const oz2 = tgt.z2;
           tgt.x2 = sx;
           tgt.z2 = sz;
-          edges.push({ x1: sx, z1: sz, x2: ox2, z2: oz2, width: tgt.width, kind: tgt.kind, streamId: tgt.streamId });
+          edges.push({ x1: sx, z1: sz, x2: ox2, z2: oz2, width: tgt.width, kind: tgt.kind, laneCount:tgt.laneCount, streamId: tgt.streamId });
         }
         edges.push({
           x1: vx,
@@ -956,6 +959,7 @@ export function generateTensorCityRoads(cfg: TensorCityConfig): TensorRoadGraphR
           z2: sz,
           width: srcEdge.width,
           kind: srcEdge.kind,
+          laneCount: srcEdge.laneCount,
           streamId: srcEdge.streamId,
         });
         addedExtension = true;

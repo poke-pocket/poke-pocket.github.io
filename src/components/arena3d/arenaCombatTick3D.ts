@@ -884,7 +884,7 @@ export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
               }
             }
 
-            const rawEnY = getWalkableSurfaceHeight3D(en.x, en.z);
+            const rawEnY = getWalkableSurfaceHeight3D(en.x, en.z, en.y);
             const enInLake = rawEnY < WATER_LEVEL_3D + 0.05;
             const jumpArc =
               en.isAquatic && enInLake && (en.waterJumpTimer ?? 3) > 2.0
