@@ -455,15 +455,20 @@ export function buildUnifiedWalkInBuilding3D(opts: {
     addBox(doorW + 0.4, 0.28, wallT + 0.22, trimMat, 0, floor1Y + doorH, fz, false);
 
     // Stepped Striped MagicaVoxel Entrance Awning + Twin Warm Voxel Doorway Lanterns!
-    const stripeCount = 9;
-    const awningTotalW = doorW + 3.0;
-    const stripeW = awningTotalW / stripeCount;
-    const whiteStripeMat = new THREE.MeshLambertMaterial({ color: 0xfff9f0 });
-    for (let si = 0; si < stripeCount; si++) {
-      const sx = -awningTotalW * 0.5 + (si + 0.5) * stripeW;
-      const sMat = si % 2 === 0 ? roofMat : whiteStripeMat;
-      addVoxelBox(shellGroup, stripeW + 0.02, 0.34, 1.95, sMat, sx, floor1Y + doorH + 0.14, fz + 0.92);
-      addVoxelBox(shellGroup, stripeW + 0.02, 0.28, 1.30, sMat, sx, floor1Y + doorH + 0.48, fz + 0.60);
+    const awningTotalW = kind==='restaurant' ? Math.max(doorW+3,w*.55) : doorW+3;
+    if(kind==='restaurant'){
+      const stripeCount=13,stripeW=awningTotalW/stripeCount;
+      const whiteStripeMat=new THREE.MeshLambertMaterial({color:0xfff9f0});
+      for(let si=0;si<stripeCount;si++){
+        const sx=-awningTotalW*.5+(si+.5)*stripeW,sMat=si%2===0?roofMat:whiteStripeMat;
+        addVoxelBox(shellGroup,stripeW+.02,.34,2.5,sMat,sx,floor1Y+doorH+.14,fz+1.15);
+        addVoxelBox(shellGroup,stripeW+.02,.28,1.5,sMat,sx,floor1Y+doorH+.48,fz+.65);
+      }
+    }else{
+      // A flat entrance canopy for the modern shop, hotel and clinic.
+      const canopyDepth=kind==='hotel'?3.2:2.35;
+      addVoxelBox(shellGroup,awningTotalW,.4,canopyDepth,kind==='hotel'?mullionMat:roofMat,0,floor1Y+doorH+.14,fz+canopyDepth*.46);
+      addVoxelBox(shellGroup,awningTotalW,.12,.12,brushedRailMat,0,floor1Y+doorH+.20,fz+canopyDepth*.93,false);
     }
     const lanternGeo = getCachedDoorLanternGeo();
     for (const side of [-1, 1]) {
@@ -628,10 +633,24 @@ export function buildUnifiedWalkInBuilding3D(opts: {
   // ==================== 3. STEPPED MAGICAVOXEL ROOF TIERS, VOXEL HVAC & SIGNAGE ====================
   const roofY = floor1Y + totalWallH;
   addBox(w + wallT * 1.4, 0.45, d + wallT * 1.4, ceilingMat, 0, roofY + 0.22, 0);
-  // 3-Tier Stepped MagicaVoxel Roof Crown!
+  // Different building functions have distinct rooflines, keeping the interior shell intact.
   addVoxelBox(shellGroup, w + wallT * 1.8, 0.68, d + wallT * 1.8, roofMat, 0, roofY + 0.45, 0);
-  addVoxelBox(shellGroup, w * 0.90, 0.62, d * 0.90, roofMat, 0, roofY + 1.13, 0);
-  addVoxelBox(shellGroup, w * 0.78, 0.48, d * 0.78, extWallMat, 0, roofY + 1.75, 0);
+  if(kind==='restaurant'){
+    // Deep tiled eaves and a raised asymmetric roof ridge.
+    addVoxelBox(shellGroup,w*.72,1.0,d*.70,roofMat,-w*.08,roofY+1.10,-d*.03);
+    addVoxelBox(shellGroup,w*.46,.7,d*.45,roofMat,-w*.13,roofY+2.10,-d*.05);
+    for(let x=-w*.43;x<w*.44;x+=2.4)addVoxelBox(shellGroup,.18,.22,1.0,trimMat,x,roofY+.20,d*.5+.55,false);
+  }else if(kind==='poke_mart'){
+    // Flat parapet and vertical blue fascia frame a modern glazed storefront.
+    addVoxelBox(shellGroup,w*.96,.75,.35,trimMat,0,roofY+1.13,d*.48);
+    for(const side of [-1,1]) addVoxelBox(shellGroup,.55,totalWallH*.74,.4,trimMat,side*w*.46,floor1Y+H1*.13,d*.5+.50,false);
+  }else if(kind==='hotel'){
+    addVoxelBox(shellGroup,w*.82,.5,d*.76,extWallMat,0,roofY+1.13,0);
+    addVoxelBox(shellGroup,w*.36,1.35,d*.3,roofMat,0,roofY+1.63,-d*.15);
+  }else{
+    addVoxelBox(shellGroup, w * 0.90, 0.62, d * 0.90, roofMat, 0, roofY + 1.13, 0);
+    addVoxelBox(shellGroup, w * 0.78, 0.48, d * 0.78, extWallMat, 0, roofY + 1.75, 0);
+  }
 
   // Rooftop Voxel HVAC Cooling Unit!
   addVoxelBox(shellGroup, 2.4, 1.15, 1.65, new THREE.MeshLambertMaterial({ color: 0xcbd5e1 }), w * 0.26, roofY + 2.23, -d * 0.20);

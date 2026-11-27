@@ -3,21 +3,28 @@ import {cameraOrbitPosition,cameraRelativeMovement,SHARED_CAMERA_MODES,type Shar
 import {sound,BGM_TRACK_LABELS,type BgmTrackId} from '../../../src/utils/sound';
 import {computeSolarDayNight} from '../../../src/utils/solarDayNight3D';
 import type {WeatherKind} from '../../../src/utils/weatherSystem';
+import {createNpcBillboard} from '../../../src/world3d/townAssetLoader';
+import {createGameConsole} from './gameConsole';
+import {createGameInteraction} from './gameInteraction';
+import {updateProximityAutoDoors3D} from '../../../src/utils/architecturalBuildings3D';
+import type {TownInteractPoint} from '../../../src/world3d/townTypes';
 
 type DemoEvent={type:string;scene:string;position:{x:number;y:number;z:number};detail?:unknown};
-type Interactable={id:string;type:string;label:string;position:THREE.Vector3;radius:number;detail?:unknown};
+type Interactable={id:string;type:string;label:string;position:THREE.Vector3;radius:number;detail?:unknown;point?:TownInteractPoint};
 
 /** Standalone event and camera adapter; world content can register its own events. */
 export function createDemoWorld(opts:{scene:THREE.Scene;camera:THREE.PerspectiveCamera;canvas:HTMLCanvasElement;controls:{enabled:boolean};hero:THREE.Object3D;sun:THREE.DirectionalLight;ambient:THREE.HemisphereLight;surface:(x:number,z:number,hint:number)=>number;onJump:()=>void}){
  const panel=document.createElement('div');panel.className='demo-panel';panel.innerHTML='<div class="demo-heading"><strong>互动 Demo</strong><label><input id="demo-enabled" type="checkbox" checked> 游戏视角</label></div><div class="demo-row"><label for="demo-camera">镜头</label><select id="demo-camera"><option value="hd2d">HD-2D 俯视</option><option value="chase">跟随</option><option value="free">自由环绕</option><option value="overhead">高空鸟瞰</option></select></div><p id="demo-prompt">靠近 NPC，按 E 交互</p><button id="demo-interact" type="button" disabled>交互 · E</button><div id="demo-log" aria-live="polite">事件：等待触发</div>';
  const viewport=document.querySelector('.viewport') as HTMLElement,drawer=document.querySelector('.panel') as HTMLElement;
  drawer.prepend(panel);
+ const closeDrawer=document.createElement('button');closeDrawer.className='side-action';closeDrawer.textContent='返回世界';closeDrawer.addEventListener('click',()=>drawer.classList.remove('demo-settings-open'));drawer.prepend(closeDrawer);
+ drawer.querySelectorAll('[data-scene]').forEach(button=>button.addEventListener('click',()=>drawer.classList.remove('demo-settings-open')));
  panel.appendChild(document.querySelector('#reset-view')!);
  const settingsButton=document.createElement('button');settingsButton.className='demo-settings-toggle';settingsButton.type='button';settingsButton.textContent='⚙ 设置';settingsButton.setAttribute('aria-expanded','false');viewport.appendChild(settingsButton);
- settingsButton.addEventListener('click',()=>{const open=drawer.classList.toggle('demo-settings-open');settingsButton.setAttribute('aria-expanded',String(open))});
+ settingsButton.addEventListener('click',()=>{gameConsole.open();settingsButton.setAttribute('aria-expanded','true')});
  const hud=document.createElement('div');hud.className='demo-status';hud.innerHTML='<div><small>天气</small><strong id="demo-weather-status">晴天</strong></div><button id="demo-music-toggle" type="button"><small>♪ 音乐</small><strong id="demo-track-status">已关闭</strong></button><div><small>时间</small><strong id="demo-time-status">12:00</strong></div>';viewport.appendChild(hud);
  const action=document.createElement('div');action.className='demo-action';action.innerHTML='<button id="demo-jump" type="button">跳跃</button>';viewport.appendChild(action);action.querySelector('button')!.addEventListener('click',opts.onJump);
- const eventPanel=document.createElement('div');eventPanel.className='demo-event';viewport.appendChild(eventPanel);
+ const eventPanel=document.createElement('div');eventPanel.hidden=true;viewport.appendChild(eventPanel);
  for(const selector of ['#demo-prompt','#demo-interact','#demo-log'])eventPanel.appendChild(panel.querySelector(selector)!);
  const env=document.createElement('section');env.className='settings demo-environment';env.innerHTML='<strong>环境预览</strong><div class="setting-row"><label for="demo-weather">天气</label><select id="demo-weather"><option value="clear">晴天</option><option value="cloudy">多云</option><option value="rain">雨天</option><option value="storm">雷雨</option><option value="hail">冰雹</option><option value="snow">下雪</option><option value="windy">大风</option></select></div><div class="setting-row"><label for="demo-time">时间</label><input id="demo-time" type="time" value="12:00"></div><div class="setting-row"><label for="demo-track">背景音乐</label><select id="demo-track"><option value="town">城镇漫步</option><option value="town_night">都市晚风</option><option value="adventure">郊外远征</option><option value="restaurant">餐厅</option><option value="house">居民住宅</option></select></div>';
  drawer.insertBefore(env,panel.nextSibling);drawer.querySelectorAll('details').forEach(d=>d.open=false);
@@ -38,6 +45,7 @@ export function createDemoWorld(opts:{scene:THREE.Scene;camera:THREE.Perspective
   weatherStatus.textContent=weatherNames[weather];timeStatus.textContent=timeInput.value||'12:00';sound.setWeatherAmbience(weather,{indoor:false,isNight:solar.phase==='night'});
  };
  weatherSelect.addEventListener('change',()=>{applyEnvironment();dispatch('weather.change',{weather})});timeInput.addEventListener('change',()=>{applyEnvironment();dispatch('time.change',{time:timeInput.value})});
+ const gameConsole=createGameConsole(patch=>{const p=patch.prefs;if(p?.worldWeatherMode){weatherSelect.value=p.worldWeatherMode==='auto'?'clear':p.worldWeatherMode;weatherSelect.dispatchEvent(new Event('change'))}if(p?.worldTimeMode){timeInput.value=({auto:'12:00',day:'12:00',dusk:'18:00',night:'22:00'} as const)[p.worldTimeMode];timeInput.dispatchEvent(new Event('change'))}if(patch.bgmEnabled!==undefined){audioEnabled=patch.bgmEnabled;sound.unlock();sound.setBgm(audioEnabled,patch.bgmVolume??42);trackStatus.textContent=audioEnabled?BGM_TRACK_LABELS[trackSelect.value as BgmTrackId]:'已关闭'}},()=>drawer.classList.add('demo-settings-open'));
  trackSelect.addEventListener('change',()=>{sound.setTrack(trackSelect.value as BgmTrackId);if(audioEnabled)trackStatus.textContent=BGM_TRACK_LABELS[trackSelect.value as BgmTrackId];dispatch('music.track',{track:trackSelect.value})});
  musicToggle.addEventListener('click',()=>{audioEnabled=!audioEnabled;sound.unlock();sound.setBgm(audioEnabled,42);sound.setAmbient(audioEnabled,55);applyEnvironment();trackStatus.textContent=audioEnabled?BGM_TRACK_LABELS[trackSelect.value as BgmTrackId]:'已关闭';dispatch('audio.toggle',{enabled:audioEnabled})});
  applyEnvironment();
@@ -47,25 +55,23 @@ export function createDemoWorld(opts:{scene:THREE.Scene;camera:THREE.Perspective
  let mode:SharedCameraMode='hd2d',yaw=0,pitch=SHARED_CAMERA_MODES.hd2d.pitch,zoom=1,smoothedDist=SHARED_CAMERA_MODES.hd2d.dist,smoothedPitch=pitch,dragging=false,lastX=0,lastY=0;
  const pivot=new THREE.Vector3(),listeners=new Set<(e:DemoEvent)=>void>();
  const dispatch=(type:string,detail?:unknown)=>{const p=opts.hero.position,e:DemoEvent={type,scene:currentScene,position:{x:p.x,y:p.y,z:p.z},detail};log.textContent='事件：'+type;for(const fn of listeners)fn(e);window.dispatchEvent(new CustomEvent('pixel-world:event',{detail:e}));return e};
- const addBox=(parent:THREE.Object3D,color:number,x:number,y:number,z:number,w:number,h:number,d:number)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshLambertMaterial({color}));mesh.position.set(x,y,z);parent.add(mesh)};
+ const interaction=createGameInteraction(viewport,opts.camera,action=>{if(!nearest)return;dispatch(nearest.type,{id:nearest.id,action,...(nearest.detail as object??{})});interaction.speak(action==='chat'?'你好！这片街区正在建设中。':'沿着道路走，可以看看附近的建筑。',nearest.position)});
  const setScene=(model:THREE.Object3D|null,id:string)=>{
   if(model===currentModel&&id===currentScene)return;
   currentModel=model;currentScene=id;items=[];nearest=undefined;insideZone=false;
   while(content.children.length){const child=content.children[0];content.remove(child);child.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose()}})}
   if(!model)return;
   const p=opts.hero.position,ix=p.x+3.2,iz=p.z-2.0,iy=opts.surface(ix,iz,p.y)+.02;
-  const npc=new THREE.Group();npc.name='Demo_NPC';npc.position.set(ix,iy,iz);content.add(npc);
-  addBox(npc,0x23334c,0,.36,0,.8,.72,.48);addBox(npc,0x3c7e9c,0,1.1,0,1.05,.95,.55);addBox(npc,0xf2c5a5,0,1.86,0,.68,.68,.55);addBox(npc,0x4c3934,0,2.24,0,.72,.17,.58);
-  const marker=new THREE.Mesh(new THREE.RingGeometry(.8,.95,24),new THREE.MeshBasicMaterial({color:0x7ff1c7,side:THREE.DoubleSide,transparent:true,opacity:.85,depthWrite:false}));marker.rotation.x=-Math.PI/2;marker.position.set(ix,iy+.04,iz);content.add(marker);
+  const npc=createNpcBillboard('/sprites/people/youngster.png',ix,iy,iz,2.45);npc.name='Demo_NPC';content.add(npc);
   items.push({id:'demo-npc',type:'npc.interact',label:'与示例 NPC 交谈',position:new THREE.Vector3(ix,iy,iz),radius:2.4,detail:{npcId:'demo-npc'}});
   const zx=p.x-4,zz=p.z-2,zy=opts.surface(zx,zz,p.y)+.02;
-  const zone=new THREE.Mesh(new THREE.RingGeometry(1.0,1.12,24),new THREE.MeshBasicMaterial({color:0xf5cc77,side:THREE.DoubleSide,transparent:true,opacity:.8,depthWrite:false}));zone.rotation.x=-Math.PI/2;zone.position.set(zx,zy+.04,zz);content.add(zone);
   items.push({id:'demo-zone',type:id==='tower'?'building.inspect':'road.inspect',label:id==='tower'?'检查建筑入口':'检查道路',position:new THREE.Vector3(zx,zy,zz),radius:2.1,detail:{sample:true}});
+  for(const point of (model.userData.demoInteractables??[]) as TownInteractPoint[])items.push({id:point.id,type:'building.interact',label:point.label,position:new THREE.Vector3(point.x,point.y,point.z),radius:point.radius,point});
   pivot.set(p.x,p.y+1.52,p.z);dispatch('scene.ready');
  };
- const interact=()=>{if(!enabled.checked||!nearest)return;dispatch(nearest.type,{id:nearest.id,...(nearest.detail as object??{})});message=nearest.type==='npc.interact'?'NPC：你好，欢迎来到测试世界。':'已触发：'+nearest.label;messageUntil=Date.now()+3500};
+ const interact=()=>{if(!enabled.checked||!nearest)return;interaction.execute()};
  button.addEventListener('click',interact);
- window.addEventListener('keydown',e=>{const target=e.target;if((target instanceof Element&&target.matches('input,select,textarea'))||e.repeat)return;if(e.key.toLowerCase()==='e'){e.preventDefault();interact()}});
+ window.addEventListener('keydown',e=>{const target=e.target;if(document.body.classList.contains('demo-handheld-open')||(target instanceof Element&&target.matches('input,select,textarea'))||e.repeat)return;if(e.key.toLowerCase()==='e'){e.preventDefault();interact()}else if(e.key==='Tab'&&nearest){e.preventDefault();interaction.next()}});
  enabled.addEventListener('change',()=>{opts.controls.enabled=!enabled.checked;content.visible=enabled.checked;dispatch(enabled.checked?'demo.enabled':'demo.disabled')});
  select.addEventListener('change',()=>{mode=select.value as SharedCameraMode;pitch=SHARED_CAMERA_MODES[mode].pitch;dispatch('camera.mode',{mode})});
  opts.canvas.addEventListener('pointerdown',e=>{if(!enabled.checked||e.button!==0)return;dragging=true;lastX=e.clientX;lastY=e.clientY;opts.canvas.setPointerCapture(e.pointerId)});
@@ -78,7 +84,11 @@ export function createDemoWorld(opts:{scene:THREE.Scene;camera:THREE.Perspective
   if(particles.visible){particles.position.set(opts.hero.position.x,opts.hero.position.y,opts.hero.position.z);for(let i=0;i<700;i++){const k=i*3+1;particlePositions[k]-=dt*(weather==='snow'?3:weather==='hail'?22:16);if(particlePositions[k]<0)particlePositions[k]+=22}(particlesGeo.attributes.position as THREE.BufferAttribute).needsUpdate=true}
   setScene(model,id);if(!enabled.checked)return;
   const p=opts.hero.position;
-  nearest=items.filter(item=>Math.hypot(p.x-item.position.x,p.z-item.position.z)<=item.radius&&Math.abs(p.y-item.position.y)<2.5).sort((a,b)=>Math.hypot(p.x-a.position.x,p.z-a.position.z)-Math.hypot(p.x-b.position.x,p.z-b.position.z))[0];
+  if(model?.userData.demoDoors)updateProximityAutoDoors3D(model.userData.demoDoors,[{x:p.x,y:p.y,z:p.z}],dt);
+  for(const mesh of model?.userData.demoNpcs??[])mesh.rotation.y=opts.camera.rotation.y;
+  const npc=content.getObjectByName('Demo_NPC');if(npc)npc.rotation.y=opts.camera.rotation.y;
+  nearest=items.filter(item=>item.id!=='demo-zone'&&Math.hypot(p.x-item.position.x,p.z-item.position.z)<=item.radius&&Math.abs(p.y-item.position.y)<2.5).sort((a,b)=>Math.hypot(p.x-a.position.x,p.z-a.position.z)-Math.hypot(p.x-b.position.x,p.z-b.position.z))[0];
+  interaction.update(nearest?.id??null,nearest?.position??null,nearest?.point);
   button.disabled=!nearest;prompt.textContent=Date.now()<messageUntil?message:nearest?'按 E：'+nearest.label:'靠近 NPC 或标记，按 E 交互';
   const inZone=items.some(item=>item.id==='demo-zone'&&Math.hypot(p.x-item.position.x,p.z-item.position.z)<1.15);
   if(inZone&&!insideZone)dispatch('zone.enter',{id:'demo-zone'});insideZone=inZone;

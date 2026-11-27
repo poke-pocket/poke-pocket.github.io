@@ -5,6 +5,7 @@ import {
   type WalkableStairAndFloorZone3D,
 } from '../data/survivorsTactics';
 import { getBiomeTextures, getNpcWalkSpriteFrames } from '../data/worldTextures3D';
+import { buildVilla3D } from '../world3d/villa3D';
 import { getActiveGeoTerrainOrigin } from '../data/geoTerrain3D';
 import { createWeatherFloraMaterial3D } from '../world3d/weatherFloraMaterial3D';
 import {
@@ -493,7 +494,11 @@ export function buildProceduralTown3D(
       );
       group.add(entPool);
 
-      if (isCbdOffice) {
+      if (lot.kind === 'house' && distCenter > 220 && lot.shape === 'rect' && hHash % 7 === 0) {
+        const villa=buildVilla3D(lot.width,lot.depth,hHash);
+        villa.group.position.set(lx,ly,lz);villa.group.rotation.y=lot.rotY;group.add(villa.group);
+        colliders.push(makeObbCollider(lot.x,lot.z,lot.width*.42,lot.depth*.41,lot.rotY,villa.totalHeight));
+      } else if (isCbdOffice) {
         const builtCbd = buildModernCbdOfficeTower3D({
           width: lot.width,
           depth: lot.depth,

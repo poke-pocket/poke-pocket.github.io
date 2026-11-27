@@ -138,13 +138,14 @@ export function buildModernCbdOfficeTower3D(opts: {
 
     const cx = (nx - 1) * 0.5;
     const cz = (nz - 1) * 0.5;
-    const setbackFloor = opts.isSupertall ? Math.floor(stories * 0.68) : stories + 1;
+    // The curtain wall remains continuous instead of narrowing abruptly into a tower.
+    const setbackFloor = stories + 1;
 
     for (let s = 0; s < stories; s++) {
       const isUpper = s >= setbackFloor;
       const shrink = isUpper ? 3 : 1;
       const y0 = s * vPerFloor;
-      const floorLitProb = vHash(s, 5, vIdx * 17 + 3) > 0.38 ? 0.64 : 0.16;
+      const floorLit = vHash(s, 5, vIdx * 17 + 3) > 0.42;
 
       for (let z = shrink; z < nz - shrink; z++) {
         for (let x = shrink; x < nx - shrink; x++) {
@@ -191,7 +192,6 @@ export function buildModernCbdOfficeTower3D(opts: {
             shapeKey === 'rect' &&
             (x === shrink || x === nx - 1 - shrink) &&
             (z === shrink || z === nz - 1 - shrink);
-          const bayIdx = Math.floor((x + z) / 3);
           const isMullionCol = (x + z) % 3 === 0;
 
           if (isCorner) {
@@ -217,9 +217,8 @@ export function buildModernCbdOfficeTower3D(opts: {
               // Physically RECESSED 1-voxel 3D Curtain-Wall Glass Window Bay!
               const rxIn = x === shrink ? x + 1 : x === nx - 1 - shrink ? x - 1 : x;
               const rzIn = z === shrink ? z + 1 : z === nz - 1 - shrink ? z - 1 : z;
-              const cellLit = vHash(bayIdx, s, vIdx * 31 + 7) < floorLitProb;
-              const isWarmOffice = vHash(bayIdx + 11, s + 3, vIdx) > 0.62;
-              const emitHex = cellLit ? (isWarmOffice ? 0xffe099 : 0xe6f4ff) : 0;
+              const isWarmOffice = vHash(11, s + 3, vIdx) > 0.62;
+              const emitHex = floorLit ? (isWarmOffice ? 0xffe099 : 0xe6f4ff) : 0;
               for (let dy = 1; dy < vPerFloor; dy++) {
                 const gCol = dy === vPerFloor - 1 ? glassSheenPal : glassDayPal;
                 grid.set(rxIn, y0 + dy, rzIn, gCol, emitHex);
@@ -247,7 +246,7 @@ export function buildModernCbdOfficeTower3D(opts: {
       const cHalf = 5;
       grid.fillBox(Math.floor(cx - cHalf), 4, nz - 1, Math.floor(cx + cHalf), 4, nz - 1, 0xe2e8f0, ledEmit);
       // Rooftop mechanical greebles, helipad, HVAC & LED crown!
-      const topShrink = opts.isSupertall ? 3 : 1;
+      const topShrink = 1;
       populateVoxelRooftopGreebles(
         grid,
         topShrink,
@@ -283,6 +282,12 @@ export function buildModernCbdOfficeTower3D(opts: {
 
   const group = new THREE.Group();
   group.add(mesh);
+  // A recessed lobby canopy and slender entrance posts give the base a human scale.
+  const metal=new THREE.MeshLambertMaterial({color:0x485b65});
+  const canopyDepth=Math.max(.6,Math.min(2,(opts.depth-targetD)*.5+.35));
+  const canopy=new THREE.Mesh(new THREE.BoxGeometry(targetW*.35,.35,canopyDepth),metal);
+  canopy.position.set(0,4.8,targetD*.5+canopyDepth*.5-.4);canopy.castShadow=true;group.add(canopy);
+  for(const side of [-1,1]){const post=new THREE.Mesh(new THREE.BoxGeometry(.24,4.8,.24),metal);post.position.set(side*targetW*.16,2.4,targetD*.5+canopyDepth-.58);group.add(post)}
   return { group, totalHeight: cached.baseNy * scaleY };
 }
 

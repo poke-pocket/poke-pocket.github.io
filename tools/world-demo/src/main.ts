@@ -7,6 +7,7 @@ import {buildParametricRoad,roadPoint,lanePaths,type RoadConfig,type RoadShape} 
 import {buildComplexEnvironment} from './complexEnvironment';
 import {buildComplexRoadside} from './complexRoadside';
 import {createDemoWorld} from './demoWorld';
+import {buildArchitectureShowcase} from './architectureShowcase';
 import {advanceGroundJump,GAME_JUMP_VELOCITY} from '../../../src/utils/cameraRigShared3D';
 
 const $ = (s:string) => document.querySelector(s) as HTMLElement;
@@ -34,6 +35,7 @@ const shadow=new THREE.Mesh(new THREE.CircleGeometry(1,14),new THREE.MeshBasicMa
 const marker=new THREE.Mesh(new THREE.RingGeometry(.78,.88,48),new THREE.MeshBasicMaterial({color:0xfff5bf,transparent:true,opacity:.9,side:THREE.DoubleSide,depthWrite:false}));marker.rotation.x=-Math.PI/2;scene.add(marker);
 const loader=new GLTFLoader(), raycaster=new THREE.Raycaster();const down=new THREE.Vector3(0,-1,0);
 const models:Record<string,any>={
+ architecture:{name:'建筑街区',subtitle:'对比可进入商店、别墅和现代摩天大楼。',label:'游戏建筑生成器 · 比例对照',origin:[0,0,29],points:[['饭店',-92,0,25],['商店',-45,0,25],['酒店',2,0,25],['别墅',46,0,25],['摩天大楼',94,0,25]]},
  complex:{name:'综合城市路网',subtitle:'起伏地形、多个路口、高架、隧道和地下车库。',label:'固定示例 · 双向 4 车道主路',file:'complex.glb',origin:[0,0,-5],points:[['中心路口',0,0,-5],['西侧路口',-150,0,-5],['东侧路口',150,0,-5],['汇入口',-68,0,26.6],['西侧弯道',-93,0,63],['东侧弯道',93,0,63],['高架桥面',52,6,-65]]},
  parametric:{name:'可配置道路',subtitle:'切换车道数量、中央预留带、非机动车道、盲道与道路形状。',label:'参数化道路',origin:[0,0,0],points:[]},
  network:{name:'城市道路网',subtitle:'把角色放在道路上，看看车道、人行道和高架的尺度。',label:'可调车道宽度',file:'network.glb',origin:[0,0,-5],points:[['十字路口',0,0,-5],['主辅路',-19,0,8],['匝道入口',15,0,-30],['高架桥面',48,6,-30]]},
@@ -314,6 +316,9 @@ async function selectScene(key:string){
  $('#model-label').textContent=['network','city','tower'].includes(key)?`每条车道 ${width.toFixed(3)} 单位 · 模型缩放 ${modelScale.toFixed(2)}×`:spec.label;
  $('#loading').classList.remove('hidden');$('#error').hidden=true;
  try{
+  if(key==='architecture'){
+   const root=buildArchitectureShowcase();if(model)scene.remove(model);field.visible=true;activeComplexConfig=null;activeRoadGraph=null;vehicle=null;overlay=null;cityPaths=null;sidewalkMaterials=[];model=root;root.scale.setScalar(modelScale);scene.add(root);root.updateMatrixWorld(true);setButtons(spec);positionHero(...spec.origin);firstSceneLoad=false;$('#loading').classList.add('hidden');return;
+  }
   if(key==='parametric'){
    activeRoadGraph=null;const c=paramConfig(),root=new THREE.Group();parametricRoot=buildParametricRoad(c);root.add(parametricRoot);
    if(model)scene.remove(model);field.visible=true;activeComplexConfig=null;vehicle=null;overlay=null;cityPaths=null;sidewalkMaterials=[];model=root;applyPixelSurface(root);root.scale.setScalar(modelScale);scene.add(root);root.updateMatrixWorld(true);updateRoadside();firstSceneLoad=false;void updateVehicle(false);
@@ -406,9 +411,9 @@ $('#download-config').addEventListener('click',async()=>{
 });
 
 $('#reset-view').addEventListener('click',()=>{const p=hero.position;controls.target.set(p.x,p.y+1.2,p.z);camera.position.set(p.x+12,p.y+12,p.z+17);controls.update();demo.reset()});
-window.addEventListener('keydown',e=>{if(['w','a','s','d','z','c','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase())){if(e.target instanceof Element&&e.target.matches('input,select,textarea'))return;e.preventDefault();keys.add(e.key.toLowerCase())}});
+window.addEventListener('keydown',e=>{if(document.body.classList.contains('demo-handheld-open')){keys.clear();return}if(['w','a','s','d','z','c','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase())){if(e.target instanceof Element&&e.target.matches('input,select,textarea'))return;e.preventDefault();keys.add(e.key.toLowerCase())}});
 window.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));window.addEventListener('blur',()=>keys.clear());
-window.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&!(e.target instanceof Element&&e.target.matches('input,select,textarea,button'))){e.preventDefault();jump()}});
+window.addEventListener('keydown',e=>{if(!document.body.classList.contains('demo-handheld-open')&&e.code==='Space'&&!e.repeat&&!(e.target instanceof Element&&e.target.matches('input,select,textarea,button'))){e.preventDefault();jump()}});
 document.querySelectorAll('[data-move]').forEach(el=>{const k=(el as HTMLElement).dataset.move!;el.addEventListener('pointerdown',e=>{e.preventDefault();keys.add(k);(el as HTMLElement).setPointerCapture((e as PointerEvent).pointerId)});for(const type of ['pointerup','pointercancel','lostpointercapture'])el.addEventListener(type,()=>keys.delete(k))});
 function animate(now:number){requestAnimationFrame(animate);const dt=Math.min((now-previous)/1000,.05);previous=now;
  if(vehicle){const amount=Number(($('#door-open') as HTMLInputElement).value)/100,spin=($('#wheel-spin') as HTMLInputElement).checked;vehicle.traverse(o=>{const data=o.userData;if(data.motion==='rotate'&&spin)o.rotation.x+=dt*1.7;if(data.motion==='hinge')o.rotation.y=data.open_angle_radians*amount;if(data.motion==='slide'){if(data.closedY===undefined)data.closedY=o.position.y;o.position.y=data.closedY+data.open_distance_source_units*amount}})}
