@@ -1,16 +1,17 @@
 import type { LcdSharedCtx } from './lcdViewTypes';
 import React, { useEffect } from 'react';
-import { SHELL_THEMES } from '../../data/catalog';
+import { POKEDEX_ORDER, SHELL_THEMES } from '../../data/catalog';
 import { DEFAULT_GAME_PREFS, type EnemyDisplayMode, type GamePrefs, type GraphicsQualityMode, type KeyBindings, ShellThemeId } from '../../types/pet';
 import { DEFAULT_KEY_BINDINGS } from '../../utils/petEngine';
-import { useDevMode } from '../../utils/devMode';
+import { isDevVirtualPetId, resetDevGrants, setDevGrants, useDevGrants, useDevMode } from '../../utils/devMode';
 import { sound } from '../../utils/sound';
 import { PixelIcon } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { connectedGamepadName, isFullscreen, keysSubTab, mode, onCloseHandheldTo3D, onNavigateMode, onToggleFullscreen, onUpdateSettings, openedEntryMode, openedFromBattle, rebindingAction, save, setKeysSubTab, setRebindingAction, setSettingsTab, settingsTab } = ctx;
+  const { connectedGamepadName, isFullscreen, keysSubTab, mode, onGoBack, onToggleFullscreen, onUpdateSettings, rebindingAction, save, setKeysSubTab, setRebindingAction, setSettingsTab, settingsTab } = ctx;
   const [devMode, setDevMode] = useDevMode();
+  const [devGrants] = useDevGrants();
 
   useEffect(() => {
     if (!devMode && settingsTab === 'debug') {
@@ -21,7 +22,6 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
   return (
     <>
         {mode === 'settings' && (() => {
-          const directOpened = openedEntryMode === 'settings' && Boolean(onCloseHandheldTo3D);
           const cryOn = save.cryEnabled ?? true;
           const cryVol = save.cryVolume ?? 60;
           const combatSfxOn = save.combatSfxEnabled ?? true;
@@ -110,18 +110,14 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                 </div>
                 <button
                   type="button"
-                  className={`lcd-mini-close ${directOpened && openedFromBattle ? 'is-resume inline-icon-row' : ''}`}
+                  className="lcd-mini-close"
                   onClick={() => {
+                    sound.play('cancel');
                     setRebindingAction(null);
-                    if (directOpened && onCloseHandheldTo3D) {
-                      onCloseHandheldTo3D();
-                    } else {
-                      onNavigateMode('menu');
-                    }
+                    onGoBack();
                   }}
                 >
-                  {directOpened && openedFromBattle && <PixelIcon name="play" size={10} />}
-                  <span>{directOpened ? (openedFromBattle ? '继续战斗' : '关闭') : '返回'}</span>
+                  返回
                 </button>
               </div>
 
@@ -834,6 +830,126 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                   <div className="settings-card">
                     <div className="settings-card-head">
                       <div>
+                        <strong>一键获取与解锁（可回退调试态）</strong>
+                        <small>
+                          均为临时调试开关：开启后即可测试全内容，关闭后立即还原真实存档，期间正常获得的图鉴与道具均会保留
+                        </small>
+                      </div>
+                      <div className="inline-icon-row">
+                        <button
+                          type="button"
+                          className="lcd-subtab"
+                          onClick={() => {
+                            sound.play('levelup');
+                            setDevGrants({
+                              allPets: true,
+                              allPokedex: true,
+                              allItems: true,
+                              allPokeballs: true,
+                            });
+                          }}
+                        >
+                          全部开启
+                        </button>
+                        <button
+                          type="button"
+                          className="lcd-mini-close"
+                          onClick={() => {
+                            sound.play('cancel');
+                            resetDevGrants();
+                          }}
+                        >
+                          全部回退
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="debug-grants-list">
+                      <div className="debug-grant-row">
+                        <div>
+                          <strong>一键获取所有精灵（全 {POKEDEX_ORDER.length} 种）</strong>
+                          <small>
+                            当前球盒含 {save.pets.filter((p) => !isDevVirtualPetId(p.id)).length} 只真实精灵
+                            {devGrants.allPets ? ` + ${save.pets.filter((p) => isDevVirtualPetId(p.id)).length} 只调试体验精灵（同时点亮全图鉴）` : ' · 开启后可直接编队出战，关闭即回退'}
+                          </small>
+                        </div>
+                        <button
+                          type="button"
+                          className={`px-switch ${devGrants.allPets ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allPets;
+                            sound.play(next ? 'levelup' : 'cancel');
+                            setDevGrants({ allPets: next });
+                          }}
+                        >
+                          {devGrants.allPets ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div className="debug-grant-row">
+                        <div>
+                          <strong>一键解锁全部图鉴（条件状态）</strong>
+                          <small>
+                            {devGrants.allPets
+                              ? '已随「全精灵」自动生效；关闭两项开关后立即恢复真实收录图鉴'
+                              : '仅作为图鉴解锁条件变量，期间正常捕获的精灵在关闭后仍保持已解锁'}
+                          </small>
+                        </div>
+                        <button
+                          type="button"
+                          className={`px-switch ${devGrants.allPokedex || devGrants.allPets ? 'is-on' : ''}`}
+                          disabled={devGrants.allPets}
+                          onClick={() => {
+                            const next = !devGrants.allPokedex;
+                            sound.play(next ? 'confirm' : 'cancel');
+                            setDevGrants({ allPokedex: next });
+                          }}
+                        >
+                          {devGrants.allPokedex || devGrants.allPets ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div className="debug-grant-row">
+                        <div>
+                          <strong>一键获取所有道具（数量拉满至 99）</strong>
+                          <small>树果美食与全部携带道具补满至至少 ×99（不限制更高上限，关闭即回退）</small>
+                        </div>
+                        <button
+                          type="button"
+                          className={`px-switch ${devGrants.allItems ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allItems;
+                            sound.play(next ? 'coin' : 'cancel');
+                            setDevGrants({ allItems: next });
+                          }}
+                        >
+                          {devGrants.allItems ? '开' : '关'}
+                        </button>
+                      </div>
+
+                      <div className="debug-grant-row">
+                        <div>
+                          <strong>一键获取所有精灵球（数量拉满至 99）</strong>
+                          <small>全 9 种精灵球（含超级球 / 高级球 / 大师球等）补满至至少 ×99，关闭即回退</small>
+                        </div>
+                        <button
+                          type="button"
+                          className={`px-switch ${devGrants.allPokeballs ? 'is-on' : ''}`}
+                          onClick={() => {
+                            const next = !devGrants.allPokeballs;
+                            sound.play(next ? 'coin' : 'cancel');
+                            setDevGrants({ allPokeballs: next });
+                          }}
+                        >
+                          {devGrants.allPokeballs ? '开' : '关'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-card">
+                    <div className="settings-card-head">
+                      <div>
                         <strong>显示 FPS 性能浮窗</strong>
                         <small>在 3D 画面左下角实时监控帧率</small>
                       </div>
@@ -933,6 +1049,41 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                               </div>
                             );
                           })}
+                        </div>
+
+                        <div className="keybind-section-title">3D 冒险与战斗全快捷键一览</div>
+                        <div className="keybind-ref-grid">
+                          {(
+                            [
+                              ['移动（360°）', 'WASD / 方向键'],
+                              ['3D 跳跃 / 飞行爬升', 'SPACE'],
+                              ['冲刺加速', 'SHIFT'],
+                              ['交互 / 触发事件 / 收服倒地', 'E'],
+                              ['切换交互选项', 'TAB'],
+                              ['打开世界大地图', 'M / ` / N'],
+                              ['打开队伍列表', 'L'],
+                              ['打开战术终端', 'P / Q'],
+                              ['打开球舱养成', 'F'],
+                              ['打开训练家菜单', 'ESC'],
+                              ['投掷精灵球（捕捉精灵）', 'K'],
+                              ['使用好伤药', 'V / H'],
+                              ['激活力量强化', 'B'],
+                              ['全队满蓝齐射', 'U'],
+                              ['切换 3D 镜头视角', 'G'],
+                              ['复位 3D 视角', 'R'],
+                              ['切换骑乘 / 飞行', 'T'],
+                              ['左右旋转视角', 'Z / C / [ / ]'],
+                              ['飞行下降', 'X / CTRL'],
+                              ['安全区治疗 / 商店', '1 / 2'],
+                              ['视角拖拽 / 缩放', '鼠标拖动 / 滚轮'],
+                              ['释放鼠标锁定', 'ALT'],
+                            ] as const
+                          ).map(([desc, keys]) => (
+                            <div key={desc} className="keybind-ref-item">
+                              <span>{desc}</span>
+                              <kbd>{keys}</kbd>
+                            </div>
+                          ))}
                         </div>
                       </>
                     ) : (

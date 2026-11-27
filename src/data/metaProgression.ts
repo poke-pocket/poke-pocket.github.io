@@ -564,16 +564,41 @@ export const TRAINER_TAG_CATALOG: TrainerTagDef[] = [
   },
 ];
 
+export type GymBadgeCategory = 'kanto' | 'tour' | 'master';
+
 export type GymBadgeId =
   | 'boulder_badge'
   | 'cascade_badge'
   | 'thunder_badge'
   | 'rainbow_badge'
+  | 'soul_badge'
+  | 'marsh_badge'
   | 'volcano_badge'
-  | 'earth_badge';
+  | 'earth_badge'
+  | 'shanghai_pearl_badge'
+  | 'beijing_dragon_badge'
+  | 'tokyo_neon_badge'
+  | 'kyoto_sakura_badge'
+  | 'seoul_star_badge'
+  | 'taipei_cloud_badge'
+  | 'shiny_hunter_badge'
+  | 'dex_professor_badge'
+  | 'league_champion_badge'
+  | (string & {});
+
+export const MAX_SHOWCASE_BADGES = 6;
+export const DEFAULT_SHOWCASE_BADGE_IDS: GymBadgeId[] = [
+  'boulder_badge',
+  'cascade_badge',
+  'thunder_badge',
+  'rainbow_badge',
+  'volcano_badge',
+  'earth_badge',
+];
 
 export interface GymBadgeDef {
   id: GymBadgeId;
+  category: GymBadgeCategory;
   name: string;
   gymName: string;
   leaderName: string;
@@ -591,6 +616,7 @@ export interface GymBadgeDef {
 export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   {
     id: 'boulder_badge',
+    category: 'kanto',
     name: '灰色徽章',
     gymName: '尼比道馆',
     leaderName: '馆主 小刚',
@@ -604,6 +630,7 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   },
   {
     id: 'cascade_badge',
+    category: 'kanto',
     name: '蓝色徽章',
     gymName: '华蓝道馆',
     leaderName: '馆主 小霞',
@@ -617,6 +644,7 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   },
   {
     id: 'thunder_badge',
+    category: 'kanto',
     name: '橙色徽章',
     gymName: '枯叶道馆',
     leaderName: '馆主 马志士',
@@ -630,6 +658,7 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   },
   {
     id: 'rainbow_badge',
+    category: 'kanto',
     name: '彩虹徽章',
     gymName: '玉虹道馆',
     leaderName: '馆主 莉佳',
@@ -643,7 +672,36 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
     regenBonus: 0.6,
   },
   {
+    id: 'soul_badge',
+    category: 'kanto',
+    name: '粉红徽章',
+    gymName: '浅红道馆',
+    leaderName: '馆主 阿桔',
+    color: '#f06595',
+    icon: '/sprites/items/black-sludge.png',
+    unlockHint: '累计收服 12 只宝可梦或击败 200 只野怪',
+    perkText: '毒 / 恶 / 妖精系 攻击 +16%、暴击 +3%',
+    elements: ['poison', 'dark', 'fairy'],
+    atkBonus: 0.16,
+    cdReduction: 0.05,
+  },
+  {
+    id: 'marsh_badge',
+    category: 'kanto',
+    name: '金色徽章',
+    gymName: '金黄道馆',
+    leaderName: '馆主 娜姿',
+    color: '#fab005',
+    icon: '/sprites/items/twisted-spoon.png',
+    unlockHint: '累计解锁 20 种图鉴或完成 5 次探索',
+    perkText: '超能 / 幽灵系 攻击 +18%、冷却 -5%',
+    elements: ['psychic', 'ghost'],
+    atkBonus: 0.18,
+    cdReduction: 0.05,
+  },
+  {
     id: 'volcano_badge',
+    category: 'kanto',
     name: '深红徽章',
     gymName: '红莲道馆',
     leaderName: '烈焰试炼',
@@ -657,19 +715,161 @@ export const GYM_BADGE_CATALOG: GymBadgeDef[] = [
   },
   {
     id: 'earth_badge',
+    category: 'kanto',
     name: '绿色徽章',
     gymName: '常磐道馆',
     leaderName: '劲敌 小茂',
     color: '#7950f2',
     icon: '/sprites/items/kings-rock.png',
     unlockHint: '击败「劲敌 小茂」或通关天空冰川',
-    perkText: '幽灵 / 超能 & 关都全地区宝可梦 攻击 +12%、金币 +15%',
+    perkText: '幽灵 / 超能 & 全系宝可梦 攻击 +12%、金币 +15%',
     elements: ['all', 'ghost', 'psychic'],
     atkBonus: 0.12,
     cdReduction: 0.04,
     coinBonus: 0.15,
   },
+  // East Asia World Tour City Gym Badges
+  {
+    id: 'shanghai_pearl_badge',
+    category: 'tour',
+    name: '申江明珠徽章',
+    gymName: '魔都陆家嘴道馆',
+    leaderName: '巡礼馆主 明珠',
+    color: '#ff6b6b',
+    icon: '/sprites/items/light-ball.png',
+    unlockHint: '完成上海站巡礼道馆挑战',
+    perkText: '电 / 钢系 攻击 +14%、移速 +4%',
+    elements: ['electric', 'steel'],
+    atkBonus: 0.14,
+    cdReduction: 0.04,
+  },
+  {
+    id: 'beijing_dragon_badge',
+    category: 'tour',
+    name: '京华金龙徽章',
+    gymName: '紫禁太和道馆',
+    leaderName: '巡礼馆主 玄武',
+    color: '#e67700',
+    icon: '/sprites/items/dragon-fang.png',
+    unlockHint: '完成北京站巡礼道馆挑战',
+    perkText: '龙 / 火系 攻击 +16%、全队生命 +15',
+    elements: ['dragon', 'fire'],
+    atkBonus: 0.16,
+    cdReduction: 0.04,
+  },
+  {
+    id: 'tokyo_neon_badge',
+    category: 'tour',
+    name: '霓虹塔尖徽章',
+    gymName: '东京涩谷道馆',
+    leaderName: '巡礼馆主 隼人',
+    color: '#22b8cf',
+    icon: '/sprites/items/choice-scarf.png',
+    unlockHint: '完成东京站巡礼道馆挑战',
+    perkText: '电 / 飞行系 攻速 +7%、冷却 -4%',
+    elements: ['electric', 'flying'],
+    atkBonus: 0.12,
+    cdReduction: 0.06,
+  },
+  {
+    id: 'kyoto_sakura_badge',
+    category: 'tour',
+    name: '古都落樱徽章',
+    gymName: '京都岚山道馆',
+    leaderName: '巡礼馆主 樱绘',
+    color: '#faa2c1',
+    icon: '/sprites/items/berry-pouch.png',
+    unlockHint: '完成京都站巡礼道馆挑战',
+    perkText: '草 / 妖精系 攻击 +15%、回复 +0.4 HP/秒',
+    elements: ['grass', 'fairy'],
+    atkBonus: 0.15,
+    cdReduction: 0.04,
+    regenBonus: 0.4,
+  },
+  {
+    id: 'seoul_star_badge',
+    category: 'tour',
+    name: '汉江星耀徽章',
+    gymName: '首尔南山道馆',
+    leaderName: '巡礼馆主 智勋',
+    color: '#5c7cfa',
+    icon: '/sprites/items/scope-lens.png',
+    unlockHint: '完成首尔站巡礼道馆挑战',
+    perkText: '冰 / 格斗系 攻击 +16%、金币 +8%',
+    elements: ['ice', 'fighting'],
+    atkBonus: 0.16,
+    cdReduction: 0.04,
+    coinBonus: 0.08,
+  },
+  {
+    id: 'taipei_cloud_badge',
+    category: 'tour',
+    name: '碧海云巅徽章',
+    gymName: '台北信义道馆',
+    leaderName: '巡礼馆主 岚风',
+    color: '#20c997',
+    icon: '/sprites/items/quick-claw.png',
+    unlockHint: '完成台北站巡礼道馆挑战',
+    perkText: '水 / 飞行系 攻击 +14%、移速 +5%',
+    elements: ['water', 'flying'],
+    atkBonus: 0.14,
+    cdReduction: 0.05,
+  },
+  // Master / Endless Honor Badges
+  {
+    id: 'shiny_hunter_badge',
+    category: 'master',
+    name: '星闪猎手徽章',
+    gymName: '异色收藏殿堂',
+    leaderName: '星光认证',
+    color: '#ffd43b',
+    icon: '/sprites/items/bright-powder.png',
+    unlockHint: '在野外成功收服任意异色宝可梦',
+    perkText: '全系宝可梦 攻击 +8%、幸运与金币 +10%',
+    elements: ['all'],
+    atkBonus: 0.08,
+    cdReduction: 0.03,
+    coinBonus: 0.1,
+  },
+  {
+    id: 'dex_professor_badge',
+    category: 'master',
+    name: '图鉴博士徽章',
+    gymName: '大木研究所荣誉',
+    leaderName: '大木博士',
+    color: '#339af0',
+    icon: '/sprites/items/lucky-egg.png',
+    unlockHint: '宝可梦图鉴收录突破 45 种',
+    perkText: '全系宝可梦 攻击 +10%、经验效率 +15%',
+    elements: ['all'],
+    atkBonus: 0.1,
+    cdReduction: 0.04,
+  },
+  {
+    id: 'league_champion_badge',
+    category: 'master',
+    name: '石英冠军徽章',
+    gymName: '宝可梦联盟殿堂',
+    leaderName: '联盟冠军',
+    color: '#ae3ec9',
+    icon: '/sprites/items/master-ball.png',
+    unlockHint: '累计击败 10 位首领并通关全部关都区域',
+    perkText: '全系宝可梦 攻击 +16%、冷却 -6%、金币 +12%',
+    elements: ['all'],
+    atkBonus: 0.16,
+    cdReduction: 0.06,
+    coinBonus: 0.12,
+  },
 ];
+
+export function getShowcaseBadgeIds(meta: MetaProgressState): GymBadgeId[] {
+  const validIds = new Set(GYM_BADGE_CATALOG.map((b) => b.id));
+  const raw = Array.isArray(meta.showcaseBadgeIds)
+    ? meta.showcaseBadgeIds.filter((id) => validIds.has(id))
+    : [];
+  const base = raw.length > 0 ? raw : DEFAULT_SHOWCASE_BADGE_IDS;
+  return base.slice(0, MAX_SHOWCASE_BADGES);
+}
 
 export interface SquadPreset {
   id: string;
@@ -683,9 +883,10 @@ export interface MetaProgressState {
   activeHero: HeroId;
   unlockedHeroes: HeroId[];
   heroSkillLevels: Record<string, number>;
-  // Trainer Tags & Kanto Gym Badges
+  // Trainer Tags & Gym Badges (Unlimited catalog, pick up to 6 for HUD display / target tracking!)
   activeTrainerTag?: TrainerTagId;
   unlockedBadges?: GymBadgeId[];
+  showcaseBadgeIds?: GymBadgeId[];
   unlockedSkins?: string[];
   // Saved Battle Squad Presets (Switch & Edit 3 Saved Teams!)
   squadPresets?: SquadPreset[];

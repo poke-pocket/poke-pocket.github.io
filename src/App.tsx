@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AdoptionModal } from './components/AdoptionModal';
 import { HandheldConsole, type AppSettingsPatch } from './components/HandheldConsole';
 import { LandscapeFullscreenCover } from './components/LandscapeFullscreenCover';
@@ -9,7 +9,17 @@ import {
   type HomeIconActionId,
 } from './components/LcdScreen';
 import { Survivors3DArena } from './components/Survivors3DArena';
-import { ACHIEVEMENTS, SPECIES_CATALOG, getPokemonCryId } from './data/catalog';
+import { ACHIEVEMENTS, FOOD_CATALOG, SPECIES_CATALOG, getPokemonCryId } from './data/catalog';
+import {
+  applyDevGrantsOverlay,
+  consumeDevVirtualFood,
+  isDevVirtualPetId,
+  patchDevVirtualPet,
+  sanitizeRealSaveAfterDevRollback,
+  setDevActiveVirtualPetId,
+  useDevGrants,
+  useDevMode,
+} from './utils/devMode';
 import type { PixelIconName } from './data/pixelIcons';
 import type {
   AccessoryId,
@@ -37,6 +47,7 @@ import {
   depositPetsBatch,
   equipAccessory,
   feedPet,
+  feedSquadPets,
   getActivePet,
   healAllPets,
   healPet,
@@ -143,7 +154,21 @@ export function App() {
   const speechTimerRef = useRef<number | null>(null);
   const analogVecRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  const activePet = getActivePet(save);
+  const [devMode] = useDevMode();
+  const [devGrants, devGrantsVer] = useDevGrants();
+
+  // Sanitize real save cleanly whenever debug grants or debug mode are toggled OFF
+  useEffect(() => {
+    setSave((prev) => sanitizeRealSaveAfterDevRollback(prev, devGrants, devMode));
+  }, [devMode, devGrants.allPets, devGrants.allItems, devGrants.allPokeballs]);
+
+  const effectiveSave = useMemo(
+    () => applyDevGrantsOverlay(save, devMode, devGrants),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [save, devMode, devGrants, devGrantsVer],
+  );
+  const activePet = getActivePet(effectiveSave);
+  const realActivePet = getActivePet(save);
 
   useEffect(() => {
     sound.setMasterVolume(save.prefs?.masterVolume ?? 80);
@@ -298,7 +323,39 @@ export function App() {
   const handleFeed = useCallback(
     (foodId: FoodId) => {
       if (!activePet) return;
-      const outcome = feedPet(save, activePet.id, foodId);
+      const foodMeta = FOOD_CATALOG.find((f) => f.id === foodId);
+      if (isDevVirtualPetId(activePet.id)) {
+        if (foodMeta) {
+          patchDevVirtualPet(activePet.id, {
+            hunger: Math.min(100, activePet.hunger + foodMeta.hunger),
+            happiness: Math.min(100, activePet.happiness + foodMeta.happiness),
+            health: Math.min(100, activePet.health + (foodMeta.health ?? 0)),
+            isSick: foodMeta.curesSick ? false : activePet.isSick,
+            level: foodMeta.levelUp ? Math.min(100, activePet.level + 1) : activePet.level,
+          });
+          sound.play('eat');
+          setLcdMode('home');
+          setActiveFood(foodId);
+          triggerAnim('eating', 1600);
+          spawnEffect('heart', '美味!', 52, 28, 'heart');
+          showSpeech(`${activePet.name} 吃下了${foodMeta.name}！`);
+        }
+        return;
+      }
+      const realStock = save.inventory[foodId] ?? 0;
+      const useDevStock =
+        devMode && devGrants.allItems && foodMeta && !foodMeta.unlimited && realStock <= 0;
+      const feedSourceSave = useDevStock
+        ? { ...save, inventory: { ...save.inventory, [foodId]: 1 } }
+        : save;
+      const outcome = feedPet(feedSourceSave, activePet.id, foodId);
+      if (outcome.ok && useDevStock) {
+        consumeDevVirtualFood(foodId);
+        outcome.save = {
+          ...outcome.save,
+          inventory: { ...outcome.save.inventory, [foodId]: realStock },
+        };
+      }
       if (applyOutcome(outcome, 'eat')) {
         if (SPECIES_CATALOG[activePet.species].favoriteFood === foodId || outcome.evolvedTo) {
           const updated = outcome.save.pets.find((p) => p.id === activePet.id) ?? activePet;
@@ -313,7 +370,7 @@ export function App() {
         spawnEffect('heart', '美味!', 52, 28, 'heart');
       }
     },
-    [activePet, save, applyOutcome, triggerAnim, spawnEffect],
+    [activePet, save, devMode, devGrants.allItems, applyOutcome, triggerAnim, spawnEffect, showSpeech],
   );
 
   const handleBath = useCallback(() => {
@@ -358,6 +415,138 @@ export function App() {
     const outcome = healAllPets(save);
     applyOutcome(outcome, 'heal_jingle', true);
   }, [save, applyOutcome]);
+
+  const handleFeedSquad = useCallback(
+    (petIds: string[]) => {
+      const realIds = petIds.filter((id) => !isDevVirtualPetId(id));
+      const virtualIds = petIds.filter((id) => isDevVirtualPetId(id));
+      let virtualFed = 0;
+      for (const vid of virtualIds) {
+        const vp = effectiveSave.pets.find((p) => p.id === vid);
+        if (vp && !vp.isSleeping && vp.hunger < 100) {
+          virtualFed += 1;
+          patchDevVirtualPet(vid, {
+            hunger: Math.min(100, vp.hunger + 30),
+            happiness: Math.min(100, vp.happiness + 8),
+          });
+        }
+      }
+      if (realIds.length > 0) {
+        const outcome = feedSquadPets(save, realIds);
+        if (outcome.ok) {
+          applyOutcome(outcome, 'eat', true);
+          return { ok: true, message: outcome.message };
+        }
+        if (virtualFed > 0) {
+          sound.play('eat');
+          return { ok: true, message: `已为 ${virtualFed} 只伙伴一键喂食橙橙果！` };
+        }
+        sound.play('error');
+        return { ok: false, message: outcome.message };
+      }
+      if (virtualFed > 0) {
+        sound.play('eat');
+        return { ok: true, message: `已为 ${virtualFed} 只伙伴一键喂食橙橙果！` };
+      }
+      sound.play('error');
+      return { ok: false, message: '当前队伍里的宝可梦都已经吃得饱饱的啦！' };
+    },
+    [save, effectiveSave.pets, applyOutcome],
+  );
+
+  const handleQuickCarePet = useCallback(
+    (
+      petId: string,
+      action: 'feed' | 'heal' | 'bath' | 'pat',
+      foodId?: FoodId,
+    ): { ok: boolean; message: string } => {
+      const target = effectiveSave.pets.find((p) => p.id === petId);
+      if (!target) return { ok: false, message: '未找到该宝可梦' };
+
+      if (isDevVirtualPetId(petId)) {
+        if (action === 'heal') {
+          if (!target.isSick && target.health >= 100) {
+            sound.play('error');
+            return { ok: false, message: `${target.name} HP 已满，无需治疗！` };
+          }
+          patchDevVirtualPet(petId, { health: 100, isSick: false, happiness: Math.min(100, target.happiness + 10) });
+          sound.play('heal_jingle');
+          return { ok: true, message: `已治愈 ${target.name}，HP 恢复满格！` };
+        }
+        if (action === 'bath') {
+          if (target.cleanliness >= 100 && target.poopCount <= 0) {
+            sound.play('error');
+            return { ok: false, message: `${target.name} 已经干干净净啦！` };
+          }
+          patchDevVirtualPet(petId, { cleanliness: 100, poopCount: 0, happiness: Math.min(100, target.happiness + 12) });
+          sound.play('bath');
+          return { ok: true, message: `${target.name} 洗完澡闪闪发亮！` };
+        }
+        if (action === 'pat') {
+          patchDevVirtualPet(petId, { happiness: Math.min(100, target.happiness + 10) });
+          sound.playCry(getPokemonCryId(target.species, target.level));
+          return { ok: true, message: `温柔抚摸了 ${target.name}，心情大好！` };
+        }
+        const fMeta = FOOD_CATALOG.find((f) => f.id === (foodId ?? 'oran_berry')) ?? FOOD_CATALOG[0];
+        if (!fMeta.levelUp && !fMeta.curesSick && !(fMeta.health && target.health < 100) && target.hunger >= 100) {
+          sound.play('error');
+          return { ok: false, message: `${target.name} 饱食度已经满啦！` };
+        }
+        patchDevVirtualPet(petId, {
+          hunger: Math.min(100, target.hunger + fMeta.hunger),
+          happiness: Math.min(100, target.happiness + fMeta.happiness),
+          health: Math.min(100, target.health + (fMeta.health ?? 0)),
+          isSick: fMeta.curesSick ? false : target.isSick,
+          level: fMeta.levelUp ? Math.min(100, target.level + 1) : target.level,
+        });
+        sound.play('eat');
+        return { ok: true, message: `${target.name} 享用了${fMeta.name}！` };
+      }
+
+      if (action === 'heal') {
+        const outcome = healPet(save, petId);
+        const ok = applyOutcome(outcome, 'heal_jingle', true);
+        return { ok, message: outcome.message };
+      }
+      if (action === 'bath') {
+        const outcome = bathPet(save, petId);
+        const ok = applyOutcome(outcome, 'bath', true);
+        return { ok, message: outcome.message };
+      }
+      if (action === 'pat') {
+        const outcome = patPet(save, petId);
+        const patSfx = (save.cryEnabled ?? true) ? undefined : 'happy';
+        const ok = applyOutcome(outcome, patSfx, true);
+        if (ok) {
+          sound.playCry(getPokemonCryId(target.species, target.level));
+        }
+        return { ok, message: outcome.message };
+      }
+      const chosenFoodId: FoodId = foodId ?? 'oran_berry';
+      const fMeta = FOOD_CATALOG.find((f) => f.id === chosenFoodId);
+      const realStock = save.inventory[chosenFoodId] ?? 0;
+      const useDevStock =
+        devMode && devGrants.allItems && fMeta && !fMeta.unlimited && realStock <= 0;
+      const feedSourceSave = useDevStock
+        ? { ...save, inventory: { ...save.inventory, [chosenFoodId]: 1 } }
+        : save;
+      const outcome = feedPet(feedSourceSave, petId, chosenFoodId);
+      if (outcome.ok && useDevStock) {
+        consumeDevVirtualFood(chosenFoodId);
+        outcome.save = {
+          ...outcome.save,
+          inventory: { ...outcome.save.inventory, [chosenFoodId]: realStock },
+        };
+      }
+      const ok = applyOutcome(outcome, 'eat', true);
+      if (ok && (SPECIES_CATALOG[target.species].favoriteFood === chosenFoodId || outcome.evolvedTo)) {
+        const updated = outcome.save.pets.find((p) => p.id === petId) ?? target;
+        window.setTimeout(() => sound.playCry(getPokemonCryId(updated.species, updated.level)), 200);
+      }
+      return { ok, message: outcome.message };
+    },
+    [effectiveSave.pets, save, devMode, devGrants.allItems, applyOutcome],
+  );
 
   const handleOpenPokemonManager = useCallback(
     (subMode: LcdMode = 'home', fromBattle = false, focusPetId?: string) => {
@@ -441,6 +630,19 @@ export function App() {
         unlockSkin?: string;
       },
     ): boolean => {
+      if (isDevVirtualPetId(petId)) {
+        const cur = effectiveSave.pets.find((p) => p.id === petId);
+        patchDevVirtualPet(petId, {
+          enhanceLevel: patch.enhanceDelta
+            ? Math.min(10, (cur?.enhanceLevel ?? 0) + patch.enhanceDelta)
+            : cur?.enhanceLevel,
+          pinnedSkills: patch.pinnedSkills ?? cur?.pinnedSkills,
+          bannedSkills: patch.bannedSkills ?? cur?.bannedSkills,
+          skin: patch.skin ?? cur?.skin,
+        });
+        sound.play('confirm');
+        return true;
+      }
       let ok = false;
       setSave((prev) => {
         const cost = (patch.enhanceCost ?? 0) + (patch.skinCost ?? 0);
@@ -477,7 +679,7 @@ export function App() {
       else sound.play('error');
       return ok;
     },
-    [],
+    [effectiveSave.pets],
   );
 
   const handleFinishSurvivors = useCallback(
@@ -631,10 +833,16 @@ export function App() {
 
   const handleEquipAccessory = useCallback(
     (petId: string, accId: AccessoryId) => {
-      const outcome = equipAccessory(save, petId, accId);
+      if (isDevVirtualPetId(petId)) {
+        patchDevVirtualPet(petId, { accessory: accId });
+        sound.play('confirm');
+        return;
+      }
+      const allowDevItems = devMode && devGrants.allItems;
+      const outcome = equipAccessory(save, petId, accId, Date.now(), allowDevItems);
       applyOutcome(outcome, 'confirm', true);
     },
-    [save, applyOutcome],
+    [save, devMode, devGrants.allItems, applyOutcome],
   );
 
   const handleBuyPokeball = useCallback(
@@ -647,10 +855,16 @@ export function App() {
 
   const handleAssignPetRoom = useCallback(
     (petId: string, roomId: RoomThemeId) => {
-      const outcome = assignPetBallRoom(save, petId, roomId);
+      if (isDevVirtualPetId(petId)) {
+        patchDevVirtualPet(petId, { ballRoom: roomId });
+        sound.play('confirm');
+        return;
+      }
+      const allowDevBalls = devMode && devGrants.allPokeballs;
+      const outcome = assignPetBallRoom(save, petId, roomId, Date.now(), allowDevBalls);
       applyOutcome(outcome, 'confirm', true);
     },
-    [save, applyOutcome],
+    [save, devMode, devGrants.allPokeballs, applyOutcome],
   );
 
   const handlePullGacha = useCallback(
@@ -683,14 +897,24 @@ export function App() {
 
   const handleReleasePet = useCallback(
     (petId: string): boolean => {
+      if (isDevVirtualPetId(petId)) {
+        sound.play('error');
+        showSpeech('调试体验精灵无法放生，关闭调试开关即可一键回退！');
+        return false;
+      }
       const outcome = releasePet(save, petId);
       return applyOutcome(outcome, 'coin', true);
     },
-    [save, applyOutcome],
+    [save, applyOutcome, showSpeech],
   );
 
   const handleDepositPet = useCallback(
     (petId: string): boolean => {
+      if (isDevVirtualPetId(petId)) {
+        sound.play('error');
+        showSpeech('调试体验精灵无需寄存，关闭调试开关即可一键回退！');
+        return false;
+      }
       if (managerFromBattle) {
         sound.play('error');
         showSpeech('战斗进行中无法寄存，请结束本局后再寄存到大木博士处！');
@@ -704,11 +928,16 @@ export function App() {
 
   const handleDepositPetsBatch = useCallback(
     (petIds: string[]) => {
+      const realIds = petIds.filter((id) => !isDevVirtualPetId(id));
+      if (realIds.length === 0) {
+        sound.play('error');
+        return { ok: false, count: 0, message: '调试体验精灵无法寄存！' };
+      }
       if (managerFromBattle) {
         sound.play('error');
         return { ok: false, count: 0, message: '战斗进行中无法寄存，请结束本局后再寄存！' };
       }
-      const outcome = depositPetsBatch(save, petIds);
+      const outcome = depositPetsBatch(save, realIds);
       const ok = applyOutcome(outcome, 'confirm', true);
       return {
         ok,
@@ -774,7 +1003,12 @@ export function App() {
 
   const handleReleasePetsBatch = useCallback(
     (petIds: string[]) => {
-      const outcome = releasePetsBatch(save, petIds);
+      const realIds = petIds.filter((id) => !isDevVirtualPetId(id));
+      if (realIds.length === 0) {
+        sound.play('error');
+        return { ok: false, count: 0, coins: 0, xp: 0, message: '调试体验精灵无法放生！' };
+      }
+      const outcome = releasePetsBatch(save, realIds);
       const ok = applyOutcome(outcome, 'coin', true);
       return {
         ok,
@@ -966,24 +1200,29 @@ export function App() {
       setLcdMode(managerFromBattle || managerEntryMode === 'squad' ? 'squad' : 'party');
       return;
     }
-    if (lcdMode === 'squad' && managerFromBattle) {
-      handleClosePokemonManager();
-      return;
-    }
     if (lcdMode === 'pokedex_detail') {
       sound.play('cancel');
       setLcdMode('pokedex');
       return;
     }
     if (
+      lcdMode === 'squad' ||
       lcdMode === 'party' ||
       lcdMode === 'pokedex' ||
       lcdMode === 'achievements' ||
       lcdMode === 'diary' ||
-      lcdMode === 'settings'
+      lcdMode === 'settings' ||
+      lcdMode === 'news' ||
+      lcdMode === 'profile' ||
+      lcdMode === 'guide' ||
+      lcdMode === 'feedback'
     ) {
-      sound.play('cancel');
-      setLcdMode('menu');
+      if (managerEntryMode === lcdMode) {
+        handleClosePokemonManager();
+      } else {
+        sound.play('cancel');
+        setLcdMode('menu');
+      }
       return;
     }
     if (lcdMode !== 'home') {
@@ -1157,15 +1396,15 @@ export function App() {
     setLcdMode('home');
   };
 
-  const needsAdoption = save.pets.length === 0 || !activePet;
+  const needsAdoption = save.pets.length === 0 || !realActivePet;
 
   return (
-    <div className={`app-shell ${!managerOpen || !save.showShell ? 'is-fullscreen' : ''}`}>
+    <div className={`app-shell ${!managerOpen || !effectiveSave.showShell ? 'is-fullscreen' : ''}`}>
       {/* FULL-VIEWPORT 3D PIXEL-ART POKEMON SURVIVORS WORLD (Stays mounted while Handheld Console is pulled out!) */}
       {activePet && (
         <div className={`world3d-root-layer ${managerOpen && !managerClosing ? 'is-behind-manager' : ''}`}>
           <Survivors3DArena
-            save={save}
+            save={effectiveSave}
             pet={activePet}
             analogVecRef={analogVecRef}
             externalPaused={managerOpen && !managerClosing}
@@ -1231,7 +1470,7 @@ export function App() {
             }}
           >
             <HandheldConsole
-              save={save}
+              save={effectiveSave}
               pet={activePet}
               mode={lcdMode === 'survivors' || lcdMode === 'recalled' ? 'home' : lcdMode}
               battleIsTrainer={battleIsTrainer}
@@ -1278,6 +1517,8 @@ export function App() {
               onCleanPoop={handleCleanPoop}
               onHealPet={handleHeal}
               onHealParty={handleHealParty}
+              onFeedSquad={handleFeedSquad}
+              onQuickCarePet={handleQuickCarePet}
               onReleaseBallToRoom={handleReleaseBallToRoom}
               onStartBattle={handleStartBattle}
               onFinishBattle={handleFinishBattle}
@@ -1307,13 +1548,20 @@ export function App() {
               onUpdatePetConfig={handleUpdatePetConfig}
               onSwitchPet={(petId) => {
                 sound.play('cursor');
-                const target = save.pets.find((p) => p.id === petId);
+                const target = effectiveSave.pets.find((p) => p.id === petId);
                 if (target) {
                   sound.playCry(getPokemonCryId(target.species, target.level));
                 }
-                setSave((prev) => switchPet(prev, petId));
-                setLcdMode('home');
-                showSpeech(target ? `打开了「${target.name}」的精灵球！` : '切换了当前精灵球！');
+                if (isDevVirtualPetId(petId)) {
+                  setDevActiveVirtualPetId(petId);
+                } else {
+                  setDevActiveVirtualPetId(null);
+                  setSave((prev) => switchPet(prev, petId));
+                }
+                if (lcdMode !== 'squad' && lcdMode !== 'party_detail') {
+                  setLcdMode('home');
+                }
+                showSpeech(target ? `已将「${target.name}」设为当前领队伙伴！` : '切换了当前领队伙伴！');
               }}
               onResetSave={handleResetSave}
               onExitMode={() => {

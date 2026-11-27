@@ -71,6 +71,12 @@ interface HandheldConsoleProps {
   onCleanPoop: () => void;
   onHealPet: () => void;
   onHealParty: () => void;
+  onFeedSquad?: (petIds: string[]) => { ok: boolean; message: string };
+  onQuickCarePet?: (
+    petId: string,
+    action: 'feed' | 'heal' | 'bath' | 'pat',
+    foodId?: FoodId,
+  ) => { ok: boolean; message: string };
   onReleaseBallToRoom: () => void;
   onStartBattle: (isTrainer: boolean) => void;
   onFinishBattle: (fighterId: string, payload: BattleResultPayload) => void;
@@ -148,6 +154,8 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   onCleanPoop,
   onHealPet,
   onHealParty,
+  onFeedSquad,
+  onQuickCarePet,
   onReleaseBallToRoom,
   onStartBattle,
   onFinishBattle,
@@ -363,6 +371,8 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
       onCleanPoop={onCleanPoop}
       onHealPet={onHealPet}
       onHealParty={onHealParty}
+      onFeedSquad={onFeedSquad}
+      onQuickCarePet={onQuickCarePet}
       onReleaseBallToRoom={onReleaseBallToRoom}
       onStartBattle={onStartBattle}
       onFinishBattle={onFinishBattle}

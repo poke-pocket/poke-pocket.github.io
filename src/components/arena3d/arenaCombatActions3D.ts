@@ -1,6 +1,6 @@
 import type { ArenaSharedCtx } from './arenaTypesAndProps';
 import * as THREE from 'three';
-import { SPECIES_CATALOG, getPokemonPhysicalMetrics, getPokemonWorldScale3D } from '../../data/catalog';
+import { POKEBALL_CATCH_STATS, ROOM_CATALOG, SPECIES_CATALOG, getPokemonPhysicalMetrics, getPokemonWorldScale3D } from '../../data/catalog';
 import { SURVIVOR_SKILLS, getTerrainHeight3D, type SurvivorSkillId, type TargetPriority } from '../../data/survivorsTactics';
 import { MAX_PET_SLOTS } from '../../utils/petEngine';
 import { getSkillVfxAtlas } from '../../data/skillVfx3D';
@@ -13,7 +13,7 @@ import { BILLBOARD_PITCH_TILT, SHARED_ENTITY_SHADOW_MAT, UNIT_SHADOW_GEO, rollMo
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
-  const { activeWorldRun, adventureStyleRef, buildResultSummary, camOrbitRef, captureFinishRef, comboRef, createSpriteEntity, diffMeta, endedRef, gameMode, getPixelTexture, liveOverlandCityRef, liveWeatherRef, metaBonusesRef, metaRef, onUpdateMeta, pausedRef, pet, prefsRef, regionMeta, save, savePetsCountRef, scene, setCaptureCutscene, setNearbyKoTarget, setResultSummary, shakeRef, showBanner, simRef, solarInfoRef, tacticsRef, triggerBattleActionRef } = rawCtx as ArenaSharedCtx;
+  const { activeWorldRun, adventureStyleRef, buildResultSummary, camOrbitRef, captureFinishRef, comboRef, createSpriteEntity, diffMeta, endedRef, gameMode, getPixelTexture, liveOverlandCityRef, liveWeatherRef, metaBonusesRef, metaRef, onUpdateMeta, pausedRef, pet, prefsRef, regionMeta, save, savePetsCountRef, scene, selectedBallIdRef, setCaptureCutscene, setNearbyKoTarget, setResultSummary, shakeRef, showBanner, simRef, solarInfoRef, tacticsRef, triggerBattleActionRef } = rawCtx as ArenaSharedCtx;
     const spawnLoot3D = (x: number, z: number, kind: Loot3D['kind'], value: number) => {
       const sim = simRef.current;
       if (!sim) return;
@@ -897,13 +897,12 @@ export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
         return;
       }
       target.beingCaptured = true;
-      const ballUrl = target.isBoss
-        ? '/sprites/items/master-ball.png'
-        : target.isShiny || target.quality === 'epic'
-          ? '/sprites/items/ultra-ball.png'
-          : target.quality === 'elite'
-            ? '/sprites/items/great-ball.png'
-            : '/sprites/items/poke-ball.png';
+      const activeBallId = selectedBallIdRef?.current ?? 'pokeball_room';
+      const selectedBallMeta =
+        ROOM_CATALOG.find((r) => r.id === activeBallId) ?? ROOM_CATALOG[0];
+      const ballStat =
+        POKEBALL_CATCH_STATS[selectedBallMeta.id] ?? POKEBALL_CATCH_STATS.pokeball_room;
+      const ballUrl = selectedBallMeta.ballSprite;
       const ballSprite = new THREE.Sprite(
         new THREE.SpriteMaterial({
           map: getPixelTexture(ballUrl),
@@ -921,11 +920,27 @@ export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
 
       const hpFrac = Math.max(0, target.hp) / Math.max(1, target.maxHp);
       const catchBonus = metaBonusesRef.current.catchRateBonus;
-      const willCatch =
-        Boolean(target.knockedOut) ||
-        Math.random() < Math.min(0.98, 0.92 - hpFrac * 0.48 + catchBonus);
-      const phys = getPokemonPhysicalMetrics(target.species, target.stage);
       const spMeta = SPECIES_CATALOG[target.species];
+      let situationalBallBonus = 0;
+      if (selectedBallMeta.id === 'diveball_room' && (target.isAquatic || spMeta.element === 'water')) {
+        situationalBallBonus = 0.14;
+      } else if (
+        selectedBallMeta.id === 'duskball_room' &&
+        (solarInfoRef.current.phase === 'night' || solarInfoRef.current.phase === 'dusk')
+      ) {
+        situationalBallBonus = 0.12;
+      } else if (selectedBallMeta.id === 'nestball_room' && target.stage === 'baby') {
+        situationalBallBonus = 0.1;
+      }
+      const catchChance = Math.min(
+        0.99,
+        0.74 - hpFrac * 0.44 + catchBonus + ballStat.catchBonus + situationalBallBonus,
+      );
+      const willCatch =
+        Boolean(ballStat.guaranteed) ||
+        Boolean(target.knockedOut) ||
+        Math.random() < catchChance;
+      const phys = getPokemonPhysicalMetrics(target.species, target.stage);
       const spName = spMeta.stageNames[target.stage] ?? spMeta.defaultName;
       const catchLv = target.isBoss
         ? Math.min(32, pet.level + 4)
@@ -963,6 +978,7 @@ export function createArenaCombatActions3D(rawCtx: Record<string, any>) {
         name: spName,
         sprite: spMeta.stageSprites[target.stage].animated,
         ballSprite: ballUrl,
+        ballName: selectedBallMeta.shortName,
         level: catchLv,
         isShiny: target.isShiny,
         isNewSpecies,

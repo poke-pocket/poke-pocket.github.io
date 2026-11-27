@@ -250,7 +250,7 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         setShopOpen(true);
         return;
       }
-      // ESC opens Top-Right Trainer Menu & Settings (`训练家菜单与设置`); P/Q open Tactical Terminal!
+      // ESC opens Top-Right Trainer Menu (`训练家菜单`); P/Q open Tactical Terminal; L opens Squad List!
       if (e.key === 'Escape') {
         e.preventDefault();
         sound.play('cursor');
@@ -263,16 +263,16 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         onOpenPokemonManager('tactics', true);
         return;
       }
+      if (k === 'l') {
+        e.preventDefault();
+        sound.play('cursor');
+        onOpenPokemonManager('squad', true);
+        return;
+      }
       if (k === 'f') {
         e.preventDefault();
         sound.play('cursor');
         onOpenPokemonManager('home', true);
-        return;
-      }
-      if (k === 'b') {
-        e.preventDefault();
-        sound.play('cursor');
-        onOpenPokemonManager('menu', true);
         return;
       }
       if (k === 'r') {
@@ -309,12 +309,12 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
         return;
       }
       if (!pausedRef.current) {
-        if (k === 'c') {
+        if (k === 'k') {
           e.preventDefault();
           triggerBattleActionRef.current?.('ball');
           return;
         }
-        if (k === 'v') {
+        if (k === 'v' || k === 'h') {
           e.preventDefault();
           triggerBattleActionRef.current?.('heal');
           return;
@@ -324,7 +324,7 @@ export function useArenaKeyboardHotkeys(rawCtx: Record<string, any>) {
           triggerBattleActionRef.current?.('boost');
           return;
         }
-        if (k === 'g') {
+        if (k === 'u') {
           e.preventDefault();
           triggerBattleActionRef.current?.('salvo');
           return;

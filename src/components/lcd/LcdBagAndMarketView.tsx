@@ -7,7 +7,7 @@ import { PixelIcon, PixelItemImg, PixelPetIcon, PixelPetSprite } from '../PixelS
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdBagAndMarketView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { bagTab, gachaBoxMeta, gachaPhase, gachaReleased, gachaResult, gachaTenResult, handleStartGacha, handleStartGachaTen, marketTab, mode, onBuyAccessory, onBuyFood, onBuyPokeball, onCloseHandheldTo3D, onEquipAccessory, onExitMode, onHealPet, onNavigateMode, onReleasePet, onSelectFood, onUpdatePetConfig, openedEntryMode, pet, releasedTenIds, save, setBagTab, setDetailReturnMode, setGachaPhase, setGachaReleased, setMarketTab, setPartyDetailTab, setReleasedTenIds, setSelectedPartyPetId, speciesMeta } = ctx;
+  const { bagTab, gachaBoxMeta, gachaPhase, gachaReleased, gachaResult, gachaTenResult, handleStartGacha, handleStartGachaTen, marketTab, mode, onBuyAccessory, onBuyFood, onBuyPokeball, onEquipAccessory, onExitMode, onGoBack, onHealPet, onNavigateMode, onReleasePet, onSelectFood, onUpdatePetConfig, pet, releasedTenIds, save, setBagTab, setDetailReturnMode, setGachaPhase, setGachaReleased, setMarketTab, setPartyDetailTab, setReleasedTenIds, setSelectedPartyPetId, speciesMeta } = ctx;
   return (
     <>
         {/* BAG & WAREHOUSE (树果 + 道具，无独立精灵球 tab) */}
@@ -48,15 +48,9 @@ export const LcdBagAndMarketView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =>
                 <button
                   type="button"
                   className="lcd-mini-close"
-                  onClick={() => {
-                    if (openedEntryMode === 'bag' && onCloseHandheldTo3D) {
-                      onCloseHandheldTo3D();
-                    } else {
-                      onExitMode();
-                    }
-                  }}
+                  onClick={() => onGoBack()}
                 >
-                  {openedEntryMode === 'bag' ? '关闭' : '返回'}
+                  返回
                 </button>
               </div>
             </div>
@@ -246,14 +240,10 @@ export const LcdBagAndMarketView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =>
                 className="lcd-mini-close"
                 onClick={() => {
                   setGachaPhase('idle');
-                  if (openedEntryMode === 'market' && onCloseHandheldTo3D) {
-                    onCloseHandheldTo3D();
-                  } else {
-                    onExitMode();
-                  }
+                  onGoBack();
                 }}
               >
-                {openedEntryMode === 'market' && onCloseHandheldTo3D ? '关闭' : '返回'}
+                返回
               </button>
             </div>
 

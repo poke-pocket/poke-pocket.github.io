@@ -663,6 +663,72 @@ export const ROOM_CATALOG: RoomMeta[] = [
   },
 ];
 
+export interface PokeballCatchStat {
+  catchBonus: number;
+  guaranteed?: boolean;
+  tag: string;
+  desc: string;
+  accent: string;
+}
+
+export const POKEBALL_CATCH_STATS: Record<RoomThemeId, PokeballCatchStat> = {
+  pokeball_room: {
+    catchBonus: 0,
+    tag: '标准',
+    desc: '标准捕获率',
+    accent: '#ffd43b',
+  },
+  healball_room: {
+    catchBonus: 0.08,
+    tag: '+8%',
+    desc: '捕获率 +8%',
+    accent: '#faa2c1',
+  },
+  greatball_room: {
+    catchBonus: 0.15,
+    tag: '+15%',
+    desc: '捕获率 +15%',
+    accent: '#4dabf7',
+  },
+  nestball_room: {
+    catchBonus: 0.18,
+    tag: '+18%',
+    desc: '捕获率 +18%（低等级额外 +10%）',
+    accent: '#69db7c',
+  },
+  diveball_room: {
+    catchBonus: 0.2,
+    tag: '+20%',
+    desc: '捕获率 +20%（水域/水系额外 +14%）',
+    accent: '#22b8cf',
+  },
+  ultraball_room: {
+    catchBonus: 0.26,
+    tag: '+26%',
+    desc: '捕获率 +26%',
+    accent: '#fcc419',
+  },
+  duskball_room: {
+    catchBonus: 0.28,
+    tag: '+28%',
+    desc: '捕获率 +28%（黄昏/夜晚额外 +12%）',
+    accent: '#51cf66',
+  },
+  luxuryball_room: {
+    catchBonus: 0.32,
+    tag: '+32%',
+    desc: '捕获率 +32%',
+    accent: '#ff6b6b',
+  },
+  masterball_room: {
+    catchBonus: 1,
+    guaranteed: true,
+    tag: '必中',
+    desc: '100% 必定收服！',
+    accent: '#be4bdb',
+  },
+};
+
 export interface ShellThemeMeta {
   id: ShellThemeId;
   name: string;

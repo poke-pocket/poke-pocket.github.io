@@ -1,8 +1,11 @@
 import { MONSTER_QUALITY_META } from './arenaTypesAndProps';
 import type { ArenaSharedCtx } from './arenaTypesAndProps';
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { POKEBALL_CATCH_STATS, ROOM_CATALOG } from '../../data/catalog';
 import { SURVIVOR_SKILLS, WORLD_TOWNS_3D } from '../../data/survivorsTactics';
-import { GYM_BADGE_CATALOG, getActiveTrainerTagDef, type GymBadgeId } from '../../data/metaProgression';
+import { GYM_BADGE_CATALOG, getActiveTrainerTagDef, getShowcaseBadgeIds } from '../../data/metaProgression';
+import type { RoomThemeId } from '../../types/pet';
+import { getBallAvailability } from '../../utils/petEngine';
 import { ShopOverlay } from '../ShopOverlay';
 import { WorldMapHud } from '../WorldMapHud';
 import { sound } from '../../utils/sound';
@@ -61,7 +64,7 @@ const TRAINER_EMBLEM_GRID: string[] = [
 ];
 
 const GYM_BADGE_PIXEL_ART: Record<
-  GymBadgeId,
+  string,
   { grid: string[]; palette: Record<string, string> }
 > = {
   boulder_badge: {
@@ -206,7 +209,113 @@ function formatHudEta(sec: number): string {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, openHeroOrBadgeOverlay, pet, prefs, regionMeta, removeBattleFollower, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, openHeroOrBadgeOverlay, pet, prefs, regionMeta, removeBattleFollower, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBallId, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setSelectedBallId, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+
+  // Owned Poké Ball types + Long-press left-side Poké Ball switcher state
+  const [ballPickerOpen, setBallPickerOpen] = useState(false);
+  const ballAnchorRef = useRef<HTMLDivElement | null>(null);
+  const ballPressTimerRef = useRef<number | null>(null);
+  const ballLongPressedRef = useRef(false);
+  const ballPointerDownRef = useRef<number | null>(null);
+
+  const ownedBalls = ROOM_CATALOG.filter(
+    (rm) =>
+      rm.id === 'pokeball_room' ||
+      save.unlockedRooms.includes(rm.id) ||
+      (save.ballStock?.[rm.id] ?? 0) > 0,
+  );
+  const activeBallMeta =
+    ownedBalls.find((b) => b.id === selectedBallId) ??
+    ROOM_CATALOG.find((b) => b.id === 'pokeball_room') ??
+    ROOM_CATALOG[0];
+  const activeBallStat =
+    POKEBALL_CATCH_STATS[activeBallMeta.id] ?? POKEBALL_CATCH_STATS.pokeball_room;
+
+  useEffect(() => {
+    if (!ballPickerOpen) return;
+    const onDocDown = (e: PointerEvent) => {
+      if (ballAnchorRef.current && !ballAnchorRef.current.contains(e.target as Node)) {
+        setBallPickerOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', onDocDown, true);
+    return () => window.removeEventListener('pointerdown', onDocDown, true);
+  }, [ballPickerOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (ballPressTimerRef.current !== null) {
+        window.clearTimeout(ballPressTimerRef.current);
+      }
+    };
+  }, []);
+
+  const choosePokeball = (roomId: RoomThemeId) => {
+    const rm = ROOM_CATALOG.find((r) => r.id === roomId) ?? ROOM_CATALOG[0];
+    const st = POKEBALL_CATCH_STATS[rm.id] ?? POKEBALL_CATCH_STATS.pokeball_room;
+    sound.play('confirm');
+    setSelectedBallId?.(rm.id);
+    setBallPickerOpen(false);
+    showBanner?.(`已切换为「${rm.shortName}」（${st.desc}）`, 2000);
+  };
+
+  const handleBallBtnPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      e.preventDefault();
+    }
+    ballPointerDownRef.current = e.pointerId;
+    ballLongPressedRef.current = false;
+    if (ballPressTimerRef.current !== null) {
+      window.clearTimeout(ballPressTimerRef.current);
+    }
+    ballPressTimerRef.current = window.setTimeout(() => {
+      ballPressTimerRef.current = null;
+      ballLongPressedRef.current = true;
+      sound.play('cursor');
+      setBallPickerOpen(true);
+    }, 280);
+  };
+
+  const handleBallBtnPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    if (ballPointerDownRef.current !== e.pointerId) return;
+    ballPointerDownRef.current = null;
+    if (ballPressTimerRef.current !== null) {
+      window.clearTimeout(ballPressTimerRef.current);
+      ballPressTimerRef.current = null;
+    }
+    if (ballLongPressedRef.current) {
+      // Allow press-hold-slide-release directly onto a ball option on the left!
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const optionEl = el?.closest?.('[data-ball-id]') as HTMLElement | null;
+      const pickedId = optionEl?.dataset?.ballId as RoomThemeId | undefined;
+      if (pickedId) {
+        choosePokeball(pickedId);
+      }
+      return;
+    }
+    // Short tap: toggle off if picker is open, otherwise throw equipped Poké Ball!
+    if (ballPickerOpen) {
+      sound.play('cancel');
+      setBallPickerOpen(false);
+      return;
+    }
+    if (hud.actionCds.ball <= 0) {
+      triggerBattleActionRef.current?.('ball');
+    } else {
+      sound.play('error');
+    }
+  };
+
+  const handleBallBtnPointerCancel = () => {
+    ballPointerDownRef.current = null;
+    if (ballPressTimerRef.current !== null) {
+      window.clearTimeout(ballPressTimerRef.current);
+      ballPressTimerRef.current = null;
+    }
+  };
   const isBgmOn = Boolean(save.bgmEnabled && !save.muted && save.bgmVolume > 0 && (prefs.masterVolume ?? 80) > 0);
   const locationLabel =
     adventureStyle === 'vampire_rogue'
@@ -381,25 +490,35 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                           />
                         </span>
                         <span className="hero-badge-divider" aria-hidden="true" />
-                        {GYM_BADGE_CATALOG.map((badge) => {
+                        {getShowcaseBadgeIds(meta).map((bid) => {
+                          const badge = GYM_BADGE_CATALOG.find((x) => x.id === bid);
+                          if (!badge) return null;
                           const isEarned = earnedSet.has(badge.id);
                           const art = GYM_BADGE_PIXEL_ART[badge.id];
                           return (
                             <span
                               key={badge.id}
-                              className={`hero-badge-slot ${isEarned ? 'is-earned' : 'is-unearned'}`}
+                              className={`hero-badge-slot ${isEarned ? 'is-earned' : 'is-unearned is-target-badge'}`}
                               style={isEarned ? { borderColor: badge.color } : undefined}
                               title={
                                 isEarned
-                                  ? `已获得：${badge.name}（${badge.gymName} · ${badge.leaderName}）\n加成：${badge.perkText}\n点击查看徽章成就`
-                                  : `未获得：${badge.name}（${badge.gymName}）\n获取条件：${badge.unlockHint}\n点击查看徽章成就`
+                                  ? `展示徽章：${badge.name}（${badge.gymName} · ${badge.leaderName}）\n加成：${badge.perkText}\n点击管理展示与目标徽章`
+                                  : `目标徽章：${badge.name}（${badge.gymName}）\n获取条件：${badge.unlockHint}\n点击管理展示与目标徽章`
                               }
                             >
-                              <PixelGrid
-                                grid={art.grid}
-                                palette={isEarned ? art.palette : LOCKED_BADGE_PALETTE}
-                                size={15}
-                              />
+                              {art ? (
+                                <PixelGrid
+                                  grid={art.grid}
+                                  palette={isEarned ? art.palette : LOCKED_BADGE_PALETTE}
+                                  size={15}
+                                />
+                              ) : (
+                                <PixelItemImg
+                                  src={badge.icon}
+                                  size={14}
+                                  className={isEarned ? '' : 'hero-badge-item-locked'}
+                                />
+                              )}
                             </span>
                           );
                         })}
@@ -1010,11 +1129,8 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                   className="ko-btn is-catch"
                   {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('capture_ko', nearbyKoTarget.enemyId))}
                 >
-                  <PixelItemImg
-                    src={nearbyKoTarget.isBoss ? '/sprites/items/master-ball.png' : '/sprites/items/ultra-ball.png'}
-                    size={18}
-                  />
-                  <span>投球收服</span>
+                  <PixelItemImg src={activeBallMeta.ballSprite} size={18} />
+                  <span>{activeBallMeta.shortName}收服</span>
                   <span className="surv-interact-key">E</span>
                 </button>
                 <button
@@ -1032,10 +1148,91 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
           {/* Bottom-Right MOBA-Style Radial Action Wheel (1.4x Large Tight-Fill Pixel Buttons!) */}
           {!externalPaused && !levelChoices && !shopOpen && !resultModal && !captureOffer && (
             <div className="surv-moba-wheel">
-              {/* Outer Left Satellite (82x82): Full-MP Team Salvo */}
+              {/* Outer Left Satellite (82x82): Throw Poké Ball + Long-Press Left Ball Switcher */}
+              <div ref={ballAnchorRef} className="moba-ball-anchor">
+                {ballPickerOpen && (
+                  <div
+                    className="moba-ball-picker"
+                    role="listbox"
+                    aria-label="切换持有的精灵球"
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    <div className="moba-ball-picker-head">
+                      <span>切换精灵球</span>
+                      <small>{ownedBalls.length} 种持有</small>
+                    </div>
+                    <div className="moba-ball-picker-list">
+                      {ownedBalls.map((rm) => {
+                        const stat = POKEBALL_CATCH_STATS[rm.id] ?? POKEBALL_CATCH_STATS.pokeball_room;
+                        const avail = getBallAvailability(save, rm.id);
+                        const isCur = rm.id === activeBallMeta.id;
+                        return (
+                          <button
+                            key={rm.id}
+                            type="button"
+                            role="option"
+                            aria-selected={isCur}
+                            data-ball-id={rm.id}
+                            className={`moba-ball-opt ${isCur ? 'is-active' : ''} ${stat.guaranteed ? 'is-master' : ''}`}
+                            style={{ '--ball-accent': stat.accent } as React.CSSProperties}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              choosePokeball(rm.id);
+                            }}
+                            title={`${rm.shortName} · ${stat.desc}`}
+                          >
+                            <PixelItemImg src={rm.ballSprite} size={28} />
+                            <strong>{rm.shortName}</strong>
+                            <em className="moba-ball-rate">{stat.tag}</em>
+                            <small className="moba-ball-qty">
+                              {rm.id === 'pokeball_room' ? '∞' : `×${avail.total}`}
+                            </small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className={`moba-btn is-aux-jump is-ball ${hud.actionCds.ball > 0 ? 'is-cd' : ''} ${nearbyKoTarget ? 'is-pulse' : ''} ${ballPickerOpen ? 'is-picker-open' : ''}`}
+                  style={{ '--ball-accent': activeBallStat.accent } as React.CSSProperties}
+                  onPointerDown={handleBallBtnPointerDown}
+                  onPointerUp={handleBallBtnPointerUp}
+                  onPointerCancel={handleBallBtnPointerCancel}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    sound.play('cursor');
+                    setBallPickerOpen((v) => !v);
+                  }}
+                  aria-label="投球"
+                  title={`${activeBallMeta.shortName}（${activeBallStat.desc}）· 点按投球，长按可切换持有的精灵球`}
+                >
+                  <TrimmedSpriteImg
+                    src={activeBallMeta.ballSprite}
+                    alt={activeBallMeta.shortName}
+                    size={70}
+                    fillRatio={0.92}
+                    className="moba-icon-fill"
+                  />
+                  {ownedBalls.length > 1 && (
+                    <span className="moba-ball-switch-hint" aria-hidden="true">◀</span>
+                  )}
+                  {hud.actionCds.ball > 0 ? (
+                    <em className="moba-badge">{Math.ceil(hud.actionCds.ball)}s</em>
+                  ) : (
+                    activeBallMeta.id !== 'pokeball_room' && (
+                      <em className="moba-badge is-ball-tag">{activeBallStat.tag}</em>
+                    )
+                  )}
+                </button>
+              </div>
+
+              {/* Arc Satellite 1 (0° Inner-Left): Full-MP Team Salvo */}
               <button
                 type="button"
-                className={`moba-btn is-aux-jump is-salvo ${hud.actionCds.salvo > 0 ? 'is-cd' : ''}`}
+                className={`moba-btn is-sat is-sat-0 is-salvo ${hud.actionCds.salvo > 0 ? 'is-cd' : ''}`}
                 disabled={hud.actionCds.salvo > 0}
                 {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('salvo'), hud.actionCds.salvo > 0)}
                 aria-label="齐射"
@@ -1044,27 +1241,6 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 <PixelIcon name="salvo_barrage" size={66} className="moba-icon-fill" />
                 {hud.actionCds.salvo > 0 && (
                   <em className="moba-badge">{Math.ceil(hud.actionCds.salvo)}s</em>
-                )}
-              </button>
-
-              {/* Arc Satellite 1 (0° Left): Throw Poké Ball */}
-              <button
-                type="button"
-                className={`moba-btn is-sat is-sat-0 is-ball ${hud.actionCds.ball > 0 ? 'is-cd' : ''} ${nearbyKoTarget ? 'is-pulse' : ''}`}
-                disabled={hud.actionCds.ball > 0}
-                {...bindMultiTouchAction(() => triggerBattleActionRef.current?.('ball'), hud.actionCds.ball > 0)}
-                aria-label="投球"
-                title="投球：向附近倒地/残血/异色野生宝可梦投掷精灵球收服！"
-              >
-                <TrimmedSpriteImg
-                  src="/sprites/items/poke-ball.png"
-                  alt="投球"
-                  size={70}
-                  fillRatio={0.92}
-                  className="moba-icon-fill"
-                />
-                {hud.actionCds.ball > 0 && (
-                  <em className="moba-badge">{Math.ceil(hud.actionCds.ball)}s</em>
                 )}
               </button>
 
@@ -1136,7 +1312,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
             <div className={`surv-capture-cutscene is-phase-${captureCutscene.phase}`}>
               <div className="cap-letterbox is-top" />
               <div className="cap-cinema-subtitle">
-                {captureCutscene.phase === 'throw' && `去吧！精灵球！瞄准 ${captureCutscene.name}！`}
+                {captureCutscene.phase === 'throw' && `去吧！${captureCutscene.ballName ?? '精灵球'}！瞄准 ${captureCutscene.name}！`}
                 {captureCutscene.phase === 'absorb' && `命中！正在将 ${captureCutscene.name} 收入球中...`}
                 {captureCutscene.phase === 'wobble' &&
                   `摇晃中 ${'● '.repeat(Math.max(1, captureCutscene.wobbleCount))}${'○ '.repeat(Math.max(0, 3 - captureCutscene.wobbleCount))}`}

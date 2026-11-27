@@ -3,13 +3,17 @@ import {
   GYM_BADGE_CATALOG,
   HERO_ROSTER,
   LAB_UPGRADES,
+  MAX_SHOWCASE_BADGES,
   TRAINER_TAG_CATALOG,
   getActiveTrainerTagDef,
   getDailyResetCountdown,
   getHeroEvolutionStage,
   getLabUpgradeCost,
+  getShowcaseBadgeIds,
   getUnlockedTrainerTags,
   getWeeklyResetCountdown,
+  type GymBadgeCategory,
+  type GymBadgeId,
   type HeroId,
   type LabUpgradeId,
   type MetaProgressState,
@@ -241,6 +245,7 @@ interface LabOverlayProps {
   onUnlockOrSelectHero: (heroId: HeroId) => void;
   onUpgradeHeroSkill: (heroId: HeroId, skillId: string) => void;
   onSelectTrainerTag?: (tagId: TrainerTagId) => void;
+  onToggleShowcaseBadge?: (badgeId: GymBadgeId) => void;
   onOpenTrainerCard?: () => void;
   onOpenAchievements?: () => void;
   achievementsLabel?: string;
@@ -255,12 +260,14 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
   onUnlockOrSelectHero,
   onUpgradeHeroSkill,
   onSelectTrainerTag,
+  onToggleShowcaseBadge,
   onOpenTrainerCard,
   onOpenAchievements,
   achievementsLabel,
 }) => {
   const [tab, setTab] = useState<'universal' | 'heroes' | 'badges'>(initialTab);
   const [selectedHeroId, setSelectedHeroId] = useState<HeroId>(meta.activeHero);
+  const [badgeCat, setBadgeCat] = useState<'all' | GymBadgeCategory>('all');
 
   useEffect(() => {
     setTab(initialTab);
@@ -271,6 +278,8 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
   const unlockedTags = getUnlockedTrainerTags(meta);
   const activeTagDef = getActiveTrainerTagDef(meta);
   const earnedBadges = meta.unlockedBadges ?? [];
+  const showcaseIds = getShowcaseBadgeIds(meta);
+  const showcaseSet = new Set(showcaseIds);
 
   const totalLabLv = LAB_UPGRADES.reduce((acc, u) => acc + (meta.labLevels[u.id] ?? 0), 0);
   const maxLabLv = LAB_UPGRADES.reduce((acc, u) => acc + u.maxLevel, 0);
@@ -612,16 +621,80 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
             </div>
 
             <div className="meta-section-label" style={{ marginTop: 14 }}>
-              <strong>关都道馆徽章盒（已收集 {earnedBadges.length}/{GYM_BADGE_CATALOG.length}）</strong>
-              <span>击败野外道馆馆主或通关对应地区自动获得，所有已收集徽章永久叠加生效！</span>
+              <strong>
+                展示与目标徽章位（{showcaseIds.length}/{MAX_SHOWCASE_BADGES} · 已收集 {earnedBadges.length}/{GYM_BADGE_CATALOG.length}）
+              </strong>
+              <span>徽章库持续扩展，最多任选 {MAX_SHOWCASE_BADGES} 枚在顶部展示或设为追逐目标！</span>
             </div>
+
+            {/* 6-Slot Showcase & Target Badge Dock */}
+            <div className="lab-showcase-dock">
+              {Array.from({ length: MAX_SHOWCASE_BADGES }).map((_, slotIdx) => {
+                const bid = showcaseIds[slotIdx];
+                const bDef = bid ? GYM_BADGE_CATALOG.find((x) => x.id === bid) : null;
+                if (!bDef) {
+                  return (
+                    <div key={`empty_slot_${slotIdx}`} className="lab-showcase-slot is-empty">
+                      <span>空位 {slotIdx + 1}</span>
+                    </div>
+                  );
+                }
+                const owned = earnedBadges.includes(bDef.id);
+                return (
+                  <button
+                    key={bDef.id}
+                    type="button"
+                    className={`lab-showcase-slot ${owned ? 'is-owned' : 'is-target'}`}
+                    style={{ '--badge-col': bDef.color } as React.CSSProperties}
+                    title={`${bDef.name}（${owned ? '展示中' : '目标追踪中'}）· 点击移出展示位`}
+                    onClick={() => {
+                      sound.play('cursor');
+                      onToggleShowcaseBadge?.(bDef.id);
+                    }}
+                  >
+                    <PixelItemImg src={bDef.icon} size={22} />
+                    <div className="lab-showcase-meta">
+                      <strong>{bDef.name}</strong>
+                      <small>{owned ? '展示中' : '目标徽章'}</small>
+                    </div>
+                    <em className="lab-showcase-rm" aria-hidden="true">×</em>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Badge Category Filter Tabs */}
+            <div className="lab-badge-filter-row">
+              {(
+                [
+                  { id: 'all', label: `全部徽章 (${GYM_BADGE_CATALOG.length})` },
+                  { id: 'kanto', label: `关都道馆 (${GYM_BADGE_CATALOG.filter((b) => b.category === 'kanto').length})` },
+                  { id: 'tour', label: `东亚巡礼 (${GYM_BADGE_CATALOG.filter((b) => b.category === 'tour').length})` },
+                  { id: 'master', label: `大师荣誉 (${GYM_BADGE_CATALOG.filter((b) => b.category === 'master').length})` },
+                ] as { id: 'all' | GymBadgeCategory; label: string }[]
+              ).map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`party-mini-pill ${badgeCat === c.id ? 'active' : ''}`}
+                  onClick={() => {
+                    sound.play('cursor');
+                    setBadgeCat(c.id);
+                  }}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+
             <div className="lab-badges-grid">
-              {GYM_BADGE_CATALOG.map((b) => {
+              {GYM_BADGE_CATALOG.filter((b) => badgeCat === 'all' || b.category === badgeCat).map((b) => {
                 const owned = earnedBadges.includes(b.id);
+                const inShowcase = showcaseSet.has(b.id);
                 return (
                   <div
                     key={b.id}
-                    className={`lab-badge-card ${owned ? 'is-owned' : 'is-locked'}`}
+                    className={`lab-badge-card ${owned ? 'is-owned' : 'is-locked'} ${inShowcase ? 'is-pinned' : ''}`}
                     style={{ '--badge-col': b.color } as React.CSSProperties}
                   >
                     <div className="lab-badge-ico">
@@ -631,6 +704,31 @@ export const LabOverlay: React.FC<LabOverlayProps> = ({
                       <div className="lab-badge-top">
                         <strong>{b.name}</strong>
                         <small>{b.gymName}</small>
+                        {onToggleShowcaseBadge && (
+                          <button
+                            type="button"
+                            className={`lab-badge-pin-btn ${inShowcase ? 'is-on' : ''} ${!owned && inShowcase ? 'is-target' : ''}`}
+                            onClick={() => {
+                              sound.play('confirm');
+                              onToggleShowcaseBadge(b.id);
+                            }}
+                            title={
+                              inShowcase
+                                ? '点击取消展示 / 取消目标'
+                                : owned
+                                  ? '设为顶部展示徽章（最多6枚）'
+                                  : '设为目标徽章并追踪进度（最多6枚）'
+                            }
+                          >
+                            {inShowcase
+                              ? owned
+                                ? '★ 展示中'
+                                : '◎ 目标中'
+                              : owned
+                                ? '+ 展示'
+                                : '+ 设为目标'}
+                          </button>
+                        )}
                       </div>
                       <p>{b.perkText}</p>
                       <span className="lab-badge-cond">{owned ? '★ 已点亮生效' : b.unlockHint}</span>

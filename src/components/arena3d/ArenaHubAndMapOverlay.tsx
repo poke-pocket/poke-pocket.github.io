@@ -785,6 +785,25 @@ export const ArenaHubAndMapOverlay: React.FC<{ ctx: Record<string, any> }> = ({ 
           onSelectTrainerTag={(tagId: TrainerTagId) => {
             onUpdateMeta?.((prev) => ({ ...prev, activeTrainerTag: tagId }));
           }}
+          onToggleShowcaseBadge={(badgeId) => {
+            onUpdateMeta?.((prev) => {
+              const cur =
+                prev.showcaseBadgeIds && prev.showcaseBadgeIds.length > 0
+                  ? [...prev.showcaseBadgeIds]
+                  : ['boulder_badge', 'cascade_badge', 'thunder_badge', 'rainbow_badge', 'volcano_badge', 'earth_badge'];
+              const idx = cur.indexOf(badgeId);
+              if (idx >= 0) {
+                if (cur.length <= 1) return prev;
+                cur.splice(idx, 1);
+              } else {
+                if (cur.length >= 6) {
+                  cur.shift();
+                }
+                cur.push(badgeId);
+              }
+              return { ...prev, showcaseBadgeIds: cur };
+            });
+          }}
           onOpenTrainerCard={() => {
             setHubModal('none');
             setLabInitialTab('universal');

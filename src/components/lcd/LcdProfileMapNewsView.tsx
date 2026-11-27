@@ -10,7 +10,7 @@ import { PixelIcon, PixelItemImg } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { feedbackSent, feedbackText, mode, newsPhotoIdx, onCloseHandheldTo3D, onNavigateMode, onUpdateSettings, openedEntryMode, save, selectedNewsId, setFeedbackSent, setFeedbackText, setNewsPhotoIdx, setSelectedNewsId, worldMapData } = ctx;
+  const { feedbackSent, feedbackText, mode, newsPhotoIdx, onCloseHandheldTo3D, onGoBack, onUpdateSettings, save, selectedNewsId, setFeedbackSent, setFeedbackText, setNewsPhotoIdx, setSelectedNewsId, worldMapData } = ctx;
   return (
     <>
         {/* TRAINER PROFILE & SOCIAL CARD INSIDE HANDHELD */}
@@ -28,14 +28,11 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                   type="button"
                   className="lcd-mini-close"
                   onClick={() => {
-                    if (openedEntryMode === 'profile' && onCloseHandheldTo3D) {
-                      onCloseHandheldTo3D();
-                    } else {
-                      onNavigateMode('menu');
-                    }
+                    sound.play('cancel');
+                    onGoBack();
                   }}
                 >
-                  {openedEntryMode === 'profile' ? '关闭' : '返回'}
+                  返回
                 </button>
               </div>
               <div className="pkb-prof-body scroll-y">
@@ -106,15 +103,9 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
             {worldMapData ? (
               <HandheldWorldMapView
                 data={worldMapData}
-                closeLabel={openedEntryMode === 'map' ? '关闭' : '返回'}
+                closeLabel="返回"
                 onDismissTo3D={onCloseHandheldTo3D}
-                onClose={() => {
-                  if (openedEntryMode === 'map' && onCloseHandheldTo3D) {
-                    onCloseHandheldTo3D();
-                  } else {
-                    onNavigateMode('menu');
-                  }
-                }}
+                onClose={() => onGoBack()}
               />
             ) : (
               <div className="lcd-news-list scroll-y" style={{ padding: 12 }}>
@@ -156,17 +147,16 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                   type="button"
                   className="lcd-mini-close"
                   onClick={() => {
+                    sound.play('cancel');
                     if (activeNews) {
                       setSelectedNewsId(null);
                       setNewsPhotoIdx(0);
-                    } else if (openedEntryMode === 'news' && onCloseHandheldTo3D) {
-                      onCloseHandheldTo3D();
                     } else {
-                      onNavigateMode('menu');
+                      onGoBack();
                     }
                   }}
                 >
-                  {activeNews ? '‹ 列表' : openedEntryMode === 'news' ? '关闭' : '返回'}
+                  返回
                 </button>
               </div>
               {activeNews ? (
@@ -519,14 +509,11 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                 type="button"
                 className="lcd-mini-close"
                 onClick={() => {
-                  if ((openedEntryMode === 'guide' || openedEntryMode === 'feedback') && onCloseHandheldTo3D) {
-                    onCloseHandheldTo3D();
-                  } else {
-                    onNavigateMode('menu');
-                  }
+                  sound.play('cancel');
+                  onGoBack();
                 }}
               >
-                {openedEntryMode === 'guide' || openedEntryMode === 'feedback' ? '关闭' : '返回'}
+                返回
               </button>
             </div>
             <div className="lcd-news-list scroll-y">
@@ -567,14 +554,11 @@ export const LcdProfileMapNewsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) 
                 type="button"
                 className="lcd-mini-close"
                 onClick={() => {
-                  if ((openedEntryMode === 'guide' || openedEntryMode === 'feedback') && onCloseHandheldTo3D) {
-                    onCloseHandheldTo3D();
-                  } else {
-                    onNavigateMode('menu');
-                  }
+                  sound.play('cancel');
+                  onGoBack();
                 }}
               >
-                {openedEntryMode === 'guide' || openedEntryMode === 'feedback' ? '关闭' : '返回'}
+                返回
               </button>
             </div>
             <div className="lcd-news-list scroll-y">
