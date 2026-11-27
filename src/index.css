@@ -9328,6 +9328,9 @@ button:disabled {
   --pb-accent: #e03131;
   --pb-accent-hi: #ff8787;
   --pb-accent-lo: #a61e1e;
+  --pb-ring-fill: #ffd43b;
+  --pb-ring-hi: #fff3bf;
+  --pb-ring-lo: #e67700;
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -9348,6 +9351,9 @@ button:disabled {
   --pb-accent: #1c7ed6;
   --pb-accent-hi: #74c0fc;
   --pb-accent-lo: #1864ab;
+  --pb-ring-fill: #339af0;
+  --pb-ring-hi: #a5d8ff;
+  --pb-ring-lo: #1864ab;
 }
 
 .pb-shutter-overlay.is-tier-ultraball {
@@ -9362,6 +9368,9 @@ button:disabled {
   --pb-accent: #f08c00;
   --pb-accent-hi: #ffe066;
   --pb-accent-lo: #b35900;
+  --pb-ring-fill: #ffd43b;
+  --pb-ring-hi: #fff3bf;
+  --pb-ring-lo: #d97706;
 }
 
 .pb-shutter-overlay.is-tier-masterball {
@@ -9376,6 +9385,9 @@ button:disabled {
   --pb-accent: #7048e8;
   --pb-accent-hi: #b197fc;
   --pb-accent-lo: #4c2ca8;
+  --pb-ring-fill: #e64980;
+  --pb-ring-hi: #ff87ab;
+  --pb-ring-lo: #a61e4d;
 }
 
 .pb-shutter-overlay.is-opening {
@@ -9552,99 +9564,50 @@ button:disabled {
   fill: #2b8a3e;
 }
 
-/* Direct-on-Pearl-White Poké Ball Travel Status + Monotonic Stepped Pixel Gauge (Zero Heavy Card Box) */
-.pb-shutter-hud-box {
+/* Part 1 (Below Center Orb): Current Loading Action + Unlocked Badges Directly on Pearl-White */
+.pb-shutter-center-info {
   position: absolute;
   left: 50%;
-  top: 86px;
+  top: 88px;
   transform: translateX(-50%);
   z-index: 5;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 9px;
-  width: min(460px, 88vw);
-  padding: 4px 8px;
-  background: transparent;
-  border: none;
-  outline: none;
-  box-shadow: none;
+  gap: 10px;
+  width: min(480px, 88vw);
   text-align: center;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
-.pb-shutter-title-row {
-  display: flex;
+.pb-shutter-status-row {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
   gap: 8px;
-}
-
-.pb-px-tag {
-  padding: 2px 7px;
-  background: var(--pb-accent);
-  color: #ffffff;
-  border: 2px solid #14121d;
-  font-family: var(--font-pixel), "PingFang SC", "Microsoft YaHei", monospace;
-  font-size: 9.5px;
-  font-weight: 900;
-  letter-spacing: 0.5px;
 }
 
 .pb-shutter-text {
   color: #14121d;
-  font-family: var(--font-pixel), "PingFang SC", "Microsoft YaHei", monospace;
-  font-size: 13px;
-  font-weight: 900;
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 800;
   letter-spacing: 0.4px;
-}
-
-.pb-px-gauge {
-  position: relative;
-  width: 180px;
-  height: 12px;
-  background: #dee2e6;
-  border: 2px solid #14121d;
-  box-sizing: border-box;
-  overflow: hidden;
-}
-
-.pb-px-gauge-fill {
-  height: 100%;
-  background: var(--pb-accent);
-  box-shadow: inset 0 3px 0 var(--pb-accent-hi), inset 0 -2px 0 var(--pb-accent-lo);
-  transition: width 0.28s steps(6, end), background-color 0.14s ease;
-}
-
-.pb-px-gauge::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent 0 18px,
-    #14121d 18px 20px
-  );
-}
-
-.pb-shutter-overlay.is-opening .pb-px-gauge-fill {
-  background: #40c057;
-  box-shadow: inset 0 3px 0 #b2f2bb, inset 0 -2px 0 #2b8a3e;
+  line-height: 1.45;
 }
 
 .pb-shutter-badges-row {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  margin-top: 2px;
+  gap: 6px;
 }
 
 .pb-shutter-rank-label {
-  font-size: 10px;
-  font-weight: 800;
-  color: #343a40;
+  font-size: 11px;
+  font-weight: 700;
+  color: #495057;
+  letter-spacing: 0.4px;
 }
 
 .pb-shutter-badge-icons {
@@ -9658,13 +9621,36 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 2px 0 rgba(20, 18, 29, 0.25));
+  filter: drop-shadow(0 2px 0 rgba(20, 18, 29, 0.22));
+}
+
+/* Part 2 (Bottom-Right Above 60px Shadow Band): Immersive Travel Tip + Matching Pixel Icons */
+.pb-shutter-corner-lore {
+  position: absolute;
+  right: 28px;
+  bottom: 78px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: min(520px, 86vw);
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  text-align: right;
+}
+
+.pb-lore-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .pb-shutter-tip {
-  font-size: 11px;
+  margin: 0;
+  font-size: 12px;
   font-weight: 700;
-  color: #495057;
+  color: #343a40;
   line-height: 1.5;
 }
 
@@ -9728,19 +9714,19 @@ button:disabled {
     width: 108px;
     height: 108px;
   }
-  .pb-shutter-hud-box {
-    top: 66px;
-    padding: 8px 12px;
+  .pb-shutter-center-info {
+    top: 72px;
+  }
+  .pb-shutter-corner-lore {
+    right: 16px;
+    bottom: 70px;
+    max-width: calc(100vw - 32px);
   }
   .pb-shutter-text {
-    font-size: 11px;
-  }
-  .pb-px-gauge {
-    width: 148px;
-    height: 10px;
+    font-size: 12.5px;
   }
   .pb-shutter-tip {
-    font-size: 9.5px;
+    font-size: 11px;
   }
 }
 
