@@ -9,6 +9,7 @@ import {
   geoToWorld,
   getActiveGeoTerrainOrigin,
   getProjectedGeoCities,
+  sampleFilteredGeoElevationMeters,
   sampleRealElevationMeters,
   sampleRealHydrographyPixelColor,
   subscribeGeoDemLoaded,
@@ -1278,45 +1279,73 @@ function paintTopographicMap(
   const demRes: GeoDemResolution =
     eqUppDem > 95 ? 'global' : eqUppDem > 24 ? 'world' : eqUppDem > 10.5 ? 'macro' : 'detail';
 
-  for (let py = 0; py < h; py += stepPx) {
-    const wz = centerZ + (py - halfH) * unitsPerPx;
-    const cellY = Math.floor(py / stepPx);
-    for (let px = 0; px < w; px += stepPx) {
-      const wx = centerX + (px - halfW) * unitsPerPx;
-      const cellX = Math.floor(px / stepPx);
-      const dither = (cellX + cellY) % 2 === 0;
+  // Pre-sample a padded denoised elevation grid ONCE per frame in geo mode:
+  // 1) 5x fewer DEM lookups per pixel (reads mE/mS/mW/mN straight from the grid!)
+  // 2) Eliminates scattered SRTM 0m radar-noise puddles AND their bright coastal foam halos inside cities!
+  if (activeGeo) {
+    const cols = Math.ceil(w / stepPx);
+    const rows = Math.ceil(h / stepPx);
+    const padCols = cols + 2;
+    const padRows = rows + 2;
+    const elevGrid = new Float32Array(padCols * padRows);
+    const validGrid = new Uint8Array(padCols * padRows);
+    const latGrid = new Float32Array(padCols * padRows);
+    const lngGrid = new Float32Array(padCols * padRows);
 
-      if (activeGeo) {
+    for (let gy = 0; gy < padRows; gy++) {
+      const py = (gy - 1) * stepPx;
+      const wz = centerZ + (py - halfH) * unitsPerPx;
+      const rowOff = gy * padCols;
+      for (let gx = 0; gx < padCols; gx++) {
+        const px = (gx - 1) * stepPx;
+        const wx = centerX + (px - halfW) * unitsPerPx;
+        const idx = rowOff + gx;
         const geo = worldToGeo(wx, wz, activeGeo);
         if (!geo || geo.lat > 85.05 || geo.lat < -85.05) {
-          // Clean polar ocean edge past Top (85°N) and Bottom (-85°S) of the world map
+          validGrid[idx] = 0;
+          elevGrid[idx] = -10;
+        } else {
+          validGrid[idx] = 1;
+          latGrid[idx] = geo.lat;
+          lngGrid[idx] = geo.lng;
+          elevGrid[idx] = sampleFilteredGeoElevationMeters(geo.lat, geo.lng, demRes);
+        }
+      }
+    }
+
+    for (let cy = 0; cy < rows; cy++) {
+      const py = cy * stepPx;
+      const wz = centerZ + (py - halfH) * unitsPerPx;
+      const gy = cy + 1;
+      const rowOff = gy * padCols;
+      for (let cx = 0; cx < cols; cx++) {
+        const px = cx * stepPx;
+        const wx = centerX + (px - halfW) * unitsPerPx;
+        const gx = cx + 1;
+        const idx = rowOff + gx;
+        const dither = (cx + cy) % 2 === 0;
+
+        if (!validGrid[idx]) {
           ctx.fillStyle = dither ? '#0f3d6e' : '#13467d';
           ctx.fillRect(px, py, stepPx, stepPx);
           continue;
         }
-        const mRaw =
-          sampleRealElevationMeters(geo.lat, geo.lng, demRes) ??
-          sampleRealElevationMeters(geo.lat, geo.lng, 'macro') ??
-          12;
-        const mMacro = demRes === 'detail' ? sampleRealElevationMeters(geo.lat, geo.lng, 'macro') : mRaw;
-        // Suppress noisy 0m inland SRTM polders (where macroM > 2.2m) so 2D & 3D forest plains match 100%!
-        const m = mRaw <= 0.6 && mRaw > -2.0 && mMacro !== null && mMacro > 2.2 ? Math.max(2.0, mMacro * 0.6) : mRaw;
-        const geoE = worldToGeo(wx + sampleStep, wz, activeGeo)!;
-        const geoS = worldToGeo(wx, wz + sampleStep, activeGeo)!;
-        const geoW = worldToGeo(wx - sampleStep, wz, activeGeo)!;
-        const geoN = worldToGeo(wx, wz - sampleStep, activeGeo)!;
-        const mE = sampleRealElevationMeters(geoE.lat, geoE.lng, demRes) ?? m;
-        const mS = sampleRealElevationMeters(geoS.lat, geoS.lng, demRes) ?? m;
-        const mW = sampleRealElevationMeters(geoW.lat, geoW.lng, demRes) ?? m;
-        const mN = sampleRealElevationMeters(geoN.lat, geoN.lng, demRes) ?? m;
+
+        const m = elevGrid[idx];
+        const mE = validGrid[idx + 1] ? elevGrid[idx + 1] : m;
+        const mW = validGrid[idx - 1] ? elevGrid[idx - 1] : m;
+        const mS = validGrid[idx + padCols] ? elevGrid[idx + padCols] : m;
+        const mN = validGrid[idx - padCols] ? elevGrid[idx - padCols] : m;
         const hillShadeM = (m - mE) * 0.7 + (m - mS) * 0.7;
         const nearOcean =
           m <= 0.6
             ? mE > 0.6 || mS > 0.6 || mW > 0.6 || mN > 0.6
             : mE <= 0.6 || mS <= 0.6 || mW <= 0.6 || mN <= 0.6;
+        const gLat = latGrid[idx];
+        const gLng = lngGrid[idx];
         const hydroColor = sampleRealHydrographyPixelColor(
-          geo.lat,
-          geo.lng,
+          gLat,
+          gLng,
           wx,
           wz,
           unitsPerPx,
@@ -1325,10 +1354,20 @@ function paintTopographicMap(
           hillShadeM,
           dither,
         );
-        ctx.fillStyle = hydroColor ?? classifyRealEarthPixelColor(geo.lat, geo.lng, m, hillShadeM, nearOcean, dither);
+        ctx.fillStyle = hydroColor ?? classifyRealEarthPixelColor(gLat, gLng, m, hillShadeM, nearOcean, dither);
         ctx.fillRect(px, py, stepPx, stepPx);
-        continue;
       }
+    }
+    return;
+  }
+
+  for (let py = 0; py < h; py += stepPx) {
+    const wz = centerZ + (py - halfH) * unitsPerPx;
+    const cellY = Math.floor(py / stepPx);
+    for (let px = 0; px < w; px += stepPx) {
+      const wx = centerX + (px - halfW) * unitsPerPx;
+      const cellX = Math.floor(px / stepPx);
+      const dither = (cellX + cellY) % 2 === 0;
 
       const elev = getTerrainHeight3D(wx, wz);
       const ex = getTerrainHeight3D(wx + sampleStep, wz);
