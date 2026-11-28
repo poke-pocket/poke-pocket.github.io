@@ -1,6 +1,20 @@
 import { WeatherAmbienceEngine } from './weatherAmbience';
 import type { ClimateZone, WeatherIntensity, WeatherKind, WorldSeason } from './weatherSystem';
 import type { DayNightPhase } from './solarDayNight3D';
+import {
+  BGM_PLAY_MODE_LABELS,
+  EXTRA_REGIONAL_SONGS,
+  type BgmDrumHit,
+  type BgmPlayMode,
+  type BgmPlayerState,
+  type BgmSongEntry,
+  type BgmTrackId,
+  type BgmVoiceTimbre,
+  type ChiptuneTrack,
+} from './bgmPlaylists';
+
+export { BGM_PLAY_MODE_LABELS };
+export type { BgmPlayMode, BgmPlayerState, BgmSongEntry, BgmTrackId };
 
 export type SfxKind =
   | 'cursor'
@@ -24,19 +38,6 @@ export type SfxKind =
   | 'pokeball'
   | 'jump';
 
-export type BgmTrackId =
-  | 'hub'
-  | 'town'
-  | 'town_night'
-  | 'adventure'
-  | 'safezone'
-  | 'pokemon_center'
-  | 'poke_mart'
-  | 'restaurant'
-  | 'hotel'
-  | 'house'
-  | 'battle';
-
 export const BGM_TRACK_LABELS: Record<BgmTrackId, string> = {
   hub: '晨曦序曲 · 掌上世界',
   town: '晴空微风 · 城镇漫步',
@@ -51,17 +52,8 @@ export const BGM_TRACK_LABELS: Record<BgmTrackId, string> = {
   battle: '热血激战 · 切磋与首领',
 };
 
-type VoiceTimbre =
-  | 'flute'
-  | 'bell'
-  | 'rhodes'
-  | 'harp'
-  | 'woodwind'
-  | 'brass_warm'
-  | 'bass_warm'
-  | 'bass_pluck';
-
-type DrumHit = 'K' | 'S' | 'H' | 'B' | '';
+type VoiceTimbre = BgmVoiceTimbre;
+type DrumHit = BgmDrumHit;
 
 // Complete chromatic note frequencies (Hz) with sharp & flat enharmonics
 const N: Record<string, number> = {
@@ -75,22 +67,6 @@ const N: Record<string, number> = {
   F5: 698.46, Fs5: 739.99, Gb5: 739.99, G5: 783.99, Gs5: 830.61, Ab5: 830.61, A5: 880.0, As5: 932.33, Bb5: 932.33, B5: 987.77,
   C6: 1046.5, Cs6: 1108.73, D6: 1174.66, Eb6: 1244.51, E6: 1318.51, F6: 1396.91, Fs6: 1479.98, G6: 1567.98,
 };
-
-interface ChiptuneTrack {
-  stepMs: number;
-  swing?: number;
-  leadTimbre: VoiceTimbre;
-  harmTimbre: VoiceTimbre;
-  bassTimbre: VoiceTimbre;
-  leadGain?: number;
-  harmGain?: number;
-  bassGain?: number;
-  gate?: number;
-  lead: string[];
-  harmony: string[];
-  bass: string[];
-  drums?: DrumHit[];
-}
 
 const POKEMON_CENTER_TRACK: ChiptuneTrack = {
   // Iconic warm D-Major Pokémon Center healing & rest melody
@@ -561,6 +537,50 @@ const TRACKS: Record<BgmTrackId, ChiptuneTrack> = {
   },
 };
 
+const BGM_MODE_STORAGE_KEY = 'poke_pocket_bgm_play_mode_v1';
+
+const REGIONAL_PLAYLISTS: Record<Exclude<BgmTrackId, 'safezone'>, BgmSongEntry[]> = {
+  hub: [{ id: 'hub_prelude', title: BGM_TRACK_LABELS.hub, track: TRACKS.hub }, ...EXTRA_REGIONAL_SONGS.hub],
+  town: [{ id: 'town_stroll', title: BGM_TRACK_LABELS.town, track: TRACKS.town }, ...EXTRA_REGIONAL_SONGS.town],
+  town_night: [
+    { id: 'town_night_nocturne', title: BGM_TRACK_LABELS.town_night, track: TRACKS.town_night },
+    ...EXTRA_REGIONAL_SONGS.town_night,
+  ],
+  adventure: [
+    { id: 'adventure_route', title: BGM_TRACK_LABELS.adventure, track: TRACKS.adventure },
+    ...EXTRA_REGIONAL_SONGS.adventure,
+  ],
+  pokemon_center: [
+    { id: 'pc_classic', title: BGM_TRACK_LABELS.pokemon_center, track: TRACKS.pokemon_center },
+    ...EXTRA_REGIONAL_SONGS.pokemon_center,
+  ],
+  poke_mart: [
+    { id: 'mart_swing', title: BGM_TRACK_LABELS.poke_mart, track: TRACKS.poke_mart },
+    ...EXTRA_REGIONAL_SONGS.poke_mart,
+  ],
+  restaurant: [
+    { id: 'rest_bossa', title: BGM_TRACK_LABELS.restaurant, track: TRACKS.restaurant },
+    ...EXTRA_REGIONAL_SONGS.restaurant,
+  ],
+  hotel: [
+    { id: 'hotel_serenade', title: BGM_TRACK_LABELS.hotel, track: TRACKS.hotel },
+    ...EXTRA_REGIONAL_SONGS.hotel,
+  ],
+  house: [
+    { id: 'house_home', title: BGM_TRACK_LABELS.house, track: TRACKS.house },
+    ...EXTRA_REGIONAL_SONGS.house,
+  ],
+  battle: [
+    { id: 'battle_rival', title: BGM_TRACK_LABELS.battle, track: TRACKS.battle },
+    ...EXTRA_REGIONAL_SONGS.battle,
+  ],
+};
+
+export function getRegionalBgmPlaylist(zone: BgmTrackId): BgmSongEntry[] {
+  const key: Exclude<BgmTrackId, 'safezone'> = zone === 'safezone' ? 'pokemon_center' : zone;
+  return REGIONAL_PLAYLISTS[key] ?? REGIONAL_PLAYLISTS.town;
+}
+
 class RetroSoundEngine {
   private ctx: AudioContext | null = null;
   private bgmBusGain: GainNode | null = null;
@@ -570,13 +590,19 @@ class RetroSoundEngine {
   private sfxVolume = 75;
   private bgmEnabled = true;
   private bgmVolume = 42;
+  private bgmPaused = false;
+  private bgmPlayMode: BgmPlayMode = 'list_loop';
   private cryEnabled = true;
   private cryVolume = 80;
   private combatSfxEnabled = true;
   private masterVolume = 80;
   private muteOnBlur = true;
   private pageHidden = false;
-  private currentTrack: BgmTrackId = 'hub';
+  private currentTrack: Exclude<BgmTrackId, 'safezone'> = 'hub';
+  private currentSongIdx = 0;
+  private songCycleCount = 0;
+  private shuffleHistory: number[] = [];
+  private bgmListeners = new Set<(state: BgmPlayerState) => void>();
   private bgmTimer: number | null = null;
   private bgmStep = 0;
   private nextStepTime = 0;
@@ -589,6 +615,16 @@ class RetroSoundEngine {
   private weatherAmbience = new WeatherAmbienceEngine();
 
   constructor() {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = window.localStorage.getItem(BGM_MODE_STORAGE_KEY);
+        if (saved === 'list_loop' || saved === 'single_loop' || saved === 'shuffle') {
+          this.bgmPlayMode = saved;
+        }
+      } catch {
+        // ignore storage errors
+      }
+    }
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', () => {
         this.pageHidden = document.hidden;
@@ -657,7 +693,9 @@ class RetroSoundEngine {
   }
 
   private computeTargetBgmGain(): number {
-    if (this.isSilenceActive() || !this.bgmEnabled || this.bgmVolume <= 0) return 0.0001;
+    if (this.isSilenceActive() || !this.bgmEnabled || this.bgmPaused || this.bgmVolume <= 0) {
+      return 0.0001;
+    }
     return Math.max(0.0001, (this.bgmVolume / 100) * (this.masterVolume / 100) * 1.15);
   }
 
@@ -674,22 +712,186 @@ class RetroSoundEngine {
     }
   }
 
+  private getActiveSongEntry(): BgmSongEntry {
+    const list = getRegionalBgmPlaylist(this.currentTrack);
+    const safeIdx = ((this.currentSongIdx % list.length) + list.length) % list.length;
+    return list[safeIdx] ?? list[0];
+  }
+
+  private emitBgmState() {
+    const state = this.getBgmState();
+    for (const fn of this.bgmListeners) {
+      try {
+        fn(state);
+      } catch {
+        // ignore listener errors
+      }
+    }
+  }
+
+  private triggerTrackCrossfade() {
+    if (this.ctx && this.ctx.state === 'running') {
+      this.nextStepTime = this.ctx.currentTime + 0.08;
+      if (this.bgmBusGain) {
+        const now = this.ctx.currentTime;
+        const target = this.computeTargetBgmGain();
+        try {
+          this.bgmBusGain.gain.cancelScheduledValues(now);
+          this.bgmBusGain.gain.setValueAtTime(
+            Math.max(0.0001, this.bgmBusGain.gain.value * 0.32),
+            now,
+          );
+          this.bgmBusGain.gain.linearRampToValueAtTime(target, now + 0.2);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  private pickRandomNextIndex(len: number, excludeIdx: number): number {
+    if (len <= 1) return 0;
+    const pool: number[] = [];
+    for (let i = 0; i < len; i++) {
+      if (i !== excludeIdx) pool.push(i);
+    }
+    return pool[Math.floor(Math.random() * pool.length)] ?? 0;
+  }
+
+  subscribeBgmState(listener: (state: BgmPlayerState) => void): () => void {
+    this.bgmListeners.add(listener);
+    return () => {
+      this.bgmListeners.delete(listener);
+    };
+  }
+
+  getBgmState(): BgmPlayerState {
+    const list = getRegionalBgmPlaylist(this.currentTrack);
+    const safeIdx = ((this.currentSongIdx % list.length) + list.length) % list.length;
+    const song = list[safeIdx] ?? list[0];
+    return {
+      zone: this.currentTrack,
+      songId: song.id,
+      songTitle: song.title,
+      songIndex: safeIdx,
+      playlistLength: list.length,
+      playMode: this.bgmPlayMode,
+      paused: this.bgmPaused,
+      audible: this.isBgmAudible(),
+    };
+  }
+
   getTrack(): BgmTrackId {
     return this.currentTrack;
   }
 
   getTrackLabel(): string {
-    return BGM_TRACK_LABELS[this.currentTrack] ?? '城镇漫步';
+    return this.getActiveSongEntry().title;
   }
 
   isBgmAudible(): boolean {
-    return !this.muted && this.bgmEnabled && this.bgmVolume > 0 && this.masterVolume > 0;
+    return !this.muted && this.bgmEnabled && !this.bgmPaused && this.bgmVolume > 0 && this.masterVolume > 0;
+  }
+
+  isBgmPaused(): boolean {
+    return this.bgmPaused;
+  }
+
+  setBgmPaused(paused: boolean) {
+    if (this.bgmPaused === paused) return;
+    this.bgmPaused = paused;
+    this.syncBgmBusGain(0.08);
+    if (!paused && this.bgmEnabled && this.bgmVolume > 0) {
+      this.unlock();
+      this.startBgmLoop();
+    } else if (paused) {
+      this.stopBgmLoop();
+    }
+    this.emitBgmState();
+  }
+
+  toggleBgmPause(): boolean {
+    this.setBgmPaused(!this.bgmPaused);
+    return this.bgmPaused;
+  }
+
+  getBgmPlayMode(): BgmPlayMode {
+    return this.bgmPlayMode;
+  }
+
+  setBgmPlayMode(mode: BgmPlayMode) {
+    if (this.bgmPlayMode === mode) return;
+    this.bgmPlayMode = mode;
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(BGM_MODE_STORAGE_KEY, mode);
+      } catch {
+        // ignore
+      }
+    }
+    this.emitBgmState();
+  }
+
+  cycleBgmPlayMode(): BgmPlayMode {
+    const order: BgmPlayMode[] = ['list_loop', 'single_loop', 'shuffle'];
+    const next = order[(order.indexOf(this.bgmPlayMode) + 1) % order.length];
+    this.setBgmPlayMode(next);
+    return next;
+  }
+
+  nextBgmSong(): BgmPlayerState {
+    const list = getRegionalBgmPlaylist(this.currentTrack);
+    if (list.length > 1) {
+      this.shuffleHistory.push(this.currentSongIdx);
+      if (this.shuffleHistory.length > 16) this.shuffleHistory.shift();
+      this.currentSongIdx =
+        this.bgmPlayMode === 'shuffle'
+          ? this.pickRandomNextIndex(list.length, this.currentSongIdx)
+          : (this.currentSongIdx + 1) % list.length;
+    }
+    this.bgmStep = 0;
+    this.songCycleCount = 0;
+    if (this.bgmPaused) {
+      this.bgmPaused = false;
+    }
+    this.unlock();
+    this.triggerTrackCrossfade();
+    if (this.bgmEnabled && this.bgmVolume > 0 && this.bgmTimer === null) {
+      this.startBgmLoop();
+    }
+    this.emitBgmState();
+    return this.getBgmState();
+  }
+
+  prevBgmSong(): BgmPlayerState {
+    const list = getRegionalBgmPlaylist(this.currentTrack);
+    if (list.length > 1) {
+      if (this.bgmPlayMode === 'shuffle' && this.shuffleHistory.length > 0) {
+        const prevIdx = this.shuffleHistory.pop()!;
+        this.currentSongIdx = ((prevIdx % list.length) + list.length) % list.length;
+      } else {
+        this.currentSongIdx = (this.currentSongIdx - 1 + list.length) % list.length;
+      }
+    }
+    this.bgmStep = 0;
+    this.songCycleCount = 0;
+    if (this.bgmPaused) {
+      this.bgmPaused = false;
+    }
+    this.unlock();
+    this.triggerTrackCrossfade();
+    if (this.bgmEnabled && this.bgmVolume > 0 && this.bgmTimer === null) {
+      this.startBgmLoop();
+    }
+    this.emitBgmState();
+    return this.getBgmState();
   }
 
   setMasterVolume(vol: number) {
     this.masterVolume = Math.max(0, Math.min(100, Math.round(vol)));
     this.syncBgmBusGain();
     this.weatherAmbience.setAudioConfig({ masterVolume: this.masterVolume });
+    this.emitBgmState();
   }
 
   setMuteOnBlur(enabled: boolean) {
@@ -702,6 +904,7 @@ class RetroSoundEngine {
     this.muted = muted;
     this.syncBgmBusGain();
     this.weatherAmbience.setAudioConfig({ muted: this.muted });
+    this.emitBgmState();
   }
 
   setAmbient(enabled: boolean, volume: number) {
@@ -957,40 +1160,43 @@ class RetroSoundEngine {
     this.combatSfxEnabled = enabled;
   }
 
-  setTrack(track: BgmTrackId) {
-    const normalized: BgmTrackId = track === 'safezone' ? 'pokemon_center' : track;
+  setTrack(track: BgmTrackId, preferredSongIdx?: number) {
+    const normalized: Exclude<BgmTrackId, 'safezone'> =
+      track === 'safezone' ? 'pokemon_center' : track;
     if (this.currentTrack === normalized) return;
     this.currentTrack = normalized;
-    this.bgmStep = 0;
-    if (this.ctx && this.ctx.state === 'running') {
-      this.nextStepTime = this.ctx.currentTime + 0.09;
-      // Gentle NDS-style doorway crossfade envelope so switching zones/buildings never pops!
-      if (this.bgmBusGain) {
-        const now = this.ctx.currentTime;
-        const target = this.computeTargetBgmGain();
-        try {
-          this.bgmBusGain.gain.cancelScheduledValues(now);
-          this.bgmBusGain.gain.setValueAtTime(Math.max(0.0001, this.bgmBusGain.gain.value * 0.32), now);
-          this.bgmBusGain.gain.linearRampToValueAtTime(target, now + 0.22);
-        } catch {
-          // ignore
-        }
-      }
+    const list = getRegionalBgmPlaylist(normalized);
+    if (typeof preferredSongIdx === 'number' && list.length > 0) {
+      this.currentSongIdx = ((preferredSongIdx % list.length) + list.length) % list.length;
+    } else if (this.bgmPlayMode === 'shuffle' && list.length > 1) {
+      this.currentSongIdx = Math.floor(Math.random() * list.length);
+    } else {
+      this.currentSongIdx = 0;
     }
-    if (this.bgmEnabled && this.bgmVolume > 0 && this.bgmTimer === null) {
+    this.shuffleHistory = [];
+    this.bgmStep = 0;
+    this.songCycleCount = 0;
+    this.triggerTrackCrossfade();
+    if (this.bgmEnabled && !this.bgmPaused && this.bgmVolume > 0 && this.bgmTimer === null) {
       this.startBgmLoop();
     }
+    this.emitBgmState();
   }
 
   setBgm(enabled: boolean, volume: number) {
     this.bgmEnabled = enabled;
     this.bgmVolume = Math.max(0, Math.min(100, Math.round(volume)));
+    if (enabled && this.bgmVolume > 0 && this.bgmPaused) {
+      // Enabling music from settings or top HUD resumes playback cleanly
+      this.bgmPaused = false;
+    }
     this.syncBgmBusGain();
-    if (enabled && this.bgmVolume > 0) {
+    if (enabled && !this.bgmPaused && this.bgmVolume > 0) {
       this.startBgmLoop();
     } else {
       this.stopBgmLoop();
     }
+    this.emitBgmState();
   }
 
   private getCtx(createIfMissing = true): AudioContext | null {
@@ -1275,12 +1481,12 @@ class RetroSoundEngine {
 
   /** Precision WebAudio Lookahead Scheduler — Zero Main-Thread Frame Jitter! */
   private startBgmLoop() {
-    if (typeof window === 'undefined' || this.bgmTimer !== null) return;
+    if (typeof window === 'undefined' || this.bgmTimer !== null || this.bgmPaused) return;
     if (this.ctx && this.ctx.state === 'running') {
       this.nextStepTime = Math.max(this.ctx.currentTime + 0.04, this.nextStepTime);
     }
     this.bgmTimer = window.setInterval(() => {
-      if (!this.bgmEnabled || this.bgmVolume <= 0 || this.isSilenceActive()) return;
+      if (!this.bgmEnabled || this.bgmPaused || this.bgmVolume <= 0 || this.isSilenceActive()) return;
       const ctx = this.ctx;
       if (!ctx || ctx.state !== 'running') return;
       const bus = this.ensureBgmBus(ctx);
@@ -1293,7 +1499,8 @@ class RetroSoundEngine {
 
       // Schedule notes up to 140ms ahead on WebAudio's sample-accurate clock
       while (this.nextStepTime < now + 0.14) {
-        const t = TRACKS[this.currentTrack] ?? TRACKS.town;
+        const song = this.getActiveSongEntry();
+        const t = song.track;
         const idx = this.bgmStep % t.lead.length;
         const stepSec = t.stepMs / 1000;
         const swingOffset = t.swing && idx % 2 === 1 ? stepSec * t.swing : 0;
@@ -1319,7 +1526,22 @@ class RetroSoundEngine {
         }
 
         this.nextStepTime += stepSec;
-        this.bgmStep = (this.bgmStep + 1) % t.lead.length;
+        this.bgmStep += 1;
+        if (this.bgmStep >= t.lead.length) {
+          this.bgmStep = 0;
+          this.songCycleCount += 1;
+          const list = getRegionalBgmPlaylist(this.currentTrack);
+          if (this.songCycleCount >= 2 && list.length > 1 && this.bgmPlayMode !== 'single_loop') {
+            this.songCycleCount = 0;
+            this.shuffleHistory.push(this.currentSongIdx);
+            if (this.shuffleHistory.length > 16) this.shuffleHistory.shift();
+            this.currentSongIdx =
+              this.bgmPlayMode === 'shuffle'
+                ? this.pickRandomNextIndex(list.length, this.currentSongIdx)
+                : (this.currentSongIdx + 1) % list.length;
+            this.emitBgmState();
+          }
+        }
       }
     }, 45);
   }
@@ -1346,7 +1568,7 @@ class RetroSoundEngine {
           .catch(() => {});
       }
     }
-    if (this.bgmEnabled && this.bgmVolume > 0) {
+    if (this.bgmEnabled && !this.bgmPaused && this.bgmVolume > 0) {
       this.startBgmLoop();
     }
   }

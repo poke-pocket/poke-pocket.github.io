@@ -8,7 +8,7 @@ import type { RoomThemeId } from '../../types/pet';
 import { getBallAvailability } from '../../utils/petEngine';
 import { ShopOverlay } from '../ShopOverlay';
 import { WorldMapHud } from '../WorldMapHud';
-import { sound } from '../../utils/sound';
+import { BGM_PLAY_MODE_LABELS, sound, type BgmPlayMode, type BgmPlayerState } from '../../utils/sound';
 import { PixelGrid, PixelIcon, PixelItemImg } from '../PixelSprite';
 import type { PixelIconName } from '../../data/pixelIcons';
 import { TrimmedSpriteImg } from '../TrimmedSpriteImg';
@@ -251,7 +251,7 @@ function formatHudEta(sec: number): string {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({ ctx: rawCtx }) => {
   const ctx = rawCtx as ArenaSharedCtx;
-  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, openHeroOrBadgeOverlay, pet, prefs, regionMeta, removeBattleFollower, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBallId, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setSelectedBallId, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
+  const { activeHeroDef, activeRoom, activeWorldRun, adventureStyle, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, bannerMsg, bgmState, bgmTrackLabel, bindMultiTouchAction, captureCutscene, captureOffer, diffMeta, difficultyId, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, externalPaused, floatingTags, followersView, handleBgmCycleMode, handleBgmNext, handleBgmPlayPause, handleBgmPrev, hpPct, hud, inRunTownShopOpen, isSurfing, jumpQueuedRef, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, meta, minStr, mobilePartyOpen, nearbyKoTarget, onBuyAccessory, onBuyFood, onBuyPokeball, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onUpdatePetConfig, openHeroOrBadgeOverlay, pet, prefs, regionMeta, removeBattleFollower, reorderBattleFollowers, resetVirtualPad, resultModal, save, selectedBallId, selectedBiome, setDragOverFollowerIdx, setInRunTownShopOpen, setMobilePartyOpen, setSelectedBallId, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, solarInfo, startVirtualPad, stopAutoNavRef, toggleWorldMap, triggerBattleActionRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, xpPct } = ctx;
 
   // Owned Poké Ball types + Long-press left-side Poké Ball switcher state
   const [ballPickerOpen, setBallPickerOpen] = useState(false);
@@ -868,31 +868,157 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                       <span className={`top-diff-tag is-${difficultyId}`}>{diffMeta.label}</span>
                     </div>
                   </div>
-                  <div
-                    className={`top-deck-center is-bgm-deck ${isBgmOn ? 'is-playing' : 'is-muted'}`}
-                    style={{ borderRight: '2px solid #2b2d44', cursor: 'pointer' }}
-                    onClick={() => onToggleBgm?.()}
-                    title={
-                      isBgmOn
-                        ? `正在播放：${bgmTrackLabel}（点击静音背景音乐）`
-                        : '背景音乐已静音（点击开启背景音乐）'
-                    }
-                  >
-                    <div className="top-bgm-head">
-                      <PixelIcon name={isBgmOn ? 'music_note' : 'sound_off'} size={12} />
-                      <span>{isBgmOn ? '正在播放' : '音乐已静音'}</span>
-                      {isBgmOn && (
-                        <span className="top-bgm-eq" aria-hidden="true">
-                          <i />
-                          <i />
-                          <i />
-                        </span>
-                      )}
-                    </div>
-                    <strong className="top-bgm-title">
-                      {isBgmOn ? bgmTrackLabel : '点击开启音乐'}
-                    </strong>
-                  </div>
+                  {(() => {
+                    const playerState: BgmPlayerState = bgmState ?? sound.getBgmState();
+                    const isConfigMuted = !isBgmOn;
+                    const isPlayingNow = isBgmOn && !playerState.paused;
+                    const modeNow: BgmPlayMode = playerState.playMode;
+                    const modeShortLabel =
+                      modeNow === 'single_loop' ? '单曲' : modeNow === 'shuffle' ? '随机' : '循环';
+                    const modeTitle = `播放模式：${BGM_PLAY_MODE_LABELS[modeNow]}（点击切换：列表循环 / 单曲循环 / 随机播放）`;
+                    return (
+                      <div
+                        className={`top-deck-center is-bgm-deck ${isPlayingNow ? 'is-playing' : 'is-muted'}`}
+                        style={{ borderRight: '2px solid #2b2d44' }}
+                      >
+                        <div
+                          className="top-bgm-title-row"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            (handleBgmPlayPause ?? onToggleBgm)?.();
+                          }}
+                          title={
+                            isPlayingNow
+                              ? `正在播放：${bgmTrackLabel}（${playerState.songIndex + 1}/${playerState.playlistLength}）· 点击暂停`
+                              : isConfigMuted
+                                ? '背景音乐已静音（点击开启音乐）'
+                                : `已暂停：${bgmTrackLabel}（点击继续播放）`
+                          }
+                        >
+                          {isPlayingNow ? (
+                            <span className="top-bgm-eq" aria-hidden="true">
+                              <i />
+                              <i />
+                              <i />
+                            </span>
+                          ) : (
+                            <PixelIcon name={isConfigMuted ? 'sound_off' : 'music_note'} size={11} />
+                          )}
+                          <strong className="top-bgm-title">
+                            {isConfigMuted ? '点击开启音乐' : bgmTrackLabel}
+                          </strong>
+                          {playerState.playlistLength > 1 && (
+                            <span className="top-bgm-idx">
+                              {playerState.songIndex + 1}/{playerState.playlistLength}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="top-bgm-controls" role="group" aria-label="区域音乐播放控制">
+                          <button
+                            type="button"
+                            className="top-bgm-btn"
+                            aria-label="上一首"
+                            title="上一首"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleBgmPrev?.();
+                            }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 10 10" shapeRendering="crispEdges" aria-hidden="true">
+                              <rect x="1" y="2" width="1.5" height="6" fill="currentColor" />
+                              <rect x="7" y="2" width="2" height="6" fill="currentColor" />
+                              <rect x="5" y="3" width="2" height="4" fill="currentColor" />
+                              <rect x="3" y="4" width="2" height="2" fill="currentColor" />
+                            </svg>
+                          </button>
+
+                          <button
+                            type="button"
+                            className={`top-bgm-btn is-play-toggle ${isPlayingNow ? 'is-active' : ''}`}
+                            aria-label={isPlayingNow ? '暂停音乐' : '播放音乐'}
+                            title={isPlayingNow ? '暂停音乐' : '播放音乐'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              (handleBgmPlayPause ?? onToggleBgm)?.();
+                            }}
+                          >
+                            {isPlayingNow ? (
+                              <svg width="10" height="10" viewBox="0 0 10 10" shapeRendering="crispEdges" aria-hidden="true">
+                                <rect x="2" y="2" width="2" height="6" fill="currentColor" />
+                                <rect x="6" y="2" width="2" height="6" fill="currentColor" />
+                              </svg>
+                            ) : (
+                              <svg width="10" height="10" viewBox="0 0 10 10" shapeRendering="crispEdges" aria-hidden="true">
+                                <rect x="2" y="1" width="2" height="8" fill="currentColor" />
+                                <rect x="4" y="2" width="2" height="6" fill="currentColor" />
+                                <rect x="6" y="3" width="2" height="4" fill="currentColor" />
+                                <rect x="8" y="4" width="1" height="2" fill="currentColor" />
+                              </svg>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="top-bgm-btn"
+                            aria-label="下一首"
+                            title="下一首"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleBgmNext?.();
+                            }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 10 10" shapeRendering="crispEdges" aria-hidden="true">
+                              <rect x="1" y="2" width="2" height="6" fill="currentColor" />
+                              <rect x="3" y="3" width="2" height="4" fill="currentColor" />
+                              <rect x="5" y="4" width="2" height="2" fill="currentColor" />
+                              <rect x="7.5" y="2" width="1.5" height="6" fill="currentColor" />
+                            </svg>
+                          </button>
+
+                          <button
+                            type="button"
+                            className={`top-bgm-btn is-mode-btn is-mode-${modeNow}`}
+                            aria-label={BGM_PLAY_MODE_LABELS[modeNow]}
+                            title={modeTitle}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleBgmCycleMode?.();
+                            }}
+                          >
+                            {modeNow === 'shuffle' ? (
+                              <svg width="10" height="10" viewBox="0 0 10 10" shapeRendering="crispEdges" aria-hidden="true">
+                                <rect x="1" y="2" width="2" height="1" fill="currentColor" />
+                                <rect x="3" y="3" width="1" height="1" fill="currentColor" />
+                                <rect x="4" y="4" width="2" height="2" fill="currentColor" />
+                                <rect x="6" y="6" width="1" height="1" fill="currentColor" />
+                                <rect x="7" y="7" width="2" height="1" fill="currentColor" />
+                                <rect x="1" y="7" width="2" height="1" fill="currentColor" />
+                                <rect x="3" y="6" width="1" height="1" fill="currentColor" />
+                                <rect x="6" y="3" width="1" height="1" fill="currentColor" />
+                                <rect x="7" y="2" width="2" height="1" fill="currentColor" />
+                                <rect x="8" y="1" width="1" height="3" fill="currentColor" />
+                                <rect x="8" y="6" width="1" height="3" fill="currentColor" />
+                              </svg>
+                            ) : (
+                              <svg width="10" height="10" viewBox="0 0 10 10" shapeRendering="crispEdges" aria-hidden="true">
+                                <rect x="2" y="2" width="6" height="1" fill="currentColor" />
+                                <rect x="7" y="1" width="1" height="3" fill="currentColor" />
+                                <rect x="1" y="3" width="1" height="3" fill="currentColor" />
+                                <rect x="2" y="7" width="6" height="1" fill="currentColor" />
+                                <rect x="2" y="6" width="1" height="3" fill="currentColor" />
+                                <rect x="8" y="4" width="1" height="3" fill="currentColor" />
+                                {modeNow === 'single_loop' && (
+                                  <rect x="4.5" y="4" width="1" height="2" fill="currentColor" />
+                                )}
+                              </svg>
+                            )}
+                            <span>{modeShortLabel}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div
                     className="top-deck-wing is-right"
                     style={{ cursor: 'pointer' }}
