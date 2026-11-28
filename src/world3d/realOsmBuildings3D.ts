@@ -240,26 +240,70 @@ export function createRealOsmBuildingStreamer3D(params: {
 
   const builtTiles = new Map<string, BuiltTileEntry>();
   let lastCenterKey = '';
+  let lastPx = 0;
+  let lastPz = 0;
+  let disposed = false;
 
-  const buildTileMesh = (tx: number, ty: number, key: string, buildings: RealOsmBuilding[]) => {
+  interface IncrementalTileJob {
+    tx: number;
+    ty: number;
+    key: string;
+    buildings: RealOsmBuilding[];
+    idx: number;
+    pos: number[];
+    norm: number[];
+    uv: number[];
+    col: number[];
+    tileColliders: OsmBuildingCollider[];
+    protectedAreas: ProtectedOsmAreas3D;
+  }
+
+  const pendingBuildQueue: { tx: number; ty: number; key: string }[] = [];
+  let activeJob: IncrementalTileJob | null = null;
+  let buildRafId: number | null = null;
+
+  const MAX_BUILDINGS_PER_TILE_3D = 420;
+
+  const finalizeTileJob = (job: IncrementalTileJob) => {
+    if (job.pos.length === 0) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(job.pos, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(job.norm, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(job.uv, 2));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(job.col, 3));
+    geo.computeBoundingSphere();
+
+    const mesh = new THREE.Mesh(geo, getSharedOsmFacadeMaterial());
+    mesh.name = `OsmTile_${job.tx}_${job.ty}`;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+
+    const prev = builtTiles.get(job.key);
+    if (prev) {
+      group.remove(prev.mesh);
+      prev.mesh.geometry.dispose();
+    }
+    builtTiles.set(job.key, { key: job.key, mesh, colliders: job.tileColliders });
+  };
+
+  const stepActiveTileJob = (job: IncrementalTileJob, budgetMs: number): boolean => {
     const origin = getActiveGeoTerrainOrigin();
-    if (!origin || buildings.length === 0) return;
+    if (!origin) return true;
+    const { lots: protectedLots, parks: protectedParks, centers: protectedCenters } = job.protectedAreas;
+    const { buildings, pos, norm, uv, col, tileColliders } = job;
+    const startTs = performance.now();
 
-    const { lots: protectedLots, parks: protectedParks, centers: protectedCenters } = getProtectedAreas();
-    const pos: number[] = [];
-    const norm: number[] = [];
-    const uv: number[] = [];
-    const col: number[] = [];
-    const tileColliders: OsmBuildingCollider[] = [];
-
-    for (let bi = 0; bi < buildings.length; bi++) {
-      const b = buildings[bi];
+    while (job.idx < buildings.length && tileColliders.length < MAX_BUILDINGS_PER_TILE_3D) {
+      if ((job.idx & 7) === 0 && performance.now() - startTs >= budgetMs) {
+        return false; // Yield cleanly to keep 60fps & smooth WebAudio!
+      }
+      const b = buildings[job.idx++];
       const centerW = geoToWorld(b.centerLat, b.centerLng, origin);
       if (!centerW) continue;
       const bx = centerW.x;
       const bz = centerW.z;
 
-      // Skip buildings sitting in water, on roads/rails, inside parks, central spawn plaza, or colliding with enterable game buildings
       const groundY = getTerrainHeight3D(bx, bz);
       if (groundY <= WATER_LEVEL_3D + 0.25) continue;
       if (isNearAnyRoadOrRailForFlora3D(bx, bz, 4.5)) continue;
@@ -292,8 +336,7 @@ export function createRealOsmBuildingStreamer3D(params: {
       }
       if (blocked) continue;
 
-      // Project footprint vertices to 3D world XZ (deduping consecutive near-identical verts)
-      const pts: [number, number][] = [];
+      let pts: [number, number][] = [];
       let minX = Infinity;
       let maxX = -Infinity;
       let minZ = Infinity;
@@ -301,7 +344,7 @@ export function createRealOsmBuildingStreamer3D(params: {
       for (let i = 0; i < b.ring.length; i++) {
         const w = geoToWorld(b.ring[i][0], b.ring[i][1], origin);
         if (!w) continue;
-        if (pts.length > 0 && Math.hypot(w.x - pts[pts.length - 1][0], w.z - pts[pts.length - 1][1]) < 0.35) {
+        if (pts.length > 0 && Math.hypot(w.x - pts[pts.length - 1][0], w.z - pts[pts.length - 1][1]) < 0.45) {
           continue;
         }
         pts.push([w.x, w.z]);
@@ -310,40 +353,47 @@ export function createRealOsmBuildingStreamer3D(params: {
         if (w.z < minZ) minZ = w.z;
         if (w.z > maxZ) maxZ = w.z;
       }
-      if (pts.length >= 2 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.35) {
+      if (pts.length >= 2 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.45) {
         pts.pop();
       }
       if (pts.length < 3) continue;
 
       const spanX = maxX - minX;
       const spanZ = maxZ - minZ;
-      if (spanX < 1.2 || spanZ < 1.2 || spanX > 120 || spanZ > 120) continue;
+      if (spanX < 1.5 || spanZ < 1.5 || spanX > 120 || spanZ > 120) continue;
 
-      // Ensure NO vertex intrudes onto a procedural street
-      let hitsRoad = false;
-      for (let i = 0; i < pts.length; i++) {
-        if (isNearAnyRoadOrRailForFlora3D(pts[i][0], pts[i][1], 2.5)) {
-          hitsRoad = true;
-          break;
-        }
+      // Fast O(1) 4-corner bbox road clearance check (replaces 30+ per-vertex checks!)
+      if (
+        isNearAnyRoadOrRailForFlora3D(minX, minZ, 2.2) ||
+        isNearAnyRoadOrRailForFlora3D(maxX, minZ, 2.2) ||
+        isNearAnyRoadOrRailForFlora3D(maxX, maxZ, 2.2) ||
+        isNearAnyRoadOrRailForFlora3D(minX, maxZ, 2.2)
+      ) {
+        continue;
       }
-      if (hitsRoad) continue;
 
-      // Realistic playable 3D height scaled from real OSM meters (600m Ping An -> 60u skyline tower!)
+      // Simplify very complex 16..200-vertex malls into clean fast box footprints so triangulation is ALWAYS O(1)!
+      if (pts.length > 14) {
+        pts = [
+          [minX, minZ],
+          [maxX, minZ],
+          [maxX, maxZ],
+          [minX, maxZ],
+        ];
+      }
+
       const h3d = Math.max(3.4, Math.min(60, b.heightM * 0.145 + 1.4));
-      const baseY = groundY - 0.6; // slight skirt embedded into slope so zero floating walls!
+      const baseY = groundY - 0.6;
       const topY = groundY + h3d;
       const { wall, roof } = pickBuildingRgb(b);
 
-      // 1) Extrude vertical wall quads with UV tiled per floor (~3.2u per floor repeat)
       for (let i = 0; i < pts.length; i++) {
         const [x1, z1] = pts[i];
         const [x2, z2] = pts[(i + 1) % pts.length];
         const edgeLen = Math.hypot(x2 - x1, z2 - z1);
-        if (edgeLen < 0.2) continue;
+        if (edgeLen < 0.25) continue;
         const nx = (z2 - z1) / edgeLen;
         const nz = -(x2 - x1) / edgeLen;
-        // Directional shading lift so orthogonal facades read crisply like voxel architecture
         const shade = 0.86 + Math.max(0, nx * 0.65 + nz * 0.75) * 0.16;
         const wr = Math.min(1, wall[0] * shade);
         const wg = Math.min(1, wall[1] * shade);
@@ -352,20 +402,17 @@ export function createRealOsmBuildingStreamer3D(params: {
         const uSpan = Math.max(0.5, edgeLen / 5.5);
         const vSpan = Math.max(0.5, (topY - baseY) / 5.5);
 
-        // Tri 1: (x1,base), (x2,base), (x2,top)
         pos.push(x1, baseY, z1, x2, baseY, z2, x2, topY, z2);
         norm.push(nx, 0, nz, nx, 0, nz, nx, 0, nz);
         uv.push(0, 0, uSpan, 0, uSpan, vSpan);
         col.push(wr, wg, wb, wr, wg, wb, wr, wg, wb);
 
-        // Tri 2: (x1,base), (x2,top), (x1,top)
         pos.push(x1, baseY, z1, x2, topY, z2, x1, topY, z1);
         norm.push(nx, 0, nz, nx, 0, nz, nx, 0, nz);
         uv.push(0, 0, uSpan, vSpan, 0, vSpan);
         col.push(wr, wg, wb, wr, wg, wb, wr, wg, wb);
       }
 
-      // 2) Triangulate exact concave/convex roof cap
       const roofTris = triangulatePolygonXZ(pts);
       for (let t = 0; t < roofTris.length; t += 3) {
         const pA = pts[roofTris[t]];
@@ -373,7 +420,6 @@ export function createRealOsmBuildingStreamer3D(params: {
         const pC = pts[roofTris[t + 2]];
         pos.push(pA[0], topY, pA[1], pB[0], topY, pB[1], pC[0], topY, pC[1]);
         norm.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
-        // Sample clean solid neutral corner of facade texture so roof has zero window tiles!
         uv.push(0.02, 0.02, 0.02, 0.02, 0.02, 0.02);
         col.push(roof[0], roof[1], roof[2], roof[0], roof[1], roof[2], roof[0], roof[1], roof[2]);
       }
@@ -386,52 +432,54 @@ export function createRealOsmBuildingStreamer3D(params: {
         height: h3d,
       });
     }
-
-    if (pos.length === 0) return;
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
-    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    geo.computeBoundingSphere();
-
-    const mesh = new THREE.Mesh(geo, getSharedOsmFacadeMaterial());
-    mesh.name = `OsmTile_${tx}_${ty}`;
-    mesh.castShadow = false;
-    mesh.receiveShadow = true;
-    group.add(mesh);
-
-    const prev = builtTiles.get(key);
-    if (prev) {
-      group.remove(prev.mesh);
-      prev.mesh.geometry.dispose();
-    }
-    builtTiles.set(key, { key, mesh, colliders: tileColliders });
+    return true;
   };
-
-  let lastPx = 0;
-  let lastPz = 0;
-  let disposed = false;
-  const pendingBuildQueue: { tx: number; ty: number; key: string }[] = [];
-  let buildRafId: number | null = null;
 
   const pumpPendingBuilds = () => {
     buildRafId = null;
-    if (disposed || pendingBuildQueue.length === 0) return;
-    // Build at most ONE Z14 OSM tile mesh per animation frame so streaming NEVER stalls 3D FPS or WebAudio!
-    const next = pendingBuildQueue.shift()!;
-    const cached = getCachedRealBuildingTile(next.tx, next.ty);
-    if (cached) {
-      buildTileMesh(next.tx, next.ty, next.key, cached);
+    if (disposed) return;
+
+    if (!activeJob && pendingBuildQueue.length > 0) {
+      const next = pendingBuildQueue.shift()!;
+      const cached = getCachedRealBuildingTile(next.tx, next.ty);
+      if (cached && cached.length > 0) {
+        // Prioritize iconic taller towers first when a megacity tile exceeds 420 buildings
+        const prioritized =
+          cached.length > MAX_BUILDINGS_PER_TILE_3D
+            ? [...cached].sort((a, b) => b.heightM - a.heightM)
+            : cached;
+        activeJob = {
+          tx: next.tx,
+          ty: next.ty,
+          key: next.key,
+          buildings: prioritized,
+          idx: 0,
+          pos: [],
+          norm: [],
+          uv: [],
+          col: [],
+          tileColliders: [],
+          protectedAreas: getProtectedAreas(),
+        };
+      }
     }
-    if (pendingBuildQueue.length > 0 && typeof window !== 'undefined') {
+
+    if (activeJob) {
+      // Hard 3.5ms frame budget eliminates ALL 400-750ms city tile streaming spikes!
+      const done = stepActiveTileJob(activeJob, 3.5);
+      if (done) {
+        finalizeTileJob(activeJob);
+        activeJob = null;
+      }
+    }
+
+    if ((activeJob || pendingBuildQueue.length > 0) && typeof window !== 'undefined') {
       buildRafId = window.requestAnimationFrame(pumpPendingBuilds);
     }
   };
 
   const enqueueTileBuild = (tx: number, ty: number, key: string) => {
-    if (pendingBuildQueue.some((q) => q.key === key)) return;
+    if (activeJob?.key === key || pendingBuildQueue.some((q) => q.key === key)) return;
     pendingBuildQueue.push({ tx, ty, key });
     if (buildRafId === null && typeof window !== 'undefined') {
       buildRafId = window.requestAnimationFrame(pumpPendingBuilds);
@@ -489,6 +537,7 @@ export function createRealOsmBuildingStreamer3D(params: {
       window.cancelAnimationFrame(buildRafId);
       buildRafId = null;
     }
+    activeJob = null;
     pendingBuildQueue.length = 0;
     for (const entry of builtTiles.values()) {
       group.remove(entry.mesh);

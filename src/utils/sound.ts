@@ -603,6 +603,7 @@ class RetroSoundEngine {
   private ctx: AudioContext | null = null;
   private bgmBusGain: GainNode | null = null;
   private bgmBusInput: AudioNode | null = null;
+  private bgmVoiceBus: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
   private muted = false;
   private sfxVolume = 75;
@@ -679,7 +680,12 @@ class RetroSoundEngine {
 
   private ensureBgmBus(ctx: AudioContext): AudioNode {
     if (this.bgmBusInput && this.bgmBusGain) {
-      return this.bgmBusInput;
+      if (!this.bgmVoiceBus) {
+        this.bgmVoiceBus = ctx.createGain();
+        this.bgmVoiceBus.gain.value = 1.0;
+        this.bgmVoiceBus.connect(this.bgmBusInput);
+      }
+      return this.bgmVoiceBus;
     }
     // Warm GBA/NDS Mastering Chain for BGM: Highpass @ 65Hz -> Warm Lowpass @ 3200Hz -> Gentle Glue Compressor -> Master BGM Gain
     const hpf = ctx.createBiquadFilter();
@@ -699,16 +705,23 @@ class RetroSoundEngine {
     comp.release.value = 0.16;
 
     const masterGain = ctx.createGain();
-    masterGain.gain.value = this.computeTargetBgmGain();
+    const initialGain = this.computeTargetBgmGain();
+    masterGain.gain.value = initialGain;
+    this.lastBgmBusGain = initialGain;
 
+    const voiceBus = ctx.createGain();
+    voiceBus.gain.value = 1.0;
+
+    voiceBus.connect(hpf);
     hpf.connect(lpf);
     lpf.connect(comp);
     comp.connect(masterGain);
     masterGain.connect(ctx.destination);
 
+    this.bgmVoiceBus = voiceBus;
     this.bgmBusInput = hpf;
     this.bgmBusGain = masterGain;
-    return hpf;
+    return voiceBus;
   }
 
   private computeTargetBgmGain(): number {
@@ -754,21 +767,35 @@ class RetroSoundEngine {
 
   private triggerTrackCrossfade() {
     if (this.ctx && this.ctx.state === 'running') {
-      this.nextStepTime = this.ctx.currentTime + 0.08;
-      if (this.bgmBusGain) {
-        const now = this.ctx.currentTime;
-        const target = this.computeTargetBgmGain();
+      const now = this.ctx.currentTime;
+      // Cleanly fade out & sever the previous song's voice bus so pre-scheduled lookahead notes NEVER overlap with the new song!
+      if (this.bgmVoiceBus && this.bgmBusInput) {
+        const oldBus = this.bgmVoiceBus;
         try {
-          this.bgmBusGain.gain.cancelScheduledValues(now);
-          this.bgmBusGain.gain.setValueAtTime(
-            Math.max(0.0001, this.bgmBusGain.gain.value * 0.32),
-            now,
-          );
-          this.bgmBusGain.gain.linearRampToValueAtTime(target, now + 0.2);
+          oldBus.gain.cancelScheduledValues(now);
+          oldBus.gain.setValueAtTime(Math.max(0.0001, oldBus.gain.value), now);
+          oldBus.gain.linearRampToValueAtTime(0.0001, now + 0.045);
+          window.setTimeout(() => {
+            try {
+              oldBus.disconnect();
+            } catch {
+              // ignore
+            }
+          }, 90);
         } catch {
-          // ignore
+          try {
+            oldBus.disconnect();
+          } catch {
+            // ignore
+          }
         }
+        const freshBus = this.ctx.createGain();
+        freshBus.gain.setValueAtTime(0.0001, now);
+        freshBus.gain.linearRampToValueAtTime(1.0, now + 0.14);
+        freshBus.connect(this.bgmBusInput);
+        this.bgmVoiceBus = freshBus;
       }
+      this.nextStepTime = now + 0.06;
     }
   }
 
@@ -1519,9 +1546,8 @@ class RetroSoundEngine {
         this.nextStepTime = now + 0.04;
       }
 
-      // Schedule notes up to 480ms ahead on WebAudio's sample-accurate audio thread clock
-      // so occasional GPU/network/UI spikes NEVER starve or stutter BGM playback!
-      while (this.nextStepTime < now + 0.48) {
+      // Schedule notes up to 260ms ahead on WebAudio's sample-accurate audio thread clock
+      while (this.nextStepTime < now + 0.26) {
         const song = this.getActiveSongEntry();
         const t = song.track;
         const idx = this.bgmStep % t.lead.length;
@@ -1554,7 +1580,9 @@ class RetroSoundEngine {
           this.bgmStep = 0;
           this.songCycleCount += 1;
           const list = getRegionalBgmPlaylist(this.currentTrack);
-          if (this.songCycleCount >= 2 && list.length > 1 && this.bgmPlayMode !== 'single_loop') {
+          // Let each song play for ~90 seconds (min 4 full loops) instead of abruptly jumping tracks every ~20 seconds!
+          const minCyclesForFullPlay = Math.max(4, Math.ceil(90000 / Math.max(4000, t.lead.length * t.stepMs)));
+          if (this.songCycleCount >= minCyclesForFullPlay && list.length > 1 && this.bgmPlayMode !== 'single_loop') {
             this.songCycleCount = 0;
             this.shuffleHistory.push(this.currentSongIdx);
             if (this.shuffleHistory.length > 16) this.shuffleHistory.shift();
@@ -1709,6 +1737,44 @@ class RetroSoundEngine {
         break;
     }
   }
+  /** Cleanly tears down timers & AudioContext during Vite HMR so two BGM engines NEVER play simultaneously! */
+  disposeForHmr() {
+    this.stopBgmLoop();
+    this.stopActiveCry();
+    this.weatherAmbience.stop();
+    if (this.bgmVoiceBus) {
+      try {
+        this.bgmVoiceBus.disconnect();
+      } catch {
+        // ignore
+      }
+      this.bgmVoiceBus = null;
+    }
+    if (this.ctx) {
+      const prevCtx = this.ctx;
+      this.ctx = null;
+      this.bgmBusInput = null;
+      this.bgmBusGain = null;
+      void prevCtx.close().catch(() => {});
+    }
+  }
 }
 
+const SOUND_GLOBAL_KEY = '__POKE_SOUND_ENGINE_INSTANCE_V2__';
+const gSound = globalThis as unknown as Record<string, RetroSoundEngine | undefined>;
+if (gSound[SOUND_GLOBAL_KEY]) {
+  try {
+    gSound[SOUND_GLOBAL_KEY]!.disposeForHmr();
+  } catch {
+    // ignore
+  }
+}
 export const sound = new RetroSoundEngine();
+gSound[SOUND_GLOBAL_KEY] = sound;
+
+const viteHot = (import.meta as unknown as { hot?: { dispose: (cb: () => void) => void } }).hot;
+if (viteHot) {
+  viteHot.dispose(() => {
+    sound.disposeForHmr();
+  });
+}

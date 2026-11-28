@@ -1710,7 +1710,6 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   const [isInteracting, setIsInteracting] = useState(false);
   const [, setIconTick] = useState(0);
   const [demTick, setDemTick] = useState(0);
-  const [anomalyTick, setAnomalyTick] = useState(0);
 
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
@@ -1759,16 +1758,6 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
     lastY: 0,
     dragged: false,
   });
-
-  // Animate global weather anomalies ONLY when zoomed out to continental/global view (zero cost when zoomed into cities!)
-  useEffect(() => {
-    if (!geoOrigin || showLiveStreetTiles) return;
-    const minDim = Math.max(1, Math.min(canvasSize.w, canvasSize.h));
-    const curUpp = (150 / zoom) / minDim;
-    if (curUpp <= 14) return;
-    const id = window.setInterval(() => setAnomalyTick((t) => t + 1), 240);
-    return () => window.clearInterval(id);
-  }, [geoOrigin, showLiveStreetTiles, zoom, canvasSize.w, canvasSize.h]);
 
   // Match canvas internal resolution 1:1 with stage box so pixels & circles are NEVER stretched!
   useEffect(() => {
@@ -2160,7 +2149,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ctx.textBaseline = 'middle';
       ctx.fillText(heroOffTxt, ex, ey + 15);
     }
-  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick, anomalyTick, isInteracting, showLiveStreetTiles]);
+  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick, isInteracting, showLiveStreetTiles]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragRef.current.dragged) return;

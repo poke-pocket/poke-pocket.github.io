@@ -1623,14 +1623,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     syncFollowersView();
   }, [phase, activeSquadIdx, activeSquadIdsKey, maxFollowers, save.pets]);
 
-  // Dynamic BGM
+  // Dynamic BGM: only set hub/title track here; while 'playing', the single authoritative 3D zone tracker
+  // controls town/night/indoor/safezone/adventure/battle BGM so two callers never fight!
   useEffect(() => {
     if (phase !== 'playing') {
       sound.setTrack('town');
-      return;
     }
-    sound.setTrack(hud.inSafeZone ? 'safezone' : 'adventure');
-  }, [phase, hud.inSafeZone]);
+  }, [phase]);
   // Hub announcement marquee rotation (cycles across all rolling Kanto Daily editions!)
   useEffect(() => {
     if (phase !== 'hub') return;
