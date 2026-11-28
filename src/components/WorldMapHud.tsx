@@ -1664,29 +1664,36 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ? paintRealWorldMapTiles(ctx, W, H, cx, cz, unitsPerPx, toScreen, onIconReady)
       : false;
 
-    // Subtle world-grid lines ONLY in pixel map mode
+    // Subtle adaptive world-grid lines ONLY in pixel map mode (keeps ~50-115px screen spacing at ANY zoom!)
     if (!hasRealMapTiles) {
-      const gridWorldStep = zoom < 0.35 ? 100 : zoom < 0.85 ? 50 : zoom > 3 ? 10 : 25;
+      const targetWorldStep = Math.max(5, unitsPerPx * 64);
+      const mag = Math.pow(10, Math.floor(Math.log10(targetWorldStep)));
+      const norm = targetWorldStep / mag;
+      const gridWorldStep = (norm <= 1.5 ? 1 : norm <= 3.5 ? 2 : norm <= 7.5 ? 5 : 10) * mag;
+
       ctx.strokeStyle = 'rgba(22, 20, 32, 0.14)';
       ctx.lineWidth = 1;
       const minWx = cx - (W / 2) * unitsPerPx;
       const maxWx = cx + (W / 2) * unitsPerPx;
       const minWz = cz - (H / 2) * unitsPerPx;
       const maxWz = cz + (H / 2) * unitsPerPx;
-      for (let gx = Math.floor(minWx / gridWorldStep) * gridWorldStep; gx <= maxWx; gx += gridWorldStep) {
-        const sx = (gx - cx) / unitsPerPx + W / 2;
-        ctx.beginPath();
+      const startGx = Math.floor(minWx / gridWorldStep) * gridWorldStep;
+      const startGz = Math.floor(minWz / gridWorldStep) * gridWorldStep;
+      const maxLinesX = Math.min(48, Math.ceil((maxWx - startGx) / gridWorldStep) + 1);
+      const maxLinesZ = Math.min(48, Math.ceil((maxWz - startGz) / gridWorldStep) + 1);
+
+      ctx.beginPath();
+      for (let i = 0; i < maxLinesX; i++) {
+        const sx = (startGx + i * gridWorldStep - cx) / unitsPerPx + W / 2;
         ctx.moveTo(sx, 0);
         ctx.lineTo(sx, H);
-        ctx.stroke();
       }
-      for (let gz = Math.floor(minWz / gridWorldStep) * gridWorldStep; gz <= maxWz; gz += gridWorldStep) {
-        const sy = (gz - cz) / unitsPerPx + H / 2;
-        ctx.beginPath();
+      for (let i = 0; i < maxLinesZ; i++) {
+        const sy = (startGz + i * gridWorldStep - cz) / unitsPerPx + H / 2;
         ctx.moveTo(0, sy);
         ctx.lineTo(W, sy);
-        ctx.stroke();
       }
+      ctx.stroke();
     }
 
     paintRoadsAndTownsOnMap(ctx, toScreen, unitsPerPx, true, hasRealMapTiles);
