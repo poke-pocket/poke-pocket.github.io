@@ -1275,9 +1275,10 @@ function paintTopographicMap(
   const activeGeo = getActiveGeoTerrainOrigin();
   const eqUppDem = activeGeo ? unitsPerPx / (GEO_UNITS_PER_KM / 20) : unitsPerPx;
 
-  // Use Z11/Z9 ('detail') across the entire metropolitan zoom (`eqUppDem <= 10.5`) so coastlines & mountains stay razor-sharp!
+  // Use Z11 ('detail') across the entire metropolitan zoom (`eqUppDem <= 14.5`) so narrow bays & harbours
+  // (Shenzhen Bay, Victoria Harbour, Tolo Harbour) stay 100% crisp and complete!
   const demRes: GeoDemResolution =
-    eqUppDem > 95 ? 'global' : eqUppDem > 24 ? 'world' : eqUppDem > 10.5 ? 'macro' : 'detail';
+    eqUppDem > 95 ? 'global' : eqUppDem > 26 ? 'world' : eqUppDem > 14.5 ? 'macro' : 'detail';
 
   // Pre-sample a padded denoised elevation grid ONCE per frame in geo mode:
   // 1) 5x fewer DEM lookups per pixel (reads mE/mS/mW/mN straight from the grid!)

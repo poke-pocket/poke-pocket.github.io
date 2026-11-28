@@ -402,8 +402,16 @@ export function sampleRealElevationMeters(
 
 /**
  * Denoised real-Earth elevation sampler shared by 2D map (`WorldMapHud`) and 3D terrain (`sampleGeoTerrainHeight3D`).
- * Eliminates isolated SRTM Z11 0m/-1m radar void & urban road-puddle speckles inside coastal cities
- * (e.g. Shenzhen / Pearl River Delta / Shanghai / Tokyo) while preserving 100% of genuine oceans, bays & real lakes!
+ *
+ * CRITICAL GEOGRAPHIC FIX:
+ * Never use coarse Z5 (`macro`, ~5km/px) or Z9 (`mid`, ~305m/px) elevation to suppress Z11 water!
+ * Steep coastal mountains beside narrow harbours (e.g. Victoria Peak 552m beside Victoria Harbour,
+ * Shenzhen Bay, Tolo Harbour) bleed +5m..+94m into Z5/Z9 pixels and previously erased Victoria Harbour
+ * and chopped Shenzhen Bay into an artificial triangle.
+ *
+ * Instead, this uses pure Z11 two-ring morphological water coherence (~115m & ~345m):
+ * - Preserves 100% of real oceans, Shenzhen Bay, Victoria Harbour, Tolo Harbour, narrow straits (Lei Yue Mun) & large lakes.
+ * - Eliminates isolated 1-2px SRTM 0m radar speckles & scattered urban road puddles cleanly in both 2D & 3D!
  */
 export function sampleFilteredGeoElevationMeters(
   lat: number,
@@ -415,62 +423,77 @@ export function sampleFilteredGeoElevationMeters(
     sampleRealElevationMeters(lat, lng, 'macro') ??
     12;
 
-  // Deep ocean bathymetry (<= -3.0m) or clearly dry land (> 0.6m) needs zero filtering
-  if (mRaw > 0.6 || mRaw <= -3.0) return mRaw;
-  if (demRes !== 'detail' && demRes !== 'mid') return mRaw;
+  // Deep ocean bathymetry (<= -2.5m) or clearly dry land (> 0.6m) needs zero filtering
+  if (mRaw > 0.6 || mRaw <= -2.5) return mRaw;
+  if (demRes !== 'detail') return mRaw;
 
-  const mMid = sampleRealElevationMeters(lat, lng, 'mid');
-  const mMacro = sampleRealElevationMeters(lat, lng, 'macro');
-  const uDens = sampleUrbanClusterDensity(lat, lng);
+  // Reclaimed low coastal streets (+0.35m .. +0.60m) are dry land, not ocean
+  if (mRaw > 0.35) return 0.9;
 
-  // 1. Inland SRTM polder noise where Z5 coarse macro elevation is clearly above sea level
-  if (mMacro !== null && mMacro > 2.2 && mRaw > -2.0) {
-    return Math.max(2.2, mMacro * 0.6);
-  }
-
-  // 2. Inside metropolitan built-up zones (Shenzhen / Shanghai / Guangzhou / Tokyo...):
-  //    Z9 (~305m) geological DEM is clean of 76m SRTM building/road radar dropouts.
-  //    If Z9 clearly indicates dry urban terrain (> 1.4m), suppress noisy Z11 dips back to dry ground!
-  if (uDens > 0.06 && mMid !== null && mMid > 1.4 && mRaw > -2.6) {
-    return Math.max(2.0, mMid);
-  }
-
-  // 3. Morphological water-coherence filter on 8 surrounding Z11 samples (~130m radius):
-  //    - Real bays, oceans & lakes (>300m wide) have a coherent contiguous body of water neighbors (>= 5/8 in cities, >= 4/8 rural).
-  //    - Isolated 1-3px SRTM speckles / noisy scattered puddles along city streets fail coherence and heal smoothly to dry land!
-  if (demRes === 'detail' && mRaw > -2.2) {
-    const dLat = 0.0012; // ~133m
-    const dLng = 0.0013; // ~133m
-    const offsets: [number, number][] = [
-      [dLat, 0],
-      [-dLat, 0],
-      [0, dLng],
-      [0, -dLng],
-      [dLat, dLng],
-      [dLat, -dLng],
-      [-dLat, dLng],
-      [-dLat, -dLng],
-    ];
-    let waterCount = 0;
-    let drySum = 0;
-    let dryCount = 0;
-    for (let i = 0; i < offsets.length; i++) {
-      const nb = sampleRealElevationMeters(lat + offsets[i][0], lng + offsets[i][1], 'detail');
-      if (nb !== null && nb <= 0.45) {
-        waterCount++;
-      } else if (nb !== null && nb > 0.6) {
-        drySum += nb;
-        dryCount++;
-      }
-    }
-    const minCoherent = uDens > 0.06 ? 5 : 4;
-    if (waterCount < minCoherent) {
-      const avgDry = dryCount > 0 ? drySum / dryCount : 2.2;
-      return Math.max(1.8, mMid !== null && mMid > 0.8 ? mMid : avgDry);
+  // Ring 1 (~115m): require local water continuity (eliminates isolated 1px SRTM urban noise)
+  const d1 = 0.00105;
+  let w1 = 0;
+  let drySum = 0;
+  let dryCount = 0;
+  const ringOffsets: [number, number][] = [
+    [d1, 0],
+    [-d1, 0],
+    [0, d1],
+    [0, -d1],
+    [d1, d1],
+    [d1, -d1],
+    [-d1, d1],
+    [-d1, -d1],
+  ];
+  for (let i = 0; i < ringOffsets.length; i++) {
+    const nb = sampleRealElevationMeters(lat + ringOffsets[i][0], lng + ringOffsets[i][1], 'detail');
+    if (nb !== null && nb <= 0.35) {
+      w1++;
+    } else if (nb !== null && nb > 0.6) {
+      drySum += nb;
+      dryCount++;
     }
   }
+  if (w1 < 4) {
+    return Math.max(1.8, dryCount > 0 ? drySum / dryCount : 2.0);
+  }
 
-  return mRaw;
+  // Ring 2 (~345m): confirms a genuine bay / harbour / lake rather than a tiny scattered urban pond
+  const d2 = 0.0031;
+  let w2 = 0;
+  const r2Offsets: [number, number][] = [
+    [d2, 0],
+    [-d2, 0],
+    [0, d2],
+    [0, -d2],
+    [d2, d2],
+    [d2, -d2],
+    [-d2, d2],
+    [-d2, -d2],
+  ];
+  const r2Water = [false, false, false, false, false, false, false, false];
+  for (let i = 0; i < r2Offsets.length; i++) {
+    const nb = sampleRealElevationMeters(lat + r2Offsets[i][0], lng + r2Offsets[i][1], 'detail');
+    if (nb !== null && nb <= 0.35) {
+      w2++;
+      r2Water[i] = true;
+    }
+  }
+  if (w2 >= 4) return mRaw;
+
+  // Narrow deep coastal strait rescue (e.g. Lei Yue Mun ~450m wide):
+  // If core is solidly water (w1 >= 5) AND both opposite ends of an axis at ±345m are water, keep intact!
+  if (
+    w1 >= 5 &&
+    ((r2Water[0] && r2Water[1]) ||
+      (r2Water[2] && r2Water[3]) ||
+      (r2Water[4] && r2Water[7]) ||
+      (r2Water[5] && r2Water[6]))
+  ) {
+    return mRaw;
+  }
+
+  return Math.max(1.8, dryCount > 0 ? drySum / dryCount : 2.0);
 }
 
 /**
@@ -973,11 +996,8 @@ export function sampleGeoTerrainHeight3D(
   const countrysideRelief = preferMacro ? 0 : sculptCountrysideRelief3D(wx, wz) * ruralFactor;
   const namedHillLift = preferMacro ? 0 : sampleRegionalHillLift3D(geo.lat, geo.lng);
 
-  // True ocean/sea check using denoised elevation (100% 1:1 with 2D WorldMapHud — ZERO urban road puddles!)
-  const isTrueOcean =
-    meters !== null &&
-    meters <= 0.6 &&
-    (macroM === null || macroM <= 2.2 || meters <= -2.0);
+  // True ocean/bay/harbour check using pure Z11 two-ring denoised elevation (preserves Victoria Harbour & Shenzhen Bay 100%, ZERO urban speckles!)
+  const isTrueOcean = meters !== null && meters <= 0.6;
 
   let elev: number;
   if (meters === null) {
