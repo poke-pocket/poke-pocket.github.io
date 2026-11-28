@@ -40,6 +40,20 @@ export const HOTEL_TIERS: HotelTierMeta[] = [
   },
 ];
 
+export type ZoneAnomalyKind = 'cyclone' | 'storm' | 'legendary_clash';
+
+export interface ZoneBlockAnomaly {
+  kind: ZoneAnomalyKind;
+  mapBadge: string;
+  alertTag: string;
+  accentColor: string;
+  title: string;
+  travelBlockReason: string;
+  blockedTransports: string[];
+  duelSpecies?: [SpeciesId, SpeciesId];
+  spinDir?: 1 | -1;
+}
+
 export interface WorldZoneDef {
   id: string;
   name: string;
@@ -50,6 +64,7 @@ export interface WorldZoneDef {
   seasonTag: string;
   teaserText: string;
   teaserSpecies: SpeciesId[];
+  anomaly?: ZoneBlockAnomaly;
 }
 
 export const WORLD_ZONES: WorldZoneDef[] = [
@@ -66,58 +81,112 @@ export const WORLD_ZONES: WorldZoneDef[] = [
   },
   {
     id: 'southeast_asia',
-    name: '东南亚 · 翡翠雨林赛区',
-    subtitle: '第 2 赛季筹备中',
+    name: '翡翠雨林群岛',
+    subtitle: '超级气旋盘踞中',
     unlocked: false,
-    centerLat: 8.0,
-    centerLng: 104.0,
-    seasonTag: '即将开放',
-    teaserText: '热带雨林与珊瑚群岛，草/毒/虫系生态秘境即将解封！',
+    centerLat: 10.5,
+    centerLng: 105.5,
+    seasonTag: '气旋封锁',
+    teaserText: '热带雨林与珊瑚群岛密布，草、毒与虫系宝可梦栖息于此。',
     teaserSpecies: ['scyther', 'pinsir', 'exeggcute', 'oddish'],
+    anomaly: {
+      kind: 'cyclone',
+      mapBadge: '🌀 超级气旋',
+      alertTag: '红色气象预警',
+      accentColor: '#0c8599',
+      title: '超级热带气旋「翡翠风暴眼」',
+      travelBlockReason:
+        '强热带气旋持续盘踞在热带海域与雨林上空，强侧风与暴雨导致所有航班禁飞，跨区域铁路线也因路基积水全线临时停运。',
+      blockedTransports: ['✈ 民航禁飞', '🚄 铁路停运'],
+      spinDir: -1,
+    },
   },
   {
     id: 'europe',
-    name: '欧洲 · 古堡机械赛区',
-    subtitle: '第 2 赛季筹备中',
+    name: '古堡机械都市带',
+    subtitle: '传说精灵高空对峙中',
     unlocked: false,
     centerLat: 49.0,
     centerLng: 10.0,
-    seasonTag: '即将开放',
-    teaserText: '伦敦时钟钢塔、巴黎妖精沙龙、阿尔卑斯冰峰道馆筹建中！',
+    seasonTag: '传说激战',
+    teaserText: '时钟钢塔、妖精沙龙与高山冰峰交织的古老城市带。',
     teaserSpecies: ['clefairy', 'mrmime', 'magnemite', 'porygon'],
+    anomaly: {
+      kind: 'legendary_clash',
+      mapBadge: '⚡ 史诗对决',
+      alertTag: '高能禁飞区',
+      accentColor: '#6741d9',
+      title: '史诗宝可梦激战：超梦 VS 闪电鸟',
+      travelBlockReason:
+        '雷达侦测到「超梦」与「闪电鸟」正在高空爆发超能与雷电对撞，强烈电磁乱流彻底屏蔽导航信号，航线与跨洲列车均被迫紧急折返。',
+      blockedTransports: ['✈ 雷达失灵禁飞', '🚄 跨洲列车中断'],
+      duelSpecies: ['mewtwo', 'zapdos'],
+    },
   },
   {
     id: 'north_america',
-    name: '北美 · 摩天峡谷赛区',
-    subtitle: '第 3 赛季筹备中',
+    name: '摩天峡谷都市带',
+    subtitle: '特大雷暴带阻断中',
     unlocked: false,
     centerLat: 39.5,
     centerLng: -98.0,
-    seasonTag: '敬请期待',
-    teaserText: '纽约雷霆都会、大峡谷太古化石遗址与牛仔荒野赛区！',
+    seasonTag: '雷暴封锁',
+    teaserText: '摩天都会、大峡谷太古化石遗址与广袤荒野草原。',
     teaserSpecies: ['tauros', 'aerodactyl', 'electabuzz', 'rhyhorn'],
+    anomaly: {
+      kind: 'storm',
+      mapBadge: '⛈ 超级雷暴',
+      alertTag: '强雷暴管制',
+      accentColor: '#d9480f',
+      title: '特大超级雷暴带「雷鸣裂谷」',
+      travelBlockReason:
+        '罕见的超级单体雷暴群横亘内陆上空，持续强风切变与密集落雷覆盖高空走廊，越洋客机与大陆干线列车目前无法安全通行。',
+      blockedTransports: ['✈ 航线停飞', '🚄 干线铁路封闭'],
+    },
   },
   {
     id: 'nordic_volcano',
-    name: '冰岛与极地 · 极光熔岩区',
-    subtitle: '第 3 赛季筹备中',
+    name: '极光熔岩冰原',
+    subtitle: '双圣鸟冰火交锋中',
     unlocked: false,
     centerLat: 64.9,
     centerLng: -19.0,
-    seasonTag: '敬请期待',
-    teaserText: '冰火交织的传说圣地，急冻鸟与火焰鸟双圣鸟栖息带！',
+    seasonTag: '圣鸟激战',
+    teaserText: '冰川与活火山并存的传说秘境，罕见冰系与火系栖息地。',
     teaserSpecies: ['articuno', 'moltres', 'lapras', 'magmar'],
+    anomaly: {
+      kind: 'legendary_clash',
+      mapBadge: '🔥 圣鸟激战',
+      alertTag: '极地封航',
+      accentColor: '#c92a2a',
+      title: '双圣鸟激战：急冻鸟 VS 火焰鸟',
+      travelBlockReason:
+        '「急冻鸟」与「火焰鸟」正在极光火山带展开冰火对决，高空火山灰云柱叠加暴风雪迫使所有极地航班停飞、港口临时封航。',
+      blockedTransports: ['✈ 火山灰禁飞', '🚢 极地港口封航'],
+      duelSpecies: ['articuno', 'moltres'],
+    },
   },
   {
     id: 'oceania',
-    name: '大洋洲 · 珊瑚海湾赛区',
-    subtitle: '第 4 赛季筹备中',
+    name: '珊瑚海湾群岛',
+    subtitle: '双核海洋气旋肆虐中',
     unlocked: false,
     centerLat: -25.0,
     centerLng: 135.0,
-    seasonTag: '敬请期待',
-    teaserText: '碧海白沙与袋兽草原，南半球专属生态圈！',
+    seasonTag: '巨浪气旋',
+    teaserText: '碧海白沙与红土草原相连，栖息着独特的南半球精灵生态。',
     teaserSpecies: ['kangaskhan', 'horsea', 'staryu', 'vaporeon'],
+    anomaly: {
+      kind: 'cyclone',
+      mapBadge: '🌊 巨浪气旋',
+      alertTag: '海洋风暴预警',
+      accentColor: '#1971c2',
+      title: '南太平洋双核气旋「珊瑚狂涛」',
+      travelBlockReason:
+        '南半球双核海洋气旋正卷起十米巨浪与持续烈风，跨洋民航与远洋渡轮已全部暂停前往该海域的班次。',
+      blockedTransports: ['✈ 跨洋航班停飞', '🚢 远洋渡轮停航'],
+      spinDir: 1,
+    },
   },
 ];
 

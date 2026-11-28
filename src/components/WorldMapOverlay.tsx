@@ -166,6 +166,23 @@ function pixelizeTileImage(img: HTMLImageElement, z: number): HTMLCanvasElement 
   return c;
 }
 
+const ZONE_SPRITE_CACHE = new Map<SpeciesId, HTMLImageElement>();
+
+function getZoneSpriteImg(sp: SpeciesId): HTMLImageElement | null {
+  const cached = ZONE_SPRITE_CACHE.get(sp);
+  if (cached) return cached.complete && cached.naturalWidth > 0 ? cached : null;
+  const img = new Image();
+  img.src = SPECIES_CATALOG[sp].stageSprites.adult.static;
+  ZONE_SPRITE_CACHE.set(sp, img);
+  return null;
+}
+
+type MapHoverTarget =
+  | { kind: 'city'; id: string }
+  | { kind: 'home' }
+  | { kind: 'zone'; id: string }
+  | null;
+
 function requestTile(layer: TileLayerKind, z: number, x: number, y: number) {
   const key = `${layer}/${z}/${x}/${y}`;
   if (TILE_CACHE.has(key) || TILE_INFLIGHT.has(key)) return;
@@ -221,6 +238,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   );
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
   const [cardOpen, setCardOpen] = useState(true);
+  const [gymDetailOpen, setGymDetailOpen] = useState(false);
+  const [gymConfirmOpen, setGymConfirmOpen] = useState(false);
   const [selectedHotel, setSelectedHotel] = useState<HotelTierId>('inn');
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -235,6 +254,11 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       return WORLD_CITIES.indexOf(a) - WORLD_CITIES.indexOf(b);
     });
   }, [cityClickCounts]);
+
+  const settledCities = useMemo(
+    () => sortedCities.filter((c) => settledIds.includes(c.id)),
+    [sortedCities, settledIds],
+  );
 
   const recordCityClick = (cityId: string) => {
     onUpdateMeta((prev) => {
@@ -291,6 +315,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const arrowRef = useRef<HTMLDivElement | null>(null);
   const anchorGeoRef = useRef<{ mx: number; my: number } | null>(null);
+  const hoveredTargetRef = useRef<MapHoverTarget>(null);
   const camRef = useRef(cam);
   const setCam = (
     updater:
@@ -434,9 +459,25 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     }
   };
 
+  useEffect(() => {
+    setGymDetailOpen(false);
+    setGymConfirmOpen(false);
+  }, [selectedCityId, cardOpen]);
+
   useLayoutEffect(() => {
     if (showPopover) positionPopover();
-  }, [showPopover, selectedCityId, selectedZoneId, stageSize, viewedWeather, selectedHotel, effectiveHome.lat, effectiveHome.lng]);
+  }, [
+    showPopover,
+    selectedCityId,
+    selectedZoneId,
+    gymDetailOpen,
+    gymConfirmOpen,
+    stageSize,
+    viewedWeather,
+    selectedHotel,
+    effectiveHome.lat,
+    effectiveHome.lng,
+  ]);
 
   // Measure map stage
   useEffect(() => {
@@ -673,34 +714,196 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx.fillRect(0, 0, stageSize.w, stageSize.h);
       }
 
-      // 4. Locked Global Regions (shown clearly at regional/global zoom z <= 6.2)
-      if (c.zoom <= 6.2) {
+      // 4. Immersive In-World Weather Disasters & Legendary Clashes for Unreachable Regions
+      const hovered = hoveredTargetRef.current;
+      if (c.zoom <= 9.2) {
         for (const zone of WORLD_ZONES) {
           if (zone.unlocked) continue;
           const [sx, sy] = mercToScreen(lngToMercX(zone.centerLng), latToMercY(zone.centerLat), c);
-          if (sx < -120 || sx > stageSize.w + 120 || sy < -80 || sy > stageSize.h + 80) continue;
-          const drift = Math.sin(ts * 0.001 + zone.centerLng) * 4;
-          const cw = Math.round(76 + c.zoom * 8);
-          const ch = Math.round(28 + c.zoom * 3);
+          if (sx < -160 || sx > stageSize.w + 160 || sy < -140 || sy > stageSize.h + 140) continue;
 
-          ctx.fillStyle = 'rgba(235, 241, 250, 0.72)';
-          ctx.fillRect(Math.round(sx - cw / 2 + drift), Math.round(sy - ch / 2), cw, ch);
-          ctx.fillRect(
-            Math.round(sx - cw * 0.35 + drift),
-            Math.round(sy - ch * 0.85),
-            Math.round(cw * 0.7),
-            Math.round(ch * 0.55),
-          );
+          const anomaly = zone.anomaly;
+          const isZoneSelected = cardOpen && selectedZoneId === zone.id;
+          const isZoneHovered = hovered?.kind === 'zone' && hovered.id === zone.id;
+          const rad = Math.round(28 + c.zoom * 6.5);
+          const pulse = Math.sin(ts * 0.0045 + zone.centerLng) * 3;
 
-          ctx.fillStyle = 'rgba(22, 20, 32, 0.88)';
-          ctx.fillRect(Math.round(sx - 46), Math.round(sy - 10), 92, 20);
-          ctx.strokeStyle = '#ced4da';
-          ctx.lineWidth = 1.5;
-          ctx.strokeRect(Math.round(sx - 46), Math.round(sy - 10), 92, 20);
-          ctx.fillStyle = '#fffdf5';
+          if (anomaly?.kind === 'cyclone') {
+            // Swirling pixel tropical / oceanic cyclone with Coriolis spin & eyewall
+            const spin = (ts * 0.0022) * (anomaly.spinDir ?? -1);
+            ctx.save();
+            ctx.fillStyle = 'rgba(11, 44, 72, 0.34)';
+            ctx.beginPath();
+            ctx.arc(sx, sy, rad + 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#ffe066' : 'rgba(255, 135, 135, 0.72)';
+            ctx.lineWidth = isZoneHovered || isZoneSelected ? 2.5 : 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.lineDashOffset = -(ts * 0.025);
+            ctx.beginPath();
+            ctx.arc(sx, sy, rad + 6 + pulse * 0.4, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            const pxSz = Math.max(3, Math.round(3 + c.zoom * 0.35));
+            for (let arm = 0; arm < 4; arm++) {
+              const armBase = spin + (arm * Math.PI) / 2;
+              for (let step = 2; step <= 13; step++) {
+                const frac = step / 13;
+                const r = 6 + frac * (rad - 4);
+                const ang = armBase + frac * 2.55 * (anomaly.spinDir ?? -1);
+                const bx = Math.round((sx + Math.cos(ang) * r) / pxSz) * pxSz;
+                const by = Math.round((sy + Math.sin(ang) * r * 0.86) / pxSz) * pxSz;
+                ctx.fillStyle =
+                  step < 6
+                    ? 'rgba(235, 248, 255, 0.92)'
+                    : step < 10
+                      ? 'rgba(186, 224, 248, 0.82)'
+                      : 'rgba(130, 185, 220, 0.56)';
+                ctx.fillRect(bx - pxSz / 2, by - pxSz / 2, pxSz + 2, pxSz + 1);
+              }
+            }
+
+            // Calm cyclone eye + bright eyewall ring
+            ctx.fillStyle = '#0e2d4a';
+            ctx.fillRect(Math.round(sx - 4), Math.round(sy - 4), 8, 8);
+            ctx.strokeStyle = '#e7f5ff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(Math.round(sx - 5), Math.round(sy - 5), 10, 10);
+
+            // Occasional lightning spark in eyewall
+            if (Math.sin(ts * 0.011 + zone.centerLat) > 0.86) {
+              ctx.fillStyle = '#ffe066';
+              ctx.fillRect(Math.round(sx + 8), Math.round(sy - 10), 3, 6);
+              ctx.fillRect(Math.round(sx + 6), Math.round(sy - 5), 3, 5);
+            }
+            ctx.restore();
+          } else if (anomaly?.kind === 'storm') {
+            // Supercell thunderhead anvil + animated jagged pixel lightning
+            const drift = Math.sin(ts * 0.0014 + zone.centerLng) * 5;
+            const cw = Math.round(62 + c.zoom * 8);
+            const ch = Math.round(24 + c.zoom * 3.5);
+            ctx.save();
+            ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#ffe066' : 'rgba(255, 146, 43, 0.72)';
+            ctx.lineWidth = isZoneHovered || isZoneSelected ? 2.5 : 1.5;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            ctx.arc(sx, sy, rad + 4 + pulse * 0.35, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Layered pixel thunderclouds
+            ctx.fillStyle = 'rgba(28, 34, 48, 0.86)';
+            ctx.fillRect(Math.round(sx - cw / 2 + drift), Math.round(sy - ch / 2), cw, ch);
+            ctx.fillStyle = 'rgba(52, 62, 82, 0.9)';
+            ctx.fillRect(
+              Math.round(sx - cw * 0.38 + drift),
+              Math.round(sy - ch * 0.9),
+              Math.round(cw * 0.76),
+              Math.round(ch * 0.65),
+            );
+            ctx.fillStyle = 'rgba(134, 142, 150, 0.72)';
+            ctx.fillRect(
+              Math.round(sx - cw * 0.28 + drift),
+              Math.round(sy - ch * 0.9),
+              Math.round(cw * 0.56),
+              4,
+            );
+
+            // Periodic crackling pixel lightning bolt
+            const flashPhase = (ts * 0.004 + Math.abs(zone.centerLng)) % 3.2;
+            if (flashPhase < 0.55) {
+              const lx = Math.round(sx + drift * 0.4 + (flashPhase < 0.25 ? -8 : 10));
+              const ly = Math.round(sy + ch * 0.25);
+              ctx.fillStyle = '#ffe066';
+              ctx.fillRect(lx, ly, 4, 7);
+              ctx.fillRect(lx - 4, ly + 6, 6, 4);
+              ctx.fillRect(lx - 2, ly + 9, 4, 8);
+              ctx.fillStyle = '#fff9db';
+              ctx.fillRect(lx + 1, ly + 1, 2, 5);
+            }
+            ctx.restore();
+          } else if (anomaly?.kind === 'legendary_clash' && anomaly.duelSpecies) {
+            // Epic legendary Pokémon mid-air battle on the map!
+            const [leftSp, rightSp] = anomaly.duelSpecies;
+            const leftImg = getZoneSpriteImg(leftSp);
+            const rightImg = getZoneSpriteImg(rightSp);
+            const clashPulse = (ts * 0.032) % Math.max(24, rad);
+            const bobL = Math.sin(ts * 0.007) * 3;
+            const bobR = Math.sin(ts * 0.007 + Math.PI) * 3;
+            const lunge = Math.sin(ts * 0.014) * 2.5;
+            const isIceFire = leftSp === 'articuno';
+            const leftColor = isIceFire ? '#74c0fc' : '#cc5de8';
+            const rightColor = isIceFire ? '#ff6b35' : '#ffd43b';
+
+            ctx.save();
+            // Expanding shockwave ring
+            ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#ffe066' : 'rgba(255, 224, 102, 0.65)';
+            ctx.lineWidth = isZoneHovered || isZoneSelected ? 2.5 : 1.5;
+            ctx.beginPath();
+            ctx.arc(sx, sy, clashPulse + 8, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Battle arena danger boundary
+            ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#ffe066' : anomaly.accentColor;
+            ctx.lineWidth = isZoneHovered || isZoneSelected ? 2.5 : 1.5;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.arc(sx, sy, rad + 2, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Energy beam clash between the two epic Pokémon
+            ctx.fillStyle = leftColor;
+            ctx.fillRect(Math.round(sx - 18), Math.round(sy - 3), 18, 5);
+            ctx.fillStyle = rightColor;
+            ctx.fillRect(Math.round(sx), Math.round(sy - 3), 18, 5);
+
+            // Center clash explosion spark
+            const spk = 5 + Math.round(Math.abs(Math.sin(ts * 0.018)) * 4);
+            ctx.fillStyle = '#fff9db';
+            ctx.fillRect(Math.round(sx - spk / 2), Math.round(sy - spk / 2), spk, spk);
+            ctx.fillStyle = '#ffe066';
+            ctx.fillRect(Math.round(sx - spk), Math.round(sy - 1), spk * 2, 2);
+            ctx.fillRect(Math.round(sx - 1), Math.round(sy - spk), 2, spk * 2);
+
+            // Draw both pixel legendary sprites facing each other
+            const sprSz = Math.round(28 + Math.min(12, c.zoom * 1.4));
+            const offX = Math.round(18 + c.zoom * 1.3);
+            if (leftImg) {
+              ctx.save();
+              ctx.translate(Math.round(sx - offX + lunge), Math.round(sy + bobL));
+              ctx.scale(-1, 1);
+              ctx.drawImage(leftImg, -sprSz / 2, -sprSz / 2, sprSz, sprSz);
+              ctx.restore();
+            }
+            if (rightImg) {
+              ctx.drawImage(
+                rightImg,
+                Math.round(sx + offX - lunge - sprSz / 2),
+                Math.round(sy + bobR - sprSz / 2),
+                sprSz,
+                sprSz,
+              );
+            }
+            ctx.restore();
+          }
+
+          // Crisp anomaly badge pill below the live effect
+          const badgeText = anomaly ? anomaly.mapBadge : `⚠ ${zone.name}`;
           ctx.font = 'bold 10px monospace';
+          const bw = Math.max(76, Math.round(ctx.measureText(badgeText).width + 12));
+          const bx = Math.round(sx - bw / 2);
+          const by = Math.round(sy + Math.min(34, rad * 0.62) + (isZoneHovered ? -2 : 0));
+          ctx.fillStyle = isZoneSelected ? '#ffe066' : isZoneHovered ? '#fff3bf' : 'rgba(18, 22, 34, 0.92)';
+          ctx.fillRect(bx, by, bw, 17);
+          ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#161420' : anomaly?.accentColor ?? '#ced4da';
+          ctx.lineWidth = isZoneHovered || isZoneSelected ? 2 : 1.5;
+          ctx.strokeRect(bx, by, bw, 17);
+          ctx.fillStyle = isZoneSelected || isZoneHovered ? '#161420' : '#fffdf5';
           ctx.textAlign = 'center';
-          ctx.fillText(`🔒 ${zone.name.split('·')[0].trim()}`, Math.round(sx), Math.round(sy + 4));
+          ctx.fillText(badgeText, Math.round(sx), by + 12);
         }
       }
 
@@ -726,49 +929,57 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       // 6. Blue GPS Home Beacon
       if (tour.homeCoords) {
         const [sx, sy] = mercToScreen(lngToMercX(tour.homeCoords.lng), latToMercY(tour.homeCoords.lat), c);
-        const pulse = 9 + Math.sin(ts * 0.005) * 3.5;
-        ctx.strokeStyle = 'rgba(77, 171, 247, 0.92)';
-        ctx.lineWidth = 2.5;
+        const isHomeHovered = hovered?.kind === 'home';
+        const pulse = (isHomeHovered ? 12 : 9) + Math.sin(ts * 0.005) * 3.5;
+        ctx.strokeStyle = isHomeHovered ? '#ffe066' : 'rgba(77, 171, 247, 0.92)';
+        ctx.lineWidth = isHomeHovered ? 3 : 2.5;
         ctx.beginPath();
         ctx.arc(sx, sy, pulse, 0, Math.PI * 2);
         ctx.stroke();
 
+        const hs = isHomeHovered ? 14 : 12;
         ctx.fillStyle = '#1c7ed6';
-        ctx.fillRect(Math.round(sx - 6), Math.round(sy - 6), 12, 12);
-        ctx.strokeStyle = '#fffdf5';
+        ctx.fillRect(Math.round(sx - hs / 2), Math.round(sy - hs / 2), hs, hs);
+        ctx.strokeStyle = isHomeHovered ? '#ffe066' : '#fffdf5';
         ctx.lineWidth = 2;
-        ctx.strokeRect(Math.round(sx - 6), Math.round(sy - 6), 12, 12);
+        ctx.strokeRect(Math.round(sx - hs / 2), Math.round(sy - hs / 2), hs, hs);
 
-        ctx.fillStyle = 'rgba(18, 24, 38, 0.92)';
+        ctx.fillStyle = isHomeHovered ? '#ffe066' : 'rgba(18, 24, 38, 0.92)';
         ctx.fillRect(Math.round(sx - 26), Math.round(sy + 9), 52, 16);
-        ctx.fillStyle = '#74c0fc';
+        if (isHomeHovered) {
+          ctx.strokeStyle = '#161420';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(Math.round(sx - 26), Math.round(sy + 9), 52, 16);
+        }
+        ctx.fillStyle = isHomeHovered ? '#161420' : '#74c0fc';
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
         ctx.fillText('🏠 老家', Math.round(sx), Math.round(sy + 21));
       }
 
-      // 7. Season-1 City Gym Pins
+      // 7. City Gym Pins (with crisp hover glow & lifted label feedback)
       for (const city of WORLD_CITIES) {
         const [sx, sy] = mercToScreen(lngToMercX(city.lng), latToMercY(city.lat), c);
         if (sx < -60 || sx > stageSize.w + 60 || sy < -60 || sy > stageSize.h + 60) continue;
         const isCurrent = activeHereCity?.id === city.id;
-        const isSelected = selectedCityId === city.id;
+        const isSelected = cardOpen && selectedCityId === city.id;
+        const isHovered = hovered?.kind === 'city' && hovered.id === city.id;
         const isCleared = tour.clearedCityGyms.includes(city.id);
 
-        if (isCurrent) {
-          const r = 11 + Math.sin(ts * 0.006) * 3;
-          ctx.strokeStyle = '#ffe066';
-          ctx.lineWidth = 2.5;
+        if (isCurrent || isHovered) {
+          const r = (isHovered ? 13 : 11) + Math.sin(ts * 0.006) * 2.5;
+          ctx.strokeStyle = isHovered ? '#ffffff' : '#ffe066';
+          ctx.lineWidth = isHovered ? 2.5 : 2;
           ctx.beginPath();
           ctx.arc(sx, sy, r, 0, Math.PI * 2);
           ctx.stroke();
         }
 
-        const sz = isSelected ? 14 : 11;
+        const sz = isSelected || isHovered ? 14 : 11;
         ctx.fillStyle = isCleared ? '#ffd43b' : city.accentColor;
         ctx.fillRect(Math.round(sx - sz / 2), Math.round(sy - sz / 2), sz, sz);
-        ctx.strokeStyle = isSelected ? '#ffffff' : '#161420';
-        ctx.lineWidth = isSelected ? 2.5 : 2;
+        ctx.strokeStyle = isSelected || isHovered ? '#ffffff' : '#161420';
+        ctx.lineWidth = isSelected || isHovered ? 2.5 : 2;
         ctx.strokeRect(Math.round(sx - sz / 2), Math.round(sy - sz / 2), sz, sz);
 
         if (isCleared) {
@@ -782,13 +993,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx.font = 'bold 11px monospace';
         const tw = ctx.measureText(lbl).width + 10;
         const lx = Math.round(sx - tw / 2);
-        const ly = Math.round(sy - sz / 2 - 21);
-        ctx.fillStyle = isSelected ? '#ffe066' : 'rgba(18, 22, 34, 0.9)';
+        const ly = Math.round(sy - sz / 2 - (isHovered ? 23 : 21));
+        ctx.fillStyle = isSelected ? '#ffe066' : isHovered ? '#fff3bf' : 'rgba(18, 22, 34, 0.9)';
         ctx.fillRect(lx, ly, tw, 16);
-        ctx.strokeStyle = '#161420';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = isHovered && !isSelected ? '#ffe066' : '#161420';
+        ctx.lineWidth = isHovered ? 2 : 1.5;
         ctx.strokeRect(lx, ly, tw, 16);
-        ctx.fillStyle = isSelected ? '#161420' : '#fffdf5';
+        ctx.fillStyle = isSelected || isHovered ? '#161420' : '#fffdf5';
         ctx.textAlign = 'center';
         ctx.fillText(lbl, Math.round(sx), ly + 12);
       }
@@ -841,7 +1052,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     };
     rafId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(rafId);
-  }, [stageSize, selectedCity, selectedCityId, tour, originPoint, flightAnim, activeHereCity]);
+  }, [stageSize, selectedCity, selectedCityId, selectedZoneId, cardOpen, tour, originPoint, flightAnim, activeHereCity]);
 
   // Real Browser GPS Geolocation Handler (3-stage waterfall: OS cached/network -> Hardware GNSS -> HTTPS IP fallback)
   const handleLocateGps = async () => {
@@ -1008,7 +1219,47 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     sound.play('error');
   };
 
-  // 60FPS Zero-Jank Multi-Touch Pinch + Pan Pointer Handlers
+  // Shared hit-tester for BOTH hover cursor/highlight and tap selection
+  const hitTestMapTarget = (sx: number, sy: number): MapHoverTarget => {
+    // 1. Unlocked cities (both marker square & name pill above it!)
+    let bestCity: WorldCityDef | null = null;
+    let bestD = 26;
+    for (const c of WORLD_CITIES) {
+      const [px, py] = mercToScreen(lngToMercX(c.lng), latToMercY(c.lat));
+      const inLabel = sx >= px - 34 && sx <= px + 34 && sy >= py - 32 && sy <= py - 6;
+      const dist = inLabel ? 0 : Math.hypot(sx - px, sy - py);
+      if (dist < bestD) {
+        bestD = dist;
+        bestCity = c;
+      }
+    }
+    if (bestCity) return { kind: 'city', id: bestCity.id };
+
+    // 2. Home Beacon (pin + '🏠 老家' label)
+    if (tour.homeCoords) {
+      const [px, py] = mercToScreen(lngToMercX(tour.homeCoords.lng), latToMercY(tour.homeCoords.lat));
+      const inHomeLbl = sx >= px - 28 && sx <= px + 28 && sy >= py + 6 && sy <= py + 28;
+      if (inHomeLbl || Math.hypot(sx - px, sy - py) < 22) {
+        return { kind: 'home' };
+      }
+    }
+
+    // 3. Unreachable Anomaly Regions (cyclone / storm / legendary clash)
+    if (camRef.current.zoom <= 9.2) {
+      const hitRad = Math.max(44, 28 + camRef.current.zoom * 5.8);
+      for (const z of WORLD_ZONES) {
+        if (z.unlocked) continue;
+        const [px, py] = mercToScreen(lngToMercX(z.centerLng), latToMercY(z.centerLat));
+        const inBadge = sx >= px - 48 && sx <= px + 48 && sy >= py + 12 && sy <= py + 56;
+        if (inBadge || Math.hypot(sx - px, sy - py) < hitRad) {
+          return { kind: 'zone', id: z.id };
+        }
+      }
+    }
+    return null;
+  };
+
+  // 60FPS Zero-Jank Multi-Touch Pinch + Pan + Hover Pointer Handlers
   const handleCanvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -1045,7 +1296,16 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   };
 
   const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!pointersRef.current.has(e.pointerId)) return;
+    // Passive hover hit-testing when not actively dragging or pinching
+    if (!pointersRef.current.has(e.pointerId)) {
+      if (!dragRef.current.active && !pinchStartRef.current && !flightAnim) {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const hit = hitTestMapTarget(e.clientX - rect.left, e.clientY - rect.top);
+        hoveredTargetRef.current = hit;
+        e.currentTarget.style.cursor = hit ? 'pointer' : 'grab';
+      }
+      return;
+    }
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (pointersRef.current.size === 2 && pinchStartRef.current) {
@@ -1074,7 +1334,10 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     if (!d.active) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
-    if (Math.hypot(dx, dy) > 5) d.moved = true;
+    if (Math.hypot(dx, dy) > 5) {
+      d.moved = true;
+      e.currentTarget.style.cursor = 'grabbing';
+    }
     const wp = worldPxAt(camRef.current.zoom);
     camRef.current = {
       ...camRef.current,
@@ -1082,6 +1345,11 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       my: Math.max(0.02, Math.min(0.98, d.baseMy - dy / wp)),
     };
     syncCamHudThrottled();
+  };
+
+  const handleCanvasPointerLeave = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    hoveredTargetRef.current = null;
+    e.currentTarget.style.cursor = 'grab';
   };
 
   const handleCanvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1113,57 +1381,39 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     const wasTap = d.active && !d.moved;
     d.active = false;
     setCam({ ...camRef.current });
-    if (!wasTap || flightAnim) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
+    const hit = hitTestMapTarget(sx, sy);
+    hoveredTargetRef.current = hit;
+    e.currentTarget.style.cursor = hit ? 'pointer' : 'grab';
 
-    // Hit-test unlocked cities
-    let hitCity: WorldCityDef | null = null;
-    let bestD = 26;
-    for (const c of WORLD_CITIES) {
-      const [px, py] = mercToScreen(lngToMercX(c.lng), latToMercY(c.lat));
-      const dist = Math.hypot(sx - px, sy - py);
-      if (dist < bestD) {
-        bestD = dist;
-        hitCity = c;
-      }
-    }
-    if (hitCity) {
+    if (!wasTap || flightAnim) return;
+
+    if (hit?.kind === 'city') {
       sound.play('cursor');
-      recordCityClick(hitCity.id);
-      setSelectedCityId(hitCity.id);
+      recordCityClick(hit.id);
+      setSelectedCityId(hit.id);
       setSelectedZoneId(null);
       setCardOpen(true);
       return;
     }
 
-    // Hit-test Home Beacon
-    if (tour.homeCoords) {
-      const [px, py] = mercToScreen(lngToMercX(tour.homeCoords.lng), latToMercY(tour.homeCoords.lat));
-      if (Math.hypot(sx - px, sy - py) < 24) {
-        sound.play('cursor');
-        setSelectedCityId(null);
-        setSelectedZoneId(null);
-        setCardOpen(true);
-        return;
-      }
+    if (hit?.kind === 'home') {
+      sound.play('cursor');
+      setSelectedCityId(null);
+      setSelectedZoneId(null);
+      setCardOpen(true);
+      return;
     }
 
-    // Hit-test Locked Global Zones
-    if (camRef.current.zoom <= 6.2) {
-      for (const z of WORLD_ZONES) {
-        if (z.unlocked) continue;
-        const [px, py] = mercToScreen(lngToMercX(z.centerLng), latToMercY(z.centerLat));
-        if (Math.hypot(sx - px, sy - py) < 52) {
-          sound.play('cursor');
-          setSelectedCityId(null);
-          setSelectedZoneId(z.id);
-          setCardOpen(true);
-          return;
-        }
-      }
+    if (hit?.kind === 'zone') {
+      sound.play('cursor');
+      setSelectedCityId(null);
+      setSelectedZoneId(hit.id);
+      setCardOpen(true);
+      return;
     }
 
     // Tapping empty map space dismisses the floating location card
@@ -1395,7 +1645,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           <span>返回</span>
         </button>
 
-        <div className="wt-city-chips">
+        <div className="wt-city-chips" title="老家与已买房定居的城市快捷传送栏">
           <button
             type="button"
             className={`wt-chip ${cardOpen && isViewingHome ? 'active' : ''}`}
@@ -1413,15 +1663,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           >
             🏠 老家
           </button>
-          {sortedCities.map((c) => {
-            const cleared = tour.clearedCityGyms.includes(c.id);
+          {settledCities.map((c) => {
             const isHere = activeHereCity?.id === c.id;
-            const isSettled = settledIds.includes(c.id);
             return (
               <button
                 key={c.id}
                 type="button"
-                className={`wt-chip ${cardOpen && selectedCityId === c.id ? 'active' : ''} ${isHere ? 'is-here' : ''} ${isSettled ? 'is-settled' : ''}`}
+                className={`wt-chip is-settled ${cardOpen && selectedCityId === c.id ? 'active' : ''} ${isHere ? 'is-here' : ''}`}
                 onClick={() => {
                   sound.play('cursor');
                   recordCityClick(c.id);
@@ -1435,8 +1683,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   }));
                 }}
               >
-                {isSettled ? '🏡' : isHere ? '📍' : cleared ? '👑' : ''}
-                {c.name}
+                🏡 {c.name}
               </button>
             );
           })}
@@ -1467,6 +1714,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             onPointerMove={handleCanvasPointerMove}
             onPointerUp={handleCanvasPointerUp}
             onPointerCancel={handleCanvasPointerUp}
+            onPointerLeave={handleCanvasPointerLeave}
             onDoubleClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               zoomAroundScreenPoint(e.clientX - rect.left, e.clientY - rect.top, 1.0);
@@ -1505,7 +1753,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           </div>
 
           <div className="wt-map-legend">
-            <span>S1 东亚巡礼</span>
+            <span>S1 城市巡礼</span>
             <em>道馆 {tour.clearedCityGyms.length}/{WORLD_CITIES.length}</em>
             <small>{layerBadge} · Z{cam.zoom.toFixed(1)}</small>
           </div>
@@ -1540,42 +1788,86 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             >
               <div ref={arrowRef} className="wt-popover-arrow" />
 
-              {selectedZone && !selectedZone.unlocked && (
-                <div className="wt-card">
-                  <div className="wt-card-head is-locked">
-                    <strong>🔒 {selectedZone.name}</strong>
-                    <div className="wt-card-head-right">
-                      <span>{selectedZone.seasonTag}</span>
-                      <button
-                        type="button"
-                        className="wt-card-close"
-                        aria-label="关闭卡片"
-                        onClick={() => {
-                          sound.play('cancel');
-                          setCardOpen(false);
-                        }}
-                      >
-                        ×
-                      </button>
+              {selectedZone && !selectedZone.unlocked && (() => {
+                const anomaly = selectedZone.anomaly;
+                const badgeIcon = anomaly ? anomaly.mapBadge.split(' ')[0] : '⚠';
+                return (
+                  <div className="wt-card">
+                    <div
+                      className="wt-card-head is-locked"
+                      style={anomaly ? { backgroundColor: anomaly.accentColor } : undefined}
+                    >
+                      <strong>{badgeIcon} {selectedZone.name}</strong>
+                      <div className="wt-card-head-right">
+                        <span>{anomaly?.alertTag ?? selectedZone.seasonTag}</span>
+                        <button
+                          type="button"
+                          className="wt-card-close"
+                          aria-label="关闭卡片"
+                          onClick={() => {
+                            sound.play('cancel');
+                            setCardOpen(false);
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                    <div className="wt-card-body scroll-y">
+                      {anomaly && (
+                        <div className="wt-anomaly-alert" style={{ borderColor: anomaly.accentColor }}>
+                          <div className="wt-anomaly-title">
+                            <strong>{anomaly.title}</strong>
+                          </div>
+                          <div className="wt-anomaly-pills">
+                            {anomaly.blockedTransports.map((t) => (
+                              <span key={t} className="wt-anomaly-pill">{t}</span>
+                            ))}
+                          </div>
+                          <p className="wt-anomaly-reason">{anomaly.travelBlockReason}</p>
+                        </div>
+                      )}
+
+                      {anomaly?.kind === 'legendary_clash' && anomaly.duelSpecies && (
+                        <div className="wt-duel-showcase">
+                          <div className="wt-duel-fighter">
+                            <img
+                              src={SPECIES_CATALOG[anomaly.duelSpecies[0]].stageSprites.adult.static}
+                              alt={SPECIES_CATALOG[anomaly.duelSpecies[0]].defaultName}
+                            />
+                            <span>{SPECIES_CATALOG[anomaly.duelSpecies[0]].defaultName}</span>
+                          </div>
+                          <em className="wt-duel-vs">VS</em>
+                          <div className="wt-duel-fighter">
+                            <img
+                              src={SPECIES_CATALOG[anomaly.duelSpecies[1]].stageSprites.adult.static}
+                              alt={SPECIES_CATALOG[anomaly.duelSpecies[1]].defaultName}
+                            />
+                            <span>{SPECIES_CATALOG[anomaly.duelSpecies[1]].defaultName}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <p className="wt-desc">{selectedZone.teaserText}</p>
+                      <div className="wt-sec-lbl">卫星侦测到的野生精灵</div>
+                      <div className="wt-poke-strip">
+                        {selectedZone.teaserSpecies.map((sp) => (
+                          <img
+                            key={sp}
+                            className="wt-poke-avatar"
+                            src={SPECIES_CATALOG[sp].stageSprites.baby.icon}
+                            alt={SPECIES_CATALOG[sp].defaultName}
+                            title={SPECIES_CATALOG[sp].defaultName}
+                          />
+                        ))}
+                      </div>
+                      <div className="wt-locked-note">
+                        📡 气象中心与航管局正持续监测，异象平息后将恢复航班与铁路通航。
+                      </div>
                     </div>
                   </div>
-              <div className="wt-card-body scroll-y">
-                <p className="wt-desc">{selectedZone.teaserText}</p>
-                <div className="wt-sec-lbl">预计栖息代表宝可梦</div>
-                <div className="wt-poke-strip">
-                  {selectedZone.teaserSpecies.map((sp) => (
-                    <div key={sp} className="wt-poke-chip">
-                      <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
-                      <span>{SPECIES_CATALOG[sp].defaultName}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="wt-locked-note">
-                  该赛区航线尚未开放，敬请期待后续赛季陆续解封！
-                </div>
-              </div>
-            </div>
-          )}
+                );
+              })()}
 
           {isViewingHome && (() => {
             const lat = effectiveHome.lat;
@@ -1625,10 +1917,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   <div className="wt-sec-lbl">家乡周边野生宝可梦</div>
                   <div className="wt-poke-strip">
                     {eco.wildPool.slice(0, 8).map((sp) => (
-                      <div key={sp} className="wt-poke-chip">
-                        <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
-                        <span>{SPECIES_CATALOG[sp].defaultName}</span>
-                      </div>
+                      <img
+                        key={sp}
+                        className="wt-poke-avatar"
+                        src={SPECIES_CATALOG[sp].stageSprites.baby.icon}
+                        alt={SPECIES_CATALOG[sp].defaultName}
+                        title={SPECIES_CATALOG[sp].defaultName}
+                      />
                     ))}
                   </div>
                 </div>
@@ -1655,12 +1950,34 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             return (
               <div className="wt-card">
                 <div className="wt-card-head" style={{ backgroundColor: selectedCity.accentColor }}>
-                  <strong>
-                    {isSettled ? '🏡' : '📍'} {selectedCity.name} ·{' '}
-                    {isSettled ? '定居据点' : isAtHomeCity ? '当前所在' : '城市据点'}
+                  <strong
+                    title={
+                      isSettled
+                        ? `${selectedCity.name}自有定居房产 · 永久免住宿费 · 异色概率 UP · 全队攻击 +12%`
+                        : isAtHomeCity
+                          ? '当前身处本城，免机票免房费，可直接挑战道馆或出城探索'
+                          : `${selectedCity.hotelNames[curTierMeta.id]} · ${curTierMeta.perkLabel}`
+                    }
+                  >
+                    {isSettled ? '🏡' : '📍'} {selectedCity.name}
                   </strong>
                   <div className="wt-card-head-right">
-                    <span>{selectedCity.country}</span>
+                    <span
+                      className={isFreeHomeStay ? 'is-home-tag' : isStayExpired ? 'is-expired-tag' : ''}
+                      title={
+                        isSettled
+                          ? '永久免住宿费 · 异色概率 UP · 全队攻击 +12%'
+                          : isAtHomeCity
+                            ? '当前身处本城，免机票免房费'
+                            : `${selectedCity.hotelNames[curTierMeta.id]} · ${curTierMeta.perkLabel}`
+                      }
+                    >
+                      {isSettled
+                        ? '永久定居'
+                        : isAtHomeCity
+                          ? '本城常驻'
+                          : `🏨 ${formatRemainingStay(tour.stayUntilTs, nowMs)}`}
+                    </span>
                     <button
                       type="button"
                       className="wt-card-close"
@@ -1676,28 +1993,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 </div>
 
                 <div className="wt-card-body scroll-y">
-                  <div className={`wt-stay-box ${isFreeHomeStay ? 'is-settled' : isStayExpired ? 'is-expired' : ''}`}>
-                    <div>
-                      <strong>
-                        {isSettled
-                          ? `🏡 ${selectedCity.name}自有定居房产`
-                          : isAtHomeCity
-                            ? `🏠 ${selectedCity.name} · 本城常驻据点`
-                            : `🏨 ${selectedCity.hotelNames[curTierMeta.id]}`}
-                      </strong>
-                      <small>
-                        {isSettled
-                          ? '永久免住宿费 · 异色概率 UP · 全队攻击 +12%'
-                          : isAtHomeCity
-                            ? '当前身处本城，免机票免房费，可直接挑战道馆或出城探索'
-                            : curTierMeta.perkLabel}
-                      </small>
-                    </div>
-                    <em>
-                      {isSettled ? '永久定居' : isAtHomeCity ? '本城常驻' : formatRemainingStay(tour.stayUntilTs, nowMs)}
-                    </em>
-                  </div>
-
                   {viewedWeather && (
                     <div
                       className="wt-weather-bar"
@@ -1713,20 +2008,112 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
                   <p className="wt-desc">{selectedCity.fieldEffect}</p>
 
-                  <div className="wt-gym-banner">
-                    <img
-                      src={SPECIES_CATALOG[selectedCity.gymBossSpecies].stageSprites.adult.static}
-                      alt={selectedCity.gymBossTitle}
-                    />
-                    <div>
-                      <strong>{selectedCity.gymName} {cleared ? '👑 已征服' : ''}</strong>
-                      <small>{selectedCity.gymLeaderName} · 王牌：{selectedCity.gymBossTitle}</small>
-                      <em>徽章：{selectedCity.gymBadgeName}</em>
+                  <div
+                    className={`wt-gym-card ${gymDetailOpen ? 'is-expanded' : ''} ${gymConfirmOpen ? 'is-confirming' : ''}`}
+                  >
+                    <div className="wt-gym-banner">
+                      <button
+                        type="button"
+                        className="wt-gym-info-btn"
+                        title="点击查看或收起道馆详情"
+                        onClick={() => {
+                          sound.play('cursor');
+                          setGymConfirmOpen(false);
+                          setGymDetailOpen((v) => !v);
+                        }}
+                      >
+                        <img
+                          src={SPECIES_CATALOG[selectedCity.gymBossSpecies].stageSprites.adult.static}
+                          alt={selectedCity.gymBossTitle}
+                        />
+                        <div className="wt-gym-text">
+                          <strong>
+                            {selectedCity.gymName} {cleared ? '👑' : ''}
+                            <i className="wt-gym-chevron">{gymDetailOpen ? '▴' : '▾'}</i>
+                          </strong>
+                          <small>{selectedCity.gymLeaderName} · 王牌：{selectedCity.gymBossTitle}</small>
+                          <em>徽章：{selectedCity.gymBadgeName}</em>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        className={`wt-gym-challenge-btn ${gymConfirmOpen ? 'is-armed' : ''}`}
+                        disabled={!isFreeHomeStay && isStayExpired}
+                        title={
+                          !isFreeHomeStay && isStayExpired
+                            ? '酒店住宿已到期，请先续住或返回家乡'
+                            : `挑战「${selectedCity.gymName}」`
+                        }
+                        aria-label={`挑战${selectedCity.gymName}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!isFreeHomeStay && isStayExpired) {
+                            sound.play('error');
+                            return;
+                          }
+                          sound.play('cursor');
+                          setGymDetailOpen(false);
+                          setGymConfirmOpen((v) => !v);
+                        }}
+                      >
+                        ⚔
+                      </button>
                     </div>
+
+                    {gymDetailOpen && (
+                      <div className="wt-gym-detail">
+                        <div className="wt-gym-detail-row">
+                          <span>馆主专精</span>
+                          <strong>
+                            {selectedCity.gymLeaderName} · {selectedCity.gymTypeLabel}
+                          </strong>
+                        </div>
+                        <div className="wt-gym-detail-row">
+                          <span>王牌宝可梦</span>
+                          <strong>{selectedCity.gymBossTitle}</strong>
+                        </div>
+                        <div className="wt-gym-detail-row">
+                          <span>胜利奖励</span>
+                          <strong>
+                            {selectedCity.gymBadgeName} + {selectedCity.rewardCoins} 币
+                            {cleared ? '（已征服）' : ''}
+                          </strong>
+                        </div>
+                        <p className="wt-gym-detail-note">{selectedCity.description}</p>
+                      </div>
+                    )}
+
+                    {gymConfirmOpen && (
+                      <div className="wt-gym-confirm">
+                        <span>确认挑战「{selectedCity.gymName}」(3D)？</span>
+                        <div className="wt-gym-confirm-ops">
+                          <button
+                            type="button"
+                            className="wt-gym-cancel-btn"
+                            onClick={() => {
+                              sound.play('cancel');
+                              setGymConfirmOpen(false);
+                            }}
+                          >
+                            取消
+                          </button>
+                          <button
+                            type="button"
+                            className="wt-gym-go-btn"
+                            onClick={() => {
+                              setGymConfirmOpen(false);
+                              handleLaunchFromCurrent(true);
+                            }}
+                          >
+                            ⚔ 确认挑战
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="wt-sec-lbl">
-                    本地区专属野生精灵
+                    本城野生精灵
                     {selectedCity.regionalSkinId && (
                       <em style={{ marginLeft: 6, fontStyle: 'normal', color: getSkinDef(selectedCity.regionalSkinId).rarityColor }}>
                         · 🏮限定色：{getSkinDef(selectedCity.regionalSkinId).name}
@@ -1735,23 +2122,18 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   </div>
                   <div className="wt-poke-strip">
                     {selectedCity.wildPool.map((sp) => (
-                      <div key={sp} className="wt-poke-chip">
-                        <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
-                        <span>{SPECIES_CATALOG[sp].defaultName}</span>
-                      </div>
+                      <img
+                        key={sp}
+                        className="wt-poke-avatar"
+                        src={SPECIES_CATALOG[sp].stageSprites.baby.icon}
+                        alt={SPECIES_CATALOG[sp].defaultName}
+                        title={SPECIES_CATALOG[sp].defaultName}
+                      />
                     ))}
                   </div>
                 </div>
 
                 <div className="wt-card-footer">
-                  <button
-                    type="button"
-                    className="wt-primary-btn is-gym"
-                    disabled={!isFreeHomeStay && isStayExpired}
-                    onClick={() => handleLaunchFromCurrent(true)}
-                  >
-                    ⚔ 挑战「{selectedCity.gymName}」(3D)
-                  </button>
                   <button
                     type="button"
                     className="wt-primary-btn"
@@ -1849,20 +2231,61 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     </div>
                   )}
 
-                  <div className="wt-gym-banner">
-                    <img
-                      src={SPECIES_CATALOG[selectedCity.gymBossSpecies].stageSprites.adult.static}
-                      alt={selectedCity.gymBossTitle}
-                    />
-                    <div>
-                      <strong>{selectedCity.gymName} {cleared ? '👑' : ''}</strong>
-                      <small>{selectedCity.gymTypeLabel} · {selectedCity.gymLeaderName}</small>
-                      <em>奖励：{selectedCity.gymBadgeName} + {selectedCity.rewardCoins} 币</em>
+                  <div className={`wt-gym-card ${gymDetailOpen ? 'is-expanded' : ''}`}>
+                    <div className="wt-gym-banner">
+                      <button
+                        type="button"
+                        className="wt-gym-info-btn"
+                        title="点击查看或收起道馆详情"
+                        onClick={() => {
+                          sound.play('cursor');
+                          setGymDetailOpen((v) => !v);
+                        }}
+                      >
+                        <img
+                          src={SPECIES_CATALOG[selectedCity.gymBossSpecies].stageSprites.adult.static}
+                          alt={selectedCity.gymBossTitle}
+                        />
+                        <div className="wt-gym-text">
+                          <strong>
+                            {selectedCity.gymName} {cleared ? '👑' : ''}
+                            <i className="wt-gym-chevron">{gymDetailOpen ? '▴' : '▾'}</i>
+                          </strong>
+                          <small>{selectedCity.gymTypeLabel} · {selectedCity.gymLeaderName}</small>
+                          <em>奖励：{selectedCity.gymBadgeName} + {selectedCity.rewardCoins} 币</em>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        className="wt-gym-challenge-btn is-remote"
+                        title="飞抵该城市后可挑战道馆"
+                        aria-label="飞抵后可挑战道馆"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          sound.play('error');
+                          showToast(`请先飞抵「${selectedCity.name}」后再挑战道馆！`);
+                        }}
+                      >
+                        ⚔
+                      </button>
                     </div>
+
+                    {gymDetailOpen && (
+                      <div className="wt-gym-detail">
+                        <div className="wt-gym-detail-row">
+                          <span>王牌宝可梦</span>
+                          <strong>{selectedCity.gymBossTitle}</strong>
+                        </div>
+                        <div className="wt-gym-detail-row">
+                          <span>场地效果</span>
+                          <strong>{selectedCity.fieldEffect}</strong>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="wt-sec-lbl">
-                    当地可捕获特色精灵
+                    本城野生精灵
                     {selectedCity.regionalSkinId && (
                       <em style={{ marginLeft: 6, fontStyle: 'normal', color: getSkinDef(selectedCity.regionalSkinId).rarityColor }}>
                         · 🏮限定色：{getSkinDef(selectedCity.regionalSkinId).name}
@@ -1871,10 +2294,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   </div>
                   <div className="wt-poke-strip">
                     {selectedCity.wildPool.map((sp) => (
-                      <div key={sp} className="wt-poke-chip">
-                        <img src={SPECIES_CATALOG[sp].stageSprites.baby.icon} alt={SPECIES_CATALOG[sp].defaultName} />
-                        <span>{SPECIES_CATALOG[sp].defaultName}</span>
-                      </div>
+                      <img
+                        key={sp}
+                        className="wt-poke-avatar"
+                        src={SPECIES_CATALOG[sp].stageSprites.baby.icon}
+                        alt={SPECIES_CATALOG[sp].defaultName}
+                        title={SPECIES_CATALOG[sp].defaultName}
+                      />
                     ))}
                   </div>
 

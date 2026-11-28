@@ -12,6 +12,13 @@
     padding-bottom: 3px;
   }
 
+  .wt-header .pkb-esc-btn,
+  .wt-gps-btn,
+  .wt-coin-pill,
+  .wt-chip {
+    height: 32px;
+  }
+
   .wt-status-pill {
     order: 4;
     width: 100%;
@@ -22,6 +29,14 @@
   .wt-header {
     padding: 5px 10px;
     flex-wrap: nowrap;
+  }
+
+  .wt-header .pkb-esc-btn,
+  .wt-gps-btn,
+  .wt-coin-pill,
+  .wt-chip {
+    height: 28px;
+    font-size: 11px;
   }
 
   .wt-city-chips {
