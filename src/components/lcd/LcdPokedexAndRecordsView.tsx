@@ -10,7 +10,7 @@ import { PixelIcon, PixelItemImg, PixelPetIcon, PixelPetPortrait, PixelPetSprite
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdPokedexAndRecordsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
-  const { achCategory, confirmReset, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, menuCursor, mode, onExitMode, onGoBack, onNavigateMode, onResetSave, onStartGame, pet, save, selectedDexSpecies, setAchCategory, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setPartyDetailTab, setPetActionMenuOpen, setSelectedDexSpecies, setSelectedPartyPetId } = ctx;
+  const { achCategory, confirmReset, dexCardOpen, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, menuCursor, mode, onExitMode, onGoBack, onNavigateMode, onResetSave, onStartGame, onToggleDexCard, pet, save, selectedDexSpecies, setAchCategory, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setPartyDetailTab, setPetActionMenuOpen, setSelectedDexSpecies, setSelectedPartyPetId } = ctx;
   return (
     <>
         {/* POKEDEX+ MULTI-CATEGORY COLLECTION ENCYCLOPEDIA (总览 | 宝可梦 | 招式 | 道具 | 历程) */}
@@ -485,16 +485,27 @@ export const LcdPokedexAndRecordsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx 
                     {dexDiscovered ? dexSpeciesMeta.title : '未发现'}
                   </span>
                 </span>
-                <button
-                  type="button"
-                  className="lcd-mini-close"
-                  onClick={() => {
-                    sound.play('cancel');
-                    onGoBack();
-                  }}
-                >
-                  返回
-                </button>
+                <div className="dex-head-actions">
+                  <button
+                    type="button"
+                    className={`dex-card-btn ${dexCardOpen ? 'is-active' : ''}`}
+                    onClick={() => onToggleDexCard?.(selectedDexSpecies, 'baby', dexDiscovered)}
+                    title={dexCardOpen ? '收起珍藏实体闪卡' : '展开 3D 实体全息珍藏卡'}
+                  >
+                    <PixelIcon name="sparkle" size={11} />
+                    <span>{dexCardOpen ? '收起卡片' : '珍藏卡'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="lcd-mini-close"
+                    onClick={() => {
+                      sound.play('cancel');
+                      onGoBack();
+                    }}
+                  >
+                    返回
+                  </button>
+                </div>
               </div>
 
               <div className="detail-stack">
@@ -569,7 +580,19 @@ export const LcdPokedexAndRecordsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx 
                     ).map((st, idx) => (
                       <React.Fragment key={st}>
                         {idx > 0 && <span className="evo-next">→</span>}
-                        <div className={`lcd-evo-node ${dexDiscovered ? 'reached' : 'locked'}`}>
+                        <div
+                          className={`lcd-evo-node is-card-clickable ${dexDiscovered ? 'reached' : 'locked'}`}
+                          role="button"
+                          tabIndex={0}
+                          title={`点击查看「${dexDiscovered ? dexSpeciesMeta.stageNames[st] : '???'}」实体珍藏闪卡`}
+                          onClick={() => onToggleDexCard?.(selectedDexSpecies, st, dexDiscovered, true)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onToggleDexCard?.(selectedDexSpecies, st, dexDiscovered, true);
+                            }
+                          }}
+                        >
                           <div className={dexDiscovered ? '' : 'silhouette-wrap'}>
                             <PixelPetSprite
                               species={selectedDexSpecies}

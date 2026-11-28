@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { SHELL_THEMES } from '../data/catalog';
 import type {
   AccessoryId,
@@ -8,6 +8,7 @@ import type {
   GachaBoxId,
   GamePrefs,
   GameSave,
+  GrowthStage,
   KeyBindings,
   LcdMode,
   PetRecord,
@@ -24,6 +25,7 @@ import type {
 } from '../utils/petEngine';
 import type { LiveRunTacticsBridge } from '../data/survivorsTactics';
 import { LcdScreen, type HomeIconActionId } from './LcdScreen';
+import { PokedexCollectibleCard } from './PokedexCollectibleCard';
 import { PixelIcon } from './PixelSprite';
 import { sound } from '../utils/sound';
 import { toggleDevMode, useDevMode } from '../utils/devMode';
@@ -227,6 +229,79 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
   const devToastTimerRef = useRef<number | null>(null);
   const devVibeTimerRef = useRef<number | null>(null);
 
+  // Pokédex Physical 3D Collectible Card Drawer State (Slides Handheld Left & Card In from Right!)
+  const [dexCard, setDexCard] = useState<{
+    species: SpeciesId;
+    stage: GrowthStage;
+    discovered: boolean;
+  } | null>(null);
+  const [dexCardClosing, setDexCardClosing] = useState(false);
+  const dexCardCloseTimerRef = useRef<number | null>(null);
+  const isDexCardActive = Boolean(dexCard && !dexCardClosing);
+
+  const closeDexCard = useCallback((silent = false) => {
+    setDexCard((prev) => {
+      if (!prev) return null;
+      if (!silent) sound.play('cancel');
+      setDexCardClosing(true);
+      if (dexCardCloseTimerRef.current !== null) {
+        window.clearTimeout(dexCardCloseTimerRef.current);
+      }
+      dexCardCloseTimerRef.current = window.setTimeout(() => {
+        dexCardCloseTimerRef.current = null;
+        setDexCard(null);
+        setDexCardClosing(false);
+      }, 370);
+      return prev;
+    });
+  }, []);
+
+  const handleToggleDexCard = useCallback(
+    (species: SpeciesId, stage: GrowthStage = 'baby', discovered = true, forceOpen = false) => {
+      if (dexCardCloseTimerRef.current !== null) {
+        window.clearTimeout(dexCardCloseTimerRef.current);
+        dexCardCloseTimerRef.current = null;
+      }
+      if (!forceOpen && dexCard && !dexCardClosing && dexCard.species === species && dexCard.stage === stage) {
+        closeDexCard(false);
+        return;
+      }
+      sound.play('confirm');
+      setDexCardClosing(false);
+      setDexCard({ species, stage, discovered });
+    },
+    [dexCard, dexCardClosing, closeDexCard],
+  );
+
+  // Automatically dismiss collectible card if user leaves Pokédex Detail view
+  useEffect(() => {
+    if (mode !== 'pokedex_detail' && dexCard) {
+      closeDexCard(true);
+    }
+  }, [mode, dexCard, closeDexCard]);
+
+  // Escape key dismisses collectible card cleanly before anything else
+  useEffect(() => {
+    if (!isDexCardActive) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        e.preventDefault();
+        closeDexCard(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [isDexCardActive, closeDexCard]);
+
+  useEffect(() => {
+    return () => {
+      if (dexCardCloseTimerRef.current !== null) {
+        window.clearTimeout(dexCardCloseTimerRef.current);
+      }
+    };
+  }, []);
+
   const handlePowerClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     const now = Date.now();
@@ -424,34 +499,110 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
       worldMapData={worldMapData}
       isFullscreen={isFullscreen}
       onToggleFullscreen={onToggleFullscreen}
+      dexCardOpen={isDexCardActive}
+      onToggleDexCard={handleToggleDexCard}
     />
   );
 
+  const cardNode = dexCard ? (
+    <PokedexCollectibleCard
+      species={dexCard.species}
+      stage={dexCard.stage}
+      discovered={dexCard.discovered}
+      closing={dexCardClosing}
+    />
+  ) : null;
+
+  const handleConsoleClickCapture = (e: React.MouseEvent) => {
+    if (!isDexCardActive) return;
+    e.stopPropagation();
+    e.preventDefault();
+    closeDexCard(false);
+  };
+
   if (!save.showShell) {
     return (
-      <div className="fullscreen-lcd-wrap">
-        <div className="fullscreen-lcd-stage">{lcdNode}</div>
+      <div
+        className={`handheld-card-duo-stage ${isDexCardActive ? 'is-card-open' : ''}`}
+        onClick={(e) => {
+          if (e.target === e.currentTarget && isDexCardActive) {
+            e.stopPropagation();
+            closeDexCard(false);
+          }
+        }}
+      >
+        <div className="handheld-slide-carrier is-fullscreen-carrier">
+          <div className="fullscreen-lcd-wrap">
+            <div
+              className="fullscreen-lcd-stage"
+              onClickCapture={handleConsoleClickCapture}
+              title={isDexCardActive ? '点击游戏机收起珍藏卡片' : undefined}
+            >
+              {lcdNode}
+            </div>
+          </div>
+        </div>
+        {cardNode}
       </div>
     );
   }
 
   return (
     <div
-      className="console-column handheld-3d-stage"
+      className={`handheld-card-duo-stage ${isDexCardActive ? 'is-card-open' : ''}`}
       onClick={(e) => {
-        if (e.target === e.currentTarget && onCloseHandheldTo3D) {
-          onCloseHandheldTo3D();
+        if (e.target === e.currentTarget) {
+          if (isDexCardActive) {
+            e.stopPropagation();
+            closeDexCard(false);
+          } else if (onCloseHandheldTo3D) {
+            onCloseHandheldTo3D();
+          }
         }
       }}
     >
       <div
-        ref={shellRef}
-        className={`handheld-shell is-3d-chassis ${draggingShell ? 'is-dragging-3d' : ''} ${devVibrating ? 'is-dev-vibrate' : ''}`}
-        onPointerDown={handleShellPointerDown}
-        onPointerMove={handleShellPointerMove}
-        onPointerUp={releaseShellDrag}
-        onPointerCancel={releaseShellDrag}
-        onDoubleClick={handleShellDoubleClick}
+        className="handheld-slide-carrier"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            if (isDexCardActive) {
+              e.stopPropagation();
+              closeDexCard(false);
+            } else if (onCloseHandheldTo3D) {
+              onCloseHandheldTo3D();
+            }
+          }
+        }}
+      >
+        <div
+          className="console-column handheld-3d-stage"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              if (isDexCardActive) {
+                e.stopPropagation();
+                closeDexCard(false);
+              } else if (onCloseHandheldTo3D) {
+                onCloseHandheldTo3D();
+              }
+            }
+          }}
+        >
+        <div
+          ref={shellRef}
+          className={`handheld-shell is-3d-chassis ${draggingShell ? 'is-dragging-3d' : ''} ${devVibrating ? 'is-dev-vibrate' : ''}`}
+          onClickCapture={handleConsoleClickCapture}
+          onPointerDown={(e) => {
+            if (isDexCardActive) return;
+            handleShellPointerDown(e);
+          }}
+          onPointerMove={handleShellPointerMove}
+          onPointerUp={releaseShellDrag}
+          onPointerCancel={releaseShellDrag}
+          onDoubleClick={(e) => {
+            if (isDexCardActive) return;
+            handleShellDoubleClick(e);
+          }}
+          title={isDexCardActive ? '点击游戏机收起珍藏卡片并居中' : undefined}
         style={
           {
             '--shell-body': theme.body,
@@ -660,6 +811,9 @@ export const HandheldConsole: React.FC<HandheldConsoleProps> = ({
           </div>
         </div>
       </div>
+      </div>
+      </div>
+      {cardNode}
     </div>
   );
 };

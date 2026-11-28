@@ -170,6 +170,13 @@ interface LcdScreenProps {
   worldMapData?: WorldMapData | null;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  dexCardOpen?: boolean;
+  onToggleDexCard?: (
+    species: SpeciesId,
+    stage?: import('../types/pet').GrowthStage,
+    discovered?: boolean,
+    forceOpen?: boolean,
+  ) => void;
 }
 
 const STAT_BAR_ROWS: {
@@ -248,6 +255,8 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
   worldMapData = null,
   isFullscreen = false,
   onToggleFullscreen,
+  dexCardOpen = false,
+  onToggleDexCard,
 }) => {
   const [wanderOffset, setWanderOffset] = useState(0);
   const [facingLeft, setFacingLeft] = useState(false);
@@ -548,7 +557,7 @@ export const LcdScreen: React.FC<LcdScreenProps> = ({
     }
   };
 
-  const lcdSubCtx = { STAT_BAR_ROWS, achCategory, bagTab, batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, confirmReleaseId, confirmReset, connectedGamepadName, detailReturnMode, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, feedbackSent, feedbackText, gachaBoxMeta, gachaPhase, gachaReleased, gachaResult, gachaTenResult, handleStartGacha, handleStartGachaTen, isFullscreen, keysSubTab, marketTab, menuCursor, mode, newsPhotoIdx, onAssignPetRoom, onBuyAccessory, onBuyFood, onBuyPokeball, onCloseHandheldTo3D, onDepositPet, onDepositPetsBatch, onDevGrantCoins99999, onDevGrantItems99, onDevGrantPokeballs99, onDevGrantStardust99999, onEquipAccessory, onExitMode, onFeedSquad, onGoBack: handleGoBack, onHealParty, onHealPet, onNavigateMode: navigateWithHistory, onQuickCarePet, onReleasePet, onReleasePetsBatch, onReleaseStoredPet, onReleaseStoredPetsBatch, onResetSave, onSelectFood, onStartGame, onSwitchPet, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdateSettings, onWithdrawPet, onWithdrawPetsBatch, openedEntryMode, openedFromBattle, partyBatchMode, partyBoxTab, partyDetailIsStored, partyDetailPet, partyDetailTab, partyGradeFilter, partySearch, partySortBy, pet, petActionMenuOpen, rebindingAction, releasedTenIds, save, selectedDexSpecies, selectedNewsEditionId, selectedNewsId, setAchCategory, setBagTab, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setFeedbackSent, setFeedbackText, setGachaPhase, setGachaReleased, setKeysSubTab, setMarketTab, setNewsPhotoIdx, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setRebindingAction, setReleasedTenIds, setSelectedDexSpecies, setSelectedNewsEditionId, setSelectedNewsId, setSelectedPartyPetId, setSettingsTab, setSquadPickerSlot, settingsTab, speciesMeta, squadPickerSlot, worldMapData };
+  const lcdSubCtx = { STAT_BAR_ROWS, achCategory, bagTab, batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, confirmReleaseId, confirmReset, connectedGamepadName, detailReturnMode, dexCardOpen, dexDetailTab, dexDiscovered, dexSpeciesMeta, dexTab, feedbackSent, feedbackText, gachaBoxMeta, gachaPhase, gachaReleased, gachaResult, gachaTenResult, handleStartGacha, handleStartGachaTen, isFullscreen, keysSubTab, marketTab, menuCursor, mode, newsPhotoIdx, onAssignPetRoom, onBuyAccessory, onBuyFood, onBuyPokeball, onCloseHandheldTo3D, onDepositPet, onDepositPetsBatch, onDevGrantCoins99999, onDevGrantItems99, onDevGrantPokeballs99, onDevGrantStardust99999, onEquipAccessory, onExitMode, onFeedSquad, onGoBack: handleGoBack, onHealParty, onHealPet, onNavigateMode: navigateWithHistory, onQuickCarePet, onReleasePet, onReleasePetsBatch, onReleaseStoredPet, onReleaseStoredPetsBatch, onResetSave, onSelectFood, onStartGame, onSwitchPet, onToggleDexCard, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdateSettings, onWithdrawPet, onWithdrawPetsBatch, openedEntryMode, openedFromBattle, partyBatchMode, partyBoxTab, partyDetailIsStored, partyDetailPet, partyDetailTab, partyGradeFilter, partySearch, partySortBy, pet, petActionMenuOpen, rebindingAction, releasedTenIds, save, selectedDexSpecies, selectedNewsEditionId, selectedNewsId, setAchCategory, setBagTab, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setConfirmReset, setDetailReturnMode, setDexDetailTab, setDexTab, setFeedbackSent, setFeedbackText, setGachaPhase, setGachaReleased, setKeysSubTab, setMarketTab, setNewsPhotoIdx, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setRebindingAction, setReleasedTenIds, setSelectedDexSpecies, setSelectedNewsEditionId, setSelectedNewsId, setSelectedPartyPetId, setSettingsTab, setSquadPickerSlot, settingsTab, speciesMeta, squadPickerSlot, worldMapData };
   return (
     <div
       className={`lcd-viewport ${pet.isSleeping ? 'is-night' : ''}`}
