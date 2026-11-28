@@ -901,6 +901,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx,
         zones: WORLD_ZONES,
         zoom: c.zoom,
+        camMx: c.mx,
+        camMy: c.my,
         worldPx: wp,
         stageW: stageSize.w,
         stageH: stageSize.h,
@@ -1248,13 +1250,17 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       }
     }
 
-    // 3. Unreachable Regional Anomaly Footprints (true irregular polygon hit-test!)
+    // 3. Unreachable Regional Anomaly Footprints (organic fluid weather field hit-test!)
     const hitZone = hitTestAnomalyZone(
       sx,
       sy,
       WORLD_ZONES,
       camRef.current.zoom,
+      camRef.current.mx,
+      camRef.current.my,
       worldPxAt(camRef.current.zoom),
+      stageSizeRef.current.w,
+      stageSizeRef.current.h,
       (lng, lat) => mercToScreen(lngToMercX(lng), latToMercY(lat)),
     );
     if (hitZone) {
