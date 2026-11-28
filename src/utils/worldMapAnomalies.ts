@@ -70,6 +70,8 @@ function fbm2(x: number, y: number): number {
 interface ZoneGeoField {
   zone: WorldZoneDef;
   poly: [number, number][];
+  polarBand?: { latMin: number; latMax: number };
+  crossesDateline: boolean;
   minLng: number;
   maxLng: number;
   minLat: number;
@@ -84,6 +86,25 @@ const GEO_FIELD_CACHE = new Map<string, ZoneGeoField>();
 function getZoneGeoField(zone: WorldZoneDef): ZoneGeoField {
   const cached = GEO_FIELD_CACHE.get(zone.id);
   if (cached) return cached;
+
+  if (zone.polarBand) {
+    const f: ZoneGeoField = {
+      zone,
+      poly: [],
+      polarBand: zone.polarBand,
+      crossesDateline: false,
+      minLng: -180,
+      maxLng: 180,
+      minLat: zone.polarBand.latMin,
+      maxLat: zone.polarBand.latMax,
+      spanLng: 360,
+      spanLat: Math.max(8, zone.polarBand.latMax - zone.polarBand.latMin),
+      seed: Math.abs(zone.centerLng * 0.31 + zone.centerLat * 0.73) + 17.5,
+    };
+    GEO_FIELD_CACHE.set(zone.id, f);
+    return f;
+  }
+
   const poly: [number, number][] =
     zone.regionPolygon && zone.regionPolygon.length >= 3
       ? zone.regionPolygon
@@ -106,6 +127,7 @@ function getZoneGeoField(zone: WorldZoneDef): ZoneGeoField {
   const f: ZoneGeoField = {
     zone,
     poly,
+    crossesDateline: maxLng > 180,
     minLng,
     maxLng,
     minLat,
@@ -153,9 +175,25 @@ function distToPolyEdge(x: number, y: number, poly: [number, number][]): number 
  * so the region boundary organically breaks into wispy tendrils & irregular weather fronts —
  * ZERO straight edges, ZERO circles!
  */
-function sampleOrganicRegionMask(lng: number, lat: number, f: ZoneGeoField, tSec: number): number {
-  const padLng = f.spanLng * 0.28 + 5;
-  const padLat = f.spanLat * 0.28 + 4;
+function sampleOrganicRegionMask(rawLng: number, lat: number, f: ZoneGeoField, tSec: number): number {
+  // Full 360-degree polar latitude band (e.g., Antarctica & Southern Ocean roaring-forties polar vortex!)
+  if (f.polarBand) {
+    const radLng = (rawLng * Math.PI) / 180;
+    // Periodic in longitude (uses cos/sin of longitude!) so there is ZERO seam at ±180°!
+    const wave =
+      (fbm2(Math.cos(radLng) * 2.4 + 11.3 + tSec * 0.04, Math.sin(radLng) * 2.4 - 7.1) - 0.5) * 12.0;
+    const edgeLat = f.polarBand.latMax + wave;
+    if (lat > edgeLat + 8) return 0;
+    if (lat <= edgeLat - 5) return 1;
+    const k = Math.max(0, Math.min(1, (edgeLat + 8 - lat) / 13));
+    return k * k * (3 - 2 * k);
+  }
+
+  // Handle dateline-crossing regions (like Pacific Ocean spanning 148°E -> 284°E / 76°W) seamlessly!
+  const lng = f.crossesDateline && rawLng < 0 ? rawLng + 360 : rawLng;
+
+  const padLng = Math.min(18, f.spanLng * 0.24 + 4);
+  const padLat = Math.min(14, f.spanLat * 0.24 + 4);
   if (
     lng < f.minLng - padLng ||
     lng > f.maxLng + padLng ||
@@ -165,23 +203,25 @@ function sampleOrganicRegionMask(lng: number, lat: number, f: ZoneGeoField, tSec
     return 0;
   }
 
-  // Domain-warp the boundary itself with drifting atmospheric noise!
+  // Domain-warp the boundary with drifting atmospheric noise (capped so large oceans don't spill into East Asia sanctuary!)
   const freq = 0.085;
-  const wx = (fbm2(lng * freq + f.seed + tSec * 0.06, lat * freq - tSec * 0.03) - 0.5) * (f.spanLng * 0.34);
-  const wy = (fbm2(lng * freq - f.seed + 31.7, lat * freq + tSec * 0.05) - 0.5) * (f.spanLat * 0.34);
+  const warpAmpLng = Math.min(13, f.spanLng * 0.28);
+  const warpAmpLat = Math.min(10, f.spanLat * 0.28);
+  const wx = (fbm2(lng * freq + f.seed + tSec * 0.06, lat * freq - tSec * 0.03) - 0.5) * warpAmpLng;
+  const wy = (fbm2(lng * freq - f.seed + 31.7, lat * freq + tSec * 0.05) - 0.5) * warpAmpLat;
   const qlng = lng + wx;
   const qlat = lat + wy;
 
   const inside = pointInPoly(qlng, qlat, f.poly);
   const edgeD = distToPolyEdge(qlng, qlat, f.poly);
-  const feather = Math.max(3.5, Math.min(f.spanLng, f.spanLat) * 0.32);
+  const feather = Math.max(3.2, Math.min(9.5, Math.min(f.spanLng, f.spanLat) * 0.28));
 
   if (inside) {
-    return Math.min(1, 0.45 + (edgeD / feather) * 0.65);
+    return Math.min(1, 0.48 + (edgeD / feather) * 0.62);
   }
-  if (edgeD < feather * 0.72) {
-    const k = 1 - edgeD / (feather * 0.72);
-    return k * k * 0.45;
+  if (edgeD < feather * 0.68) {
+    const k = 1 - edgeD / (feather * 0.68);
+    return k * k * 0.48;
   }
   return 0;
 }
@@ -284,8 +324,8 @@ function updateWeatherRaster(
   for (const z of zones) {
     if (z.unlocked || !z.anomaly) continue;
     const f = getZoneGeoField(z);
-    const padLng = f.spanLng * 0.28 + 5;
-    const padLat = f.spanLat * 0.28 + 4;
+    const padLng = f.polarBand ? 0 : Math.min(18, f.spanLng * 0.24 + 4);
+    const padLat = f.polarBand ? 12 : Math.min(14, f.spanLat * 0.24 + 4);
     const isHi = hoveredZoneId === z.id || (cardOpen && selectedZoneId === z.id);
     activeFields.push({
       f,
@@ -334,7 +374,8 @@ function updateWeatherRaster(
 
       for (let zi = 0; zi < rowZones.length; zi++) {
         const af = rowZones[zi];
-        if (lng < af.minLngPad || lng > af.maxLngPad) continue;
+        const testLng = af.f.crossesDateline && lng < 0 ? lng + 360 : lng;
+        if (!af.f.polarBand && (testLng < af.minLngPad || testLng > af.maxLngPad)) continue;
 
         const mask = sampleOrganicRegionMask(lng, lat, af.f, tSec);
         if (mask <= 0.02) continue;
@@ -349,13 +390,15 @@ function updateWeatherRaster(
           kind === 'legendary_clash'
             ? flavor === 'heat_sandstorm'
               ? 'heat_sandstorm'
-              : flavor === 'rain_storm'
-                ? 'rain_storm'
-                : flavor === 'electric_storm'
-                  ? 'electric_storm'
-                  : flavor === 'blizzard'
-                    ? 'blizzard'
-                    : 'volcano_blizzard'
+              : flavor === 'plateau_storm'
+                ? 'plateau_storm'
+                : flavor === 'rain_storm'
+                  ? 'rain_storm'
+                  : flavor === 'electric_storm'
+                    ? 'electric_storm'
+                    : flavor === 'blizzard'
+                      ? 'blizzard'
+                      : 'volcano_blizzard'
             : kind;
 
         if (mode === 'cyclone') {
@@ -394,32 +437,112 @@ function updateWeatherRaster(
             blendPixel(data, idx, r, g, b, Math.min(0.92, d * 0.92));
           }
         } else if (mode === 'sandstorm' || mode === 'heat_sandstorm') {
-          // Anisotropic stretched trade-wind desert dust plumes (flowing west-southwest)
-          const flowX = lng * 0.075 + tSec * 0.24;
-          const flowY = lat * 0.19 - tSec * 0.04;
-          const warp = (fbm2(flowX * 0.9 + seed, flowY * 0.85) - 0.5) * 2.4;
-          const dust = fbm3(flowX + warp * 0.75, flowY + warp * 0.45);
-          const streaks = vnoise(lng * 0.12 + tSec * 0.75, lat * 0.55 + warp * 0.6);
+          // High-contrast terracotta-umber haboob shadow + vivid swirling ochre-gold sand waves
+          // (stands out clearly even over bright desert satellite tiles!)
+          const flowX = lng * 0.08 + tSec * 0.25;
+          const flowY = lat * 0.19 - tSec * 0.045;
+          const warp = (fbm2(flowX * 0.9 + seed, flowY * 0.85) - 0.5) * 2.5;
+          const dust = fbm3(flowX + warp * 0.75, flowY + warp * 0.48);
+          const streaks = vnoise(lng * 0.13 + tSec * 0.82, lat * 0.58 + warp * 0.65);
 
-          const density = Math.max(0, (dust * 0.82 + streaks * 0.26 - 0.32) * mask * 1.55);
+          const density = Math.max(0, (dust * 0.8 + streaks * 0.28 - 0.25) * mask * 1.65);
           if (density > 0.04) {
             const d = Math.min(1, density);
             const qd = Math.ceil(d * 5) / 5;
-            let r = (182 + qd * 68) * af.lift;
-            let g = (118 + qd * 82) * af.lift;
-            let b = (44 + qd * 64) * af.lift;
+            // Rich burnt terracotta base -> luminous golden-ochre blowing dust crests
+            let r = (138 + qd * 110) * af.lift;
+            let g = (58 + qd * 124) * af.lift;
+            let b = (22 + qd * 62) * af.lift;
             if (mode === 'heat_sandstorm') {
-              // Blazing golden-crimson thermal core near the desert clash center
-              const core = Math.max(0, 1 - Math.hypot((lng - z.centerLng) * 0.075, (lat - z.centerLat) * 0.12));
-              if (core > 0.15) {
+              const core = Math.max(0, 1 - Math.hypot((lng - z.centerLng) * 0.072, (lat - z.centerLat) * 0.12));
+              if (core > 0.14) {
                 const ember = fbm2(lng * 0.22 - tSec * 0.4, lat * 0.22 + tSec * 0.35);
                 const heat = core * ember * 0.95;
                 r = r * (1 - heat) + 255 * heat;
-                g = g * (1 - heat) + (120 + ember * 115) * heat;
-                b = b * (1 - heat) + 38 * heat;
+                g = g * (1 - heat) + (116 + ember * 120) * heat;
+                b = b * (1 - heat) + 34 * heat;
               }
             }
-            blendPixel(data, idx, r, g, b, Math.min(0.84, d * 0.84));
+            blendPixel(data, idx, r, g, b, Math.min(0.88, d * 0.88));
+          }
+        } else if (mode === 'plateau_storm') {
+          // Northwest Plateau & Gobi: southern Kunlun/Tibetan snowy blizzard colliding with northern terracotta sandstorm!
+          const flowX = lng * 0.085 - tSec * 0.19;
+          const flowY = lat * 0.17 + tSec * 0.05;
+          const warp = (fbm2(flowX * 0.85 + seed, flowY * 0.85) - 0.5) * 2.3;
+          const cloud = fbm3(flowX + warp * 0.8, flowY + warp * 0.55);
+          const split =
+            (lat - 37.8) * 0.12 + (fbm2(lng * 0.11 + tSec * 0.16, lat * 0.14 - tSec * 0.1) - 0.5) * 1.6;
+          const sandMix = Math.max(0, Math.min(1, 0.5 + split * 0.8));
+
+          const density = Math.max(0, (cloud - 0.27) * mask * 1.68);
+          if (density > 0.04) {
+            const d = Math.min(1, density);
+            const qd = Math.ceil(d * 5) / 5;
+            const snowR = 166 + qd * 88;
+            const snowG = 212 + qd * 42;
+            const snowB = 248;
+            const sandR = 148 + qd * 102;
+            const sandG = 72 + qd * 116;
+            const sandB = 28 + qd * 60;
+            const r = (snowR * (1 - sandMix) + sandR * sandMix) * af.lift;
+            const g = (snowG * (1 - sandMix) + sandG * sandMix) * af.lift;
+            const b = (snowB * (1 - sandMix) + sandB * sandMix) * af.lift;
+            blendPixel(data, idx, r, g, b, Math.min(0.88, d * 0.88));
+          }
+        } else if (mode === 'ocean_maelstrom') {
+          // Sweeping marine frontal cloud bands & churning storm swells over the open oceans
+          const effLng = testLng;
+          const jetX = effLng * 0.055 - tSec * 0.17;
+          const jetY = lat * 0.11 + Math.sin(effLng * 0.05 + tSec * 0.18) * 0.7;
+          const wx = (fbm2(jetX * 0.85 + seed, jetY * 0.85) - 0.5) * 2.6;
+          const wy = (fbm2(jetX * 0.85 - seed + 19, jetY * 0.85 + tSec * 0.06) - 0.5) * 2.2;
+          const squall = fbm3(jetX + wx * 0.8, jetY + wy * 0.8);
+          const swell = vnoise(effLng * 0.18 - tSec * 0.55, lat * 0.36 + wy * 0.5);
+
+          const density = Math.max(0, (squall * 0.78 + swell * 0.24 - 0.35) * mask * 1.55);
+          if (density > 0.04) {
+            const d = Math.min(1, density);
+            const qd = Math.ceil(d * 5) / 5;
+            // Atmospheric deep storm-sea mist -> silver-white frontal wave crests
+            const r = (74 + qd * 154) * af.lift;
+            const g = (108 + qd * 130) * af.lift;
+            const b = (144 + qd * 104) * af.lift;
+            blendPixel(data, idx, r, g, b, Math.min(0.76, d * 0.76));
+          }
+        } else if (mode === 'polar_vortex') {
+          // Seamless 360° Antarctic polar vortex blizzard + shimmering Aurora Australis!
+          const radLng = (lng * Math.PI) / 180;
+          const cx = Math.cos(radLng);
+          const sx = Math.sin(radLng);
+          const jetRot = tSec * 0.16;
+          const rx = cx * Math.cos(jetRot) - sx * Math.sin(jetRot);
+          const ry = cx * Math.sin(jetRot) + sx * Math.cos(jetRot);
+          const latScale = (lat + 90) * 0.085;
+          const warp = (fbm2(rx * 2.6 + latScale, ry * 2.6 - latScale) - 0.5) * 1.8;
+          const vortex = fbm3(rx * 3.8 + warp, ry * 3.8 + latScale * 1.6 - warp * 0.6);
+
+          const density = Math.max(0, (vortex - 0.25) * mask * 1.65);
+          if (density > 0.04) {
+            const d = Math.min(1, density);
+            const qd = Math.ceil(d * 5) / 5;
+            blendPixel(
+              data,
+              idx,
+              (158 + qd * 96) * af.lift,
+              (210 + qd * 44) * af.lift,
+              252,
+              Math.min(0.86, d * 0.86),
+            );
+          }
+
+          // Subtle shimmering Southern Aurora Australis (emerald & violet) along 60°S..74°S
+          const aWave = Math.sin(radLng * 3 + tSec * 0.85 + warp * 2.2) * 3.5;
+          const aBand = Math.exp(-Math.pow((lat - (-66 + aWave)) * 0.28, 2));
+          const aShim = 0.5 + 0.5 * vnoise(rx * 8 + tSec * 0.9, ry * 8 - tSec * 0.7);
+          const aAlpha = aBand * aShim * mask * 0.52;
+          if (aAlpha > 0.04) {
+            blendPixel(data, idx, 88 * af.lift, 238 * af.lift, 198 * af.lift, aAlpha);
           }
         } else if (mode === 'storm' || mode === 'monsoon' || mode === 'rain_storm') {
           // Billowing multi-cell frontal squall / monsoon thunderclouds with dark rain bases & sunlit tops
@@ -608,11 +731,13 @@ export function hitTestAnomalyZone(
   if (zoom > 9.5) return null;
 
   // 1. Badge pills take priority so clicking a label always works
+  const camLng = mercXToLng(camMx);
   for (const zone of zones) {
     if (zone.unlocked || !zone.anomaly) continue;
-    const [cx, cy] = project(zone.centerLng, zone.centerLat);
+    const badgeLng = zone.polarBand ? camLng : zone.centerLng;
+    const [cx, cy] = project(badgeLng, zone.centerLat);
     const by = cy + (zone.anomaly.kind === 'legendary_clash' ? 20 : 10);
-    if (sx >= cx - 46 && sx <= cx + 46 && sy >= by - 2 && sy <= by + 18) {
+    if (sx >= cx - 48 && sx <= cx + 48 && sy >= by - 2 && sy <= by + 18) {
       return zone;
     }
   }
@@ -687,11 +812,13 @@ export function drawWorldMapAnomalies(params: {
   ctx.restore();
 
   // 2. Render crisp 60fps stochastic lightning flashes, epic legendary duels & compact map badges
+  const camLng = mercXToLng(camMx);
   for (const zone of zones) {
     if (zone.unlocked || !zone.anomaly) continue;
     const anomaly = zone.anomaly;
     const f = getZoneGeoField(zone);
-    const [cx, cy] = project(zone.centerLng, zone.centerLat);
+    const badgeLng = zone.polarBand ? camLng : zone.centerLng;
+    const [cx, cy] = project(badgeLng, zone.centerLat);
     if (cx < -160 || cx > stageW + 160 || cy < -140 || cy > stageH + 140) continue;
 
     const isSelected = cardOpen && selectedZoneId === zone.id;
@@ -700,10 +827,11 @@ export function drawWorldMapAnomalies(params: {
 
     ctx.save();
 
-    // Stochastic organic lightning flashes popping at varied spots inside storm / monsoon / electric fronts
+    // Stochastic organic lightning flashes popping at varied spots inside storm / monsoon / ocean squalls / electric fronts
     const hasLightning =
       anomaly.kind === 'storm' ||
       anomaly.kind === 'monsoon' ||
+      anomaly.kind === 'ocean_maelstrom' ||
       (anomaly.kind === 'legendary_clash' &&
         (anomaly.weatherFlavor === 'electric_storm' || anomaly.weatherFlavor === 'rain_storm'));
 
@@ -711,8 +839,8 @@ export function drawWorldMapAnomalies(params: {
       const cycle = (ts * 0.0023 + seed * 1.9) % 3.1;
       if (cycle < 0.34) {
         const slot = Math.floor(ts * 0.00075 + seed * 7);
-        const oLng = zone.centerLng + (vnoise(slot * 1.7, seed) - 0.5) * f.spanLng * 0.55;
-        const oLat = zone.centerLat + (vnoise(seed, slot * 2.1) - 0.5) * f.spanLat * 0.5;
+        const oLng = zone.centerLng + (vnoise(slot * 1.7, seed) - 0.5) * Math.min(40, f.spanLng * 0.5);
+        const oLat = zone.centerLat + (vnoise(seed, slot * 2.1) - 0.5) * Math.min(28, f.spanLat * 0.45);
         const [bx, by] = project(oLng, oLat);
         const glow = ctx.createRadialGradient(bx, by, 2, bx, by, 22);
         glow.addColorStop(0, 'rgba(255, 248, 200, 0.55)');
@@ -727,7 +855,7 @@ export function drawWorldMapAnomalies(params: {
           by - 4,
           18 + Math.min(14, zoom * 2.2),
           slot + Math.round(seed),
-          anomaly.kind === 'monsoon' ? '#a5d8ff' : '#ffe066',
+          anomaly.kind === 'monsoon' || anomaly.kind === 'ocean_maelstrom' ? '#a5d8ff' : '#ffe066',
         );
       }
     }
@@ -746,6 +874,7 @@ export function drawWorldMapAnomalies(params: {
         blizzard: ['#a5d8ff', '#4dabf7'],
         volcano_blizzard: ['#74c0fc', '#ff6b35'],
         heat_sandstorm: ['#ffd43b', '#ff595e'],
+        plateau_storm: ['#e8a54b', '#74c0fc'],
         rain_storm: ['#f783ac', '#51cf66'],
       };
       const [cL, cR] = beamColors[anomaly.weatherFlavor ?? 'electric_storm'];

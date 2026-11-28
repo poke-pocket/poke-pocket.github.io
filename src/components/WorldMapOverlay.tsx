@@ -386,7 +386,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     anchorGeoRef.current = { mx: lngToMercX(selectedCity.lng), my: latToMercY(selectedCity.lat) };
   } else if (selectedZone && !selectedZone.unlocked) {
     anchorGeoRef.current = {
-      mx: lngToMercX(selectedZone.centerLng),
+      mx: selectedZone.polarBand ? camRef.current.mx : lngToMercX(selectedZone.centerLng),
       my: latToMercY(selectedZone.centerLat),
     };
   } else {
@@ -1873,7 +1873,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                         ))}
                       </div>
                       <div className="wt-locked-note">
-                        📡 气象中心与航管局正持续监测，异象平息后将恢复航班与铁路通航。
+                        📡 联盟调查队正持续监测能量波动，待精灵情绪平息、异象消散后将恢复通航。
                       </div>
                     </div>
                   </div>
