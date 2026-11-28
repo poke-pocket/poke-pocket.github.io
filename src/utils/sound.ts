@@ -12,6 +12,7 @@ import {
   type BgmVoiceTimbre,
   type ChiptuneTrack,
 } from './bgmPlaylists';
+import { COMPOSED_REGIONAL_SONGS } from './bgmComposer';
 
 export { BGM_PLAY_MODE_LABELS };
 export type { BgmPlayMode, BgmPlayerState, BgmSongEntry, BgmTrackId };
@@ -56,9 +57,9 @@ type VoiceTimbre = BgmVoiceTimbre;
 type DrumHit = BgmDrumHit;
 
 // Complete chromatic note frequencies (Hz) with sharp & flat enharmonics
-const N: Record<string, number> = {
+export const BGM_NOTE_FREQS: Record<string, number> = {
   R: 0,
-  A2: 110.0, Bb2: 116.54, B2: 123.47,
+  G2: 98.0, Gs2: 103.83, Ab2: 103.83, A2: 110.0, Bb2: 116.54, B2: 123.47,
   C3: 130.81, Cs3: 138.59, Db3: 138.59, D3: 146.83, Ds3: 155.56, Eb3: 155.56, E3: 164.81,
   F3: 174.61, Fs3: 185.0, Gb3: 185.0, G3: 196.0, Gs3: 207.65, Ab3: 207.65, A3: 220.0, As3: 233.08, Bb3: 233.08, B3: 246.94,
   C4: 261.63, Cs4: 277.18, Db4: 277.18, D4: 293.66, Ds4: 311.13, Eb4: 311.13, E4: 329.63,
@@ -67,6 +68,7 @@ const N: Record<string, number> = {
   F5: 698.46, Fs5: 739.99, Gb5: 739.99, G5: 783.99, Gs5: 830.61, Ab5: 830.61, A5: 880.0, As5: 932.33, Bb5: 932.33, B5: 987.77,
   C6: 1046.5, Cs6: 1108.73, D6: 1174.66, Eb6: 1244.51, E6: 1318.51, F6: 1396.91, Fs6: 1479.98, G6: 1567.98,
 };
+const N = BGM_NOTE_FREQS;
 
 const POKEMON_CENTER_TRACK: ChiptuneTrack = {
   // Iconic warm D-Major Pokémon Center healing & rest melody
@@ -540,39 +542,55 @@ const TRACKS: Record<BgmTrackId, ChiptuneTrack> = {
 const BGM_MODE_STORAGE_KEY = 'poke_pocket_bgm_play_mode_v1';
 
 const REGIONAL_PLAYLISTS: Record<Exclude<BgmTrackId, 'safezone'>, BgmSongEntry[]> = {
-  hub: [{ id: 'hub_prelude', title: BGM_TRACK_LABELS.hub, track: TRACKS.hub }, ...EXTRA_REGIONAL_SONGS.hub],
-  town: [{ id: 'town_stroll', title: BGM_TRACK_LABELS.town, track: TRACKS.town }, ...EXTRA_REGIONAL_SONGS.town],
+  hub: [
+    { id: 'hub_prelude', title: BGM_TRACK_LABELS.hub, track: TRACKS.hub },
+    ...EXTRA_REGIONAL_SONGS.hub,
+    ...COMPOSED_REGIONAL_SONGS.hub,
+  ],
+  town: [
+    { id: 'town_stroll', title: BGM_TRACK_LABELS.town, track: TRACKS.town },
+    ...EXTRA_REGIONAL_SONGS.town,
+    ...COMPOSED_REGIONAL_SONGS.town,
+  ],
   town_night: [
     { id: 'town_night_nocturne', title: BGM_TRACK_LABELS.town_night, track: TRACKS.town_night },
     ...EXTRA_REGIONAL_SONGS.town_night,
+    ...COMPOSED_REGIONAL_SONGS.town_night,
   ],
   adventure: [
     { id: 'adventure_route', title: BGM_TRACK_LABELS.adventure, track: TRACKS.adventure },
     ...EXTRA_REGIONAL_SONGS.adventure,
+    ...COMPOSED_REGIONAL_SONGS.adventure,
   ],
   pokemon_center: [
     { id: 'pc_classic', title: BGM_TRACK_LABELS.pokemon_center, track: TRACKS.pokemon_center },
     ...EXTRA_REGIONAL_SONGS.pokemon_center,
+    ...COMPOSED_REGIONAL_SONGS.pokemon_center,
   ],
   poke_mart: [
     { id: 'mart_swing', title: BGM_TRACK_LABELS.poke_mart, track: TRACKS.poke_mart },
     ...EXTRA_REGIONAL_SONGS.poke_mart,
+    ...COMPOSED_REGIONAL_SONGS.poke_mart,
   ],
   restaurant: [
     { id: 'rest_bossa', title: BGM_TRACK_LABELS.restaurant, track: TRACKS.restaurant },
     ...EXTRA_REGIONAL_SONGS.restaurant,
+    ...COMPOSED_REGIONAL_SONGS.restaurant,
   ],
   hotel: [
     { id: 'hotel_serenade', title: BGM_TRACK_LABELS.hotel, track: TRACKS.hotel },
     ...EXTRA_REGIONAL_SONGS.hotel,
+    ...COMPOSED_REGIONAL_SONGS.hotel,
   ],
   house: [
     { id: 'house_home', title: BGM_TRACK_LABELS.house, track: TRACKS.house },
     ...EXTRA_REGIONAL_SONGS.house,
+    ...COMPOSED_REGIONAL_SONGS.house,
   ],
   battle: [
     { id: 'battle_rival', title: BGM_TRACK_LABELS.battle, track: TRACKS.battle },
     ...EXTRA_REGIONAL_SONGS.battle,
+    ...COMPOSED_REGIONAL_SONGS.battle,
   ],
 };
 

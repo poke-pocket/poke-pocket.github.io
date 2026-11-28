@@ -25,7 +25,7 @@ import { DEFAULT_ANNOUNCEMENTS } from './MetaOverlays';
 import { PokeballShutterOverlay, dismissInitialBootPokeballCurtain, setBootCurtainProgress, type PokeballShutterState } from './PokeballShutterOverlay';
 import { type LiveMapSnapshot, type ScenicMountainSpot } from './WorldMapHud';
 import type { SurvivorsResultPayload } from '../utils/petEngine';
-import { sound, type BgmPlayerState, type BgmTrackId } from '../utils/sound';
+import { getRegionalBgmPlaylist, sound, type BgmPlayerState, type BgmTrackId } from '../utils/sound';
 import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
 import { buildInterTownRoadNetwork3D, buildProceduralTown3D, resolveTownWallCollisions, setGlobalNightLampGlow3D, type ProceduralTownInstance } from '../utils/townBuilder3D';
 import { createRenderedTerrainSampler, setRenderedTerrainSampler } from '../world3d/renderedTerrain3D';
@@ -3820,9 +3820,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
             }
             if (desiredBgm !== activeBgmTrackRef.current) {
               activeBgmTrackRef.current = desiredBgm;
+              const playlistLen = getRegionalBgmPlaylist(desiredBgm).length;
               const citySeedIdx =
                 activeTownNow && (desiredBgm === 'town' || desiredBgm === 'town_night')
-                  ? hashCitySeed(activeTownNow.id) % 3
+                  ? hashCitySeed(activeTownNow.id) % Math.max(1, playlistLen)
                   : undefined;
               sound.setTrack(desiredBgm, citySeedIdx);
               setActiveBgmTrack(desiredBgm);
