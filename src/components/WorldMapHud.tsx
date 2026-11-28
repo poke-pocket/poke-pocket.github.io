@@ -1625,8 +1625,12 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
     const onWheelNative = (e: WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      const clampedDelta = Math.max(-180, Math.min(180, e.deltaY));
-      const factor = Math.exp(-clampedDelta * 0.0022);
+      let pxDelta = e.deltaY;
+      if (e.deltaMode === 1) pxDelta *= 32;
+      else if (e.deltaMode === 2) pxDelta *= 360;
+      const clampedDelta = Math.max(-140, Math.min(140, pxDelta));
+      const coeff = e.ctrlKey ? 0.0045 : 0.0014;
+      const factor = Math.exp(-clampedDelta * coeff);
       setZoom((z) => Math.max(minZoom, Math.min(20, Number((z * factor).toFixed(7)))));
     };
     cv.addEventListener('wheel', onWheelNative, { passive: false });

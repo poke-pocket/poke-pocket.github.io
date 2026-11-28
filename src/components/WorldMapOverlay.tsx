@@ -279,7 +279,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   } | null>(null);
 
   // Continuous Web Mercator Camera: (mx, my) in [0..1] + zoom in [1.3 .. 18.5]
-  const [cam, setCam] = useState<{ mx: number; my: number; zoom: number }>(() => {
+  const [cam, setCamState] = useState<{ mx: number; my: number; zoom: number }>(() => {
     const focusLng = currentCity?.lng ?? tour.homeCoords?.lng ?? (lang === 'ja' ? 132.0 : 118.5);
     const focusLat = currentCity?.lat ?? tour.homeCoords?.lat ?? 33.5;
     return { mx: lngToMercX(focusLng), my: latToMercY(focusLat), zoom: 4.3 };
@@ -288,7 +288,15 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const camRef = useRef(cam);
-  camRef.current = cam;
+  const setCam = (
+    updater:
+      | { mx: number; my: number; zoom: number }
+      | ((prev: { mx: number; my: number; zoom: number }) => { mx: number; my: number; zoom: number }),
+  ) => {
+    const next = typeof updater === 'function' ? updater(camRef.current) : updater;
+    camRef.current = next;
+    setCamState(next);
+  };
 
   // Multi-touch pinch + mouse drag refs (zero React re-renders during drag/pinch for silky 60fps on mobile!)
   const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -303,8 +311,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     if (hudSyncTimerRef.current !== null) return;
     hudSyncTimerRef.current = window.setTimeout(() => {
       hudSyncTimerRef.current = null;
-      setCam({ ...camRef.current });
-    }, 120);
+      setCamState({ ...camRef.current });
+    }, 80);
   };
   useEffect(
     () => () => {
@@ -321,6 +329,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     baseMy: number;
   }>({ active: false, moved: false, startX: 0, startY: 0, baseMx: 0, baseMy: 0 });
   const [stageSize, setStageSize] = useState({ w: 680, h: 420 });
+  const stageSizeRef = useRef(stageSize);
+  stageSizeRef.current = stageSize;
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -372,20 +382,50 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     return [dmx * wp + stageSize.w / 2, (my - c.my) * wp + stageSize.h / 2];
   };
 
-  // Cursor-centered zoom helper
-  const zoomAroundScreenPoint = (sx: number, sy: number, deltaZoom: number) => {
-    setCam((prev) => {
-      const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev.zoom + deltaZoom));
-      if (nextZoom === prev.zoom) return prev;
-      const wpOld = worldPxAt(prev.zoom);
-      const wpNew = worldPxAt(nextZoom);
-      const anchorMx = prev.mx + (sx - stageSize.w / 2) / wpOld;
-      const anchorMy = prev.my + (sy - stageSize.h / 2) / wpOld;
-      const nextMx = (((anchorMx - (sx - stageSize.w / 2) / wpNew) % 1) + 1) % 1;
-      const nextMy = Math.max(0.02, Math.min(0.98, anchorMy - (sy - stageSize.h / 2) / wpNew));
-      return { mx: nextMx, my: nextMy, zoom: Number(nextZoom.toFixed(3)) };
-    });
+  // Cursor-centered zoom helper (operates directly on camRef for silky 60fps trackpad/wheel zooming)
+  const zoomAroundScreenPoint = (sx: number, sy: number, deltaZoom: number, immediate = true) => {
+    const prev = camRef.current;
+    const nextZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev.zoom + deltaZoom));
+    if (Math.abs(nextZoom - prev.zoom) < 1e-5) return;
+    const { w, h } = stageSizeRef.current;
+    const wpOld = worldPxAt(prev.zoom);
+    const wpNew = worldPxAt(nextZoom);
+    const anchorMx = prev.mx + (sx - w / 2) / wpOld;
+    const anchorMy = prev.my + (sy - h / 2) / wpOld;
+    const nextMx = (((anchorMx - (sx - w / 2) / wpNew) % 1) + 1) % 1;
+    const nextMy = Math.max(0.02, Math.min(0.98, anchorMy - (sy - h / 2) / wpNew));
+    const next = { mx: nextMx, my: nextMy, zoom: Number(nextZoom.toFixed(4)) };
+    camRef.current = next;
+    if (immediate) {
+      setCamState(next);
+    } else {
+      syncCamHudThrottled();
+    }
   };
+
+  // Native non-passive wheel listener: smoothly normalizes trackpad scroll, trackpad pinch (ctrlKey),
+  // and notched mouse wheels without abrupt jumps or browser page zoom.
+  useEffect(() => {
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const onWheelNative = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      let pxDelta = e.deltaY;
+      if (e.deltaMode === 1) pxDelta *= 32; // DOM_DELTA_LINE
+      else if (e.deltaMode === 2) pxDelta *= 360; // DOM_DELTA_PAGE
+      if (pxDelta === 0) return;
+
+      const deltaZoom = e.ctrlKey
+        ? Math.max(-0.22, Math.min(0.22, -pxDelta * 0.007))
+        : Math.max(-0.28, Math.min(0.28, -pxDelta * 0.0016));
+
+      const rect = cv.getBoundingClientRect();
+      zoomAroundScreenPoint(e.clientX - rect.left, e.clientY - rect.top, deltaZoom, false);
+    };
+    cv.addEventListener('wheel', onWheelNative, { passive: false });
+    return () => cv.removeEventListener('wheel', onWheelNative);
+  }, []);
 
   // Complete flight animation cleanly
   useEffect(() => {
@@ -1281,20 +1321,14 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             onPointerCancel={handleCanvasPointerUp}
             onDoubleClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
-              zoomAroundScreenPoint(e.clientX - rect.left, e.clientY - rect.top, 1.5);
-            }}
-            onWheel={(e) => {
-              e.preventDefault();
-              const rect = e.currentTarget.getBoundingClientRect();
-              const delta = -Math.sign(e.deltaY) * Math.min(1.1, Math.max(0.35, Math.abs(e.deltaY) * 0.006));
-              zoomAroundScreenPoint(e.clientX - rect.left, e.clientY - rect.top, delta);
+              zoomAroundScreenPoint(e.clientX - rect.left, e.clientY - rect.top, 1.0);
             }}
           />
 
           <div className="wt-map-tools">
             <button
               type="button"
-              onClick={() => zoomAroundScreenPoint(stageSize.w / 2, stageSize.h / 2, 1.2)}
+              onClick={() => zoomAroundScreenPoint(stageSize.w / 2, stageSize.h / 2, 0.75)}
               aria-label="放大"
               title="放大地图（支持直达街道级 Z18）"
             >
@@ -1302,7 +1336,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => zoomAroundScreenPoint(stageSize.w / 2, stageSize.h / 2, -1.2)}
+              onClick={() => zoomAroundScreenPoint(stageSize.w / 2, stageSize.h / 2, -0.75)}
               aria-label="缩小"
               title="缩小地图"
             >
