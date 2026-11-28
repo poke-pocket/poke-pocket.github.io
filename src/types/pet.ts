@@ -384,6 +384,7 @@ export interface GamePrefs {
   worldWeatherIntensity?: 'light' | 'moderate' | 'heavy';
   worldTempMode?: 'auto' | 'manual';
   worldTempC?: number; // -25..45 °C when worldTempMode === 'manual'
+  worldSeasonMode?: 'auto' | 'spring' | 'summer' | 'autumn' | 'winter';
   worldTimeMode?: 'auto' | 'day' | 'dusk' | 'night';
   townPeaceMode?: boolean;
   cameraFollowMode?: CameraFollowMode;
@@ -423,6 +424,7 @@ export const DEFAULT_GAME_PREFS: GamePrefs = {
   worldWeatherIntensity: 'moderate',
   worldTempMode: 'auto',
   worldTempC: 22,
+  worldSeasonMode: 'auto',
   worldTimeMode: 'auto',
   townPeaceMode: true,
   cameraFollowMode: 'hd2d',

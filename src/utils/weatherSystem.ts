@@ -2,6 +2,104 @@ import type { PokemonElement } from '../types/pet';
 
 export type WeatherKind = 'clear' | 'cloudy' | 'rain' | 'storm' | 'hail' | 'snow' | 'windy';
 export type WeatherIntensity = 'light' | 'moderate' | 'heavy';
+export type WorldSeason = 'spring' | 'summer' | 'autumn' | 'winter';
+export type WorldSeasonMode = 'auto' | WorldSeason;
+export type ClimateZone = 'tropical' | 'temperate' | 'polar';
+
+export interface GeoSeasonInfo {
+  season: WorldSeason;
+  seasonLabel: string;
+  hemisphere: 'north' | 'south' | 'equator';
+  hemisphereLabel: string;
+  climateZone: ClimateZone;
+  climateLabel: string;
+  soundscapeSummary: string;
+}
+
+const SEASON_LABELS: Record<WorldSeason, string> = {
+  spring: '春季',
+  summer: '夏季',
+  autumn: '秋季',
+  winter: '冬季',
+};
+
+const SEASON_SOUNDSCAPE_HINTS: Record<WorldSeason, string> = {
+  spring: '春日百鸟与布谷鸟鸣 · 暖夜池塘蛙声',
+  summer: '盛夏高树蝉鸣与林鸟 · 暮蝉 · 夏夜蛙鸣与蟋蟀',
+  autumn: '秋日晴鸟与落叶沙沙 · 黄昏寒蝉 · 夜晚秋虫铃鸣',
+  winter: '冬日静谧寒风 · 稀疏雪雀与远鸦 · 冬夜猫头鹰',
+};
+
+/**
+ * Resolves real meteorological season & climate zone from geographic latitude & date:
+ * - Northern Hemisphere (`lat >= 0`): Mar–May Spring, Jun–Aug Summer, Sep–Nov Autumn, Dec–Feb Winter
+ * - Southern Hemisphere (`lat < 0`): inverted by 6 months (e.g. Nov/Dec = late Spring / Summer!)
+ * - Tropical (`|lat| < 23.5`): tropical birds, tree frogs & warm-season cicadas year-round
+ * - Polar / Sub-Arctic (`|lat| >= 58`): hushed tundra wind & sparse cold-climate birds
+ */
+export function resolveGeoSeason(
+  lat: number,
+  nowMs = Date.now(),
+  override: WorldSeasonMode = 'auto',
+): GeoSeasonInfo {
+  const absLat = Math.abs(lat);
+  const hemisphere: 'north' | 'south' | 'equator' =
+    absLat < 6 ? 'equator' : lat >= 0 ? 'north' : 'south';
+  const hemisphereLabel =
+    hemisphere === 'north' ? '北半球' : hemisphere === 'south' ? '南半球' : '赤道带';
+  const climateZone: ClimateZone =
+    absLat < 23.5 ? 'tropical' : absLat >= 58 ? 'polar' : 'temperate';
+  const climateLabel =
+    climateZone === 'tropical' ? '热带' : climateZone === 'polar' ? '高纬寒带' : '温带';
+
+  let season: WorldSeason;
+  if (override !== 'auto') {
+    season = override;
+  } else {
+    const month = new Date(nowMs).getMonth() + 1; // 1..12
+    const northSeason: WorldSeason =
+      month >= 3 && month <= 5
+        ? 'spring'
+        : month >= 6 && month <= 8
+          ? 'summer'
+          : month >= 9 && month <= 11
+            ? 'autumn'
+            : 'winter';
+    if (lat < 0) {
+      const invert: Record<WorldSeason, WorldSeason> = {
+        spring: 'autumn',
+        summer: 'winter',
+        autumn: 'spring',
+        winter: 'summer',
+      };
+      season = invert[northSeason];
+    } else {
+      season = northSeason;
+    }
+  }
+
+  let soundscapeSummary = SEASON_SOUNDSCAPE_HINTS[season];
+  if (override === 'auto') {
+    if (climateZone === 'tropical') {
+      soundscapeSummary = '热带雨林鸟鸣与晴日热蝉 · 热带夜树蛙合唱';
+    } else if (climateZone === 'polar') {
+      soundscapeSummary =
+        season === 'summer'
+          ? '高纬苔原清风 · 稀疏海鸟与林雀'
+          : '极地寒风静寂 · 偶见远鸦与冬夜枭鸣';
+    }
+  }
+
+  return {
+    season,
+    seasonLabel: SEASON_LABELS[season],
+    hemisphere,
+    hemisphereLabel,
+    climateZone,
+    climateLabel,
+    soundscapeSummary,
+  };
+}
 
 export interface WeatherIntensityOption {
   id: WeatherIntensity;

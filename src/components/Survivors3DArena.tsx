@@ -1,5 +1,5 @@
 import { stepArenaCombatSimulation3D } from './arena3d/arenaCombatTick3D';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { computeBattleStats } from '../data/battleMoves';
 import { ROOM_CATALOG, SPECIES_CATALOG, getGrowthStage, getPokemonCryId, getPokemonWorldScale3D } from '../data/catalog';
@@ -31,7 +31,7 @@ import { buildInterTownRoadNetwork3D, buildProceduralTown3D, resolveTownWallColl
 import { createRenderedTerrainSampler, setRenderedTerrainSampler } from '../world3d/renderedTerrain3D';
 import { setRoadTerrainGrid } from '../world3d/roadKitSurface';
 import { createWeatherFloraMaterial3D, syncGlobalFloraWeather3D } from '../world3d/weatherFloraMaterial3D';
-import { buildFallbackWeather, buildWeatherInfo, fetchLiveWeatherAt, getWeatherAtmosphereProfile, type LiveWeatherInfo, type WeatherIntensity, type WeatherKind } from '../utils/weatherSystem';
+import { buildFallbackWeather, buildWeatherInfo, fetchLiveWeatherAt, getWeatherAtmosphereProfile, resolveGeoSeason, type GeoSeasonInfo, type LiveWeatherInfo, type WeatherIntensity, type WeatherKind } from '../utils/weatherSystem';
 import { BILLBOARD_PITCH_TILT, MAX_CAM_PITCH, MAX_FOLLOWERS, SHARED_ENTITY_SHADOW_MAT, UNIT_SHADOW_GEO, UPRIGHT_QUAD_GEO, createSafeZone3DMesh, type ActiveCapture3D, type ActiveFollower, type ArenaScreenPhase, type Enemy3D, type FloatingTag2D, type FollowerReportRow, type LevelChoice, type Loot3D, type MonsterQuality, type Projectile3D, type RunResultSummary, type Survivors3DArenaProps, type Vfx3D } from './arena3d/arenaTypesAndProps';
 import { setupHubWildlifeDiorama3D } from './arena3d/arenaWildlifeDiorama3D';
 import { createArenaCombatActions3D } from './arena3d/arenaCombatActions3D';
@@ -1701,16 +1701,55 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     lang,
   ]);
 
-  // Procedural Non-Looping Weather Ambience Sync (Raindrops, Hailstones, Thunderstorms, Wind, Snow, Intensity, Day/Night)
+  // Live Geo-Latitude Season & Climate Zone (tracks northern/southern hemisphere & tropical/temperate/polar belts!)
+  const [activeSeasonLat, setActiveSeasonLat] = useState<number>(() => {
+    const tour = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+    const curCity = tour.currentCityId ? WORLD_CITIES.find((c) => c.id === tour.currentCityId) : null;
+    const defHome = getDefaultHomeByLanguage(lang);
+    return curCity ? curCity.lat : (tour.homeCoords?.lat ?? defHome.lat);
+  });
+  const activeSeasonLatRef = useRef<number>(activeSeasonLat);
+  activeSeasonLatRef.current = activeSeasonLat;
+
+  useEffect(() => {
+    const tour = meta.worldTour ?? DEFAULT_WORLD_TOUR_STATE;
+    const curCity = tour.currentCityId ? WORLD_CITIES.find((c) => c.id === tour.currentCityId) : null;
+    const defHome = getDefaultHomeByLanguage(lang);
+    const nextLat = curCity ? curCity.lat : (tour.homeCoords?.lat ?? defHome.lat);
+    setActiveSeasonLat(nextLat);
+  }, [meta.worldTour?.currentCityId, meta.worldTour?.homeCoords?.lat, lang]);
+
+  const liveGeoSeason: GeoSeasonInfo = useMemo(
+    () => resolveGeoSeason(activeSeasonLat, Date.now(), save.prefs?.worldSeasonMode ?? 'auto'),
+    [activeSeasonLat, save.prefs?.worldSeasonMode],
+  );
+  const liveGeoSeasonRef = useRef<GeoSeasonInfo>(liveGeoSeason);
+  liveGeoSeasonRef.current = liveGeoSeason;
+
+  // Procedural Non-Looping Weather & Latitude-Seasonal Wildlife Ambience Sync
   const activeInteriorAudioRef = useRef(false);
   useEffect(() => {
     const isNightNow = solarInfo.phase === 'night' || solarInfo.phase === 'dusk';
     sound.setWeatherAmbience(liveWeather.kind, {
       indoor: phase === 'hub' ? false : activeInteriorAudioRef.current,
       isNight: isNightNow,
+      dayPhase: solarInfo.phase,
       intensity: liveWeather.intensity,
+      season: liveGeoSeason.season,
+      climateZone: liveGeoSeason.climateZone,
+      seasonManual: (save.prefs?.worldSeasonMode ?? 'auto') !== 'auto',
+      tempC: liveWeather.tempC,
     });
-  }, [liveWeather.kind, liveWeather.intensity, solarInfo.phase, phase]);
+  }, [
+    liveWeather.kind,
+    liveWeather.intensity,
+    liveWeather.tempC,
+    liveGeoSeason.season,
+    liveGeoSeason.climateZone,
+    save.prefs?.worldSeasonMode,
+    solarInfo.phase,
+    phase,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -3113,6 +3152,9 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       if (nowMs - lastSolarUiSyncMs > 1800) {
         lastSolarUiSyncMs = nowMs;
         setSolarInfo(solar);
+        if (Math.abs(lat - activeSeasonLatRef.current) >= 1.5) {
+          setActiveSeasonLat(lat);
+        }
       }
 
       const wNow = liveWeatherRef.current;
@@ -3751,7 +3793,12 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
               sound.setWeatherAmbience(liveWeatherRef.current.kind, {
                 indoor: isIndoorNow,
                 isNight: solarInfoRef.current.lampGlow > 0.45,
+                dayPhase: solarInfoRef.current.phase,
                 intensity: liveWeatherRef.current.intensity,
+                season: liveGeoSeasonRef.current.season,
+                climateZone: liveGeoSeasonRef.current.climateZone,
+                seasonManual: (prefsRef.current.worldSeasonMode ?? 'auto') !== 'auto',
+                tempC: liveWeatherRef.current.tempC,
               });
             }
           }

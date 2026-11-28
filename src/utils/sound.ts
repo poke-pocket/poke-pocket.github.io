@@ -1,5 +1,6 @@
 import { WeatherAmbienceEngine } from './weatherAmbience';
-import type { WeatherIntensity, WeatherKind } from './weatherSystem';
+import type { ClimateZone, WeatherIntensity, WeatherKind, WorldSeason } from './weatherSystem';
+import type { DayNightPhase } from './solarDayNight3D';
 
 export type SfxKind =
   | 'cursor'
@@ -715,7 +716,16 @@ class RetroSoundEngine {
 
   setWeatherAmbience(
     kind: WeatherKind | null,
-    opts?: { indoor?: boolean; isNight?: boolean; intensity?: WeatherIntensity },
+    opts?: {
+      indoor?: boolean;
+      isNight?: boolean;
+      dayPhase?: DayNightPhase;
+      intensity?: WeatherIntensity;
+      season?: WorldSeason;
+      climateZone?: ClimateZone;
+      seasonManual?: boolean;
+      tempC?: number;
+    },
   ) {
     const ctx = this.ctx && this.ctx.state === 'running' ? this.ctx : null;
     this.weatherAmbience.setWeather(kind, opts, ctx);

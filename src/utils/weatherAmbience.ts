@@ -1,4 +1,5 @@
-import type { WeatherIntensity, WeatherKind } from './weatherSystem';
+import type { ClimateZone, WeatherIntensity, WeatherKind, WorldSeason } from './weatherSystem';
+import type { DayNightPhase } from './solarDayNight3D';
 
 /**
  * Procedural Continuous Web Audio Weather Ambience Synthesizer.
@@ -43,6 +44,11 @@ export class WeatherAmbienceEngine {
   private intensity: WeatherIntensity = 'moderate';
   private indoor = false;
   private isNight = false;
+  private dayPhase: DayNightPhase = 'day';
+  private season: WorldSeason = 'spring';
+  private climateZone: ClimateZone = 'temperate';
+  private seasonManual = false;
+  private tempC = 22;
   private enabled = true;
   private volume = 68;
   private masterVolume = 80;
@@ -53,6 +59,7 @@ export class WeatherAmbienceEngine {
   private running = false;
   private driftTimer: number | null = null;
   private eventTimer: number | null = null;
+  private bioTimer: number | null = null;
   private thunderTimer: number | null = null;
 
   setAudioConfig(cfg: {
@@ -101,21 +108,49 @@ export class WeatherAmbienceEngine {
 
   setWeather(
     kind: WeatherKind | null,
-    opts?: { indoor?: boolean; isNight?: boolean; intensity?: WeatherIntensity },
+    opts?: {
+      indoor?: boolean;
+      isNight?: boolean;
+      dayPhase?: DayNightPhase;
+      intensity?: WeatherIntensity;
+      season?: WorldSeason;
+      climateZone?: ClimateZone;
+      seasonManual?: boolean;
+      tempC?: number;
+    },
     ctx?: AudioContext | null,
   ) {
     const nextIndoor = opts?.indoor ?? this.indoor;
-    const nextNight = opts?.isNight ?? this.isNight;
+    const nextPhase: DayNightPhase =
+      opts?.dayPhase ??
+      (opts?.isNight !== undefined ? (opts.isNight ? 'night' : 'day') : this.dayPhase);
+    const nextNight = opts?.isNight ?? (nextPhase === 'night' || nextPhase === 'dusk');
     const nextIntensity: WeatherIntensity =
       kind === 'clear' ? 'moderate' : (opts?.intensity ?? this.intensity);
+    const nextSeason = opts?.season ?? this.season;
+    const nextClimate = opts?.climateZone ?? this.climateZone;
+    const nextSeasonManual = opts?.seasonManual ?? this.seasonManual;
+    const nextTemp = opts?.tempC ?? this.tempC;
+
     const kindChanged = kind !== this.activeKind;
     const intensityChanged = nextIntensity !== this.intensity;
+    const bioChanged =
+      nextSeason !== this.season ||
+      nextClimate !== this.climateZone ||
+      nextSeasonManual !== this.seasonManual ||
+      nextPhase !== this.dayPhase ||
+      Math.abs(nextTemp - this.tempC) >= 4;
     const envChanged = nextIndoor !== this.indoor || nextNight !== this.isNight;
 
     this.activeKind = kind;
     this.intensity = nextIntensity;
     this.indoor = nextIndoor;
+    this.dayPhase = nextPhase;
     this.isNight = nextNight;
+    this.season = nextSeason;
+    this.climateZone = nextClimate;
+    this.seasonManual = nextSeasonManual;
+    this.tempC = nextTemp;
 
     if (ctx) {
       this.attachContext(ctx);
@@ -136,6 +171,8 @@ export class WeatherAmbienceEngine {
         // Smoothly morph the continuous bed into the new weather/intensity profile (NO abrupt cuts!)
         this.applyWeatherBedTarget(0.85, 1.0);
         this.resetDiscreteSchedulers();
+      } else if (bioChanged || envChanged) {
+        this.resetBioScheduler(500 + Math.random() * 850);
       }
     }
   }
@@ -509,16 +546,30 @@ export class WeatherAmbienceEngine {
       window.clearTimeout(this.eventTimer);
       this.eventTimer = null;
     }
+    if (this.bioTimer !== null) {
+      window.clearTimeout(this.bioTimer);
+      this.bioTimer = null;
+    }
     if (this.thunderTimer !== null) {
       window.clearTimeout(this.thunderTimer);
       this.thunderTimer = null;
     }
   }
 
+  private resetBioScheduler(initialDelayMs: number) {
+    if (this.bioTimer !== null) {
+      window.clearTimeout(this.bioTimer);
+      this.bioTimer = null;
+    }
+    if (!this.running || !this.activeKind) return;
+    this.scheduleNextSeasonalBioEvent(initialDelayMs);
+  }
+
   private resetDiscreteSchedulers() {
     this.clearDiscreteSchedulers();
     if (!this.running || !this.activeKind) return;
     this.scheduleNextMicroEvent(120 + Math.random() * 240);
+    this.scheduleNextSeasonalBioEvent(750 + Math.random() * 1400);
     if (this.activeKind === 'storm') {
       // Background distant rumble fallback (3D visual lightning also triggers synced thunder!)
       this.scheduleNextThunder(8500 + Math.random() * 11000);
@@ -625,23 +676,257 @@ export class WeatherAmbienceEngine {
         }
         const rateMul = [1.7, 1.0, 0.6][lvl];
         nextDelayMs = (280 + Math.random() * 580) * rateMul;
-      } else if (kind === 'clear') {
-        if (!this.indoor) {
-          if (this.isNight) {
-            this.triggerNightCricket();
-            nextDelayMs = 3600 + Math.random() * 5400;
-          } else {
-            this.triggerDayBirdChirp();
-            nextDelayMs = 4500 + Math.random() * 7500;
-          }
-        } else {
-          nextDelayMs = 2500;
-        }
       } else {
-        nextDelayMs = 1200 + Math.random() * 1800;
+        // Clear/cloudy/windy wildlife & seasonal calls run on the dedicated `bioTimer`!
+        nextDelayMs = 2200 + Math.random() * 2000;
       }
 
       this.scheduleNextMicroEvent(nextDelayMs);
+    }, delayMs);
+  }
+
+  /**
+   * Dedicated Latitude-, Season-, Time-of-Day-, and Weather-Aware Wildlife Soundscape Scheduler:
+   * - Spring: lively dawn/day songbird chorus + warm 2-note cuckoo ("布谷") + spring night/rain pond frogs
+   * - Summer: unmistakable midday cicadas ("嘶—知了知了—") + birds + dusk higurashi ("暮蝉") + night frogs & crickets
+   * - Autumn: crisp birds + dry leaf rustle + dusk evening cicadas + rich autumn crickets & bell insects ("铃虫")
+   * - Winter: serene stillness + sparse snow finch / distant crow (day) + rare peaceful owl hoot (night)
+   * - Tropical: vibrant tropical birds, warm cicadas & evening/night tree frogs year-round
+   * - Polar: hushed tundra wind with sparse high-latitude birds & distant winter crows/owls
+   */
+  private scheduleNextSeasonalBioEvent(delayMs: number) {
+    if (!this.running) return;
+    this.bioTimer = window.setTimeout(() => {
+      if (!this.running || !this.shouldRun()) return;
+      const kind = this.activeKind;
+      if (!kind) return;
+
+      if (this.indoor) {
+        this.scheduleNextSeasonalBioEvent(3200 + Math.random() * 2400);
+        return;
+      }
+
+      const harshWeather =
+        kind === 'storm' ||
+        kind === 'hail' ||
+        (kind === 'rain' && this.intensity === 'heavy') ||
+        (kind === 'snow' && this.intensity !== 'light') ||
+        (kind === 'windy' && this.intensity === 'heavy');
+      if (harshWeather) {
+        this.scheduleNextSeasonalBioEvent(4200 + Math.random() * 3000);
+        return;
+      }
+
+      const phase = this.dayPhase;
+      const season = this.season;
+      const climate = this.seasonManual ? 'temperate' : this.climateZone;
+      const isWarmEnoughForInsects = this.seasonManual ? this.tempC > 0 : this.tempC >= 8;
+      const isLightOrModRain = kind === 'rain';
+
+      let nextDelayMs = 4500 + Math.random() * 4500;
+
+      // Rainy day/night: birds shelter, but pond frogs LOVE warm spring/summer/tropical rain!
+      if (isLightOrModRain) {
+        if ((season === 'spring' || season === 'summer' || climate === 'tropical') && this.tempC >= 10) {
+          this.triggerFrogCroak(climate === 'tropical');
+          nextDelayMs = 2400 + Math.random() * 4200;
+        } else {
+          nextDelayMs = 5000 + Math.random() * 3500;
+        }
+        this.scheduleNextSeasonalBioEvent(nextDelayMs);
+        return;
+      }
+
+      // 1. TROPICAL BELT (|lat| < 23.5°): lush tropical birds, warm cicadas & tree frogs!
+      if (climate === 'tropical' && season !== 'winter') {
+        if (phase === 'night') {
+          if (Math.random() < 0.62) {
+            this.triggerFrogCroak(true);
+          } else {
+            this.triggerCricketPhrase(false);
+          }
+          nextDelayMs = 1900 + Math.random() * 3200;
+        } else if (phase === 'dusk') {
+          if (Math.random() < 0.52 && isWarmEnoughForInsects) {
+            this.triggerEveningCicada();
+          } else {
+            this.triggerTropicalBirdCall();
+          }
+          nextDelayMs = 2400 + Math.random() * 3400;
+        } else {
+          const r = Math.random();
+          if (r < 0.44 && isWarmEnoughForInsects) {
+            this.triggerSummerCicada();
+            nextDelayMs = 2600 + Math.random() * 3400;
+          } else if (r < 0.78) {
+            this.triggerTropicalBirdCall();
+            nextDelayMs = 2200 + Math.random() * 3600;
+          } else {
+            this.triggerDayBirdChirp(1.1);
+            nextDelayMs = 2500 + Math.random() * 3800;
+          }
+        }
+        this.scheduleNextSeasonalBioEvent(nextDelayMs);
+        return;
+      }
+
+      // 2. POLAR / SUB-ARCTIC BELT (|lat| >= 58°): sparse serene northern wildlife
+      if (climate === 'polar') {
+        if (phase === 'night') {
+          if (Math.random() < 0.55) {
+            this.triggerDistantOwl();
+          }
+          nextDelayMs = 8500 + Math.random() * 9000;
+        } else if (season === 'summer') {
+          if (Math.random() < 0.55) {
+            this.triggerDayBirdChirp(0.82);
+          } else {
+            this.triggerWinterFinch();
+          }
+          nextDelayMs = 4200 + Math.random() * 5800;
+        } else {
+          if (Math.random() < 0.55) {
+            this.triggerWinterFinch();
+          } else {
+            this.triggerDistantCrow();
+          }
+          nextDelayMs = 6800 + Math.random() * 8200;
+        }
+        this.scheduleNextSeasonalBioEvent(nextDelayMs);
+        return;
+      }
+
+      // 3. TEMPERATE 4-SEASON SOUNDSCAPES (Spring / Summer / Autumn / Winter)
+      if (season === 'spring') {
+        if (phase === 'dawn') {
+          if (Math.random() < 0.72) {
+            this.triggerDayBirdChirp(1.15);
+          } else {
+            this.triggerCuckooCall();
+          }
+          nextDelayMs = 1700 + Math.random() * 2600;
+        } else if (phase === 'day') {
+          if (Math.random() < 0.68) {
+            this.triggerDayBirdChirp(1.05);
+          } else {
+            this.triggerCuckooCall();
+          }
+          nextDelayMs = 2600 + Math.random() * 4400;
+        } else if (phase === 'dusk') {
+          if (Math.random() < 0.55) {
+            this.triggerDayBirdChirp(0.85);
+          } else if (isWarmEnoughForInsects) {
+            this.triggerFrogCroak(false);
+          }
+          nextDelayMs = 3000 + Math.random() * 4200;
+        } else {
+          if (isWarmEnoughForInsects && Math.random() < 0.7) {
+            this.triggerFrogCroak(false);
+            nextDelayMs = 2400 + Math.random() * 4000;
+          } else {
+            this.triggerCricketPhrase(false);
+            nextDelayMs = 3600 + Math.random() * 4800;
+          }
+        }
+      } else if (season === 'summer') {
+        if (phase === 'dawn') {
+          if (Math.random() < 0.65) {
+            this.triggerDayBirdChirp(1.05);
+          } else if (isWarmEnoughForInsects) {
+            this.triggerSummerCicada();
+          }
+          nextDelayMs = 2200 + Math.random() * 3400;
+        } else if (phase === 'day') {
+          if (isWarmEnoughForInsects && Math.random() < 0.7) {
+            this.triggerSummerCicada();
+            nextDelayMs = 2400 + Math.random() * 3400;
+          } else {
+            this.triggerDayBirdChirp(0.95);
+            nextDelayMs = 3200 + Math.random() * 4400;
+          }
+        } else if (phase === 'dusk') {
+          if (isWarmEnoughForInsects && Math.random() < 0.68) {
+            this.triggerEveningCicada();
+            nextDelayMs = 2600 + Math.random() * 3800;
+          } else {
+            this.triggerDayBirdChirp(0.8);
+            nextDelayMs = 3600 + Math.random() * 4600;
+          }
+        } else {
+          if (isWarmEnoughForInsects) {
+            if (Math.random() < 0.52) {
+              this.triggerCricketPhrase(false);
+            } else {
+              this.triggerFrogCroak(false);
+            }
+            nextDelayMs = 2100 + Math.random() * 3400;
+          } else {
+            this.triggerDistantOwl();
+            nextDelayMs = 7500 + Math.random() * 7500;
+          }
+        }
+      } else if (season === 'autumn') {
+        if (phase === 'dawn' || phase === 'day') {
+          const r = Math.random();
+          if (r < 0.44) {
+            this.triggerDayBirdChirp(0.9);
+          } else if (r < 0.78) {
+            this.triggerLeafRustle();
+          } else if (isWarmEnoughForInsects) {
+            this.triggerEveningCicada();
+          } else {
+            this.triggerDistantCrow();
+          }
+          nextDelayMs = 3000 + Math.random() * 4600;
+        } else if (phase === 'dusk') {
+          const r = Math.random();
+          if (r < 0.44 && isWarmEnoughForInsects) {
+            this.triggerEveningCicada();
+          } else if (r < 0.78 && isWarmEnoughForInsects) {
+            this.triggerCricketPhrase(true);
+          } else {
+            this.triggerLeafRustle();
+          }
+          nextDelayMs = 2600 + Math.random() * 3800;
+        } else {
+          const r = Math.random();
+          if (isWarmEnoughForInsects && r < 0.48) {
+            this.triggerCricketPhrase(true); // Crisp autumn bell cricket ("铃虫")
+            nextDelayMs = 2000 + Math.random() * 3200;
+          } else if (isWarmEnoughForInsects && r < 0.88) {
+            this.triggerCricketPhrase(false); // Field cricket ("蛐蛐")
+            nextDelayMs = 2200 + Math.random() * 3400;
+          } else {
+            this.triggerDistantOwl();
+            nextDelayMs = 5200 + Math.random() * 5800;
+          }
+        }
+      } else {
+        // Winter: serene quiet crisp atmosphere
+        if (phase === 'night') {
+          this.triggerDistantOwl();
+          nextDelayMs = 8200 + Math.random() * 9800;
+        } else if (phase === 'dusk') {
+          this.triggerDistantCrow();
+          nextDelayMs = 6800 + Math.random() * 7800;
+        } else {
+          if (Math.random() < 0.64) {
+            this.triggerWinterFinch();
+          } else {
+            this.triggerDistantCrow();
+          }
+          nextDelayMs = 5600 + Math.random() * 7800;
+        }
+      }
+
+      // Slightly thin wildlife density under heavy overcast or moderate wind
+      if (kind === 'cloudy' && this.intensity === 'heavy') {
+        nextDelayMs *= 1.45;
+      } else if (kind === 'windy') {
+        nextDelayMs *= 1.35;
+      }
+
+      this.scheduleNextSeasonalBioEvent(nextDelayMs);
     }, delayMs);
   }
 
@@ -914,13 +1199,14 @@ export class WeatherAmbienceEngine {
     src.start(t0, Math.random() * 12, dur + 0.01);
   }
 
-  private triggerDayBirdChirp() {
+  /** Bright woodland songbird phrase (sparrow / robin / warbler trills) */
+  private triggerDayBirdChirp(liveliness = 1.0) {
     const ctx = this.ctx;
     const bus = this.busInput;
     if (!ctx || !bus || ctx.state !== 'running') return;
-    const panVal = (Math.random() - 0.5) * 1.4;
-    const notes = 2 + Math.floor(Math.random() * 2);
-    const baseHz = 2500 + Math.random() * 1100;
+    const panVal = (Math.random() - 0.5) * 1.5;
+    const notes = 2 + Math.floor(Math.random() * (liveliness > 1 ? 4 : 3));
+    const baseHz = 2400 + Math.random() * 1450;
     const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
     if (panner) {
       panner.pan.value = panVal;
@@ -929,56 +1215,442 @@ export class WeatherAmbienceEngine {
     const target = panner ?? bus;
     let t = ctx.currentTime;
     for (let i = 0; i < notes; i++) {
-      const dur = 0.065 + Math.random() * 0.05;
+      const dur = 0.055 + Math.random() * 0.055;
       const osc = ctx.createOscillator();
       osc.type = 'sine';
-      const f0 = baseHz * (0.9 + Math.random() * 0.25);
+      const f0 = baseHz * (0.88 + Math.random() * 0.28);
       osc.frequency.setValueAtTime(f0, t);
-      osc.frequency.exponentialRampToValueAtTime(f0 * (1.22 + Math.random() * 0.22), t + dur * 0.55);
-      osc.frequency.exponentialRampToValueAtTime(f0 * 0.96, t + dur);
+      osc.frequency.exponentialRampToValueAtTime(
+        Math.min(5400, f0 * (1.18 + Math.random() * 0.26)),
+        t + dur * 0.52,
+      );
+      osc.frequency.exponentialRampToValueAtTime(f0 * (0.9 + Math.random() * 0.12), t + dur);
 
       const g = ctx.createGain();
+      const peak = (0.017 + Math.random() * 0.012) * Math.min(1.25, liveliness);
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(0.018 + Math.random() * 0.012, t + 0.012);
+      g.gain.linearRampToValueAtTime(peak, t + 0.011);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
       osc.connect(g);
       g.connect(target);
       osc.start(t);
       osc.stop(t + dur + 0.01);
-      t += dur + 0.045 + Math.random() * 0.06;
+      t += dur + 0.038 + Math.random() * 0.065;
     }
   }
 
-  private triggerNightCricket() {
+  /** Spring Cuckoo ("布谷—布谷"): iconic warm pure descending minor-third flute call */
+  private triggerCuckooCall() {
     const ctx = this.ctx;
     const bus = this.busInput;
     if (!ctx || !bus || ctx.state !== 'running') return;
-    const baseHz = 4150 + Math.random() * 550;
-    const pulses = 3 + Math.floor(Math.random() * 3);
     const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
     if (panner) {
-      panner.pan.value = (Math.random() - 0.5) * 1.5;
+      panner.pan.value = (Math.random() - 0.5) * 1.4;
+      panner.connect(bus);
+    }
+    const target = panner ?? bus;
+    const hiHz = 735 + Math.random() * 65;
+    const loHz = hiHz * 0.81; // Classic cuckoo descending third
+    const repeats = Math.random() < 0.6 ? 2 : 1;
+    let t = ctx.currentTime;
+    for (let r = 0; r < repeats; r++) {
+      for (const [freq, dur, gap] of [
+        [hiHz, 0.14, 0.13],
+        [loHz, 0.22, 0.42],
+      ] as const) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq * 1.015, t);
+        osc.frequency.exponentialRampToValueAtTime(freq, t + dur);
+
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.linearRampToValueAtTime(0.022, t + 0.024);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+        osc.connect(g);
+        g.connect(target);
+        osc.start(t);
+        osc.stop(t + dur + 0.02);
+        t += dur + gap;
+      }
+    }
+  }
+
+  /** Tropical Rainforest Bird: vibrant soaring whistle + rapid exotic upward trill */
+  private triggerTropicalBirdCall() {
+    const ctx = this.ctx;
+    const bus = this.busInput;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = (Math.random() - 0.5) * 1.6;
+      panner.connect(bus);
+    }
+    const target = panner ?? bus;
+    const t0 = ctx.currentTime;
+    const fStart = 1650 + Math.random() * 650;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(fStart, t0);
+    osc.frequency.exponentialRampToValueAtTime(fStart * 1.75, t0 + 0.16);
+    osc.frequency.exponentialRampToValueAtTime(fStart * 1.25, t0 + 0.26);
+    osc.frequency.exponentialRampToValueAtTime(fStart * 1.95, t0 + 0.38);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.022, t0 + 0.03);
+    g.gain.setValueAtTime(0.018, t0 + 0.28);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
+
+    osc.connect(g);
+    g.connect(target);
+    osc.start(t0);
+    osc.stop(t0 + 0.44);
+  }
+
+  /**
+   * Summer Midday Cicada ("嘶——知了知了——"):
+   * Bandpass-sculpted crisp treetop noise + gentle high-frequency tymbal AM pulse swell
+   * that rises smoothly, pulses rhythmically, and trails off cleanly in stereo!
+   */
+  private triggerSummerCicada() {
+    const ctx = this.ctx;
+    const bus = this.busInput;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    this.ensureNoisePools(ctx);
+    const pool = this.rainPoolB!;
+
+    const t0 = ctx.currentTime;
+    const dur = 2.6 + Math.random() * 2.1;
+    const offset = Math.random() * Math.max(0.2, pool.duration - dur - 0.1);
+    const centerHz = 4450 + Math.random() * 1450;
+
+    const src = ctx.createBufferSource();
+    src.buffer = pool;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(centerHz * 0.92, t0);
+    bp.frequency.linearRampToValueAtTime(centerHz * 1.06, t0 + dur * 0.45);
+    bp.frequency.linearRampToValueAtTime(centerHz * 0.88, t0 + dur);
+    bp.Q.value = 3.4;
+
+    // Rhythmic cicada wing/tymbal AM modulation ("知—了—知—了" slow wave + fine buzz)
+    const amGain = ctx.createGain();
+    amGain.gain.value = 0.65;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 5.2 + Math.random() * 4.4;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.32;
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(amGain.gain);
+
+    // Subtle tonal harmonic shimmer characteristic of summer cicadas
+    const carrier = ctx.createOscillator();
+    carrier.type = 'triangle';
+    carrier.frequency.value = centerHz * 0.96;
+    const carGain = ctx.createGain();
+    carGain.gain.value = 0.08;
+
+    const env = ctx.createGain();
+    const peak = 0.026 + Math.random() * 0.015;
+    env.gain.setValueAtTime(0.0001, t0);
+    env.gain.linearRampToValueAtTime(peak, t0 + dur * 0.26);
+    env.gain.setValueAtTime(peak * 0.94, t0 + dur * 0.68);
+    env.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    src.connect(bp);
+    carrier.connect(carGain);
+    carGain.connect(bp);
+    bp.connect(amGain);
+    amGain.connect(env);
+    if (panner) {
+      panner.pan.value = (Math.random() - 0.5) * 1.65;
+      env.connect(panner);
+      panner.connect(bus);
+    } else {
+      env.connect(bus);
+    }
+
+    lfo.start(t0);
+    carrier.start(t0);
+    src.start(t0, offset, dur + 0.05);
+    lfo.stop(t0 + dur + 0.05);
+    carrier.stop(t0 + dur + 0.05);
+  }
+
+  /** Evening Cicada / Higurashi ("暮蝉 / 寒蝉 カナカナカナ…"): bittersweet descending dusk bell-pulse trill */
+  private triggerEveningCicada() {
+    const ctx = this.ctx;
+    const bus = this.busInput;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = (Math.random() - 0.5) * 1.6;
+      panner.connect(bus);
+    }
+    const target = panner ?? bus;
+    const pulses = 7 + Math.floor(Math.random() * 5);
+    const startHz = 3850 + Math.random() * 420;
+    let t = ctx.currentTime;
+    for (let i = 0; i < pulses; i++) {
+      const frac = i / Math.max(1, pulses - 1);
+      const dur = 0.075 + frac * 0.025;
+      const f = startHz * (1 - frac * 0.16);
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f * 1.04, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.94, t + dur);
+
+      const env = ctx.createGain();
+      const peak = (0.015 + (1 - Math.abs(frac - 0.35)) * 0.008) * (1 - frac * 0.35);
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.linearRampToValueAtTime(peak, t + 0.012);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      osc.connect(env);
+      env.connect(target);
+      osc.start(t);
+      osc.stop(t + dur + 0.01);
+      t += dur + 0.048 + frac * 0.022;
+    }
+  }
+
+  /** Pond Frog / Tree Frog ("呱—呱—"): warm resonant croaking formant bursts */
+  private triggerFrogCroak(isTropicalTreeFrog: boolean) {
+    const ctx = this.ctx;
+    const bus = this.busInput;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = (Math.random() - 0.5) * 1.55;
+      panner.connect(bus);
+    }
+    const target = panner ?? bus;
+    const croaks = 2 + Math.floor(Math.random() * 2);
+    let t = ctx.currentTime;
+    for (let i = 0; i < croaks; i++) {
+      const dur = isTropicalTreeFrog ? 0.11 + Math.random() * 0.05 : 0.18 + Math.random() * 0.08;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      const baseF = isTropicalTreeFrog ? 420 + Math.random() * 140 : 185 + Math.random() * 65;
+      osc.frequency.setValueAtTime(baseF * 0.88, t);
+      osc.frequency.exponentialRampToValueAtTime(baseF * 1.24, t + dur * 0.55);
+      osc.frequency.exponentialRampToValueAtTime(baseF * 0.95, t + dur);
+
+      // Resonant frog throat formant
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(isTropicalTreeFrog ? 1450 : 720, t);
+      bp.frequency.exponentialRampToValueAtTime(isTropicalTreeFrog ? 1950 : 980, t + dur * 0.6);
+      bp.Q.value = 3.6;
+
+      // Subtle croak throat flutter
+      const flutter = ctx.createOscillator();
+      flutter.type = 'sine';
+      flutter.frequency.value = isTropicalTreeFrog ? 36 : 26;
+      const fDepth = ctx.createGain();
+      fDepth.gain.value = 0.008;
+
+      const g = ctx.createGain();
+      const peak = isTropicalTreeFrog ? 0.02 : 0.026;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(peak, t + 0.025);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      flutter.connect(fDepth);
+      fDepth.connect(g.gain);
+      osc.connect(bp);
+      bp.connect(g);
+      g.connect(target);
+
+      osc.start(t);
+      flutter.start(t);
+      osc.stop(t + dur + 0.015);
+      flutter.stop(t + dur + 0.015);
+      t += dur + (isTropicalTreeFrog ? 0.14 : 0.24) + Math.random() * 0.12;
+    }
+  }
+
+  /** Field Cricket ("蛐蛐 唧唧唧") & Autumn Bell Cricket ("铃虫 叮铃铃…") */
+  private triggerCricketPhrase(isBellCricket: boolean) {
+    const ctx = this.ctx;
+    const bus = this.busInput;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    const baseHz = isBellCricket ? 4550 + Math.random() * 480 : 3950 + Math.random() * 550;
+    const pulses = isBellCricket ? 7 + Math.floor(Math.random() * 5) : 3 + Math.floor(Math.random() * 3);
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = (Math.random() - 0.5) * 1.6;
       panner.connect(bus);
     }
     const target = panner ?? bus;
     let t = ctx.currentTime;
     for (let i = 0; i < pulses; i++) {
-      const dur = 0.028;
+      const dur = isBellCricket ? 0.042 : 0.028;
       const osc = ctx.createOscillator();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(baseHz + (Math.random() - 0.5) * 40, t);
+      osc.frequency.setValueAtTime(baseHz + (Math.random() - 0.5) * 35, t);
 
       const g = ctx.createGain();
+      const peak = isBellCricket ? 0.013 + Math.random() * 0.006 : 0.012 + Math.random() * 0.006;
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.linearRampToValueAtTime(0.012 + Math.random() * 0.006, t + 0.006);
+      g.gain.linearRampToValueAtTime(peak, t + 0.006);
       g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
       osc.connect(g);
       g.connect(target);
       osc.start(t);
       osc.stop(t + dur + 0.005);
-      t += 0.046;
+      t += isBellCricket ? 0.056 : 0.046;
+    }
+  }
+
+  /** Dry Autumn Leaf Rustle: papery breeze brushing fallen leaves along paths */
+  private triggerLeafRustle() {
+    const ctx = this.ctx;
+    const bus = this.busInput;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    this.ensureNoisePools(ctx);
+    const pool = this.rainPoolB!;
+    const t0 = ctx.currentTime;
+    const dur = 0.45 + Math.random() * 0.55;
+    const src = ctx.createBufferSource();
+    src.buffer = pool;
+
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(1850 + Math.random() * 900, t0);
+    bp.frequency.linearRampToValueAtTime(2700 + Math.random() * 800, t0 + dur);
+    bp.Q.value = 1.4;
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.02 + Math.random() * 0.012, t0 + dur * 0.35);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    src.connect(bp);
+    bp.connect(g);
+    if (panner) {
+      panner.pan.value = (Math.random() - 0.5) * 1.5;
+      g.connect(panner);
+      panner.connect(bus);
+    } else {
+      g.connect(bus);
+    }
+    src.start(t0, Math.random() * 12, dur + 0.05);
+  }
+
+  /** Winter Snow Finch: delicate short high crystalline "唧—唧" chirp in quiet cold air */
+  private triggerWinterFinch() {
+    const ctx = this.ctx;
+    const bus = this.busInput;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = (Math.random() - 0.5) * 1.45;
+      panner.connect(bus);
+    }
+    const target = panner ?? bus;
+    let t = ctx.currentTime;
+    const f0 = 3300 + Math.random() * 650;
+    for (let i = 0; i < 2; i++) {
+      const dur = 0.048;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f0, t);
+      osc.frequency.exponentialRampToValueAtTime(f0 * 0.86, t + dur);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.014, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(g);
+      g.connect(target);
+      osc.start(t);
+      osc.stop(t + dur + 0.01);
+      t += 0.12 + Math.random() * 0.06;
+    }
+  }
+
+  /** Distant Winter/Autumn Crow: soft far-off atmospheric caw (never loud or harsh) */
+  private triggerDistantCrow() {
+    const ctx = this.ctx;
+    const bus = this.busInput;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = (Math.random() - 0.5) * 1.6;
+      panner.connect(bus);
+    }
+    const target = panner ?? bus;
+    let t = ctx.currentTime;
+    const caws = Math.random() < 0.55 ? 2 : 1;
+    for (let i = 0; i < caws; i++) {
+      const dur = 0.24 + Math.random() * 0.08;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      const base = 440 + Math.random() * 55;
+      osc.frequency.setValueAtTime(base * 1.08, t);
+      osc.frequency.exponentialRampToValueAtTime(base * 0.84, t + dur);
+
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 980;
+      bp.Q.value = 2.4;
+
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.014, t + 0.035);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      osc.connect(bp);
+      bp.connect(g);
+      g.connect(target);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+      t += dur + 0.22 + Math.random() * 0.1;
+    }
+  }
+
+  /** Peaceful Distant Night Owl ("呜——呜呜"): soft hollow woodland owl hoot */
+  private triggerDistantOwl() {
+    const ctx = this.ctx;
+    const bus = this.busInput;
+    if (!ctx || !bus || ctx.state !== 'running') return;
+    const panner = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+    if (panner) {
+      panner.pan.value = (Math.random() - 0.5) * 1.5;
+      panner.connect(bus);
+    }
+    const target = panner ?? bus;
+    const baseHz = 385 + Math.random() * 55;
+    let t = ctx.currentTime;
+    for (const [mult, dur, gap] of [
+      [1.0, 0.34, 0.28],
+      [0.92, 0.16, 0.1],
+      [0.86, 0.38, 0],
+    ] as const) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(baseHz * mult * 1.02, t);
+      osc.frequency.exponentialRampToValueAtTime(baseHz * mult * 0.96, t + dur);
+
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.018, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      osc.connect(g);
+      g.connect(target);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+      t += dur + gap;
     }
   }
 }

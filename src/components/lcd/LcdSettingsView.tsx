@@ -5,7 +5,7 @@ import { DEFAULT_GAME_PREFS, type EnemyDisplayMode, type GamePrefs, type Graphic
 import { DEFAULT_KEY_BINDINGS } from '../../utils/petEngine';
 import { resetDevGrants, setDevGrants, useDevGrants, useDevMode } from '../../utils/devMode';
 import { sound } from '../../utils/sound';
-import { getTemperatureBand, getWeatherIntensityOptions, hasWeatherIntensity, type WeatherKind } from '../../utils/weatherSystem';
+import { getTemperatureBand, getWeatherIntensityOptions, hasWeatherIntensity, resolveGeoSeason, type WeatherKind } from '../../utils/weatherSystem';
 import { PixelIcon, PixelItemImg } from '../PixelSprite';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -200,7 +200,10 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
 
                     <div className="settings-card">
                       <div className="settings-card-head">
-                        <strong>环境音效</strong>
+                        <div>
+                          <strong>环境音效</strong>
+                          <small className="audio-track-hint">按实时天气、经纬度与季节呈现雨雪、鸟鸣与蝉鸣</small>
+                        </div>
                         <div className="inline-icon-row">
                           <button
                             type="button"
@@ -774,6 +777,7 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                               worldWeatherMode: 'auto',
                               worldWeatherIntensity: 'moderate',
                               worldTempMode: 'auto',
+                              worldSeasonMode: 'auto',
                             });
                           }}
                         >
@@ -1008,6 +1012,56 @@ export const LcdSettingsView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
                                   {p.label} {p.val}°C
                                 </button>
                               ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {(() => {
+                    const seasonMode = prefs.worldSeasonMode ?? 'auto';
+                    const homeLat = save.meta?.worldTour?.homeCoords?.lat ?? 31.23;
+                    const activeSeason = resolveGeoSeason(homeLat, Date.now(), seasonMode);
+                    return (
+                      <div className="settings-card">
+                        <div className="settings-card-head is-stacked">
+                          <div>
+                            <strong>季节与自然生态音效</strong>
+                            <small>
+                              自动按当前经纬度（南北半球 / 热带 / 温带 / 寒带）与日期切换鸟鸣、蝉鸣、蛙声与秋虫
+                            </small>
+                          </div>
+                          <div className="inline-icon-row" style={{ flexWrap: 'wrap' }}>
+                            {(
+                              [
+                                ['auto', '按经纬度自动', 'sparkle'],
+                                ['spring', '春季', 'sprout'],
+                                ['summer', '夏季', 'sun'],
+                                ['autumn', '秋季', 'leaf'],
+                                ['winter', '冬季', 'weather_snow'],
+                              ] as const
+                            ).map(([sId, sLbl, sIcon]) => (
+                              <button
+                                key={sId}
+                                type="button"
+                                className={`lcd-subtab inline-icon-btn ${seasonMode === sId ? 'active' : ''}`}
+                                onClick={() => {
+                                  sound.play('cursor');
+                                  setPref({ worldSeasonMode: sId });
+                                }}
+                              >
+                                <PixelIcon name={sIcon} size={11} />
+                                <span>{sLbl}</span>
+                              </button>
+                            ))}
+                          </div>
+                          <div className="weather-intensity-subrow">
+                            <div className="weather-intensity-head">
+                              <span>
+                                当前生态：{activeSeason.hemisphereLabel} · {activeSeason.climateLabel} · {activeSeason.seasonLabel}
+                              </span>
+                              <small>{activeSeason.soundscapeSummary}</small>
                             </div>
                           </div>
                         </div>

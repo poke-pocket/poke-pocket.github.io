@@ -8,6 +8,7 @@ import {
   getWeatherIntensityOptions,
   hasWeatherIntensity,
   inferWeatherIntensityFromWmo,
+  resolveGeoSeason,
 } from './weatherSystem';
 
 describe('weatherSystem intensity & independent temperature', () => {
@@ -81,5 +82,31 @@ describe('weatherSystem intensity & independent temperature', () => {
     expect(inferWeatherIntensityFromWmo('cloudy', 2, 10, 45)).toBe('light');
     expect(inferWeatherIntensityFromWmo('cloudy', 3, 10, 80)).toBe('moderate');
     expect(inferWeatherIntensityFromWmo('cloudy', 3, 10, 96)).toBe('heavy');
+  });
+
+  it('resolves latitude-accurate Northern/Southern hemisphere seasons and climate zones', () => {
+    const julyMs = Date.UTC(2026, 6, 15, 12, 0, 0); // July 15
+    const shanghaiJuly = resolveGeoSeason(31.23, julyMs, 'auto');
+    const sydneyJuly = resolveGeoSeason(-33.87, julyMs, 'auto');
+    const singaporeJuly = resolveGeoSeason(1.35, julyMs, 'auto');
+    const reykjavikJuly = resolveGeoSeason(64.15, julyMs, 'auto');
+
+    expect(shanghaiJuly.season).toBe('summer');
+    expect(shanghaiJuly.hemisphere).toBe('north');
+    expect(shanghaiJuly.climateZone).toBe('temperate');
+
+    expect(sydneyJuly.season).toBe('winter');
+    expect(sydneyJuly.hemisphere).toBe('south');
+    expect(sydneyJuly.climateZone).toBe('temperate');
+
+    expect(singaporeJuly.climateZone).toBe('tropical');
+    expect(singaporeJuly.soundscapeSummary).toContain('热带');
+
+    expect(reykjavikJuly.climateZone).toBe('polar');
+    expect(reykjavikJuly.season).toBe('summer');
+
+    const manualSummer = resolveGeoSeason(31.23, Date.UTC(2026, 0, 15), 'summer');
+    expect(manualSummer.season).toBe('summer');
+    expect(manualSummer.soundscapeSummary).toContain('蝉鸣');
   });
 });
