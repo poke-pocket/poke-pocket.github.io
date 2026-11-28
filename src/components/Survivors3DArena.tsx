@@ -3401,6 +3401,18 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       lastTs = now;
       const sim = simRef.current;
 
+      // Completely skip 3D scene, weather particle simulation & GPU draw whenever tab is hidden
+      // or a full-screen overlay (Global World Map, Handheld Console, Town Shop) covers the viewport!
+      if (
+        (typeof document !== 'undefined' && document.hidden) ||
+        externalPausedRef.current ||
+        worldMapOpenRef.current ||
+        inRunTownShopOpenRef.current
+      ) {
+        rafId = window.requestAnimationFrame(animate);
+        return;
+      }
+
       if (sim) {
         // Safe Zones disabled in this version (clean open terraced wilderness!)
         const nearbyZones: SafeZone3D[] = [];
@@ -3433,12 +3445,6 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
         }
         heroEmoteSprite.visible = false;
         petEmoteSprite.visible = false;
-
-        // Pause 3D GPU rendering when Handheld Console or Global World Map overlay covers the screen!
-        if (externalPausedRef.current || worldMapOpenRef.current) {
-          rafId = window.requestAnimationFrame(animate);
-          return;
-        }
 
         // Respect FPS Cap & Power Saver Mode
         const activeFpsCap = prefsRef.current.powerSaver ? 30 : prefsRef.current.fpsLimit;
@@ -4422,12 +4428,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const bgmTrackLabel = bgmState.songTitle || '晴空微风 · 城镇漫步';
   const arenaUiCtx = { activeBgmTrack, activeBusStopModal, activeHeroDef, activeRoom, activeSquadIdx, activeSquadPreset, activeWorldRun, adventureStyle, askQuickNavOpen, autoNavActiveLabel, autoNavDistM, autoNavEtaSec, autoNavTargetsRef, banishMode, banishedIdsRef, bannerMsg, bgmState, bgmTrackLabel, bindMultiTouchAction, buySafeShopItem, captureCutscene, captureOffer, claimableBountyCount, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, closingCapture, closingHubModal, closingLevelUp, closingMapSelect, closingProfile, closingResult, closingShop, closingSquadEditor, cycleLanguage, cycleRideMode, diffMeta, difficultyId, dockRowRef, dragFollowerIdxRef, dragOverFollowerIdx, edgeIndicators, effectiveSquadPets, endedRef, executeInteractActionRef, externalPaused, floatingTags, followersView, gameMode, handleBgmCycleMode, handleBgmNext, handleBgmPlayPause, handleBgmPrev, handleBuyLabUpgrade, handleCaptureBossConfirm, handleChooseUpgrade, handleClaimBonusChest, handleClaimBounty, handleFastTravelCity, handleLaunchRandomRogueRun, handleLaunchRun, handleLaunchWorldRun, handleRerollBounty, handleUnlockOrSelectHero, handleUpgradeHeroSkill, hpPct, hubModal, hud, inRunTownShopOpen, interactOptionIdx, isFullscreen, isSurfing, jumpQueuedRef, labInitialTab, landRideMode, lang, levelChoices, liveOverlandCity, liveWeather, mapSnapshot, maxFollowers, meta, minStr, mobilePartyOpen, nearbyInteract, nearbyKoTarget, newsTickerIdx, onBuyAccessory, onBuyFood, onBuyPokeball, onFinish, onOpenPokemonManager, onPullGacha, onPullGachaTen, onToggleBgm, onToggleFullscreen, onUpdateMeta, onUpdatePetConfig, onUpdatePrefs, onUpdateProfile, openHeroOrBadgeOverlay, pausedRef, pet, petMeta, petStage, phase, playerAltitudeM, prefs, profileDraft, profileOpen, projectedBubbles, pwaInstallPrompt, rebuildChoicesRef, regionMeta, removeBattleFollower, reorderBattleFollowers, rerollsLeft, resetVirtualPad, resultModal, resultSummary, rideMode, save, selectSquadPreset, selectedBallId, selectedBiome, setActiveBusStopModal, setAskQuickNavOpen, setBanishMode, setClosingLevelUp, setDifficultyId, setDragOverFollowerIdx, setGameMode, setHubModal, setInRunTownShopOpen, setInteractOptionIdx, setLabInitialTab, setLevelChoices, setMobilePartyOpen, setPhase, setProfileDraft, setPwaInstallPrompt, setRerollsLeft, setRunNonce, setSelectedBallId, setSquadEditorOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, solarInfo, squadEditorOpen, squadPresets, startAutoNavRef, startStreetDuelRef, startVirtualPad, stopAutoNavRef, teleportIntraCityBusRef, timeAlmanacOpen, togglePetInActiveSquad, toggleWorldMap, totalSpendableCoins, trainerProfile, triggerBattleActionRef, triggerInteractRef, tryRestorePointerLock, updateVirtualPad, vPad, vPadPointerRef, visibleDockCount, worldBubblesRef, worldMapOpen, xpPct };
 
+  const hide3dViewport =
+    worldMapOpen || inRunTownShopOpen || (externalPaused && !save.showShell);
+
   return (
     <div ref={containerRef} className="world3d-stage">
       {/* FULL-VIEWPORT LIVE 3D PIXEL-ART TERRACED WORLD CANVAS (Click-to-Pointer-Lock Mouse Look + Left/Right-Drag Orbit + Wheel Zoom!) */}
       <canvas
         ref={canvasRef}
         className={`world3d-canvas ${pointerLocked ? 'is-pointer-locked' : ''}`}
+        style={hide3dViewport ? { visibility: 'hidden' } : undefined}
         onContextMenu={(e) => {
           if (phase === 'playing') e.preventDefault();
         }}
@@ -4526,7 +4536,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       />
 
       <ArenaHubAndMapOverlay ctx={arenaUiCtx} />
-      {phase === 'playing' && (
+      {phase === 'playing' && !worldMapOpen && !(externalPaused && !save.showShell) && (
         <>
           <ArenaPlayingHudOverlay ctx={arenaUiCtx} />
           <ArenaRunModalsOverlay ctx={arenaUiCtx} />

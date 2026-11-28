@@ -621,13 +621,28 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   // Real-Time Multi-Resolution Pixelated World Map Renderer
   useEffect(() => {
     let rafId = 0;
+    let lastDrawTs = 0;
+    let lastDrawSig = '';
 
     const render = (ts: number) => {
       const cvs = canvasRef.current;
-      if (!cvs) {
+      if (!cvs || (typeof document !== 'undefined' && document.hidden)) {
         rafId = requestAnimationFrame(render);
         return;
       }
+      const c = camRef.current;
+      const hov = hoveredTargetRef.current;
+      const hovSig = hov ? `${hov.kind}_${hov.kind === 'home' ? 'h' : hov.id}` : '';
+      const drawSig = `${c.mx.toFixed(5)}_${c.my.toFixed(5)}_${c.zoom.toFixed(4)}_${hovSig}_${stageSize.w}_${stageSize.h}`;
+      // Instant 60fps during pan/zoom/hover/flight; calm 12fps when completely idle (cuts background GPU/CPU by 5x!)
+      const isAnimating = Boolean(flightAnim) || drawSig !== lastDrawSig;
+      if (!isAnimating && ts - lastDrawTs < 82) {
+        rafId = requestAnimationFrame(render);
+        return;
+      }
+      lastDrawTs = ts;
+      lastDrawSig = drawSig;
+
       if (cvs.width !== stageSize.w || cvs.height !== stageSize.h) {
         cvs.width = stageSize.w;
         cvs.height = stageSize.h;
@@ -635,7 +650,6 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       const ctx = cvs.getContext('2d')!;
       ctx.imageSmoothingEnabled = false;
 
-      const c = camRef.current;
       const wp = worldPxAt(c.zoom);
 
       // 1. Deep ocean background

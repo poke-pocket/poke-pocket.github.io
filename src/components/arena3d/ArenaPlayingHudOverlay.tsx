@@ -396,28 +396,58 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
         : solarInfo.phase === 'dusk'
           ? 'sunset'
           : 'sun';
+  // When the full-screen Town Poké Mart shop covers the viewport, don't render the entire combat HUD & minimap behind it!
+  if (inRunTownShopOpen) {
+    return (
+      <ShopOverlay
+        save={save}
+        pet={pet}
+        closing={false}
+        initialTab="berries"
+        cityName={liveOverlandCity?.name}
+        onClose={() => {
+          sound.play('cancel');
+          setInRunTownShopOpen(false);
+          tryRestorePointerLock();
+        }}
+        onBuyFood={(fid) => onBuyFood?.(fid)}
+        onBuyAccessory={(aid) => onBuyAccessory?.(aid)}
+        onBuyPokeball={(rid) => onBuyPokeball?.(rid)}
+        onPullGacha={(bid) =>
+          onPullGacha?.(bid) ?? { ok: false, save, message: '暂不可用' }
+        }
+        onPullGachaTen={(bid) =>
+          onPullGachaTen?.(bid) ?? { ok: false, save, results: [], message: '暂不可用' }
+        }
+        onUpdatePetConfig={onUpdatePetConfig}
+      />
+    );
+  }
+
   return (
     <>
           {/* 2D Projected Floating Damage & Enemy Trainer Nameplates */}
-          <div className="surv-tags-layer">
-            {floatingTags.map((t) => (
-              <div
-                key={t.id}
-                className={`surv-float-tag ${t.isHpBar ? 'is-trainer-tag' : ''}`}
-                style={{ left: `${t.sx}%`, top: `${t.sy}%`, color: t.color }}
-              >
-                <span>{t.text}</span>
-                {t.isHpBar && (
-                  <div className="tag-hp-track">
-                    <div className="tag-hp-fill" style={{ width: `${t.hpPct ?? 100}%` }} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          {!externalPaused && floatingTags.length > 0 && (
+            <div className="surv-tags-layer">
+              {floatingTags.map((t) => (
+                <div
+                  key={t.id}
+                  className={`surv-float-tag ${t.isHpBar ? 'is-trainer-tag' : ''}`}
+                  style={{ left: `${t.sx}%`, top: `${t.sy}%`, color: t.color }}
+                >
+                  <span>{t.text}</span>
+                  {t.isHpBar && (
+                    <div className="tag-hp-track">
+                      <div className="tag-hp-fill" style={{ width: `${t.hpPct ?? 100}%` }} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Screen-Perimeter Directional Arrows for Off-Screen Priority Targets (Boss / Knocked-Out Catchable / ★Shiny / Gym Leader!) */}
-          {!resultModal && edgeIndicators.length > 0 && (
+          {!externalPaused && !resultModal && edgeIndicators.length > 0 && (
             <div className="surv-edge-layer" aria-hidden="true">
               {edgeIndicators.map((ind) => (
                 <div
@@ -1159,7 +1189,7 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 </button>
               </div>
 
-              {!resultModal && (
+              {!resultModal && !externalPaused && (
                 <WorldMapHud
                   biome={selectedBiome}
                   regionName={regionMeta.name}
@@ -1188,32 +1218,6 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                 <div className="boss-hp-fill" style={{ width: `${hud.bossHpPct}%` }} />
               </div>
             </div>
-          )}
-
-          {/* In-Run Town Poké Mart Full-Screen Dedicated Supplies Shop Overlay */}
-          {inRunTownShopOpen && (
-            <ShopOverlay
-              save={save}
-              pet={pet}
-              closing={false}
-              initialTab="berries"
-              cityName={liveOverlandCity?.name}
-              onClose={() => {
-                sound.play('cancel');
-                setInRunTownShopOpen(false);
-                tryRestorePointerLock();
-              }}
-              onBuyFood={(fid) => onBuyFood?.(fid)}
-              onBuyAccessory={(aid) => onBuyAccessory?.(aid)}
-              onBuyPokeball={(rid) => onBuyPokeball?.(rid)}
-              onPullGacha={(bid) =>
-                onPullGacha?.(bid) ?? { ok: false, save, message: '暂不可用' }
-              }
-              onPullGachaTen={(bid) =>
-                onPullGachaTen?.(bid) ?? { ok: false, save, results: [], message: '暂不可用' }
-              }
-              onUpdatePetConfig={onUpdatePetConfig}
-            />
           )}
 
           {/* Optional Live FPS Counter & Kill Combo Streak Badges */}
