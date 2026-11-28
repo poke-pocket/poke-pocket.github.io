@@ -25,6 +25,8 @@ import {
   WORLD_TOWNS_3D,
 } from '../data/survivorsTactics';
 import { generateTownLayout, hashCitySeed } from '../utils/townStreetGen';
+import { queryRealBuildingsInBounds, subscribeRealBuildingsLoaded } from '../utils/realBuildingsMvt';
+import { drawWorldMapAnomaliesGeo } from '../utils/worldMapAnomalies';
 import { HIGHWAY_ROAD_WIDTH_3D, getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { SHANGHAI_DISTRICT_LABELS } from '../data/shanghaiMasterplan';
 import { BIOME_PALETTES, type BiomeId } from '../data/worldTextures3D';
@@ -375,6 +377,7 @@ function paintRoadsAndTownsOnMap(
   unitsPerPx: number,
   detailed: boolean,
   skipPixelRoadOverlay = false,
+  viewCenter?: { cx: number; cz: number },
 ) {
   const activeGeo = getActiveGeoTerrainOrigin();
   const kmScale = GEO_UNITS_PER_KM / 20;
@@ -634,6 +637,111 @@ function paintRoadsAndTownsOnMap(
           }
           ctx.stroke();
           ctx.setLineDash([]);
+        }
+      }
+    }
+
+    // 1.5. REAL-WORLD OPENSTREETMAP / OPENFREEMAP Z14 BUILDING FOOTPRINTS & REAL HEIGHTS!
+    // Streams authentic individual city blocks, residential compounds & skyscrapers (e.g. Shenzhen Ping An 600m,
+    // Shanghai Tower 632m, HK IFC 416m, Tokyo Marunouchi) directly underneath procedural roads & civic markers.
+    if (viewCenter && unitsPerPx < 3.6) {
+      const cw = ctx.canvas.width;
+      const ch = ctx.canvas.height;
+      const halfWx = cw * 0.5 * unitsPerPx;
+      const halfWz = ch * 0.5 * unitsPerPx;
+      const geoNW = worldToGeo(viewCenter.cx - halfWx, viewCenter.cz - halfWz, activeGeo);
+      const geoSE = worldToGeo(viewCenter.cx + halfWx, viewCenter.cz + halfWz, activeGeo);
+      if (geoNW && geoSE) {
+        const minLat = Math.min(geoNW.lat, geoSE.lat);
+        const maxLat = Math.max(geoNW.lat, geoSE.lat);
+        const minLng = Math.min(geoNW.lng, geoSE.lng);
+        const maxLng = Math.max(geoNW.lng, geoSE.lng);
+        const osmBuildings = queryRealBuildingsInBounds(minLat, maxLat, minLng, maxLng, true);
+
+        if (osmBuildings.length > 0) {
+          type ScreenPoly = { pts: [number, number][]; heightM: number; tier: 0 | 1 | 2 | 3 };
+          const buckets: [ScreenPoly[], ScreenPoly[], ScreenPoly[], ScreenPoly[]] = [[], [], [], []];
+          const tallShadows: ScreenPoly[] = [];
+          const drawShadow = detailed && unitsPerPx < 2.2;
+          const drawStroke = detailed && unitsPerPx < 2.4;
+
+          for (let bi = 0; bi < osmBuildings.length; bi++) {
+            const b = osmBuildings[bi];
+            const cW = geoToWorld(b.centerLat, b.centerLng, activeGeo);
+            if (!cW) continue;
+            const cS = toScreen(cW.x, cW.z);
+            if (cS.sx < -40 || cS.sx > cw + 40 || cS.sy < -40 || cS.sy > ch + 40) continue;
+
+            const pts: [number, number][] = [];
+            for (let i = 0; i < b.ring.length; i++) {
+              const w = geoToWorld(b.ring[i][0], b.ring[i][1], activeGeo);
+              if (!w) continue;
+              const s = toScreen(w.x, w.z);
+              pts.push([s.sx, s.sy]);
+            }
+            if (pts.length < 3) continue;
+
+            const tier: 0 | 1 | 2 | 3 =
+              b.heightM >= 160 ? 3 : b.heightM >= 55 ? 2 : b.heightM >= 20 ? 1 : 0;
+            const poly: ScreenPoly = { pts, heightM: b.heightM, tier };
+            buckets[tier].push(poly);
+            if (drawShadow && b.heightM >= 18) tallShadows.push(poly);
+          }
+
+          // Batched 2.5D height-proportional drop shadows (1 canvas draw call!)
+          if (tallShadows.length > 0) {
+            ctx.fillStyle = 'rgba(28, 34, 48, 0.24)';
+            ctx.beginPath();
+            for (let i = 0; i < tallShadows.length; i++) {
+              const p = tallShadows[i];
+              const off = Math.min(4.8, Math.max(1.1, p.heightM * 0.016));
+              ctx.moveTo(p.pts[0][0] + off, p.pts[0][1] + off);
+              for (let k = 1; k < p.pts.length; k++) {
+                ctx.lineTo(p.pts[k][0] + off, p.pts[k][1] + off);
+              }
+              ctx.closePath();
+            }
+            ctx.fill();
+          }
+
+          // Batched architectural roof fills by real OSM height tier (4 draw calls total!)
+          const tierColors = [
+            'rgba(206, 174, 144, 0.88)', // Low-rise neighborhood / courtyard blocks (<20m)
+            'rgba(196, 142, 114, 0.90)', // Mid-rise residential / commercial (20-55m)
+            'rgba(104, 166, 214, 0.92)', // High-rise office / apartment towers (55-160m)
+            'rgba(56, 182, 246, 0.96)',  // Iconic supertall landmarks (160m-632m!)
+          ] as const;
+
+          for (let t = 0; t < 4; t++) {
+            const list = buckets[t];
+            if (list.length === 0) continue;
+            ctx.fillStyle = tierColors[t];
+            ctx.beginPath();
+            for (let i = 0; i < list.length; i++) {
+              const pts = list[i].pts;
+              ctx.moveTo(pts[0][0], pts[0][1]);
+              for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+              ctx.closePath();
+            }
+            ctx.fill();
+          }
+
+          // Batched crisp footprint outlines when zoomed to district/street level (1 draw call!)
+          if (drawStroke) {
+            ctx.strokeStyle = 'rgba(48, 42, 38, 0.48)';
+            ctx.lineWidth = unitsPerPx < 1.0 ? 0.85 : 0.55;
+            ctx.beginPath();
+            for (let t = 0; t < 4; t++) {
+              const list = buckets[t];
+              for (let i = 0; i < list.length; i++) {
+                const pts = list[i].pts;
+                ctx.moveTo(pts[0][0], pts[0][1]);
+                for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+                ctx.closePath();
+              }
+            }
+            ctx.stroke();
+          }
         }
       }
     }
@@ -1391,7 +1499,7 @@ function paintTopographicMap(
 /* =========================================================================
    1. SLEEK TOP-RIGHT CORNER MINIMAP BUTTON (Opens Handheld Town Map on Click/Tab)
    ========================================================================= */
-export const WorldMapHud: React.FC<WorldMapHudProps> = ({
+export const WorldMapHud: React.FC<WorldMapHudProps> = React.memo(({
   biome,
   snapshot,
   onToggleExpand,
@@ -1408,7 +1516,14 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
   const pois = useMemo(() => generateRegionalPois(), []);
   const [demTick, setDemTick] = useState(0);
 
-  useEffect(() => subscribeGeoDemLoaded(() => setDemTick((t) => t + 1)), []);
+  useEffect(() => {
+    const u1 = subscribeGeoDemLoaded(() => setDemTick((t) => t + 1));
+    const u2 = subscribeRealBuildingsLoaded(() => setDemTick((t) => t + 1));
+    return () => {
+      u1();
+      u2();
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = miniCanvasRef.current;
@@ -1452,7 +1567,7 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
           sy: ((wz - cz) / cacheSpan + 0.5) * cacheH,
         });
         paintTopographicMap(offCtx, cacheW, cacheH, cx, cz, cacheSpan, biome, 6);
-        paintRoadsAndTownsOnMap(offCtx, toCacheScreen, cacheSpan / Math.max(1, cacheW), false, false);
+        paintRoadsAndTownsOnMap(offCtx, toCacheScreen, cacheSpan / Math.max(1, cacheW), false, false, { cx, cz });
         cache = { canvas: offCanvas, cx, cz, span: cacheSpan, biome, demTick };
         bgCacheRef.current = cache;
       }
@@ -1546,7 +1661,7 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = ({
       <span className="mm-tab-chip">M 掌机地图</span>
     </button>
   );
-};
+});
 
 /* =========================================================================
    2. FULL-BLEED HANDHELD CONSOLE TOWN MAP VIEW (Floating Collapsible Drawer!)
@@ -1595,6 +1710,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
   const [isInteracting, setIsInteracting] = useState(false);
   const [, setIconTick] = useState(0);
   const [demTick, setDemTick] = useState(0);
+  const [anomalyTick, setAnomalyTick] = useState(0);
 
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
@@ -1627,8 +1743,10 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
 
   useEffect(() => {
     const unsub = subscribeGeoDemLoaded(() => setDemTick((t) => t + 1));
+    const unsubBldg = subscribeRealBuildingsLoaded(() => setDemTick((t) => t + 1));
     return () => {
       unsub();
+      unsubBldg();
       if (rafMoveRef.current !== null) window.cancelAnimationFrame(rafMoveRef.current);
       if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current);
     };
@@ -1641,6 +1759,16 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
     lastY: 0,
     dragged: false,
   });
+
+  // Animate global weather anomalies ONLY when zoomed out to continental/global view (zero cost when zoomed into cities!)
+  useEffect(() => {
+    if (!geoOrigin || showLiveStreetTiles) return;
+    const minDim = Math.max(1, Math.min(canvasSize.w, canvasSize.h));
+    const curUpp = (150 / zoom) / minDim;
+    if (curUpp <= 14) return;
+    const id = window.setInterval(() => setAnomalyTick((t) => t + 1), 240);
+    return () => window.clearInterval(id);
+  }, [geoOrigin, showLiveStreetTiles, zoom, canvasSize.w, canvasSize.h]);
 
   // Match canvas internal resolution 1:1 with stage box so pixels & circles are NEVER stretched!
   useEffect(() => {
@@ -1736,7 +1864,27 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ctx.stroke();
     }
 
-    paintRoadsAndTownsOnMap(ctx, toScreen, unitsPerPx, true, hasRealMapTiles);
+    paintRoadsAndTownsOnMap(ctx, toScreen, unitsPerPx, true, hasRealMapTiles, { cx, cz });
+
+    // Global Weather Anomalies & Legendary Pokémon Event Zones on zoomed-out continental/world view!
+    if (geoOrigin && !hasRealMapTiles && unitsPerPx > 14) {
+      const centerG = worldToGeo(cx, cz, geoOrigin);
+      drawWorldMapAnomaliesGeo({
+        ctx,
+        stageW: W,
+        stageH: H,
+        ts: performance.now(),
+        centerLng: centerG?.lng ?? geoOrigin.originLng,
+        unitsPerPx,
+        screenToGeo: (sx, sy) => worldToGeo(cx + (sx - W * 0.5) * unitsPerPx, cz + (sy - H * 0.5) * unitsPerPx, geoOrigin),
+        geoToScreen: (lat, lng) => {
+          const w = geoToWorld(lat, lng, geoOrigin);
+          if (!w) return null;
+          const p = toScreen(w.x, w.z);
+          return [p.sx, p.sy];
+        },
+      });
+    }
 
     ctx.imageSmoothingEnabled = false;
 
@@ -2012,7 +2160,7 @@ export const HandheldWorldMapView: React.FC<HandheldWorldMapViewProps> = ({
       ctx.textBaseline = 'middle';
       ctx.fillText(heroOffTxt, ex, ey + 15);
     }
-  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick, isInteracting, showLiveStreetTiles]);
+  }, [biome, snapshot, pois, pins, highlightType, focusedPoiId, zoom, pan, canvasSize, demTick, anomalyTick, isInteracting, showLiveStreetTiles]);
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragRef.current.dragged) return;

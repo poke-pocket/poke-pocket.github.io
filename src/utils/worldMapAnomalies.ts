@@ -1,5 +1,5 @@
 import { SPECIES_CATALOG } from '../data/catalog';
-import { type WorldZoneDef, type ZoneClashWeather } from '../data/worldTour';
+import { WORLD_ZONES, type WorldZoneDef, type ZoneClashWeather } from '../data/worldTour';
 import { type SpeciesId } from '../types/pet';
 
 const ZONE_SPRITE_CACHE = new Map<SpeciesId, HTMLImageElement>();
@@ -277,11 +277,18 @@ function updateWeatherRaster(
   hoveredZoneId: string | null,
   selectedZoneId: string | null,
   cardOpen: boolean,
+  customGrid?: {
+    rw: number;
+    rh: number;
+    colLng: Float32Array;
+    rowLat: Float32Array;
+    camSig: string;
+  },
 ): HTMLCanvasElement {
   // Retro satellite pixel resolution: ~4px per weather texel on screen (matches GBA pixel tile grain!)
   const pixelStep = zoom < 3.5 ? 3 : 4;
-  const rw = Math.max(80, Math.min(340, Math.ceil(stageW / pixelStep)));
-  const rh = Math.max(50, Math.min(220, Math.ceil(stageH / pixelStep)));
+  const rw = customGrid ? customGrid.rw : Math.max(80, Math.min(340, Math.ceil(stageW / pixelStep)));
+  const rh = customGrid ? customGrid.rh : Math.max(50, Math.min(220, Math.ceil(stageH / pixelStep)));
 
   if (!rasterCanvas) {
     rasterCanvas = document.createElement('canvas');
@@ -294,7 +301,9 @@ function updateWeatherRaster(
     lastRasterTs = -1;
   }
 
-  const camSig = `${camMx.toFixed(5)}_${camMy.toFixed(5)}_${zoom.toFixed(3)}_${hoveredZoneId ?? ''}_${cardOpen ? selectedZoneId ?? '' : ''}`;
+  const camSig = customGrid
+    ? customGrid.camSig
+    : `${camMx.toFixed(5)}_${camMy.toFixed(5)}_${zoom.toFixed(3)}_${hoveredZoneId ?? ''}_${cardOpen ? selectedZoneId ?? '' : ''}`;
   // Re-rasterize immediately on camera/hover move, or at ~18fps for silky drifting clouds & storms
   if (camSig === lastCamSig && ts - lastRasterTs < 55) {
     return rasterCanvas;
@@ -341,18 +350,25 @@ function updateWeatherRaster(
   }
 
   // Precompute per-column longitude & per-row latitude arrays (huge speedup!)
-  const colLng = new Float32Array(rw);
-  const rowLat = new Float32Array(rh);
-  for (let x = 0; x < rw; x++) {
-    const sx = ((x + 0.5) / rw) * stageW;
-    let mx = camMx + (sx - stageW * 0.5) / worldPx;
-    mx = ((mx % 1) + 1) % 1;
-    colLng[x] = mercXToLng(mx);
-  }
-  for (let y = 0; y < rh; y++) {
-    const sy = ((y + 0.5) / rh) * stageH;
-    const my = Math.max(0.005, Math.min(0.995, camMy + (sy - stageH * 0.5) / worldPx));
-    rowLat[y] = mercYToLat(my);
+  let colLng: Float32Array;
+  let rowLat: Float32Array;
+  if (customGrid) {
+    colLng = customGrid.colLng;
+    rowLat = customGrid.rowLat;
+  } else {
+    colLng = new Float32Array(rw);
+    rowLat = new Float32Array(rh);
+    for (let x = 0; x < rw; x++) {
+      const sx = ((x + 0.5) / rw) * stageW;
+      let mx = camMx + (sx - stageW * 0.5) / worldPx;
+      mx = ((mx % 1) + 1) % 1;
+      colLng[x] = mercXToLng(mx);
+    }
+    for (let y = 0; y < rh; y++) {
+      const sy = ((y + 0.5) / rh) * stageH;
+      const my = Math.max(0.005, Math.min(0.995, camMy + (sy - stageH * 0.5) / worldPx));
+      rowLat[y] = mercYToLat(my);
+    }
   }
 
   // Evaluate organic domain-warped weather pixel by pixel
@@ -929,6 +945,228 @@ export function drawWorldMapAnomalies(params: {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(badgeText, Math.round(cx), by + 11.5);
+
+    ctx.restore();
+  }
+}
+
+export interface AnomalyHazardProfile {
+  kind: 'cold' | 'heat' | 'plateau' | 'storm';
+  causeLabel: string;
+  shortTag: string;
+  hpLossPctPerSec: number;
+  colorHex: string;
+}
+
+/** Classifies a locked WorldZone's overland survival hazard profile (cold/heat/plateau/storm, 5% HP/sec). */
+export function getAnomalyHazardProfile(zone: WorldZoneDef): AnomalyHazardProfile {
+  const kind = zone.anomaly?.kind;
+  const flavor = zone.anomaly?.weatherFlavor;
+  if (
+    kind === 'aurora_blizzard' ||
+    kind === 'polar_vortex' ||
+    flavor === 'blizzard' ||
+    flavor === 'volcano_blizzard'
+  ) {
+    return {
+      kind: 'cold',
+      causeLabel: '极寒暴雪冻伤',
+      shortTag: '❄️ 极寒',
+      hpLossPctPerSec: 0.05,
+      colorHex: '#74c0fc',
+    };
+  }
+  if (kind === 'sandstorm' || flavor === 'heat_sandstorm') {
+    return {
+      kind: 'heat',
+      causeLabel: '酷热沙暴灼伤',
+      shortTag: '🔥 酷热',
+      hpLossPctPerSec: 0.05,
+      colorHex: '#ff6b35',
+    };
+  }
+  if (flavor === 'plateau_storm') {
+    return {
+      kind: 'plateau',
+      causeLabel: '高寒缺氧与狂沙侵蚀',
+      shortTag: '🏔️ 高寒狂沙',
+      hpLossPctPerSec: 0.05,
+      colorHex: '#ffd43b',
+    };
+  }
+  return {
+    kind: 'storm',
+    causeLabel: '极端异象风暴侵袭',
+    shortTag: '⚡ 异象风暴',
+    hpLossPctPerSec: 0.05,
+    colorHex: '#38d9a9',
+  };
+}
+
+/**
+ * Checks whether a real-world `(lat, lng)` point lies inside any unopened anomaly zone
+ * (reusing the exact same organic domain-warped geographic boundary as the world map!).
+ */
+export function findLockedAnomalyZoneAtLatLng(
+  lat: number,
+  lng: number,
+  zones: WorldZoneDef[] = WORLD_ZONES,
+): WorldZoneDef | null {
+  const normLng = ((((lng + 180) % 360) + 360) % 360) - 180;
+  for (let i = 0; i < zones.length; i++) {
+    const zone = zones[i];
+    if (zone.unlocked || !zone.anomaly) continue;
+    const f = getZoneGeoField(zone);
+    if (sampleOrganicRegionMask(normLng, lat, f, 0) > 0.28) {
+      return zone;
+    }
+  }
+  return null;
+}
+
+/**
+ * Renders the EXACT same 17 global weather anomaly systems, lightning strikes, legendary duels & event badges
+ * onto the zoomed-out 2D Handheld World Map (`WorldMapHud.tsx`) using its local-tangent `(lat, lng)` projection!
+ */
+export function drawWorldMapAnomaliesGeo(params: {
+  ctx: CanvasRenderingContext2D;
+  zones?: WorldZoneDef[];
+  stageW: number;
+  stageH: number;
+  ts: number;
+  centerLng: number;
+  unitsPerPx: number;
+  screenToGeo: (sx: number, sy: number) => { lat: number; lng: number } | null;
+  geoToScreen: (lat: number, lng: number) => [number, number] | null;
+}) {
+  const {
+    ctx,
+    zones = WORLD_ZONES,
+    stageW,
+    stageH,
+    ts,
+    centerLng,
+    unitsPerPx,
+    screenToGeo,
+    geoToScreen,
+  } = params;
+
+  const rw = Math.max(72, Math.min(240, Math.ceil(stageW / 4)));
+  const rh = Math.max(48, Math.min(160, Math.ceil(stageH / 4)));
+  const colLng = new Float32Array(rw);
+  const rowLat = new Float32Array(rh);
+  const midY = stageH * 0.5;
+  const midX = stageW * 0.5;
+  for (let x = 0; x < rw; x++) {
+    const sx = ((x + 0.5) / rw) * stageW;
+    const g = screenToGeo(sx, midY);
+    colLng[x] = g ? ((((g.lng + 180) % 360) + 360) % 360) - 180 : 0;
+  }
+  for (let y = 0; y < rh; y++) {
+    const sy = ((y + 0.5) / rh) * stageH;
+    const g = screenToGeo(midX, sy);
+    rowLat[y] = g ? Math.max(-85, Math.min(85, g.lat)) : 0;
+  }
+
+  const camSig = `hud_${rw}_${rh}_${colLng[0].toFixed(2)}_${rowLat[0].toFixed(2)}_${unitsPerPx.toFixed(1)}`;
+  const raster = updateWeatherRaster(
+    zones,
+    stageW,
+    stageH,
+    0.5,
+    0.5,
+    stageW,
+    2.2,
+    ts,
+    null,
+    null,
+    false,
+    { rw, rh, colLng, rowLat, camSig },
+  );
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(raster, 0, 0, stageW, stageH);
+  ctx.restore();
+
+  const normCenterLng = ((((centerLng + 180) % 360) + 360) % 360) - 180;
+  for (const zone of zones) {
+    if (zone.unlocked || !zone.anomaly) continue;
+    const anomaly = zone.anomaly;
+    const f = getZoneGeoField(zone);
+    const badgeLng = zone.polarBand ? normCenterLng : zone.centerLng;
+    const pt = geoToScreen(zone.centerLat, badgeLng);
+    if (!pt) continue;
+    const [cx, cy] = pt;
+    if (cx < -140 || cx > stageW + 140 || cy < -120 || cy > stageH + 120) continue;
+
+    ctx.save();
+    const seed = f.seed;
+
+    const hasLightning =
+      anomaly.kind === 'storm' ||
+      anomaly.kind === 'monsoon' ||
+      anomaly.kind === 'ocean_maelstrom' ||
+      (anomaly.kind === 'legendary_clash' &&
+        (anomaly.weatherFlavor === 'electric_storm' || anomaly.weatherFlavor === 'rain_storm'));
+
+    if (hasLightning) {
+      const cycle = (ts * 0.0023 + seed * 1.9) % 3.1;
+      if (cycle < 0.34) {
+        const slot = Math.floor(ts * 0.00075 + seed * 7);
+        const oLng = zone.centerLng + (vnoise(slot * 1.7, seed) - 0.5) * Math.min(36, f.spanLng * 0.45);
+        const oLat = zone.centerLat + (vnoise(seed, slot * 2.1) - 0.5) * Math.min(24, f.spanLat * 0.42);
+        const bPt = geoToScreen(oLat, oLng);
+        if (bPt) {
+          drawForkedLightning(
+            ctx,
+            bPt[0],
+            bPt[1] - 4,
+            16,
+            slot + Math.round(seed),
+            anomaly.kind === 'monsoon' || anomaly.kind === 'ocean_maelstrom' ? '#a5d8ff' : '#ffe066',
+          );
+        }
+      }
+    }
+
+    if (anomaly.kind === 'legendary_clash' && anomaly.duelSpecies) {
+      const [leftSp, rightSp] = anomaly.duelSpecies;
+      const leftImg = getZoneSpriteImg(leftSp);
+      const rightImg = getZoneSpriteImg(rightSp);
+      const bobL = Math.sin(ts * 0.0064 + seed) * 2.0;
+      const bobR = Math.sin(ts * 0.0064 + seed + Math.PI) * 2.0;
+      const beamHalf = 11;
+      ctx.fillStyle = '#ffe066';
+      ctx.fillRect(Math.round(cx - beamHalf), Math.round(cy - 1.5), beamHalf * 2, 3);
+      const sprSz = 22;
+      const offX = 14;
+      if (leftImg) {
+        ctx.save();
+        ctx.translate(Math.round(cx - offX), Math.round(cy + bobL));
+        ctx.scale(-1, 1);
+        ctx.drawImage(leftImg, -sprSz / 2, -sprSz / 2, sprSz, sprSz);
+        ctx.restore();
+      }
+      if (rightImg) {
+        ctx.drawImage(rightImg, Math.round(cx + offX - sprSz / 2), Math.round(cy + bobR - sprSz / 2), sprSz, sprSz);
+      }
+    }
+
+    const badgeText = anomaly.mapBadge;
+    ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
+    const bw = Math.max(58, Math.round(ctx.measureText(badgeText).width + 10));
+    const bx = Math.round(cx - bw / 2);
+    const by = Math.round(cy + (anomaly.kind === 'legendary_clash' ? 16 : 8));
+    ctx.fillStyle = 'rgba(16, 20, 32, 0.84)';
+    ctx.fillRect(bx, by, bw, 14);
+    ctx.strokeStyle = anomaly.accentColor;
+    ctx.lineWidth = 1.1;
+    ctx.strokeRect(bx, by, bw, 14);
+    ctx.fillStyle = '#fffdf5';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(badgeText, Math.round(cx), by + 10.5);
 
     ctx.restore();
   }

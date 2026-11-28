@@ -1087,6 +1087,31 @@ export const ArenaPlayingHudOverlay: React.FC<{ ctx: Record<string, any> }> = ({
                     </div>
                   </div>
                 )}
+                {hud.anomalyHazard && (
+                  <div
+                    role="status"
+                    style={{
+                      marginTop: 6,
+                      padding: '4px 10px',
+                      background: 'rgba(130, 18, 28, 0.92)',
+                      border: `2px solid ${hud.anomalyHazard.accentColor || '#ff6b6b'}`,
+                      color: '#fff5f5',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      letterSpacing: '0.02em',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      boxShadow: '0 2px 0 #161420',
+                    }}
+                  >
+                    <span>⚠️ 未开放禁区 · {hud.anomalyHazard.zoneName}</span>
+                    <span style={{ color: '#ffe066' }}>
+                      {hud.anomalyHazard.shortTag} {hud.anomalyHazard.causeLabel} (-5% HP/秒)
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

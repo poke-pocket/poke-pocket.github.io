@@ -14,6 +14,7 @@ import { GEO_UNITS_PER_KM, geoToWorld, getActiveGeoTerrainOrigin, getProjectedGe
 import { getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { clearWorldCheckpoint, loadWorldCheckpoint, saveWorldCheckpoint, setActiveCareSessionFlag, wasActiveCareSessionOpen } from '../utils/worldCheckpoint';
 import { createInterCityHighwayStreamer3D } from '../world3d/interCityHighway3D';
+import { createRealOsmBuildingStreamer3D, type ProtectedOsmAreas3D } from '../world3d/realOsmBuildings3D';
 import { createWeatherVisuals3D } from '../world3d/weatherVisuals3D';
 import { DEFAULT_WORLD_TOUR_STATE, WORLD_CITIES, getDefaultHomeByLanguage, type WorldCityDef } from '../data/worldTour';
 import { type WorldLaunchPayload } from './WorldMapOverlay';
@@ -26,7 +27,7 @@ import { PokeballShutterOverlay, dismissInitialBootPokeballCurtain, setBootCurta
 import { type LiveMapSnapshot, type ScenicMountainSpot } from './WorldMapHud';
 import type { SurvivorsResultPayload } from '../utils/petEngine';
 import { getRegionalBgmPlaylist, sound, type BgmPlayerState, type BgmTrackId } from '../utils/sound';
-import { clearTownLayoutCache, hashCitySeed } from '../utils/townStreetGen';
+import { clearTownLayoutCache, generateTownLayout, hashCitySeed } from '../utils/townStreetGen';
 import { buildInterTownRoadNetwork3D, buildProceduralTown3D, resolveTownWallCollisions, setGlobalNightLampGlow3D, type ProceduralTownInstance } from '../utils/townBuilder3D';
 import { createRenderedTerrainSampler, setRenderedTerrainSampler } from '../world3d/renderedTerrain3D';
 import { setRoadTerrainGrid } from '../world3d/roadKitSurface';
@@ -2050,6 +2051,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     scene.add(townsGroup);
     const activeGeoNow = getActiveGeoTerrainOrigin();
     let geoHighwayStreamer: ReturnType<typeof createInterCityHighwayStreamer3D> | null = null;
+    let realOsmBuildingStreamer: ReturnType<typeof createRealOsmBuildingStreamer3D> | null = null;
     if (!activeGeoNow) {
       const roadNetGroup = buildInterTownRoadNetwork3D(
         (x, z) => getTerrainHeight3D(x, z),
@@ -2082,6 +2084,24 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       mountedGeoCityIds.add(activeGeoNow.startCityId ?? 'shanghai');
     }
     const activeTownLayoutSpecs = [...townSpecs];
+    let cachedProtectedOsmAreas: ProtectedOsmAreas3D | null = null;
+    const invalidateProtectedOsmAreas = () => {
+      cachedProtectedOsmAreas = null;
+    };
+    const getProtectedOsmAreas = (): ProtectedOsmAreas3D => {
+      if (cachedProtectedOsmAreas) return cachedProtectedOsmAreas;
+      const lots: ProtectedOsmAreas3D['lots'] = [];
+      const parks: ProtectedOsmAreas3D['parks'] = [];
+      const centers: ProtectedOsmAreas3D['centers'] = [];
+      for (const spec of activeTownLayoutSpecs) {
+        const lay = generateTownLayout(spec);
+        lots.push(...lay.lots);
+        parks.push(...lay.parks);
+        centers.push({ x: spec.x, z: spec.z });
+      }
+      cachedProtectedOsmAreas = { lots, parks, centers };
+      return cachedProtectedOsmAreas;
+    };
     // Register active city streets & rails BEFORE building 3D meshes so terrain roadbeds grade 100% flat!
     registerActiveTownRoadLayouts3D(activeTownLayoutSpecs);
     let urbanSyncX=Infinity,urbanSyncZ=Infinity;
@@ -2089,6 +2109,13 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     syncUrbanAt(0,0,true);
     if (geoHighwayStreamer) {
       geoHighwayStreamer.updateAround(0, 0, true);
+    }
+    if (activeGeoNow) {
+      realOsmBuildingStreamer = createRealOsmBuildingStreamer3D({
+        scene,
+        getProtectedAreas: getProtectedOsmAreas,
+      });
+      realOsmBuildingStreamer.updateAround(0, 0, true);
     }
     const proceduralTowns: ProceduralTownInstance[] = townSpecs.map((spec) => {
       const t = buildProceduralTown3D(
@@ -2598,6 +2625,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
     updateWorldAround(startPx, startPz);
     const unregisterRenderedTerrain=setRenderedTerrainSampler(createRenderedTerrainSampler(terrainPosAttr,terrainMesh));
     geoHighwayStreamer?.updateAround(startPx, startPz, true);
+    realOsmBuildingStreamer?.updateAround(startPx, startPz, true);
 
     // When real-Earth NASA/SRTM DEM elevation tiles finish streaming, rebuild coast-clipped coastal city AT MOST ONCE (and never tear down all flora meshes!)
     const startCityClean = activeGeoNow?.startCityId ?? 'shanghai';
@@ -2679,6 +2707,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       if (curSim) {
         updateWorldAround(curSim.px, curSim.pz);
         geoHighwayStreamer?.updateAround(curSim.px, curSim.pz, true);
+        invalidateProtectedOsmAreas();
+        realOsmBuildingStreamer?.updateAround(curSim.px, curSim.pz, true);
         const newFloor = getWalkableSurfaceHeight3D(curSim.px, curSim.pz, curSim.py);
         curSim.py = Math.max(WATER_LEVEL_3D - 0.15, newFloor);
         curSim.followers.forEach((f) => {
@@ -2687,8 +2717,10 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       } else {
         updateWorldAround(0, 0);
         geoHighwayStreamer?.updateAround(0, 0, true);
+        invalidateProtectedOsmAreas();
+        realOsmBuildingStreamer?.updateAround(0, 0, true);
       }
-    });
+    }, { localOnly: true });
     syncSafeZones3D(0, 0);
 
     const { vfxAtlas, spawnPixelParticles, spawnGroundDecalWave, spawnGlowFlash, spawnSpriteBurst, spawnSkillProjectile3D, damageEnemy3D, pickTargetForFollower, fireSkill, spawnEnemy3D } = createArenaCombatActions3D({ activeWorldRun, adventureStyleRef, buildResultSummary, camOrbitRef, captureFinishRef, comboRef, createSpriteEntity, diffMeta, endedRef, gameMode, getPixelTexture, liveOverlandCityRef, liveWeatherRef, metaBonusesRef, metaRef, onUpdateMeta, pausedRef, pet, prefsRef, regionMeta, save, savePetsCountRef, scene, selectedBallIdRef, setCaptureCutscene, setNearbyKoTarget, setResultSummary, shakeRef, showBanner, simRef, solarInfoRef, tacticsRef, triggerBattleActionRef });
@@ -2735,6 +2767,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       chunkState.z = 999999;
       updateWorldAround(destX, destZ);
       geoHighwayStreamer?.updateAround(destX, destZ, true);
+      realOsmBuildingStreamer?.updateAround(destX, destZ, true);
       const gy = Math.max(WATER_LEVEL_3D + 0.18, getWalkableSurfaceHeight3D(destX, destZ));
       curSim.px = destX;
       curSim.pz = destZ;
@@ -2854,6 +2887,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       chunkState.z = 999999;
       updateWorldAround(destX, destZ);
       geoHighwayStreamer?.updateAround(destX, destZ, true);
+      realOsmBuildingStreamer?.updateAround(destX, destZ, true);
 
       curSim.px = destX;
       curSim.pz = destZ;
@@ -2925,6 +2959,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       chunkState.z = 999999;
       updateWorldAround(tx, tz);
       geoHighwayStreamer?.updateAround(tx, tz, true);
+      realOsmBuildingStreamer?.updateAround(tx, tz, true);
       const gy = Math.max(WATER_LEVEL_3D + 0.16, getWalkableSurfaceHeight3D(tx, tz));
       curSim.px = tx;
       curSim.pz = tz;
@@ -2984,6 +3019,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       chunkState.z = 999999;
       updateWorldAround(destX, destZ);
       geoHighwayStreamer?.updateAround(destX, destZ, true);
+      realOsmBuildingStreamer?.updateAround(destX, destZ, true);
       const gy = Math.max(WATER_LEVEL_3D + 0.16, getWalkableSurfaceHeight3D(destX, destZ));
       curSim.px = destX;
       curSim.pz = destZ;
@@ -3730,6 +3766,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
           syncFloraBillboards(camYawNow, camPitchNow, windClock);
           if (geoHighwayStreamer) {
             geoHighwayStreamer.updateAround(sim.px, sim.pz);
+            realOsmBuildingStreamer?.updateAround(sim.px, sim.pz);
             // Lazily mount neighboring real-world 3D cities when walking overland along an inter-city highway!
             if (Math.floor(sim.elapsed * 2) > Math.floor((sim.elapsed - dt) * 2)) {
               for (const gc of getProjectedGeoCities()) {
@@ -3774,6 +3811,8 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
                   townsGroup.add(neighborTown.group);
                   chunkState.x = 999999; // Refresh local terrain chunk normals & roadbed grading
                   geoHighwayStreamer.updateAround(sim.px, sim.pz, true);
+                  invalidateProtectedOsmAreas();
+                  realOsmBuildingStreamer?.updateAround(sim.px, sim.pz, true);
                   syncUpperFloors();
                   syncAutoNavTargets();
                 }
@@ -3912,6 +3951,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       unsubGeoDem();
       weatherVisuals3D.dispose();
       geoHighwayStreamer?.dispose();
+      realOsmBuildingStreamer?.dispose();
       setWalkableBuildingFloorZones3D([]);
       unregisterRenderedTerrain();
       unregisterRoadTerrainGrid();
@@ -4328,13 +4368,16 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
   const hpPct = Math.min(100, Math.round((hud.hp / hud.maxHp) * 100));
   const minStr = `${Math.floor(hud.elapsedSec / 60)}:${String(hud.elapsedSec % 60).padStart(2, '0')}`;
 
-  // Publish live tactics bridge so the Handheld Console renders Tactics natively!
+  // Publish live tactics bridge ONLY when the Handheld Console is open (`externalPaused`) or leaving play!
+  // Previously firing on every 160ms/1s `hud` tick caused a FULL <App /> top-to-bottom React re-render storm
+  // during 3D gameplay, stalling frames & starving WebAudio BGM!
   useEffect(() => {
     if (!onSyncTacticsBridge) return;
     if (phase !== 'playing') {
       onSyncTacticsBridge(null);
       return;
     }
+    if (!externalPaused) return;
     onSyncTacticsBridge({
       inBattle: true,
       regionName: regionMeta.name,
@@ -4374,7 +4417,7 @@ export const Survivors3DArena: React.FC<Survivors3DArenaProps> = ({
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, hud, followersView, tactics, camPreset, regionMeta.name, diffMeta.label, save.pets]);
+  }, [phase, externalPaused, externalPaused ? hud : null, followersView, tactics, camPreset, regionMeta.name, diffMeta.label, save.pets]);
 
   useArenaKeyboardHotkeys({ CAM_MODE_META, activeBusStopModal, banishMode, banishedIdsRef, buySafeShopItem, camFollowModeRef, camOrbitRef, canvasRef, captureOffer, closeHubModal, closeMapSelect, closeProfileModal, closeResultAndRun, closeShopModal, closeSquadEditor, cycleCameraFollowMode, cycleInteractOptionRef, cycleRideMode, endedRef, externalPausedRef, handleCaptureBossConfirm, handleChooseUpgrade, handleLaunchRandomRogueRun, handleLaunchRun, hubModal, hud, inRunTownShopOpen, jumpQueuedRef, keysRef, levelChoices, nearbyKoIdRef, onFinish, onOpenPokemonManager, pausedRef, pet, phase, profileOpen, programmaticUnlockRef, rebuildChoicesRef, rerollsLeft, restorePointerLockRef, resultSummary, save, setActiveBusStopModal, setBanishMode, setClosingLevelUp, setInRunTownShopOpen, setLevelChoices, setPhase, setRerollsLeft, setRunNonce, setShopOpen, setTimeAlmanacOpen, setWorldMapOpen, shopOpen, showBanner, simRef, squadEditorOpen, timeAlmanacOpenRef, toggleWorldMap, triggerBattleActionRef, triggerInteractRef, triggerSafeHeal, tryRestorePointerLock, worldMapOpenRef });
   const bgmTrackLabel = bgmState.songTitle || '晴空微风 · 城镇漫步';

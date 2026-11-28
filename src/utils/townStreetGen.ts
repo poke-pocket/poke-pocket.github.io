@@ -1218,6 +1218,80 @@ export function generateTownLayout(anchor: WorldTownAnchor3D): GeneratedTownLayo
     houseCount += 1;
   }
 
+  // Block-Interior Courtyard Infill Pass: populates inner urban blocks (residential compounds, courtyards & towers)
+  // so cities NEVER look like hollow shells lining only road edges — even offline without real OSM tiles!
+  const nonBridgeStreets = streets.filter((s) => !s.isBridge);
+  const interiorMax = cleanCityId === 'shanghai' ? 72 : isMegacity ? 54 : 34;
+  let interiorPlaced = 0;
+  const infillSpan = isMegacity ? 520 : 340;
+  const infillStep = 46;
+  const interiorCandidates: { ix: number; iz: number; rotY: number; dist: number; isCore: boolean }[] = [];
+
+  for (let row = 0, gz = -infillSpan; gz <= infillSpan; gz += infillStep, row++) {
+    const rowOff = (row % 2) * (infillStep * 0.5);
+    for (let gx = -infillSpan + rowOff; gx <= infillSpan; gx += infillStep) {
+      const ix = cx + gx + (rng() - 0.5) * 8;
+      const iz = cz + gz + (rng() - 0.5) * 8;
+      if (isUrbanLandLocal && !isUrbanLandLocal(ix - cx, iz - cz)) continue;
+      if (isNearAnyStreetFast(ix, iz, 9.0)) continue;
+
+      let bestStreetDist = Infinity;
+      let bestStreetRot = 0;
+      for (let si = 0; si < nonBridgeStreets.length; si++) {
+        const st = nonBridgeStreets[si];
+        const d = distToSeg(ix, iz, st.x1, st.z1, st.x2, st.z2);
+        if (d < bestStreetDist) {
+          bestStreetDist = d;
+          const sdx = st.x2 - st.x1;
+          const sdz = st.z2 - st.z1;
+          const slen = Math.hypot(sdx, sdz) || 1;
+          bestStreetRot = Math.atan2(sdz / slen, -sdx / slen);
+        }
+      }
+      // Strictly inside enclosed city blocks (clear of roadbeds, yet within urban block interiors)
+      if (bestStreetDist < 26 || bestStreetDist > 175) continue;
+      const dist = Math.hypot(ix - cx, iz - cz);
+      interiorCandidates.push({ ix, iz, rotY: bestStreetRot, dist, isCore: dist < 240 });
+    }
+  }
+
+  interiorCandidates.sort((a, b) => a.dist - b.dist);
+  for (const ic of interiorCandidates) {
+    if (interiorPlaced >= interiorMax) break;
+    const isSky = ic.isCore && interiorPlaced % 4 === 1;
+    const baseW = isSky ? 34 + (interiorPlaced % 3) * 3 : 28 + (interiorPlaced % 4) * 3.5;
+    const baseD = isSky ? 30 + (interiorPlaced % 2) * 3 : 24 + (interiorPlaced % 3) * 3.0;
+    const shape: BuildingFootprintShape =
+      interiorPlaced % 8 === 3 ? 'cylinder' : 'rect';
+    let placedFit: { w: number; d: number } | null = null;
+    for (const sc of [1.0, 0.85, 0.72]) {
+      const wTry = Math.round(baseW * sc * 10) / 10;
+      const dTry = Math.round(baseD * sc * 10) / 10;
+      const effW = shape === 'cylinder' ? Math.min(wTry, dTry) : wTry;
+      const effD = shape === 'cylinder' ? effW : dTry;
+      if (isFootprintClear(ic.ix, ic.iz, ic.rotY, effW, effD, shape)) {
+        placedFit = { w: effW, d: effD };
+        break;
+      }
+    }
+    if (!placedFit) continue;
+    lots.push({
+      id: `${anchor.id}_infill_${interiorPlaced}`,
+      kind: isSky ? 'skyscraper' : 'house',
+      x: ic.ix,
+      z: ic.iz,
+      rotY: ic.rotY,
+      width: placedFit.w,
+      depth: placedFit.d,
+      shape,
+      houseVariant: (seedVal + houseCount + interiorPlaced) % 10,
+      walkable: false,
+      doorX: ic.ix,
+      doorZ: ic.iz + placedFit.d * 0.5 + 2,
+    });
+    interiorPlaced += 1;
+  }
+
   let maxDist = 140;
   for (const l of lots) {
     maxDist = Math.max(maxDist, Math.hypot(l.x - cx, l.z - cz) + 18);

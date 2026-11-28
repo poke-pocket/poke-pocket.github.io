@@ -117,7 +117,7 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
 
           sim.timers.hudSync -= dt;
           if (sim.timers.hudSync <= 0) {
-            sim.timers.hudSync = 0.16;
+            sim.timers.hudSync = 0.24;
             const zAng = Math.atan2(nearestZone.z - sim.pz, nearestZone.x - sim.px);
             const arrows = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
             const aIdx = Math.round((((zAng / (Math.PI * 2)) + 1) % 1) * 8) % 8;
@@ -171,6 +171,7 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
               },
               healCharges: sim.healCharges,
               boostLeft: Number(sim.boostTimer.toFixed(1)),
+              anomalyHazard: sim.anomalyHazard ?? null,
             };
             setHud((prev: any) => {
               if (
@@ -190,6 +191,7 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
                 prev.combo === nextHud.combo &&
                 prev.healCharges === nextHud.healCharges &&
                 prev.boostLeft === nextHud.boostLeft &&
+                prev.anomalyHazard?.zoneId === nextHud.anomalyHazard?.zoneId &&
                 prev.actionCds.ball === nextHud.actionCds.ball &&
                 prev.actionCds.heal === nextHud.actionCds.heal &&
                 prev.actionCds.boost === nextHud.actionCds.boost &&
@@ -336,9 +338,9 @@ export function stepArenaHudProjection3D(rawCtx: Record<string, any>): void {
             setMapSnapshot((prev: LiveMapSnapshot) => {
               if (
                 prev &&
-                Math.hypot(nextMapSnap.px - prev.px, nextMapSnap.pz - prev.pz) < 0.45 &&
-                Math.abs(nextMapSnap.facingAngle - prev.facingAngle) < 0.06 &&
-                Math.abs(nextMapSnap.camYaw - prev.camYaw) < 0.06 &&
+                Math.hypot(nextMapSnap.px - prev.px, nextMapSnap.pz - prev.pz) < 1.25 &&
+                Math.abs(nextMapSnap.facingAngle - prev.facingAngle) < 0.14 &&
+                Math.abs(nextMapSnap.camYaw - prev.camYaw) < 0.14 &&
                 nextMapSnap.dots.length === prev.dots.length
               ) {
                 return prev;

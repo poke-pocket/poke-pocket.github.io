@@ -11,6 +11,7 @@ import { saveWorldCheckpoint } from '../../utils/worldCheckpoint';
 import { sound } from '../../utils/sound';
 import { resolveTownWallCollisions } from '../../utils/townBuilder3D';
 import { getWeatherCombatBonus } from '../../utils/weatherSystem';
+import { findLockedAnomalyZoneAtLatLng, getAnomalyHazardProfile } from '../../utils/worldMapAnomalies';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
@@ -188,6 +189,164 @@ export function stepArenaCombatSimulation3D(rawCtx: Record<string, any>): void {
                 );
               }
             }
+          }
+
+          // 2D. Unopened Real-World Anomaly Zone Overland Hazards!
+          // Walking on foot into any locked regional anomaly zone triggers:
+          //  1) Continuous environmental HP drain (-5% maxHp / sec from extreme cold, scorching heat, plateau or storm)
+          //  2) Intercepting ambush swarms of enraged regional wild Pokémon blocking the player's path!
+          const geoOriginNow = getActiveGeoTerrainOrigin();
+          if (geoOriginNow && !inTownPeaceZone && !activeZone && !endedRef.current) {
+            sim.anomalyCheckTimer = (sim.anomalyCheckTimer ?? 0) - dt;
+            if (sim.anomalyCheckTimer <= 0) {
+              sim.anomalyCheckTimer = 0.45;
+              const pGeo = worldToGeo(sim.px, sim.pz, geoOriginNow);
+              const lockedZone = pGeo ? findLockedAnomalyZoneAtLatLng(pGeo.lat, pGeo.lng) : null;
+              if (lockedZone && lockedZone.anomaly) {
+                const hazard = getAnomalyHazardProfile(lockedZone);
+                const prevZoneId = sim.anomalyHazard?.zoneId ?? null;
+                sim.anomalyHazard = {
+                  zoneId: lockedZone.id,
+                  zoneName: lockedZone.name,
+                  title: lockedZone.anomaly.title,
+                  causeLabel: hazard.causeLabel,
+                  shortTag: hazard.shortTag,
+                  accentColor: lockedZone.anomaly.accentColor,
+                  teaserSpecies: lockedZone.teaserSpecies,
+                  duelSpecies: lockedZone.anomaly.duelSpecies,
+                  hazardKind: hazard.kind,
+                  colorHex: hazard.colorHex,
+                };
+                if (prevZoneId !== lockedZone.id) {
+                  sim.anomalyDrainTimer = 0.9;
+                  sim.anomalyAmbushTimer = 1.2;
+                  sound.play('error');
+                  if (prefsRef.current.screenShake) shakeRef.current = Math.max(shakeRef.current, 0.35);
+                  showBanner(
+                    `⚠️ 警告：已闯入未开放异象禁区【${lockedZone.name} · ${lockedZone.anomaly.title}】！${hazard.causeLabel}（每秒损失 5% HP），大批野生精灵正在围堵！`,
+                    5200,
+                  );
+                }
+              } else if (sim.anomalyHazard) {
+                showBanner(`✅ 已撤离未开放禁区【${sim.anomalyHazard.zoneName}】，极端环境侵袭停止。`, 2600);
+                sim.anomalyHazard = null;
+              }
+            }
+
+            if (sim.anomalyHazard && sim.hp > 0) {
+              const hz = sim.anomalyHazard;
+              // (1) Environmental 5% Max-HP Drain per second (Extreme Cold / Heat / Storm!)
+              sim.anomalyDrainTimer = (sim.anomalyDrainTimer ?? 1.0) - dt;
+              if (sim.anomalyDrainTimer <= 0) {
+                sim.anomalyDrainTimer = 1.0;
+                const envDmg = Math.max(1, Math.round(sim.maxHp * 0.05));
+                sim.hp = Math.max(0, sim.hp - envDmg);
+                sim.dmgPops.push({
+                  id: Math.random(),
+                  wx: sim.px + (Math.random() - 0.5) * 0.8,
+                  wy: sim.py + 2.1,
+                  wz: sim.pz + (Math.random() - 0.5) * 0.8,
+                  text: `-${envDmg} ${hz.shortTag}`,
+                  color: hz.colorHex,
+                  life: 0.95,
+                });
+                const vfxFrame =
+                  hz.hazardKind === 'heat'
+                    ? vfxAtlas.fireSpark
+                    : hz.hazardKind === 'cold'
+                      ? vfxAtlas.starGlint
+                      : vfxAtlas.electricSpark;
+                spawnPixelParticles(sim.px, sim.py + 0.9, sim.pz, vfxFrame, 6, 3.6, 0.72, 2.2, 4.0);
+                sound.play('hit');
+                if (prefsRef.current.screenShake) shakeRef.current = Math.max(shakeRef.current, 0.16);
+
+                if (sim.hp <= 0) {
+                  if (adventureStyleRef.current === 'care_world') {
+                    sim.hp = sim.maxHp;
+                    sim.invuln = 3.0;
+                    sim.px = -22;
+                    sim.pz = 12;
+                    sim.py = Math.max(WATER_LEVEL_3D + 0.2, getWalkableSurfaceHeight3D(-22, 12));
+                    sim.anomalyHazard = null;
+                    sim.followers.forEach((f, idx) => {
+                      const a = (idx * Math.PI * 2) / Math.max(1, sim.followers.length);
+                      f.x = sim.px + Math.cos(a) * 1.8;
+                      f.z = sim.pz + Math.sin(a) * 1.8;
+                      f.y = sim.py;
+                    });
+                    for (let ei = sim.enemies.length - 1; ei >= 0; ei--) {
+                      const en = sim.enemies[ei];
+                      if (en.sprite) scene.remove(en.sprite);
+                      if (en.shadow) scene.remove(en.shadow);
+                      if (en.auraRing) scene.remove(en.auraRing);
+                      sim.enemies.splice(ei, 1);
+                    }
+                    onHealParty();
+                    sound.play('heal_jingle');
+                    const spawnGeo = worldToGeo(-22, 12);
+                    saveWorldCheckpoint({
+                      mode: 'geo',
+                      cityId: geoOriginNow.startCityId ?? 'shanghai',
+                      cityName: geoOriginNow.startCityName,
+                      lat: spawnGeo?.lat,
+                      lng: spawnGeo?.lng,
+                      x: -22,
+                      z: 12,
+                      facingAngle: 0,
+                      updatedAt: Date.now(),
+                    });
+                    showBanner(
+                      `🏥 在未开放禁区【${hz.zoneName}】因${hz.causeLabel}体力耗尽！救援队已紧急护送回主城休整，全队恢复满血！`,
+                      4800,
+                    );
+                  } else {
+                    endedRef.current = true;
+                    pausedRef.current = true;
+                    setResultSummary(buildResultSummary(false));
+                  }
+                }
+              }
+
+              // (2) Ambush Interception Swarms of Enraged Regional Wild Pokémon blocking the path!
+              sim.anomalyAmbushTimer = (sim.anomalyAmbushTimer ?? 1.2) - dt;
+              const liveAmbushCount = sim.enemies.filter((e: Enemy3D) => !e.knockedOut && !e.isBoss).length;
+              if (sim.anomalyAmbushTimer <= 0 && liveAmbushCount < 18 && sim.hp > 0) {
+                sim.anomalyAmbushTimer = 7.5;
+                const pool: SpeciesId[] =
+                  hz.teaserSpecies && hz.teaserSpecies.length > 0 ? hz.teaserSpecies : regionMeta.wildPool;
+                const waveCount = Math.min(6, Math.max(3, 18 - liveAmbushCount));
+                const fwdAng = Math.atan2(-Math.cos(sim.facingAngle), Math.sin(sim.facingAngle));
+                for (let k = 0; k < waveCount; k++) {
+                  const spread = ((k / Math.max(1, waveCount - 1)) - 0.5) * Math.PI * 1.25;
+                  const ang = fwdAng + spread + (Math.random() - 0.5) * 0.25;
+                  const dist = 10.5 + Math.random() * 5.5;
+                  const ex = sim.px + Math.cos(ang) * dist;
+                  const ez = sim.pz + Math.sin(ang) * dist;
+                  const sp = pool[Math.floor(Math.random() * pool.length)];
+                  const gSpawn = getTerrainHeight3D(ex, ez);
+                  const inWater = gSpawn < WATER_LEVEL_3D - 0.1;
+                  const hpScale = (1.55 + sim.elapsed / 70) * regionMult * diffMeta.enemyHpMult;
+                  spawnEnemy3D(
+                    ex,
+                    ez,
+                    sp,
+                    Math.round(145 * hpScale),
+                    3.95 + Math.random() * 0.65,
+                    Math.round(12 * regionMult * diffMeta.enemyDmgMult),
+                    { isAquatic: inWater },
+                  );
+                  if (sim.enemies.length > 0) {
+                    const spawned = sim.enemies[sim.enemies.length - 1];
+                    spawned.aggroed = true;
+                    spawned.temperament = 'aggressive';
+                  }
+                }
+                sound.playCry(getPokemonCryId(pool[0], 25));
+                showBanner(`🚨 禁区拦路！大批受异象激怒的【${hz.zoneName}】野生精灵蜂拥围堵！`, 3400);
+              }
+            }
+          } else if (sim.anomalyHazard) {
+            sim.anomalyHazard = null;
           }
 
           // 3. Update Following Pokémon Squad + Active Battle Action Cooldowns & Team Boost!

@@ -624,6 +624,7 @@ class RetroSoundEngine {
   private bgmTimer: number | null = null;
   private bgmStep = 0;
   private nextStepTime = 0;
+  private lastBgmBusGain = -1;
   private activeCry: HTMLAudioElement | null = null;
   private activeCryNode: AudioBufferSourceNode | null = null;
   private cryCache = new Map<string, HTMLAudioElement>();
@@ -717,10 +718,14 @@ class RetroSoundEngine {
     return Math.max(0.0001, (this.bgmVolume / 100) * (this.masterVolume / 100) * 1.15);
   }
 
-  private syncBgmBusGain(fadeSec = 0.06) {
+  private syncBgmBusGain(fadeSec = 0.06, force = false) {
     if (!this.ctx || !this.bgmBusGain) return;
-    const now = this.ctx.currentTime;
     const target = this.computeTargetBgmGain();
+    if (!force && this.lastBgmBusGain >= 0 && Math.abs(target - this.lastBgmBusGain) < 0.0004) {
+      return;
+    }
+    this.lastBgmBusGain = target;
+    const now = this.ctx.currentTime;
     try {
       this.bgmBusGain.gain.cancelScheduledValues(now);
       this.bgmBusGain.gain.setValueAtTime(Math.max(0.0001, this.bgmBusGain.gain.value), now);
@@ -1508,15 +1513,15 @@ class RetroSoundEngine {
       const ctx = this.ctx;
       if (!ctx || ctx.state !== 'running') return;
       const bus = this.ensureBgmBus(ctx);
-      this.syncBgmBusGain();
 
       const now = ctx.currentTime;
-      if (this.nextStepTime < now - 0.15 || this.nextStepTime > now + 1.5) {
-        this.nextStepTime = now + 0.03;
+      if (this.nextStepTime < now - 0.25 || this.nextStepTime > now + 1.8) {
+        this.nextStepTime = now + 0.04;
       }
 
-      // Schedule notes up to 140ms ahead on WebAudio's sample-accurate clock
-      while (this.nextStepTime < now + 0.14) {
+      // Schedule notes up to 480ms ahead on WebAudio's sample-accurate audio thread clock
+      // so occasional GPU/network/UI spikes NEVER starve or stutter BGM playback!
+      while (this.nextStepTime < now + 0.48) {
         const song = this.getActiveSongEntry();
         const t = song.track;
         const idx = this.bgmStep % t.lead.length;
@@ -1561,7 +1566,7 @@ class RetroSoundEngine {
           }
         }
       }
-    }, 45);
+    }, 65);
   }
 
   private stopBgmLoop() {
