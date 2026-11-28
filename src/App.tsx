@@ -1503,7 +1503,7 @@ export function App() {
             save={effectiveSave}
             pet={activePet}
             analogVecRef={analogVecRef}
-            externalPaused={managerOpen && !managerClosing}
+            externalPaused={managerOpen}
             onFinish={handleFinishSurvivors}
             onHealParty={handleHealParty}
             onSpendCoinsInRun={handleSpendCoinsInRun}

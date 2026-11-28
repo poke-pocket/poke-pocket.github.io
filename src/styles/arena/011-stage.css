@@ -11,7 +11,6 @@
 
 .world3d-root-layer.is-behind-manager {
   pointer-events: none;
-  filter: brightness(0.45);
 }
 
 .world3d-stage {
@@ -42,9 +41,9 @@
   justify-content: center;
   gap: 6px;
   padding: 6px 12px;
-  background: rgba(14, 17, 28, 0.72);
-  backdrop-filter: blur(4px);
+  background: rgba(12, 15, 25, 0.78);
   overflow-y: auto;
+  will-change: opacity;
 }
 
 .manager-top-return {

@@ -8,6 +8,7 @@ import {
   classifyRealEarthPixelColor,
   geoToWorld,
   getActiveGeoTerrainOrigin,
+  getGeoDemVersion,
   getProjectedGeoCities,
   sampleFilteredGeoElevationMeters,
   sampleRealElevationMeters,
@@ -25,7 +26,7 @@ import {
   WORLD_TOWNS_3D,
 } from '../data/survivorsTactics';
 import { generateTownLayout, hashCitySeed } from '../utils/townStreetGen';
-import { queryRealBuildingsInBounds, subscribeRealBuildingsLoaded } from '../utils/realBuildingsMvt';
+import { getRealBuildingsVersion, queryRealBuildingsInBounds, subscribeRealBuildingsLoaded } from '../utils/realBuildingsMvt';
 import { drawWorldMapAnomaliesGeo } from '../utils/worldMapAnomalies';
 import { HIGHWAY_ROAD_WIDTH_3D, getCompiledInterCityNetwork } from '../utils/interCityHighwayGraph';
 import { SHANGHAI_DISTRICT_LABELS } from '../data/shanghaiMasterplan';
@@ -1499,20 +1500,23 @@ function paintTopographicMap(
 /* =========================================================================
    1. SLEEK TOP-RIGHT CORNER MINIMAP BUTTON (Opens Handheld Town Map on Click/Tab)
    ========================================================================= */
+// Module-level offscreen cache survives HUD unmount/remount (e.g. closing Handheld Console / Global Map)
+// so re-showing the minimap blits in <0.1ms via GPU drawImage instead of re-rasterizing terrain & OSM buildings!
+let sharedMiniMapBgCache: {
+  canvas: HTMLCanvasElement;
+  cx: number;
+  cz: number;
+  span: number;
+  biome: BiomeId;
+  dataVer: string;
+} | null = null;
+
 export const WorldMapHud: React.FC<WorldMapHudProps> = React.memo(({
   biome,
   snapshot,
   onToggleExpand,
 }) => {
   const miniCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const bgCacheRef = useRef<{
-    canvas: HTMLCanvasElement;
-    cx: number;
-    cz: number;
-    span: number;
-    biome: BiomeId;
-    demTick: number;
-  } | null>(null);
   const pois = useMemo(() => generateRegionalPois(), []);
   const [demTick, setDemTick] = useState(0);
 
@@ -1545,11 +1549,12 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = React.memo(({
     const cacheSpan = span * cacheMult;
     const cacheW = Math.round(W * cacheMult);
     const cacheH = Math.round(H * cacheMult);
-    let cache = bgCacheRef.current;
+    let cache = sharedMiniMapBgCache;
+    const dataVer = `${getGeoDemVersion()}_${getRealBuildingsVersion()}`;
     const needRebuild =
       !cache ||
       cache.biome !== biome ||
-      cache.demTick !== demTick ||
+      cache.dataVer !== dataVer ||
       cache.span !== cacheSpan ||
       Math.abs(snapshot.px - cache.cx) > span * 0.58 ||
       Math.abs(snapshot.pz - cache.cz) > span * 0.58;
@@ -1568,8 +1573,8 @@ export const WorldMapHud: React.FC<WorldMapHudProps> = React.memo(({
         });
         paintTopographicMap(offCtx, cacheW, cacheH, cx, cz, cacheSpan, biome, 6);
         paintRoadsAndTownsOnMap(offCtx, toCacheScreen, cacheSpan / Math.max(1, cacheW), false, false, { cx, cz });
-        cache = { canvas: offCanvas, cx, cz, span: cacheSpan, biome, demTick };
-        bgCacheRef.current = cache;
+        cache = { canvas: offCanvas, cx, cz, span: cacheSpan, biome, dataVer };
+        sharedMiniMapBgCache = cache;
       }
     }
 

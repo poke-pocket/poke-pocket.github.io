@@ -42,12 +42,14 @@
 }
 
 .manager-overlay-wrap.is-closing {
-  animation: backdropFadeOut 0.21s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  animation: backdropFadeOut 0.19s cubic-bezier(0.4, 0, 1, 1) forwards !important;
   pointer-events: none;
+  will-change: opacity;
 }
 
 .manager-overlay-wrap.is-closing .solo-console-stage {
-  animation: consoleTuckDown 0.21s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  animation: consoleTuckDown 0.19s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+  will-change: transform, opacity;
 }
 
 .surv-modal-backdrop.is-closing {
