@@ -11,6 +11,28 @@ import { PixelIcon, PixelItemImg, PixelPetSprite } from '../PixelSprite';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) => {
   const { batchFeedback, batchSelectedIds, confirmBatchDeposit, confirmBatchRelease, confirmBatchWithdraw, mode, onDepositPetsBatch, onFeedSquad, onGoBack, onHealParty, onNavigateMode, onReleasePetsBatch, onReleaseStoredPetsBatch, onSwitchPet, onUpdateMeta, onWithdrawPetsBatch, openedFromBattle, partyBatchMode, partyBoxTab, partyGradeFilter, partySearch, partySortBy, pet, save, setBatchFeedback, setBatchSelectedIds, setConfirmBatchDeposit, setConfirmBatchRelease, setConfirmBatchWithdraw, setConfirmReleaseId, setDetailReturnMode, setPartyBatchMode, setPartyBoxTab, setPartyDetailTab, setPartyGradeFilter, setPartySearch, setPartySortBy, setPetActionMenuOpen, setSelectedPartyPetId, setSquadPickerSlot, squadPickerSlot } = ctx;
+  const [batchToastKind, setBatchToastKind] = React.useState<'ok' | 'warn'>('ok');
+  const batchToastTimerRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (batchToastTimerRef.current !== null) {
+        window.clearTimeout(batchToastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showBatchToast = (message: string, kind: 'ok' | 'warn' = 'ok', durationMs = 2800) => {
+    setBatchToastKind(kind);
+    setBatchFeedback(message);
+    if (batchToastTimerRef.current !== null) {
+      window.clearTimeout(batchToastTimerRef.current);
+    }
+    batchToastTimerRef.current = window.setTimeout(() => {
+      batchToastTimerRef.current = null;
+      setBatchFeedback(null);
+    }, durationMs);
+  };
   return (
     <>
         {/* CURRENT ACTIVE SQUAD MANAGER (支持多编队增删、全部移出、空槽位 '+' 卡片进入第二页球盒选人!) */}
@@ -646,11 +668,27 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
           const selectableVisible = isStorageTab
             ? filteredPets
             : filteredPets.filter((p) => p.id !== pet.id && !isDevVirtualPetId(p.id));
+          const virtualVisibleCount = isStorageTab
+            ? 0
+            : filteredPets.filter((p) => isDevVirtualPetId(p.id)).length;
           const realPetsCount = save.pets.filter((p) => !isDevVirtualPetId(p.id)).length;
           const freeBoxSlots = Math.max(0, MAX_PET_SLOTS - realPetsCount);
 
           const toggleSelectPet = (id: string) => {
-            if (!isStorageTab && (id === pet.id || isDevVirtualPetId(id))) return;
+            if (!isStorageTab && id === pet.id) {
+              sound.play('error');
+              showBatchToast('当前出战伙伴不可批量寄存或放生，请先切换出战伙伴', 'warn', 2800);
+              return;
+            }
+            if (!isStorageTab && isDevVirtualPetId(id)) {
+              sound.play('error');
+              showBatchToast(
+                '调试「全精灵」体验精灵不计入真实存档，不可批量寄存或放生；关闭调试开关即可一键移除',
+                'warn',
+                3400,
+              );
+              return;
+            }
             sound.play('cursor');
             setConfirmBatchRelease(false);
             setConfirmBatchDeposit(false);
@@ -784,13 +822,24 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                       type="button"
                       className="party-mini-pill"
                       onClick={() => {
-                        sound.play('cursor');
                         setConfirmBatchRelease(false);
                         setConfirmBatchDeposit(false);
                         setConfirmBatchWithdraw(false);
                         const bIds = selectableVisible
                           .filter((p) => getIvRank(getPetIVs(p)) === 'B')
                           .map((p) => p.id);
+                        if (bIds.length === 0) {
+                          sound.play('error');
+                          showBatchToast(
+                            virtualVisibleCount > 0
+                              ? '当前列表没有可选的 B 级真实精灵（调试体验精灵已锁定）'
+                              : '当前列表没有可选的 B 级精灵',
+                            'warn',
+                            2600,
+                          );
+                          return;
+                        }
+                        sound.play('cursor');
                         setBatchSelectedIds(bIds);
                       }}
                     >
@@ -800,11 +849,22 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                       type="button"
                       className="party-mini-pill"
                       onClick={() => {
-                        sound.play('cursor');
                         setConfirmBatchRelease(false);
                         setConfirmBatchDeposit(false);
                         setConfirmBatchWithdraw(false);
-                        if (selectedSet.size === selectableVisible.length && selectableVisible.length > 0) {
+                        if (selectableVisible.length === 0) {
+                          sound.play('error');
+                          showBatchToast(
+                            virtualVisibleCount > 0
+                              ? '当前仅含出战伙伴或调试体验精灵，暂无可批量操作的真实精灵'
+                              : '当前没有可批量选择的精灵',
+                            'warn',
+                            2800,
+                          );
+                          return;
+                        }
+                        sound.play('cursor');
+                        if (selectedSet.size === selectableVisible.length) {
                           setBatchSelectedIds([]);
                         } else {
                           setBatchSelectedIds(selectableVisible.map((p) => p.id));
@@ -813,8 +873,17 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                     >
                       {selectedSet.size === selectableVisible.length && selectableVisible.length > 0 ? '取消全选' : '全选当前'}
                     </button>
-                    {selectedSet.size > 0 && (
-                      <span className="party-batch-count">已选 {selectedSet.size} 只</span>
+                    {selectedSet.size > 0 ? (
+                      <span className="party-batch-count">
+                        已选 {selectedSet.size}
+                        {virtualVisibleCount > 0 ? `/${selectableVisible.length}` : ''} 只
+                      </span>
+                    ) : (
+                      virtualVisibleCount > 0 && (
+                        <span className="party-batch-hint">
+                          可选 {selectableVisible.length} 只 · {virtualVisibleCount} 只调试已锁
+                        </span>
+                      )
                     )}
                   </div>
                   <div className="party-batch-actions" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -843,8 +912,7 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                             const res = onWithdrawPetsBatch(Array.from(selectedSet));
                             resetBatchState();
                             if (res?.message) {
-                              setBatchFeedback(res.message);
-                              window.setTimeout(() => setBatchFeedback(null), 2600);
+                              showBatchToast(res.message, res.ok ? 'ok' : 'warn', 2600);
                             }
                           }}
                         >
@@ -878,9 +946,8 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                             }
                             const res = onDepositPetsBatch(Array.from(selectedSet));
                             resetBatchState();
-                            if (res?.ok) {
-                              setBatchFeedback(res.message);
-                              window.setTimeout(() => setBatchFeedback(null), 2600);
+                            if (res?.message) {
+                              showBatchToast(res.message, res.ok ? 'ok' : 'warn', 2600);
                             }
                           }}
                         >
@@ -912,9 +979,8 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                           ? onReleaseStoredPetsBatch?.(Array.from(selectedSet))
                           : onReleasePetsBatch?.(Array.from(selectedSet));
                         resetBatchState();
-                        if (res?.ok) {
-                          setBatchFeedback(res.message);
-                          window.setTimeout(() => setBatchFeedback(null), 2600);
+                        if (res?.message) {
+                          showBatchToast(res.message, res.ok ? 'ok' : 'warn', 2600);
                         }
                       }}
                     >
@@ -931,7 +997,11 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                 </div>
               )}
 
-              {batchFeedback && <div className="party-batch-toast">{batchFeedback}</div>}
+              {batchFeedback && (
+                <div className={`party-batch-toast ${batchToastKind === 'warn' ? 'is-warn' : ''}`}>
+                  {batchFeedback}
+                </div>
+              )}
 
               <div className="lcd-grid-4 party-compact-grid scroll-y">
                 {filteredPets.length === 0 ? (
@@ -943,6 +1013,8 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                 ) : (
                   filteredPets.map((p) => {
                     const isCur = !isStorageTab && p.id === pet.id;
+                    const isVirtual = !isStorageTab && isDevVirtualPetId(p.id);
+                    const isBatchLocked = isCur || isVirtual;
                     const isChecked = selectedSet.has(p.id);
                     const st = getGrowthStage(p.level, p.species);
                     const ballMeta =
@@ -952,13 +1024,15 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                       <button
                         key={p.id}
                         type="button"
-                        className={`lcd-grid-tile compact party-compact-tile ${isCur ? 'is-selected' : ''} ${partyBatchMode && isChecked ? 'is-batch-checked' : ''} ${partyBatchMode && isCur ? 'is-batch-locked' : ''}`}
+                        className={`lcd-grid-tile compact party-compact-tile ${isCur ? 'is-selected' : ''} ${partyBatchMode && isChecked ? 'is-batch-checked' : ''} ${partyBatchMode && isBatchLocked ? 'is-batch-locked' : ''}`}
                         title={
                           partyBatchMode
                             ? isCur
                               ? '当前出战伙伴不可批量操作'
-                              : `点击${isChecked ? '取消' : '选中'}「${p.name}」`
-                            : `${p.name} · Lv.${p.level} · ${NATURE_CATALOG[getPetNature(p)].name} · ${ivRank}级`
+                              : isVirtual
+                                ? '调试「全精灵」体验精灵不可批量寄存/放生（关闭调试开关即可移除）'
+                                : `点击${isChecked ? '取消' : '选中'}「${p.name}」`
+                            : `${p.name}${isVirtual ? '（调试体验）' : ''} · Lv.${p.level} · ${NATURE_CATALOG[getPetNature(p)].name} · ${ivRank}级`
                         }
                         onClick={() => {
                           if (partyBatchMode) {
@@ -977,13 +1051,18 @@ export const LcdSquadAndPartyView: React.FC<{ ctx: LcdSharedCtx }> = ({ ctx }) =
                           {partyBatchMode ? (
                             isCur ? (
                               <em className="tile-tl-badge is-lock">出战</em>
+                            ) : isVirtual ? (
+                              <em className="tile-tl-badge is-dev-lock">调试</em>
                             ) : (
                               <span className={`party-batch-chk ${isChecked ? 'is-on' : ''}`}>
                                 {isChecked ? '✓' : ''}
                               </span>
                             )
                           ) : (
-                            <PixelItemImg src={ballMeta.ballSprite} size={18} />
+                            <>
+                              <PixelItemImg src={ballMeta.ballSprite} size={18} />
+                              {isVirtual && <em className="tile-tl-badge is-dev-lock">调试</em>}
+                            </>
                           )}
                           <em className={`tile-tl-badge iv-${ivRank}`}>{ivRank}</em>
                           {p.isSleeping && <em className="tile-tl-badge is-sleep">休眠</em>}
