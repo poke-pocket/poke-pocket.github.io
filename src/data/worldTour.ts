@@ -40,7 +40,20 @@ export const HOTEL_TIERS: HotelTierMeta[] = [
   },
 ];
 
-export type ZoneAnomalyKind = 'cyclone' | 'storm' | 'legendary_clash';
+export type ZoneAnomalyKind =
+  | 'cyclone'
+  | 'monsoon'
+  | 'storm'
+  | 'sandstorm'
+  | 'aurora_blizzard'
+  | 'legendary_clash';
+
+export type ZoneClashWeather =
+  | 'electric_storm'
+  | 'blizzard'
+  | 'volcano_blizzard'
+  | 'heat_sandstorm'
+  | 'rain_storm';
 
 export interface ZoneBlockAnomaly {
   kind: ZoneAnomalyKind;
@@ -48,9 +61,11 @@ export interface ZoneBlockAnomaly {
   alertTag: string;
   accentColor: string;
   title: string;
+  weatherLabel: string;
   travelBlockReason: string;
   blockedTransports: string[];
   duelSpecies?: [SpeciesId, SpeciesId];
+  weatherFlavor?: ZoneClashWeather;
   spinDir?: 1 | -1;
 }
 
@@ -70,13 +85,13 @@ export interface WorldZoneDef {
 export const WORLD_ZONES: WorldZoneDef[] = [
   {
     id: 'east_asia',
-    name: '东亚 · 华夏与日本赛区',
+    name: '东亚 · 城市巡礼圈',
     subtitle: '第 1 赛季已全面开放 · 14 座地标道馆',
     unlocked: true,
     centerLat: 33.5,
     centerLng: 122.0,
     seasonTag: 'S1 已开放',
-    teaserText: '横跨北京、上海、杭州、广州、深圳、成都、哈尔滨、香港，以及日本东京、京都、大阪、札幌、福冈与冲绳 14 座道馆！',
+    teaserText: '14 座地标城市道馆全面开放，支持跨城直飞、高速铁路与买房定居！',
     teaserSpecies: ['pikachu', 'charmander', 'hooh', 'dratini', 'mewtwo'],
   },
   {
@@ -95,6 +110,7 @@ export const WORLD_ZONES: WorldZoneDef[] = [
       alertTag: '红色气象预警',
       accentColor: '#0c8599',
       title: '超级热带气旋「翡翠风暴眼」',
+      weatherLabel: '强热带气旋 · 狂风暴雨',
       travelBlockReason:
         '强热带气旋持续盘踞在热带海域与雨林上空，强侧风与暴雨导致所有航班禁飞，跨区域铁路线也因路基积水全线临时停运。',
       blockedTransports: ['✈ 民航禁飞', '🚄 铁路停运'],
@@ -102,25 +118,187 @@ export const WORLD_ZONES: WorldZoneDef[] = [
     },
   },
   {
+    id: 'south_asia',
+    name: '恒河季风盆地',
+    subtitle: '特大季风暴雨中',
+    unlocked: false,
+    centerLat: 22.0,
+    centerLng: 79.0,
+    seasonTag: '季风封锁',
+    teaserText: '高耸雪山脚下的温润河谷与季风丛林，格斗与水系宝可梦云集。',
+    teaserSpecies: ['mankey', 'poliwag', 'ekans', 'machop'],
+    anomaly: {
+      kind: 'monsoon',
+      mapBadge: '🌧 季风暴雨',
+      alertTag: '特大暴雨预警',
+      accentColor: '#1971c2',
+      title: '特大季风雷雨带「恒河豪雨」',
+      weatherLabel: '特大季风暴雨 · 强雷电',
+      travelBlockReason:
+        '持续强西南季风在河谷上空形成厚重雷雨云带，机场跑道能见度归零且沿河铁路桥封锁检修，目前暂停一切跨城客运。',
+      blockedTransports: ['✈ 机场关闭', '🚄 沿河铁路停运'],
+    },
+  },
+  {
+    id: 'middle_east',
+    name: '赤砂绿洲高原',
+    subtitle: '特大红砂风暴中',
+    unlocked: false,
+    centerLat: 25.0,
+    centerLng: 46.5,
+    seasonTag: '沙暴封锁',
+    teaserText: '金色沙海、古老绿洲与矿石峡谷并存，地面与火系精灵的乐园。',
+    teaserSpecies: ['sandshrew', 'growlithe', 'onix', 'geodude'],
+    anomaly: {
+      kind: 'sandstorm',
+      mapBadge: '🏜 红砂风暴',
+      alertTag: '沙尘暴预警',
+      accentColor: '#d9480f',
+      title: '特大沙尘暴「红砂怒涛」',
+      weatherLabel: '特大沙尘暴 · 极低能见度',
+      travelBlockReason:
+        '强风卷起数千米高的赤色沙墙席卷沙漠盆地，航空发动机面临沙尘吸入风险，沙漠铁路轨道被流沙掩埋，航班与列车全线停运。',
+      blockedTransports: ['✈ 沙暴禁飞', '🚄 沙漠铁路中断'],
+    },
+  },
+  {
+    id: 'africa_sahara',
+    name: '撒哈拉热浪大漠',
+    subtitle: '史诗激战引发焚风沙暴',
+    unlocked: false,
+    centerLat: 19.5,
+    centerLng: 12.5,
+    seasonTag: '烈日激战',
+    teaserText: '绵延无际的金色大漠与灼热岩柱，栖息着珍稀的火系与地面系精灵。',
+    teaserSpecies: ['vulpix', 'ponyta', 'cubone', 'magmar'],
+    anomaly: {
+      kind: 'legendary_clash',
+      mapBadge: '🔥 烈日对决',
+      alertTag: '焚风禁飞区',
+      accentColor: '#e8590c',
+      title: '史诗宝可梦激战：凤王 VS 古玉鱼',
+      weatherLabel: '烈日焚风 · 高温热浪沙暴',
+      travelBlockReason:
+        '「凤王」与「古玉鱼」在大漠上空爆发炽热交锋，灼热气流与金色沙暴交织成巨大热穹顶，客机与沙漠快线均无法靠近。',
+      blockedTransports: ['✈ 热浪禁飞', '🚄 沙海快线停运'],
+      duelSpecies: ['hooh', 'chiyu'],
+      weatherFlavor: 'heat_sandstorm',
+    },
+  },
+  {
+    id: 'africa_savanna',
+    name: '赤道裂谷草原',
+    subtitle: '超级雷暴带肆虐中',
+    unlocked: false,
+    centerLat: -6.5,
+    centerLng: 25.5,
+    seasonTag: '雷暴封锁',
+    teaserText: '辽阔的猴面包树草原与大裂谷湖泊，充满野性与奔腾的生命力。',
+    teaserSpecies: ['rhyhorn', 'kangaskhan', 'tauros', 'doduo'],
+    anomaly: {
+      kind: 'storm',
+      mapBadge: '⛈ 裂谷雷暴',
+      alertTag: '强对流预警',
+      accentColor: '#5c4b99',
+      title: '赤道超级雷暴带「裂谷天雷」',
+      weatherLabel: '赤道强雷暴 · 密集落雷',
+      travelBlockReason:
+        '赤道辐合带持续生成高耸积雨云与高频闪电，高原机场和草原铁路全线启动雷电避险停运。',
+      blockedTransports: ['✈ 航班暂停', '🚄 草原铁路封闭'],
+    },
+  },
+  {
     id: 'europe',
     name: '古堡机械都市带',
-    subtitle: '传说精灵高空对峙中',
+    subtitle: '史诗激战引发电磁风暴',
     unlocked: false,
-    centerLat: 49.0,
-    centerLng: 10.0,
-    seasonTag: '传说激战',
+    centerLat: 47.5,
+    centerLng: 9.0,
+    seasonTag: '电磁激战',
     teaserText: '时钟钢塔、妖精沙龙与高山冰峰交织的古老城市带。',
     teaserSpecies: ['clefairy', 'mrmime', 'magnemite', 'porygon'],
     anomaly: {
       kind: 'legendary_clash',
-      mapBadge: '⚡ 史诗对决',
+      mapBadge: '⚡ 电磁对决',
       alertTag: '高能禁飞区',
       accentColor: '#6741d9',
       title: '史诗宝可梦激战：超梦 VS 闪电鸟',
+      weatherLabel: '高空电磁雷暴 · 强乱流',
       travelBlockReason:
-        '雷达侦测到「超梦」与「闪电鸟」正在高空爆发超能与雷电对撞，强烈电磁乱流彻底屏蔽导航信号，航线与跨洲列车均被迫紧急折返。',
-      blockedTransports: ['✈ 雷达失灵禁飞', '🚄 跨洲列车中断'],
+        '雷达侦测到「超梦」与「闪电鸟」在雷暴云眼中激烈交锋，剧烈电磁风暴彻底干扰航空导航与电气化铁路供电，航线与跨洲列车均被迫停运。',
+      blockedTransports: ['✈ 雷达失灵禁飞', '🚄 电气铁路断电'],
       duelSpecies: ['mewtwo', 'zapdos'],
+      weatherFlavor: 'electric_storm',
+    },
+  },
+  {
+    id: 'nordic',
+    name: '北欧极光峡湾',
+    subtitle: '极光暴雪磁暴中',
+    unlocked: false,
+    centerLat: 63.5,
+    centerLng: 16.5,
+    seasonTag: '极光暴雪',
+    teaserText: '幽深峡湾、针叶雪林与璀璨极光交汇的北方秘境。',
+    teaserSpecies: ['seel', 'shellder', 'jynx', 'lapras'],
+    anomaly: {
+      kind: 'aurora_blizzard',
+      mapBadge: '🌌 极光暴雪',
+      alertTag: '磁暴暴雪预警',
+      accentColor: '#0ca678',
+      title: '极光磁暴与暴风雪「峡湾寒潮」',
+      weatherLabel: '强地磁极光 · 暴风雪',
+      travelBlockReason:
+        '强烈太阳风引发高纬极光磁暴，叠加峡湾暴风雪导致通信受阻、跑道结冰与雪国铁路封线，暂时无法直飞或乘车前往。',
+      blockedTransports: ['✈ 磁暴禁飞', '🚄 雪国铁路封线'],
+    },
+  },
+  {
+    id: 'siberia',
+    name: '西伯利亚永冻原',
+    subtitle: '绝对零度暴雪激战中',
+    unlocked: false,
+    centerLat: 61.5,
+    centerLng: 92.0,
+    seasonTag: '极寒激战',
+    teaserText: '无垠针叶林海与冰封湖泊纵横，耐寒冰系精灵的栖息之地。',
+    teaserSpecies: ['seel', 'lapras', 'shellder', 'jynx'],
+    anomaly: {
+      kind: 'legendary_clash',
+      mapBadge: '❄ 寒潮对决',
+      alertTag: '极寒禁行区',
+      accentColor: '#1c7ed6',
+      title: '史诗宝可梦激战：古剑豹 VS 急冻鸟',
+      weatherLabel: '极地涡旋 · 绝对零度暴雪',
+      travelBlockReason:
+        '「古剑豹」与「急冻鸟」在北方针叶林上空掀起史无前例的极地寒潮涡旋，超低温冰雾冻结跑道与跨洲铁路道岔，全部客运中断。',
+      blockedTransports: ['✈ 极寒停飞', '🚄 跨洲铁路冰封'],
+      duelSpecies: ['chienpao', 'articuno'],
+      weatherFlavor: 'blizzard',
+    },
+  },
+  {
+    id: 'greenland',
+    name: '格陵兰极地冰盖',
+    subtitle: '双圣鸟冰火风暴中',
+    unlocked: false,
+    centerLat: 71.5,
+    centerLng: -40.0,
+    seasonTag: '冰火激战',
+    teaserText: '万年冰盖与冰山海湾并存的传说极地，冰火双圣鸟的试炼场。',
+    teaserSpecies: ['articuno', 'moltres', 'lapras', 'magmar'],
+    anomaly: {
+      kind: 'legendary_clash',
+      mapBadge: '🔥 冰火激战',
+      alertTag: '极地封航',
+      accentColor: '#c92a2a',
+      title: '双圣鸟激战：急冻鸟 VS 火焰鸟',
+      weatherLabel: '冰火交锋风暴 · 火山灰暴雪',
+      travelBlockReason:
+        '「急冻鸟」与「火焰鸟」在极地冰盖上空展开冰火对决，炽热灰羽与极寒暴风雪交错形成强烈温差乱流，所有极地航班与破冰船均已停航。',
+      blockedTransports: ['✈ 乱流禁飞', '🚢 极地港口封航'],
+      duelSpecies: ['articuno', 'moltres'],
+      weatherFlavor: 'volcano_blizzard',
     },
   },
   {
@@ -138,32 +316,35 @@ export const WORLD_ZONES: WorldZoneDef[] = [
       mapBadge: '⛈ 超级雷暴',
       alertTag: '强雷暴管制',
       accentColor: '#d9480f',
-      title: '特大超级雷暴带「雷鸣裂谷」',
+      title: '特大超级雷暴单体「雷鸣裂谷」',
+      weatherLabel: '超级单体雷暴 · 强风切变',
       travelBlockReason:
-        '罕见的超级单体雷暴群横亘内陆上空，持续强风切变与密集落雷覆盖高空走廊，越洋客机与大陆干线列车目前无法安全通行。',
-      blockedTransports: ['✈ 航线停飞', '🚄 干线铁路封闭'],
+        '罕见的超级单体雷暴群横亘平原与峡谷上空，持续强风切变与密集落雷覆盖高空走廊，越洋客机与大陆干线列车目前无法安全通行。',
+      blockedTransports: ['✈ 越洋航线停飞', '🚄 干线铁路封闭'],
     },
   },
   {
-    id: 'nordic_volcano',
-    name: '极光熔岩冰原',
-    subtitle: '双圣鸟冰火交锋中',
+    id: 'south_america',
+    name: '亚马逊翡翠流域',
+    subtitle: '秘境激战引发热带雷雨',
     unlocked: false,
-    centerLat: 64.9,
-    centerLng: -19.0,
-    seasonTag: '圣鸟激战',
-    teaserText: '冰川与活火山并存的传说秘境，罕见冰系与火系栖息地。',
-    teaserSpecies: ['articuno', 'moltres', 'lapras', 'magmar'],
+    centerLat: -9.5,
+    centerLng: -58.5,
+    seasonTag: '秘境激战',
+    teaserText: '苍翠雨林河网与云雾山脉交织，传说中的幻之精灵曾现身于此。',
+    teaserSpecies: ['bulbasaur', 'oddish', 'scyther', 'dratini'],
     anomaly: {
       kind: 'legendary_clash',
-      mapBadge: '🔥 圣鸟激战',
-      alertTag: '极地封航',
-      accentColor: '#c92a2a',
-      title: '双圣鸟激战：急冻鸟 VS 火焰鸟',
+      mapBadge: '🌿 雨林对决',
+      alertTag: '秘境雷雨禁飞',
+      accentColor: '#2b8a3e',
+      title: '史诗宝可梦激战：梦幻 VS 古简蜗',
+      weatherLabel: '热带强雷雨 · 能量迷雾',
       travelBlockReason:
-        '「急冻鸟」与「火焰鸟」正在极光火山带展开冰火对决，高空火山灰云柱叠加暴风雪迫使所有极地航班停飞、港口临时封航。',
-      blockedTransports: ['✈ 火山灰禁飞', '🚢 极地港口封航'],
-      duelSpecies: ['articuno', 'moltres'],
+        '「梦幻」与「古简蜗」在雨林深处触发强烈自然能量波动，浓厚雷雨云团与幻象迷雾笼罩航路，航班与跨林区铁路均暂停通行。',
+      blockedTransports: ['✈ 迷雾雷雨禁飞', '🚄 林区铁路停运'],
+      duelSpecies: ['mew', 'wochien'],
+      weatherFlavor: 'rain_storm',
     },
   },
   {
@@ -172,7 +353,7 @@ export const WORLD_ZONES: WorldZoneDef[] = [
     subtitle: '双核海洋气旋肆虐中',
     unlocked: false,
     centerLat: -25.0,
-    centerLng: 135.0,
+    centerLng: 134.5,
     seasonTag: '巨浪气旋',
     teaserText: '碧海白沙与红土草原相连，栖息着独特的南半球精灵生态。',
     teaserSpecies: ['kangaskhan', 'horsea', 'staryu', 'vaporeon'],
@@ -182,6 +363,7 @@ export const WORLD_ZONES: WorldZoneDef[] = [
       alertTag: '海洋风暴预警',
       accentColor: '#1971c2',
       title: '南太平洋双核气旋「珊瑚狂涛」',
+      weatherLabel: '南半球海洋气旋 · 巨浪强风',
       travelBlockReason:
         '南半球双核海洋气旋正卷起十米巨浪与持续烈风，跨洋民航与远洋渡轮已全部暂停前往该海域的班次。',
       blockedTransports: ['✈ 跨洋航班停飞', '🚢 远洋渡轮停航'],

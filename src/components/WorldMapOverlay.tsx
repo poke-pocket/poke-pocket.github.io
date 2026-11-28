@@ -17,10 +17,16 @@ import {
   type WorldTourState,
   type WorldZoneDef,
 } from '../data/worldTour';
+import {
+  PROVINCIAL_AND_WORLD_CAPITALS,
+  REAL_WORLD_CORRIDORS,
+  REAL_WORLD_RIVERS,
+} from '../data/geoTerrain3D';
 import type { BiomeId } from '../data/worldTextures3D';
 import type { PetSkinId, SpeciesId } from '../types/pet';
 import { sound } from '../utils/sound';
 import { fetchLiveWeatherAt, type LiveWeatherInfo } from '../utils/weatherSystem';
+import { drawWorldMapAnomalies } from '../utils/worldMapAnomalies';
 import { PixelIcon, PixelItemImg } from './PixelSprite';
 
 export interface WorldLaunchPayload {
@@ -166,16 +172,10 @@ function pixelizeTileImage(img: HTMLImageElement, z: number): HTMLCanvasElement 
   return c;
 }
 
-const ZONE_SPRITE_CACHE = new Map<SpeciesId, HTMLImageElement>();
-
-function getZoneSpriteImg(sp: SpeciesId): HTMLImageElement | null {
-  const cached = ZONE_SPRITE_CACHE.get(sp);
-  if (cached) return cached.complete && cached.naturalWidth > 0 ? cached : null;
-  const img = new Image();
-  img.src = SPECIES_CATALOG[sp].stageSprites.adult.static;
-  ZONE_SPRITE_CACHE.set(sp, img);
-  return null;
-}
+const PLAYABLE_CITY_NAMES = new Set(WORLD_CITIES.map((c) => c.name));
+const REFERENCE_CITIES = PROVINCIAL_AND_WORLD_CAPITALS.filter(
+  (cap) => !PLAYABLE_CITY_NAMES.has(cap.name),
+);
 
 type MapHoverTarget =
   | { kind: 'city'; id: string }
@@ -714,198 +714,201 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx.fillRect(0, 0, stageSize.w, stageSize.h);
       }
 
-      // 4. Immersive In-World Weather Disasters & Legendary Clashes for Unreachable Regions
-      const hovered = hoveredTargetRef.current;
-      if (c.zoom <= 9.2) {
-        for (const zone of WORLD_ZONES) {
-          if (zone.unlocked) continue;
-          const [sx, sy] = mercToScreen(lngToMercX(zone.centerLng), latToMercY(zone.centerLat), c);
-          if (sx < -160 || sx > stageSize.w + 160 || sy < -140 || sy > stageSize.h + 140) continue;
-
-          const anomaly = zone.anomaly;
-          const isZoneSelected = cardOpen && selectedZoneId === zone.id;
-          const isZoneHovered = hovered?.kind === 'zone' && hovered.id === zone.id;
-          const rad = Math.round(28 + c.zoom * 6.5);
-          const pulse = Math.sin(ts * 0.0045 + zone.centerLng) * 3;
-
-          if (anomaly?.kind === 'cyclone') {
-            // Swirling pixel tropical / oceanic cyclone with Coriolis spin & eyewall
-            const spin = (ts * 0.0022) * (anomaly.spinDir ?? -1);
-            ctx.save();
-            ctx.fillStyle = 'rgba(11, 44, 72, 0.34)';
-            ctx.beginPath();
-            ctx.arc(sx, sy, rad + 4, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#ffe066' : 'rgba(255, 135, 135, 0.72)';
-            ctx.lineWidth = isZoneHovered || isZoneSelected ? 2.5 : 1.5;
-            ctx.setLineDash([5, 4]);
-            ctx.lineDashOffset = -(ts * 0.025);
-            ctx.beginPath();
-            ctx.arc(sx, sy, rad + 6 + pulse * 0.4, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            const pxSz = Math.max(3, Math.round(3 + c.zoom * 0.35));
-            for (let arm = 0; arm < 4; arm++) {
-              const armBase = spin + (arm * Math.PI) / 2;
-              for (let step = 2; step <= 13; step++) {
-                const frac = step / 13;
-                const r = 6 + frac * (rad - 4);
-                const ang = armBase + frac * 2.55 * (anomaly.spinDir ?? -1);
-                const bx = Math.round((sx + Math.cos(ang) * r) / pxSz) * pxSz;
-                const by = Math.round((sy + Math.sin(ang) * r * 0.86) / pxSz) * pxSz;
-                ctx.fillStyle =
-                  step < 6
-                    ? 'rgba(235, 248, 255, 0.92)'
-                    : step < 10
-                      ? 'rgba(186, 224, 248, 0.82)'
-                      : 'rgba(130, 185, 220, 0.56)';
-                ctx.fillRect(bx - pxSz / 2, by - pxSz / 2, pxSz + 2, pxSz + 1);
-              }
-            }
-
-            // Calm cyclone eye + bright eyewall ring
-            ctx.fillStyle = '#0e2d4a';
-            ctx.fillRect(Math.round(sx - 4), Math.round(sy - 4), 8, 8);
-            ctx.strokeStyle = '#e7f5ff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(Math.round(sx - 5), Math.round(sy - 5), 10, 10);
-
-            // Occasional lightning spark in eyewall
-            if (Math.sin(ts * 0.011 + zone.centerLat) > 0.86) {
-              ctx.fillStyle = '#ffe066';
-              ctx.fillRect(Math.round(sx + 8), Math.round(sy - 10), 3, 6);
-              ctx.fillRect(Math.round(sx + 6), Math.round(sy - 5), 3, 5);
-            }
-            ctx.restore();
-          } else if (anomaly?.kind === 'storm') {
-            // Supercell thunderhead anvil + animated jagged pixel lightning
-            const drift = Math.sin(ts * 0.0014 + zone.centerLng) * 5;
-            const cw = Math.round(62 + c.zoom * 8);
-            const ch = Math.round(24 + c.zoom * 3.5);
-            ctx.save();
-            ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#ffe066' : 'rgba(255, 146, 43, 0.72)';
-            ctx.lineWidth = isZoneHovered || isZoneSelected ? 2.5 : 1.5;
-            ctx.setLineDash([5, 4]);
-            ctx.beginPath();
-            ctx.arc(sx, sy, rad + 4 + pulse * 0.35, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // Layered pixel thunderclouds
-            ctx.fillStyle = 'rgba(28, 34, 48, 0.86)';
-            ctx.fillRect(Math.round(sx - cw / 2 + drift), Math.round(sy - ch / 2), cw, ch);
-            ctx.fillStyle = 'rgba(52, 62, 82, 0.9)';
-            ctx.fillRect(
-              Math.round(sx - cw * 0.38 + drift),
-              Math.round(sy - ch * 0.9),
-              Math.round(cw * 0.76),
-              Math.round(ch * 0.65),
-            );
-            ctx.fillStyle = 'rgba(134, 142, 150, 0.72)';
-            ctx.fillRect(
-              Math.round(sx - cw * 0.28 + drift),
-              Math.round(sy - ch * 0.9),
-              Math.round(cw * 0.56),
-              4,
-            );
-
-            // Periodic crackling pixel lightning bolt
-            const flashPhase = (ts * 0.004 + Math.abs(zone.centerLng)) % 3.2;
-            if (flashPhase < 0.55) {
-              const lx = Math.round(sx + drift * 0.4 + (flashPhase < 0.25 ? -8 : 10));
-              const ly = Math.round(sy + ch * 0.25);
-              ctx.fillStyle = '#ffe066';
-              ctx.fillRect(lx, ly, 4, 7);
-              ctx.fillRect(lx - 4, ly + 6, 6, 4);
-              ctx.fillRect(lx - 2, ly + 9, 4, 8);
-              ctx.fillStyle = '#fff9db';
-              ctx.fillRect(lx + 1, ly + 1, 2, 5);
-            }
-            ctx.restore();
-          } else if (anomaly?.kind === 'legendary_clash' && anomaly.duelSpecies) {
-            // Epic legendary Pokémon mid-air battle on the map!
-            const [leftSp, rightSp] = anomaly.duelSpecies;
-            const leftImg = getZoneSpriteImg(leftSp);
-            const rightImg = getZoneSpriteImg(rightSp);
-            const clashPulse = (ts * 0.032) % Math.max(24, rad);
-            const bobL = Math.sin(ts * 0.007) * 3;
-            const bobR = Math.sin(ts * 0.007 + Math.PI) * 3;
-            const lunge = Math.sin(ts * 0.014) * 2.5;
-            const isIceFire = leftSp === 'articuno';
-            const leftColor = isIceFire ? '#74c0fc' : '#cc5de8';
-            const rightColor = isIceFire ? '#ff6b35' : '#ffd43b';
-
-            ctx.save();
-            // Expanding shockwave ring
-            ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#ffe066' : 'rgba(255, 224, 102, 0.65)';
-            ctx.lineWidth = isZoneHovered || isZoneSelected ? 2.5 : 1.5;
-            ctx.beginPath();
-            ctx.arc(sx, sy, clashPulse + 8, 0, Math.PI * 2);
-            ctx.stroke();
-
-            // Battle arena danger boundary
-            ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#ffe066' : anomaly.accentColor;
-            ctx.lineWidth = isZoneHovered || isZoneSelected ? 2.5 : 1.5;
-            ctx.setLineDash([4, 4]);
-            ctx.beginPath();
-            ctx.arc(sx, sy, rad + 2, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // Energy beam clash between the two epic Pokémon
-            ctx.fillStyle = leftColor;
-            ctx.fillRect(Math.round(sx - 18), Math.round(sy - 3), 18, 5);
-            ctx.fillStyle = rightColor;
-            ctx.fillRect(Math.round(sx), Math.round(sy - 3), 18, 5);
-
-            // Center clash explosion spark
-            const spk = 5 + Math.round(Math.abs(Math.sin(ts * 0.018)) * 4);
-            ctx.fillStyle = '#fff9db';
-            ctx.fillRect(Math.round(sx - spk / 2), Math.round(sy - spk / 2), spk, spk);
-            ctx.fillStyle = '#ffe066';
-            ctx.fillRect(Math.round(sx - spk), Math.round(sy - 1), spk * 2, 2);
-            ctx.fillRect(Math.round(sx - 1), Math.round(sy - spk), 2, spk * 2);
-
-            // Draw both pixel legendary sprites facing each other
-            const sprSz = Math.round(28 + Math.min(12, c.zoom * 1.4));
-            const offX = Math.round(18 + c.zoom * 1.3);
-            if (leftImg) {
-              ctx.save();
-              ctx.translate(Math.round(sx - offX + lunge), Math.round(sy + bobL));
-              ctx.scale(-1, 1);
-              ctx.drawImage(leftImg, -sprSz / 2, -sprSz / 2, sprSz, sprSz);
-              ctx.restore();
-            }
-            if (rightImg) {
-              ctx.drawImage(
-                rightImg,
-                Math.round(sx + offX - lunge - sprSz / 2),
-                Math.round(sy + bobR - sprSz / 2),
-                sprSz,
-                sprSz,
-              );
-            }
-            ctx.restore();
-          }
-
-          // Crisp anomaly badge pill below the live effect
-          const badgeText = anomaly ? anomaly.mapBadge : `⚠ ${zone.name}`;
-          ctx.font = 'bold 10px monospace';
-          const bw = Math.max(76, Math.round(ctx.measureText(badgeText).width + 12));
-          const bx = Math.round(sx - bw / 2);
-          const by = Math.round(sy + Math.min(34, rad * 0.62) + (isZoneHovered ? -2 : 0));
-          ctx.fillStyle = isZoneSelected ? '#ffe066' : isZoneHovered ? '#fff3bf' : 'rgba(18, 22, 34, 0.92)';
-          ctx.fillRect(bx, by, bw, 17);
-          ctx.strokeStyle = isZoneHovered || isZoneSelected ? '#161420' : anomaly?.accentColor ?? '#ced4da';
-          ctx.lineWidth = isZoneHovered || isZoneSelected ? 2 : 1.5;
-          ctx.strokeRect(bx, by, bw, 17);
-          ctx.fillStyle = isZoneSelected || isZoneHovered ? '#161420' : '#fffdf5';
-          ctx.textAlign = 'center';
-          ctx.fillText(badgeText, Math.round(sx), by + 12);
+      // 3.5 Complete Real-World Atlas Layer: Curved Inter-City Highways, HSR, Maritime Routes, Rivers & Reference Cities!
+      const placedAtlasBoxes: { sx: number; sy: number; w: number; h: number }[] = [];
+      for (const city of WORLD_CITIES) {
+        const [csx, csy] = mercToScreen(lngToMercX(city.lng), latToMercY(city.lat), c);
+        placedAtlasBoxes.push({ sx: csx, sy: csy - 14, w: 54, h: 24 });
+      }
+      if (c.zoom <= 9.5) {
+        for (const z of WORLD_ZONES) {
+          if (z.unlocked) continue;
+          const [zsx, zsy] = mercToScreen(lngToMercX(z.centerLng), latToMercY(z.centerLat), c);
+          placedAtlasBoxes.push({ sx: zsx, sy: zsy + 14, w: 96, h: 52 });
         }
       }
+      const canPlaceAtlasLabel = (sx: number, sy: number, w: number, h = 14): boolean => {
+        if (sx < 22 || sx > stageSize.w - 22 || sy < 18 || sy > stageSize.h - 22) return false;
+        for (const box of placedAtlasBoxes) {
+          if (Math.abs(sx - box.sx) < (w + box.w) * 0.5 + 4 && Math.abs(sy - box.sy) < (h + box.h) * 0.5 + 3) {
+            return false;
+          }
+        }
+        placedAtlasBoxes.push({ sx, sy, w, h });
+        return true;
+      };
+
+      if (c.zoom >= 3.2) {
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        const roadAlpha = Math.min(1, (c.zoom - 3.0) / 1.4);
+        const hwyW = Math.max(1.3, Math.min(3.2, 0.95 + (c.zoom - 3.0) * 0.36));
+
+        // 3.5A Maritime Ferry Corridors (sky-blue dashed arcs)
+        if (c.zoom >= 3.4) {
+          ctx.strokeStyle = `rgba(186, 230, 253, ${(0.76 * roadAlpha).toFixed(2)})`;
+          ctx.lineWidth = Math.max(1.1, Math.min(1.8, hwyW * 0.65));
+          ctx.setLineDash([5, 5]);
+          for (const cor of REAL_WORLD_CORRIDORS) {
+            if (cor.kind !== 'ferry' || cor.points.length < 2) continue;
+            ctx.beginPath();
+            cor.points.forEach(([lat, lng], i) => {
+              const [px, py] = mercToScreen(lngToMercX(lng), latToMercY(lat), c);
+              if (i === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            });
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+        }
+
+        // 3.5B Inter-City Highways (dark slate casing + golden arterial fill + green route shields)
+        const highwayCorridors = REAL_WORLD_CORRIDORS.filter((cor) => cor.kind === 'highway' && cor.points.length >= 2);
+        ctx.strokeStyle = `rgba(42, 52, 70, ${(0.86 * roadAlpha).toFixed(2)})`;
+        ctx.lineWidth = hwyW + 1.4;
+        for (const cor of highwayCorridors) {
+          ctx.beginPath();
+          cor.points.forEach(([lat, lng], i) => {
+            const [px, py] = mercToScreen(lngToMercX(lng), latToMercY(lat), c);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          });
+          ctx.stroke();
+        }
+        ctx.strokeStyle = `rgba(246, 185, 59, ${(0.92 * roadAlpha).toFixed(2)})`;
+        ctx.lineWidth = hwyW;
+        for (const cor of highwayCorridors) {
+          ctx.beginPath();
+          cor.points.forEach(([lat, lng], i) => {
+            const [px, py] = mercToScreen(lngToMercX(lng), latToMercY(lat), c);
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          });
+          ctx.stroke();
+        }
+
+        // Green Highway Route Shields (G2 / G4 / G60/G15 / G50...)
+        if (c.zoom >= 4.7) {
+          ctx.font = 'bold 8px "PingFang SC", monospace';
+          for (const cor of highwayCorridors) {
+            const midPt = cor.points[Math.floor(cor.points.length * 0.5)];
+            const [mx, my] = mercToScreen(lngToMercX(midPt[1]), latToMercY(midPt[0]), c);
+            const code = cor.label.split(' ')[0] || cor.label;
+            const badge = c.zoom >= 6.4 ? cor.label : code;
+            const tw = Math.round(ctx.measureText(badge).width + 8);
+            if (!canPlaceAtlasLabel(mx, my, tw + 4, 13)) continue;
+            ctx.fillStyle = '#1b7a38';
+            ctx.fillRect(Math.round(mx - tw / 2), Math.round(my - 6), tw, 12);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 0.9;
+            ctx.strokeRect(Math.round(mx - tw / 2), Math.round(my - 6), tw, 12);
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(badge, Math.round(mx), Math.round(my + 0.5));
+          }
+        }
+
+        // 3.5C High-Speed Rail / Shinkansen Tracks (black track + crisp dashed white sleepers)
+        if (c.zoom >= 4.2) {
+          const railAlpha = Math.min(1, (c.zoom - 4.0) / 1.2);
+          const railCorridors = REAL_WORLD_CORRIDORS.filter((cor) => cor.kind === 'rail' && cor.points.length >= 2);
+          ctx.strokeStyle = `rgba(30, 36, 48, ${(0.88 * railAlpha).toFixed(2)})`;
+          ctx.lineWidth = Math.max(1.5, Math.min(2.4, hwyW * 0.85));
+          for (const cor of railCorridors) {
+            ctx.beginPath();
+            cor.points.forEach(([lat, lng], i) => {
+              const [px, py] = mercToScreen(lngToMercX(lng), latToMercY(lat), c);
+              if (i === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            });
+            ctx.stroke();
+          }
+          ctx.strokeStyle = `rgba(248, 249, 250, ${(0.9 * railAlpha).toFixed(2)})`;
+          ctx.lineWidth = Math.max(0.8, Math.min(1.2, hwyW * 0.45));
+          ctx.setLineDash([4, 4]);
+          for (const cor of railCorridors) {
+            ctx.beginPath();
+            cor.points.forEach(([lat, lng], i) => {
+              const [px, py] = mercToScreen(lngToMercX(lng), latToMercY(lat), c);
+              if (i === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            });
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+        }
+
+        // 3.5D Major Rivers labels (长江 / 黄河 / 汉江 / 珠江...)
+        if (c.zoom >= 4.6) {
+          ctx.font = 'bold 9px "PingFang SC", "Microsoft YaHei", monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          for (const riv of REAL_WORLD_RIVERS) {
+            if (riv.points.length < 2) continue;
+            const rw = Math.round(ctx.measureText(riv.name).width + 8);
+            for (const frac of [0.52, 0.35, 0.7]) {
+              const idx = Math.min(riv.points.length - 1, Math.floor(riv.points.length * frac));
+              const [rLat, rLng] = riv.points[idx];
+              const [rx, ry] = mercToScreen(lngToMercX(rLng), latToMercY(rLat), c);
+              if (!canPlaceAtlasLabel(rx, ry, rw, 13)) continue;
+              ctx.fillStyle = '#0b3d66';
+              ctx.fillText(riv.name, Math.round(rx + 1), Math.round(ry + 1));
+              ctx.fillStyle = '#c5e8ff';
+              ctx.fillText(riv.name, Math.round(rx), Math.round(ry));
+              break;
+            }
+          }
+        }
+
+        // 3.5E Regional & World Reference Cities (南京/武汉/长沙/重庆/西安/首尔/曼谷/伦敦/纽约/悉尼...)
+        ctx.font = 'bold 9.5px "PingFang SC", "Microsoft YaHei", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        for (const cap of REFERENCE_CITIES) {
+          if (cap.tier === 'provincial' && c.zoom < 4.0) continue;
+          const [cx, cy] = mercToScreen(lngToMercX(cap.lng), latToMercY(cap.lat), c);
+          if (cx < -30 || cx > stageSize.w + 30 || cy < -30 || cy > stageSize.h + 30) continue;
+          const tw = Math.round(ctx.measureText(cap.name).width + 8);
+          if (!canPlaceAtlasLabel(cx, cy - 11, tw, 15)) continue;
+
+          // Subtle square town dot
+          const dotSz = cap.tier === 'world' ? 6 : 5;
+          ctx.fillStyle = cap.tier === 'world' ? '#4dabf7' : '#ff6b6b';
+          ctx.fillRect(Math.round(cx - dotSz / 2), Math.round(cy - dotSz / 2), dotSz, dotSz);
+          ctx.strokeStyle = '#161420';
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(Math.round(cx - dotSz / 2), Math.round(cy - dotSz / 2), dotSz, dotSz);
+
+          // Compact readable city name plate
+          const lx = Math.round(cx - tw / 2);
+          const ly = Math.round(cy - dotSz / 2 - 15);
+          ctx.fillStyle = 'rgba(16, 20, 32, 0.78)';
+          ctx.fillRect(lx, ly, tw, 13);
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(lx, ly, tw, 13);
+          ctx.fillStyle = '#e9ecef';
+          ctx.fillText(cap.name, Math.round(cx), ly + 10);
+        }
+        ctx.restore();
+      }
+
+      // 4. Immersive Layered Weather Disasters & Legendary Battles Across All Global Regions
+      const hovered = hoveredTargetRef.current;
+      drawWorldMapAnomalies({
+        ctx,
+        zones: WORLD_ZONES,
+        zoom: c.zoom,
+        stageW: stageSize.w,
+        stageH: stageSize.h,
+        ts,
+        selectedZoneId,
+        hoveredZoneId: hovered?.kind === 'zone' ? hovered.id : null,
+        cardOpen,
+        project: (lng, lat) => mercToScreen(lngToMercX(lng), latToMercY(lat), c),
+      });
 
       // 5. Dashed Flight Preview Arc
       if (selectedCity && selectedCity.id !== activeHereCity?.id && !flightAnim) {
@@ -1244,9 +1247,9 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       }
     }
 
-    // 3. Unreachable Anomaly Regions (cyclone / storm / legendary clash)
-    if (camRef.current.zoom <= 9.2) {
-      const hitRad = Math.max(44, 28 + camRef.current.zoom * 5.8);
+    // 3. Unreachable Anomaly Regions (cyclone / storm / monsoon / sandstorm / aurora / legendary clash)
+    if (camRef.current.zoom <= 9.5) {
+      const hitRad = Math.max(40, 24 + camRef.current.zoom * 5.8);
       for (const z of WORLD_ZONES) {
         if (z.unlocked) continue;
         const [px, py] = mercToScreen(lngToMercX(z.centerLng), latToMercY(z.centerLat));
@@ -1818,6 +1821,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                         <div className="wt-anomaly-alert" style={{ borderColor: anomaly.accentColor }}>
                           <div className="wt-anomaly-title">
                             <strong>{anomaly.title}</strong>
+                            <small className="wt-anomaly-weather">气象：{anomaly.weatherLabel}</small>
                           </div>
                           <div className="wt-anomaly-pills">
                             {anomaly.blockedTransports.map((t) => (

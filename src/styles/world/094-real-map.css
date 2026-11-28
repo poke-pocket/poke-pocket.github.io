@@ -816,9 +816,21 @@
   border: 2px solid #c92a2a;
 }
 
+.wt-anomaly-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .wt-anomaly-title strong {
   font-size: 11.5px;
   color: #161420;
+}
+
+.wt-anomaly-weather {
+  font-size: 10px;
+  font-weight: 800;
+  color: #5f3dc4;
 }
 
 .wt-anomaly-pills {
