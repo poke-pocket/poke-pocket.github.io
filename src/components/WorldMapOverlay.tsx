@@ -26,7 +26,7 @@ import type { BiomeId } from '../data/worldTextures3D';
 import type { PetSkinId, SpeciesId } from '../types/pet';
 import { sound } from '../utils/sound';
 import { fetchLiveWeatherAt, type LiveWeatherInfo } from '../utils/weatherSystem';
-import { drawWorldMapAnomalies } from '../utils/worldMapAnomalies';
+import { drawWorldMapAnomalies, hitTestAnomalyZone } from '../utils/worldMapAnomalies';
 import { PixelIcon, PixelItemImg } from './PixelSprite';
 
 export interface WorldLaunchPayload {
@@ -901,6 +901,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx,
         zones: WORLD_ZONES,
         zoom: c.zoom,
+        worldPx: wp,
         stageW: stageSize.w,
         stageH: stageSize.h,
         ts,
@@ -1247,17 +1248,17 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       }
     }
 
-    // 3. Unreachable Anomaly Regions (cyclone / storm / monsoon / sandstorm / aurora / legendary clash)
-    if (camRef.current.zoom <= 9.5) {
-      const hitRad = Math.max(40, 24 + camRef.current.zoom * 5.8);
-      for (const z of WORLD_ZONES) {
-        if (z.unlocked) continue;
-        const [px, py] = mercToScreen(lngToMercX(z.centerLng), latToMercY(z.centerLat));
-        const inBadge = sx >= px - 48 && sx <= px + 48 && sy >= py + 12 && sy <= py + 56;
-        if (inBadge || Math.hypot(sx - px, sy - py) < hitRad) {
-          return { kind: 'zone', id: z.id };
-        }
-      }
+    // 3. Unreachable Regional Anomaly Footprints (true irregular polygon hit-test!)
+    const hitZone = hitTestAnomalyZone(
+      sx,
+      sy,
+      WORLD_ZONES,
+      camRef.current.zoom,
+      worldPxAt(camRef.current.zoom),
+      (lng, lat) => mercToScreen(lngToMercX(lng), latToMercY(lat)),
+    );
+    if (hitZone) {
+      return { kind: 'zone', id: hitZone.id };
     }
     return null;
   };
