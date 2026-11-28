@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { SPECIES_CATALOG } from '../data/catalog';
 import type { AppLang } from '../data/i18n';
 import { getSkinDef, type MetaProgressState } from '../data/metaProgression';
@@ -220,6 +220,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     tour.currentCityId ?? defaultHome.defaultCityId,
   );
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
+  const [cardOpen, setCardOpen] = useState(true);
   const [selectedHotel, setSelectedHotel] = useState<HotelTierId>('inn');
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -287,6 +288,9 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const arrowRef = useRef<HTMLDivElement | null>(null);
+  const anchorGeoRef = useRef<{ mx: number; my: number } | null>(null);
   const camRef = useRef(cam);
   const setCam = (
     updater:
@@ -350,6 +354,89 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     () => WORLD_ZONES.find((z) => z.id === selectedZoneId) ?? null,
     [selectedZoneId],
   );
+  const showPopover = cardOpen && !flightAnim;
+  if (!showPopover) {
+    anchorGeoRef.current = null;
+  } else if (selectedCity) {
+    anchorGeoRef.current = { mx: lngToMercX(selectedCity.lng), my: latToMercY(selectedCity.lat) };
+  } else if (selectedZone && !selectedZone.unlocked) {
+    anchorGeoRef.current = {
+      mx: lngToMercX(selectedZone.centerLng),
+      my: latToMercY(selectedZone.centerLat),
+    };
+  } else {
+    anchorGeoRef.current = {
+      mx: lngToMercX(effectiveHome.lng),
+      my: latToMercY(effectiveHome.lat),
+    };
+  }
+
+  // Position floating location card beside its map anchor at 60fps without React re-renders
+  const positionPopover = () => {
+    const pop = popoverRef.current;
+    const anchor = anchorGeoRef.current;
+    if (!pop || !anchor) return;
+    const { w: stageW, h: stageH } = stageSizeRef.current;
+    const arrow = arrowRef.current;
+
+    if (stageW <= 680) {
+      pop.dataset.side = 'mobile';
+      pop.style.transform = '';
+      if (arrow) arrow.style.display = 'none';
+      return;
+    }
+
+    const c = camRef.current;
+    const wp = worldPxAt(c.zoom);
+    let dmx = anchor.mx - c.mx;
+    if (dmx > 0.5) dmx -= 1;
+    if (dmx < -0.5) dmx += 1;
+    const px = dmx * wp + stageW / 2;
+    const py = (anchor.my - c.my) * wp + stageH / 2;
+
+    const cardW = pop.offsetWidth || 336;
+    const cardH = pop.offsetHeight || 360;
+    const margin = 12;
+    const gap = 22;
+    const pinVisible = px >= -12 && px <= stageW + 12 && py >= -12 && py <= stageH + 12;
+
+    let side: 'right' | 'left' | 'float' = 'right';
+    let x = px + gap;
+    if (x + cardW + margin > stageW) {
+      const leftX = px - gap - cardW;
+      if (leftX >= margin) {
+        side = 'left';
+        x = leftX;
+      } else {
+        side = 'float';
+        x = Math.max(margin, Math.min(stageW - cardW - margin, px + gap));
+      }
+    } else if (x < margin) {
+      side = 'float';
+      x = margin;
+    }
+
+    const targetY = py - Math.min(76, cardH * 0.28);
+    const y = Math.max(margin, Math.min(stageH - cardH - margin, targetY));
+
+    pop.dataset.side = side;
+    pop.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+
+    if (arrow) {
+      const showArrow =
+        pinVisible && (side === 'right' || side === 'left') && py >= y + 12 && py <= y + cardH - 14;
+      if (showArrow) {
+        arrow.style.display = 'block';
+        arrow.style.top = `${Math.round(Math.max(46, Math.min(cardH - 22, py - y)))}px`;
+      } else {
+        arrow.style.display = 'none';
+      }
+    }
+  };
+
+  useLayoutEffect(() => {
+    if (showPopover) positionPopover();
+  }, [showPopover, selectedCityId, selectedZoneId, stageSize, viewedWeather, selectedHotel, effectiveHome.lat, effectiveHome.lng]);
 
   // Measure map stage
   useEffect(() => {
@@ -457,6 +544,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         });
         setSelectedCityId(target.id);
         setSelectedZoneId(null);
+        setCardOpen(true);
         // Smoothly zoom in slightly on landing so the user sees the city's terrain!
         setCam({
           mx: lngToMercX(target.lng),
@@ -481,6 +569,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         }));
         setSelectedCityId(null);
         setSelectedZoneId(null);
+        setCardOpen(true);
         sound.play('confirm');
         showToast('🏠 已乘返程航班回到你的 GPS 家乡精灵中心！');
       }
@@ -747,6 +836,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         ctx.restore();
       }
 
+      positionPopover();
       rafId = requestAnimationFrame(render);
     };
     rafId = requestAnimationFrame(render);
@@ -783,6 +873,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       setCam({ mx: lngToMercX(lng), my: latToMercY(lat), zoom: isRealGps ? 13.5 : 11.2 });
       setSelectedCityId(null);
       setSelectedZoneId(null);
+      setCardOpen(true);
       setGpsStatus(null);
       sound.play('levelup');
       showToast(
@@ -1041,8 +1132,10 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     }
     if (hitCity) {
       sound.play('cursor');
+      recordCityClick(hitCity.id);
       setSelectedCityId(hitCity.id);
       setSelectedZoneId(null);
+      setCardOpen(true);
       return;
     }
 
@@ -1053,6 +1146,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         sound.play('cursor');
         setSelectedCityId(null);
         setSelectedZoneId(null);
+        setCardOpen(true);
         return;
       }
     }
@@ -1066,9 +1160,15 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           sound.play('cursor');
           setSelectedCityId(null);
           setSelectedZoneId(z.id);
+          setCardOpen(true);
           return;
         }
       }
+    }
+
+    // Tapping empty map space dismisses the floating location card
+    if (cardOpen) {
+      setCardOpen(false);
     }
   };
 
@@ -1163,6 +1263,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     );
     setSelectedCityId(city.id);
     setSelectedZoneId(null);
+    setCardOpen(true);
     setCam({
       mx: lngToMercX(city.lng),
       my: latToMercY(city.lat),
@@ -1294,6 +1395,53 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           <span>返回</span>
         </button>
 
+        <div className="wt-city-chips">
+          <button
+            type="button"
+            className={`wt-chip ${cardOpen && isViewingHome ? 'active' : ''}`}
+            onClick={() => {
+              sound.play('cursor');
+              setSelectedCityId(null);
+              setSelectedZoneId(null);
+              setCardOpen(true);
+              setCam({
+                mx: lngToMercX(effectiveHome.lng),
+                my: latToMercY(effectiveHome.lat),
+                zoom: Math.max(camRef.current.zoom, 11.5),
+              });
+            }}
+          >
+            🏠 老家
+          </button>
+          {sortedCities.map((c) => {
+            const cleared = tour.clearedCityGyms.includes(c.id);
+            const isHere = activeHereCity?.id === c.id;
+            const isSettled = settledIds.includes(c.id);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className={`wt-chip ${cardOpen && selectedCityId === c.id ? 'active' : ''} ${isHere ? 'is-here' : ''} ${isSettled ? 'is-settled' : ''}`}
+                onClick={() => {
+                  sound.play('cursor');
+                  recordCityClick(c.id);
+                  setSelectedCityId(c.id);
+                  setSelectedZoneId(null);
+                  setCardOpen(true);
+                  setCam((prev) => ({
+                    mx: lngToMercX(c.lng),
+                    my: latToMercY(c.lat),
+                    zoom: Math.max(prev.zoom, 6.2),
+                  }));
+                }}
+              >
+                {isSettled ? '🏡' : isHere ? '📍' : cleared ? '👑' : ''}
+                {c.name}
+              </button>
+            );
+          })}
+        </div>
+
         <div className="wt-header-right">
           <button
             type="button"
@@ -1381,60 +1529,36 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           {(toastMsg || gpsStatus) && (
             <div className="wt-toast">{toastMsg ?? gpsStatus}</div>
           )}
-        </div>
 
-        <aside className="wt-drawer">
-          <div className="wt-city-chips">
-            <button
-              type="button"
-              className={`wt-chip ${isViewingHome ? 'active' : ''}`}
-              onClick={() => {
-                sound.play('cursor');
-                setSelectedCityId(null);
-                setSelectedZoneId(null);
-                setCam({
-                  mx: lngToMercX(effectiveHome.lng),
-                  my: latToMercY(effectiveHome.lat),
-                  zoom: Math.max(cam.zoom, 11.5),
-                });
-              }}
+          {showPopover && (
+            <div
+              ref={popoverRef}
+              className="wt-popover"
+              data-side="right"
+              onPointerDown={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
             >
-              🏠 老家
-            </button>
-            {sortedCities.map((c) => {
-              const cleared = tour.clearedCityGyms.includes(c.id);
-              const isHere = activeHereCity?.id === c.id;
-              const isSettled = settledIds.includes(c.id);
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  className={`wt-chip ${selectedCityId === c.id ? 'active' : ''} ${isHere ? 'is-here' : ''} ${isSettled ? 'is-settled' : ''}`}
-                  onClick={() => {
-                    sound.play('cursor');
-                    recordCityClick(c.id);
-                    setSelectedCityId(c.id);
-                    setSelectedZoneId(null);
-                    setCam((prev) => ({
-                      mx: lngToMercX(c.lng),
-                      my: latToMercY(c.lat),
-                      zoom: Math.max(prev.zoom, 6.2),
-                    }));
-                  }}
-                >
-                  {isSettled ? '🏡' : isHere ? '📍' : cleared ? '👑' : ''}
-                  {c.name}
-                </button>
-              );
-            })}
-          </div>
+              <div ref={arrowRef} className="wt-popover-arrow" />
 
-          {selectedZone && !selectedZone.unlocked && (
-            <div className="wt-card">
-              <div className="wt-card-head is-locked">
-                <strong>🔒 {selectedZone.name}</strong>
-                <span>{selectedZone.seasonTag}</span>
-              </div>
+              {selectedZone && !selectedZone.unlocked && (
+                <div className="wt-card">
+                  <div className="wt-card-head is-locked">
+                    <strong>🔒 {selectedZone.name}</strong>
+                    <div className="wt-card-head-right">
+                      <span>{selectedZone.seasonTag}</span>
+                      <button
+                        type="button"
+                        className="wt-card-close"
+                        aria-label="关闭卡片"
+                        onClick={() => {
+                          sound.play('cancel');
+                          setCardOpen(false);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
               <div className="wt-card-body scroll-y">
                 <p className="wt-desc">{selectedZone.teaserText}</p>
                 <div className="wt-sec-lbl">预计栖息代表宝可梦</div>
@@ -1461,7 +1585,20 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               <div className="wt-card">
                 <div className="wt-card-head" style={{ backgroundColor: '#1c7ed6' }}>
                   <strong>🏠 {effectiveHome.label}</strong>
-                  <span>永久免费</span>
+                  <div className="wt-card-head-right">
+                    <span>永久免费</span>
+                    <button
+                      type="button"
+                      className="wt-card-close"
+                      aria-label="关闭卡片"
+                      onClick={() => {
+                        sound.play('cancel');
+                        setCardOpen(false);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
                 <div className="wt-card-body scroll-y">
                   {viewedWeather && (
@@ -1522,7 +1659,20 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     {isSettled ? '🏡' : '📍'} {selectedCity.name} ·{' '}
                     {isSettled ? '定居据点' : isAtHomeCity ? '当前所在' : '城市据点'}
                   </strong>
-                  <span>{selectedCity.country}</span>
+                  <div className="wt-card-head-right">
+                    <span>{selectedCity.country}</span>
+                    <button
+                      type="button"
+                      className="wt-card-close"
+                      aria-label="关闭卡片"
+                      onClick={() => {
+                        sound.play('cancel');
+                        setCardOpen(false);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
 
                 <div className="wt-card-body scroll-y">
@@ -1668,7 +1818,20 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               <div className="wt-card">
                 <div className="wt-card-head" style={{ backgroundColor: selectedCity.accentColor }}>
                   <strong>{isSettled ? '🏡' : '✈'} 飞往 {selectedCity.name}</strong>
-                  <span>{distKm.toLocaleString()} km</span>
+                  <div className="wt-card-head-right">
+                    <span>{distKm.toLocaleString()} km</span>
+                    <button
+                      type="button"
+                      className="wt-card-close"
+                      aria-label="关闭卡片"
+                      onClick={() => {
+                        sound.play('cancel');
+                        setCardOpen(false);
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
 
                 <div className="wt-card-body scroll-y">
@@ -1781,7 +1944,9 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               </div>
             );
           })()}
-        </aside>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
